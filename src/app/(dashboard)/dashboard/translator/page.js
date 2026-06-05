@@ -215,7 +215,7 @@ export default function TranslatorPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div>
-          <h1 className="text-2xl font-bold text-text-main">Translator Debug</h1>
+          <p className="text-sm text-text-muted">Debug translation flow between API formats</p>
           <p className="text-sm text-text-muted mt-1">Replay request flow — matches log files</p>
         </div>
         {meta && (

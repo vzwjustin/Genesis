@@ -4,20 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useDashboardSecurity } from "@/shared/hooks/useDashboardSecurity";
 import { SECURITY_COPY } from "@/shared/constants/securityCopy";
+import { isSecurityWizardSnoozed, snoozeSecurityWizard } from "@/shared/utils/securityWizardSnooze";
 import InlineAlert from "./InlineAlert";
 import { Button } from "@/shared/components";
-
-const SNOOZE_KEY = "9router-security-wizard-snooze-until";
-const SNOOZE_MS = 24 * 60 * 60 * 1000;
-
-function isSnoozed() {
-  try {
-    const until = Number(localStorage.getItem(SNOOZE_KEY) || 0);
-    return until > Date.now();
-  } catch {
-    return false;
-  }
-}
 
 /**
  * First-run checklist when dashboard security settings are still unsafe.
@@ -33,7 +22,7 @@ export default function FirstRunSecurityWizard() {
   const [hidden, setHidden] = useState(true);
 
   useEffect(() => {
-    setHidden(isSnoozed());
+    setHidden(isSecurityWizardSnoozed());
   }, []);
 
   if (loading || hidden) return null;
@@ -73,11 +62,7 @@ export default function FirstRunSecurityWizard() {
   if (steps.length === 0) return null;
 
   const handleSnooze = () => {
-    try {
-      localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
-    } catch {
-      /* ignore */
-    }
+    snoozeSecurityWizard();
     setHidden(true);
   };
 

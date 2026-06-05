@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/shared/components";
+import { cn } from "@/shared/utils/cn";
 
 /**
  * Consistent empty state with optional primary action.
@@ -11,9 +12,17 @@ export default function EmptyState({
   title,
   description,
   action,
+  borderless = false,
+  className,
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface/50 px-6 py-10 text-center">
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center px-6 py-10 text-center",
+        !borderless && "rounded-xl border border-dashed border-border bg-surface/50",
+        className,
+      )}
+    >
       <span className="material-symbols-outlined text-[32px] text-text-muted mb-3">{icon}</span>
       <h3 className="text-sm font-semibold text-text-main">{title}</h3>
       {description ? <p className="text-xs text-text-muted mt-1 max-w-sm">{description}</p> : null}

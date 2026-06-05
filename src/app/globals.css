@@ -495,3 +495,9 @@ button {
   border-top: 1px solid var(--color-border);
   margin: 1.5rem 0;
 }
+
+/* Basic Chat — intentional dark chat canvas in light and dark app themes */
+.basic-chat-panel {
+  background: #1a1a1a;
+  color: #ededed;
+}

@@ -64,11 +64,11 @@ export function filterToOpenAIFormat(body) {
         filteredContent.push({ type: "text", text: "" });
       }
 
-      const flattened = flattenTextOnlyContent(filteredContent);
-      if (flattened !== null) return { ...msg, content: flattened };
-      
-      const flattened = flattenTextOnlyParts(filteredContent);
-      return { ...msg, content: typeof flattened === "string" ? flattened : filteredContent };
+      const textOnly = flattenTextOnlyContent(filteredContent);
+      if (textOnly !== null) return { ...msg, content: textOnly };
+
+      const parts = flattenTextOnlyParts(filteredContent);
+      return { ...msg, content: typeof parts === "string" ? parts : filteredContent };
     }
     
     return msg;

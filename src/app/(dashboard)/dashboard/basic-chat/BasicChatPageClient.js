@@ -741,7 +741,7 @@ export default function BasicChatPageClient() {
   const modelSubLabel = activeModel ? activeModel.requestModel : "Choose from connected providers";
 
   return (
-    <div className="relative flex-1 flex flex-col h-full min-h-0 min-w-0 bg-[#212121] text-white overflow-hidden">
+    <div className="basic-chat-panel relative flex-1 flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       <div className="relative mx-auto flex flex-1 h-full min-h-0 w-full max-w-4xl flex-col">
         <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 lg:px-6">
           <div ref={modelMenuRef} className="relative">

@@ -17,11 +17,29 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
+function sidebarLinkClass(active, nested = false) {
+  return cn(
+    "relative flex items-center gap-3 rounded-lg transition-all group",
+    nested ? "px-4 py-1" : "px-3 py-1.5",
+    active
+      ? "bg-primary/10 text-primary before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-[18px] before:w-[3px] before:rounded-full before:bg-primary"
+      : "text-text-muted hover:bg-surface-2 hover:text-text-main",
+  );
+}
+
+function sidebarIconClass(active, nested = false) {
+  return cn(
+    "material-symbols-outlined",
+    nested ? "text-[16px]" : "text-[18px]",
+    active ? "fill-1" : "group-hover:text-primary transition-colors",
+  );
+}
+
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: "home" },
   { href: "/dashboard/endpoint", label: "Endpoint", icon: "api" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
-  // { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" }, // Hidden
+  { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
@@ -219,18 +237,10 @@ export default function Sidebar({ onClose }) {
               href={item.href}
               onClick={onClose}
               aria-current={isActive(item.href) ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
+              className={sidebarLinkClass(isActive(item.href))}
             >
               <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
+                className={sidebarIconClass(isActive(item.href))}
               >
                 {item.icon}
               </span>
@@ -249,12 +259,7 @@ export default function Sidebar({ onClose }) {
               onClick={() => setMediaOpen((v) => !v)}
               aria-expanded={mediaOpen}
               aria-controls="sidebar-media-providers"
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                pathname.startsWith("/dashboard/media-providers")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
+              className={cn(sidebarLinkClass(pathname.startsWith("/dashboard/media-providers")), "w-full")}
             >
               <span className="material-symbols-outlined text-[18px]">perm_media</span>
               <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
@@ -270,14 +275,9 @@ export default function Sidebar({ onClose }) {
                     href={`/dashboard/media-providers/${kind.id}`}
                     onClick={onClose}
                     aria-current={pathname.startsWith(`/dashboard/media-providers/${kind.id}`) ? "page" : undefined}
-                    className={cn(
-                      "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                      pathname.startsWith(`/dashboard/media-providers/${kind.id}`)
-                        ? "bg-primary/10 text-primary"
-                        : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                    )}
+                    className={sidebarLinkClass(pathname.startsWith(`/dashboard/media-providers/${kind.id}`), true)}
                   >
-                    <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
+                    <span className={sidebarIconClass(pathname.startsWith(`/dashboard/media-providers/${kind.id}`), true)}>{kind.icon}</span>
                     <span className="text-sm">{kind.label}</span>
                   </Link>
                 ))}
@@ -286,14 +286,9 @@ export default function Sidebar({ onClose }) {
                   href={COMBINED_WEB_ITEM.href}
                   onClick={onClose}
                   aria-current={pathname.startsWith(COMBINED_WEB_ITEM.href) ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                    pathname.startsWith(COMBINED_WEB_ITEM.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                  )}
+                  className={sidebarLinkClass(pathname.startsWith(COMBINED_WEB_ITEM.href), true)}
                 >
-                  <span className="material-symbols-outlined text-[16px]">{COMBINED_WEB_ITEM.icon}</span>
+                  <span className={sidebarIconClass(pathname.startsWith(COMBINED_WEB_ITEM.href), true)}>{COMBINED_WEB_ITEM.icon}</span>
                   <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
                 </Link>
               </div>
@@ -305,19 +300,9 @@ export default function Sidebar({ onClose }) {
                 href={item.href}
                 onClick={onClose}
                 aria-current={isActive(item.href) ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                )}
+                className={sidebarLinkClass(isActive(item.href))}
               >
-                <span
-                  className={cn(
-                    "material-symbols-outlined text-[18px]",
-                    isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                  )}
-                >
+                <span className={sidebarIconClass(isActive(item.href))}>
                   {item.icon}
                 </span>
                 <span className="text-[13px] font-medium">{item.label}</span>
@@ -333,19 +318,9 @@ export default function Sidebar({ onClose }) {
                   href={item.href}
                   onClick={onClose}
                   aria-current={isActive(item.href) ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                    isActive(item.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                  )}
+                  className={sidebarLinkClass(isActive(item.href))}
                 >
-                  <span
-                    className={cn(
-                      "material-symbols-outlined text-[18px]",
-                      isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                    )}
-                  >
+                  <span className={sidebarIconClass(isActive(item.href))}>
                     {item.icon}
                   </span>
                   <span className="text-[13px] font-medium">{item.label}</span>
@@ -358,19 +333,9 @@ export default function Sidebar({ onClose }) {
               href="/dashboard/profile"
               onClick={onClose}
               aria-current={isActive("/dashboard/profile") ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive("/dashboard/profile")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
+              className={sidebarLinkClass(isActive("/dashboard/profile"))}
             >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
-              >
+              <span className={sidebarIconClass(isActive("/dashboard/profile"))}>
                 settings
               </span>
               <span className="text-[13px] font-medium">Settings</span>
@@ -386,7 +351,7 @@ export default function Sidebar({ onClose }) {
             fullWidth
             icon="power_settings_new"
             onClick={() => setShowShutdownModal(true)}
-            className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
+            className="text-danger border-danger/30 hover:bg-danger/10 hover:border-danger/50"
           >
             Shutdown
           </Button>

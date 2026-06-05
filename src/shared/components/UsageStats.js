@@ -12,6 +12,7 @@ function isLLMProvider(id) {
 }
 import Badge from "./Badge";
 import Card from "./Card";
+import EmptyState from "./EmptyState";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
 import UsageTable, { fmt, fmtTime } from "@/app/(dashboard)/dashboard/usage/components/UsageTable";
 import ProviderTopology from "@/app/(dashboard)/dashboard/usage/components/ProviderTopology";
@@ -46,7 +47,16 @@ function RecentRequests({ requests = [] }) {
       </div>
 
       {!requests.length ? (
-        <div className="flex-1 flex items-center justify-center text-text-muted text-sm">No requests yet.</div>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <EmptyState
+            borderless
+            icon="bar_chart"
+            title="No requests yet"
+            description="Send a request through your endpoint to see activity here."
+            action={{ label: "Open Endpoint", href: "/dashboard/endpoint" }}
+            className="py-6"
+          />
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
           <table className="w-full min-w-[300px] border-collapse text-xs">

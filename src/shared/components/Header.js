@@ -68,6 +68,13 @@ const getPageInfo = (pathname) => {
     }
   }
 
+  if (pathname.includes("/basic-chat"))
+    return {
+      title: "Basic Chat",
+      description: "Chat with models from your connected providers",
+      icon: "chat",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/providers") && !pathname.includes("/media-providers"))
     return {
       title: "Providers",

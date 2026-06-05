@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useDashboardSecurity } from "@/shared/hooks/useDashboardSecurity";
 import { SECURITY_COPY } from "@/shared/constants/securityCopy";
+import { isSecurityWizardSnoozed } from "@/shared/utils/securityWizardSnooze";
 import InlineAlert from "./InlineAlert";
 
 const DETAIL_PAGES = new Set(["/dashboard/profile", "/dashboard/endpoint"]);
@@ -19,6 +21,11 @@ export default function DashboardSecurityBanner() {
     requireApiKey,
     remoteExposureActive,
   } = useDashboardSecurity();
+  const [wizardActive, setWizardActive] = useState(false);
+
+  useEffect(() => {
+    setWizardActive(!isSecurityWizardSnoozed());
+  }, []);
 
   if (loading || DETAIL_PAGES.has(pathname)) return null;
 
@@ -49,6 +56,9 @@ export default function DashboardSecurityBanner() {
   }
 
   if (issues.length === 0) return null;
+
+  // FirstRunSecurityWizard shows the same issues in a richer checklist — avoid duplicate alerts.
+  if (wizardActive) return null;
 
   return (
     <div className="mb-4 flex flex-col gap-2">

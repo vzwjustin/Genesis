@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal, EmptyState, MobileStickyActionBar } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 
 function getStatusVariant(status) {
@@ -36,6 +36,7 @@ export default function ProxyPoolsPage() {
   const [showCloudflareModal, setShowCloudflareModal] = useState(false);
   const [showDenoModal, setShowDenoModal] = useState(false);
   const [showRelayMenu, setShowRelayMenu] = useState(false);
+  const [showRelayPickerModal, setShowRelayPickerModal] = useState(false);
   const [editingProxyPool, setEditingProxyPool] = useState(null);
   const [formData, setFormData] = useState(normalizeFormData());
   const [batchImportText, setBatchImportText] = useState("");
@@ -575,12 +576,8 @@ export default function ProxyPoolsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold sm:text-2xl">Proxy Pools</h1>
-        </div>
-
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 pb-24 sm:gap-6 sm:px-0 lg:pb-0">
+      <div className="hidden lg:flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-end">
         <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
           <div className="relative" ref={relayMenuRef}>
             <Button
@@ -596,15 +593,15 @@ export default function ProxyPoolsPage() {
             </Button>
 
             {showRelayMenu && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-xl border border-black/10 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-zinc-900 sm:left-auto sm:right-0">
+              <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-brand-lg border border-border bg-surface p-1 shadow-[var(--shadow-elevated)] sm:left-auto sm:right-0">
                 <button
                   onClick={() => {
                     openCloudflareModal();
                     setShowRelayMenu(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors hover:bg-surface-2"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-orange-500">cloud</span>
+                  <span className="material-symbols-outlined text-[20px] text-warning">cloud</span>
                   Cloudflare Relay
                 </button>
                 <button
@@ -612,9 +609,9 @@ export default function ProxyPoolsPage() {
                     openVercelModal();
                     setShowRelayMenu(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors hover:bg-surface-2"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-blue-500">cloud_upload</span>
+                  <span className="material-symbols-outlined text-[20px] text-info">cloud_upload</span>
                   Vercel Relay
                 </button>
                 <button
@@ -622,9 +619,9 @@ export default function ProxyPoolsPage() {
                     openDenoModal();
                     setShowRelayMenu(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors hover:bg-surface-2"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-green-500">terminal</span>
+                  <span className="material-symbols-outlined text-[20px] text-success">terminal</span>
                   Deno Relay
                 </button>
               </div>
@@ -646,7 +643,7 @@ export default function ProxyPoolsPage() {
                 type="checkbox"
                 checked={allSelected}
                 onChange={toggleSelectAll}
-                className="size-4 rounded border-black/20 dark:border-white/20"
+                className="size-4 rounded border-border"
               />
               {allSelected ? "Unselect all" : "Select all"}
             </label>
@@ -691,15 +688,14 @@ export default function ProxyPoolsPage() {
         )}
 
         {proxyPools.length === 0 ? (
-          <div className="text-center py-10">
-            <p className="text-text-main font-medium mb-1">No proxy pool entries yet</p>
-            <p className="text-sm text-text-muted mb-4">
-              Create a proxy pool entry, then assign it to connections.
-            </p>
-            <Button icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
-          </div>
+          <EmptyState
+            icon="lan"
+            title="No proxy pool entries yet"
+            description="Create a proxy pool entry, then assign it to provider connections."
+            action={{ label: "Add Proxy Pool", onClick: openCreateModal }}
+          />
         ) : (
-          <div className="flex flex-col divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+          <div className="flex flex-col divide-y divide-border-subtle">
             {proxyPools.map((pool) => (
               <div key={pool.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -707,7 +703,7 @@ export default function ProxyPoolsPage() {
                     type="checkbox"
                     checked={selectedIds.includes(pool.id)}
                     onChange={() => toggleSelect(pool.id)}
-                    className="mt-1 size-4 shrink-0 rounded border-black/20 dark:border-white/20"
+                    className="mt-1 size-4 shrink-0 rounded border-border"
                   />
                   <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -748,7 +744,7 @@ export default function ProxyPoolsPage() {
                   />
                   <button
                     onClick={() => handleTest(pool.id)}
-                    className="p-2 rounded hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary"
+                    className="p-2 rounded hover:bg-surface-2 text-text-muted hover:text-primary"
                     title="Test proxy"
                     disabled={testingId === pool.id}
                   >
@@ -761,7 +757,7 @@ export default function ProxyPoolsPage() {
                   </button>
                   <button
                     onClick={() => openEditModal(pool)}
-                    className="p-2 rounded hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary"
+                    className="p-2 rounded hover:bg-surface-2 text-text-muted hover:text-primary"
                     title="Edit"
                   >
                     <span className="material-symbols-outlined text-[18px]">edit</span>
@@ -792,7 +788,7 @@ export default function ProxyPoolsPage() {
               value={batchImportText}
               onChange={(e) => setBatchImportText(e.target.value)}
               placeholder={"http://user:pass@127.0.0.1:7897\n127.0.0.1:7897:user:pass"}
-              className="w-full min-h-[180px] py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all"
+              className="w-full min-h-[180px] py-2 px-3 text-sm text-text-main bg-surface border border-border rounded-brand focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all"
             />
             <p className="text-xs text-text-muted mt-1">
               Supported formats: protocol://user:pass@host:port, host:port:user:pass
@@ -928,7 +924,7 @@ export default function ProxyPoolsPage() {
         onClose={closeDenoModal}
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 p-3 flex flex-col gap-1.5">
+          <div className="rounded-brand bg-bg-alt border border-border p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Deno Relay?</p>
             <p className="text-xs text-text-muted">
               Deploys a relay worker to Deno Deploy&apos;s global edge network. All AI provider requests are forwarded through Deno&apos;s edge, masking your real IP.
@@ -940,7 +936,7 @@ export default function ProxyPoolsPage() {
               <li>Support up to 20 active apps & 50 custom domains</li>
               <li>Deploy multiple relays for maximum IP diversity</li>
             </ul>
-            <div className="mt-2 pt-2 border-t border-black/10 dark:border-white/10 text-xs text-text-muted">
+            <div className="mt-2 pt-2 border-t border-border text-xs text-text-muted">
               <p className="font-medium text-text-main mb-1">How to generate API token:</p>
               <ol className="list-decimal pl-4 space-y-0.5">
                 <li>Go to <b>console.deno.com</b></li>
@@ -1060,6 +1056,53 @@ export default function ProxyPoolsPage() {
         message={confirmState?.message}
         variant="danger"
       />
+
+      <Modal
+        isOpen={showRelayPickerModal}
+        onClose={() => setShowRelayPickerModal(false)}
+        title="Deploy Relay"
+      >
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="secondary"
+            icon="cloud"
+            fullWidth
+            onClick={() => { setShowRelayPickerModal(false); openCloudflareModal(); }}
+          >
+            Cloudflare Relay
+          </Button>
+          <Button
+            variant="secondary"
+            icon="cloud_upload"
+            fullWidth
+            onClick={() => { setShowRelayPickerModal(false); openVercelModal(); }}
+          >
+            Vercel Relay
+          </Button>
+          <Button
+            variant="secondary"
+            icon="terminal"
+            fullWidth
+            onClick={() => { setShowRelayPickerModal(false); openDenoModal(); }}
+          >
+            Deno Relay
+          </Button>
+        </div>
+      </Modal>
+
+      <MobileStickyActionBar>
+        <div className="grid w-full grid-cols-3 gap-2">
+          <Button size="sm" variant="secondary" onClick={() => setShowRelayPickerModal(true)}>
+            Relay
+          </Button>
+          <Button size="sm" variant="secondary" icon="upload" onClick={openBatchImportModal}>
+            Import
+          </Button>
+          <Button size="sm" icon="add" onClick={openCreateModal}>
+            Add
+          </Button>
+        </div>
+      </MobileStickyActionBar>
     </div>
   );
 }
