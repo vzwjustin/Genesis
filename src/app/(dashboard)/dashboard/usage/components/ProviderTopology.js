@@ -197,6 +197,9 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
 
 export default function ProviderTopology({ providers = [], activeRequests = [], lastProvider = "", errorProvider = "" }) {
   const fitOpts = { padding: 0.2, duration: 200 };
+  const userAdjustedViewport = useRef(false);
+  const isProgrammaticFit = useRef(false);
+  const hasInitialFit = useRef(false);
 
   // Serialize to stable string keys so useMemo only re-runs when values actually change
   const activeKey = useMemo(
@@ -257,29 +260,41 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
 
   const rfInstance = useRef(null);
   const containerRef = useRef(null);
-  const onInit = useCallback((instance) => {
-    rfInstance.current = instance;
-    setTimeout(() => instance.fitView(fitOpts), 50);
+
+  const endProgrammaticFit = useCallback(() => {
+    window.setTimeout(() => {
+      isProgrammaticFit.current = false;
+      hasInitialFit.current = true;
+    }, fitOpts.duration + 50);
   }, []);
 
-  // Re-fit on container resize
+  const safeFitView = useCallback(() => {
+    if (userAdjustedViewport.current || !rfInstance.current) return;
+    isProgrammaticFit.current = true;
+    rfInstance.current.fitView(fitOpts);
+    endProgrammaticFit();
+  }, [endProgrammaticFit]);
+
+  const onInit = useCallback((instance) => {
+    rfInstance.current = instance;
+    userAdjustedViewport.current = false;
+    hasInitialFit.current = false;
+    window.setTimeout(() => safeFitView(), 50);
+  }, [safeFitView]);
+
+  const markUserAdjusted = useCallback(() => {
+    if (!hasInitialFit.current || isProgrammaticFit.current) return;
+    userAdjustedViewport.current = true;
+  }, []);
+
+  // Re-fit on container resize only until the user pans/zooms manually
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      if (rfInstance.current) rfInstance.current.fitView(fitOpts);
-    });
+    const ro = new ResizeObserver(() => safeFitView());
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-
-  // Re-fit when node count/layout changes
-  useEffect(() => {
-    if (rfInstance.current) {
-      const id = setTimeout(() => rfInstance.current.fitView(fitOpts), 50);
-      return () => clearTimeout(id);
-    }
-  }, [nodes.length]);
+  }, [safeFitView]);
 
   return (
     <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-bg-subtle/30 sm:h-[480px]">
@@ -293,22 +308,29 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={fitOpts}
           minZoom={0.1}
           maxZoom={2}
           onInit={onInit}
+          onMoveStart={markUserAdjusted}
+          onViewportChange={markUserAdjusted}
           proOptions={{ hideAttribution: true }}
           panOnDrag
           zoomOnScroll
           zoomOnPinch
           zoomOnDoubleClick
-          preventScrolling={false}
+          preventScrolling
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}
         >
-          <Controls showInteractive={false} className="react-flow-controls-custom" />
+          <Controls
+            showInteractive={false}
+            fitViewOptions={fitOpts}
+            onZoomIn={markUserAdjusted}
+            onZoomOut={markUserAdjusted}
+            onFitView={markUserAdjusted}
+            className="react-flow-controls-custom"
+          />
         </ReactFlow>
       )}
     </div>
