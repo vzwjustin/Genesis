@@ -36,6 +36,7 @@ const DEFAULT_SETTINGS = {
   rtkEnabled: true,
   cavemanEnabled: false,
   cavemanLevel: "full",
+  headroomEnabled: false,
 };
 
 async function readRaw() {
