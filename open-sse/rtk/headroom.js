@@ -42,6 +42,9 @@ function invalidateProbe() {
 
 /**
  * Compress body.messages via headroom proxy.
+ * Only messages AFTER the last cache_control boundary are compressed — the
+ * cached prefix is left byte-identical so neither Anthropic nor OpenAI KV
+ * cache entries are invalidated.
  * Returns { before, after, saved } on success, null if skipped/unavailable.
  */
 export async function compressWithHeadroom(body, model) {
@@ -53,16 +56,35 @@ export async function compressWithHeadroom(body, model) {
 
   if (!(await probeProxy())) return null;
 
-  const before = JSON.stringify(messages).length;
+  // Find the last cache_control boundary; only compress messages after it.
+  let cacheFloor = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg) continue;
+    if (msg.cache_control) { cacheFloor = i; break; }
+    if (Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if (block?.cache_control) { cacheFloor = i; break; }
+      }
+      if (cacheFloor === i) break;
+    }
+  }
+
+  // Slice out only the compressible tail; leave the cached head untouched.
+  const head = messages.slice(0, cacheFloor + 1);
+  const tail = messages.slice(cacheFloor + 1);
+  if (tail.length < 2) return null; // not enough to compress
+
+  const before = JSON.stringify(tail).length;
   try {
     const result = await Promise.race([
-      compress(messages, { model }),
+      compress(tail, { model }),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("headroom timeout")), COMPRESS_TIMEOUT_MS)
       ),
     ]);
     if (!result?.messages) return null;
-    body.messages = result.messages;
+    body.messages = [...head, ...result.messages];
     const after = JSON.stringify(result.messages).length;
     return { before, after, saved: before - after };
   } catch {
