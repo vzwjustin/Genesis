@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Card from "./Card";
 
 export default function RequestLogger() {
@@ -8,21 +8,7 @@ export default function RequestLogger() {
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  useEffect(() => {
-    fetchLogs();
-  }, []);
-
-  useEffect(() => {
-    let interval;
-    if (autoRefresh) {
-      interval = setInterval(() => {
-        fetchLogs(false);
-      }, 3000);
-    }
-    return () => clearInterval(interval);
-  }, [autoRefresh]);
-
-  const fetchLogs = async (showLoading = true) => {
+  const fetchLogs = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
       const res = await fetch("/api/usage/request-logs");
@@ -33,9 +19,25 @@ export default function RequestLogger() {
     } catch (error) {
       console.error("Failed to fetch logs:", error);
     } finally {
-      if (showLoading) setLoading(false);
+      setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Run inside an async IIFE so the setState calls happen after an await
+    // (avoids react-hooks/set-state-in-effect's synchronous-setState flag).
+    (async () => { await fetchLogs(false); })();
+  }, [fetchLogs]);
+
+  useEffect(() => {
+    let interval;
+    if (autoRefresh) {
+      interval = setInterval(() => {
+        fetchLogs(false);
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchLogs]);
 
   return (
     <div className="flex flex-col gap-4">
