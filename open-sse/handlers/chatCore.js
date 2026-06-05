@@ -20,6 +20,9 @@ import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom } from "../rtk/headroom.js";
+import { recordCompressionStats } from "@/lib/compressionStats.js";
+
+const HEADROOM_AVAILABLE = false;
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -116,23 +119,42 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const finalFormat = passthrough ? sourceFormat : targetFormat;
 
   // Headroom: ML compression of full message history (prose, RAG, long conversations)
-  if (headroomEnabled) {
+  if (HEADROOM_AVAILABLE && headroomEnabled) {
     const hrStats = await compressWithHeadroom(translatedBody, model);
     if (hrStats && hrStats.saved > 0) {
       const pct = Math.round((hrStats.saved / hrStats.before) * 100);
       console.log(`[HEADROOM] saved ${hrStats.saved}B / ${hrStats.before}B (${pct}%)`);
     }
+    recordCompressionStats("headroom", {
+      bytesBefore: hrStats?.before || 0,
+      bytesAfter: hrStats?.after || 0,
+      hits: hrStats?.saved > 0 ? 1 : 0,
+      detail: hrStats?.saved > 0 ? model : "skipped",
+    }).catch(() => {});
   }
 
   // RTK: compress tool_result content
   const rtkStats = compressMessages(translatedBody, rtkEnabled);
   const rtkLine = formatRtkLog(rtkStats);
   if (rtkLine) console.log(rtkLine);
+  if (rtkEnabled) {
+    const filters = Array.from(new Set((rtkStats?.hits || []).map((hit) => hit.filter))).join(",");
+    recordCompressionStats("rtk", {
+      bytesBefore: rtkStats?.bytesBefore || 0,
+      bytesAfter: rtkStats?.bytesAfter || 0,
+      hits: rtkStats?.hits?.length || 0,
+      detail: filters || "no compression",
+    }).catch(() => {});
+  }
 
   // Caveman: inject terse-style system prompt
   if (cavemanEnabled && cavemanLevel) {
     injectCaveman(translatedBody, finalFormat, cavemanLevel);
     log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
+    recordCompressionStats("caveman", {
+      hits: 1,
+      detail: `level=${cavemanLevel}`,
+    }).catch(() => {});
   }
 
   const executor = getExecutor(provider);

@@ -69,4 +69,24 @@ describe("frontend accessibility regressions", () => {
     expect(sidebar).toContain("Install & Restart");
     expect(sidebar).toContain('fetch("/api/version/update"');
   });
+
+  it("shows compression stats in the token saver card", () => {
+    const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+
+    expect(endpoint).toContain('fetch("/api/compression/stats")');
+    expect(endpoint).toContain("CompressionStatRow");
+    expect(endpoint).toContain("Saved");
+    expect(endpoint).toContain("Est. tokens saved");
+    expect(endpoint).toContain("Savings not measurable");
+    expect(endpoint).toContain("Hits");
+    expect(endpoint).toContain("Prompt injections");
+  });
+
+  it("marks Headroom as coming soon instead of enabling an offline proxy", () => {
+    const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+
+    expect(endpoint).toContain("Coming soon");
+    expect(endpoint).toContain("Headroom is coming soon");
+    expect(endpoint).toContain("disabled");
+  });
 });
