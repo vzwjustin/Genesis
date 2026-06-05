@@ -43,3 +43,8 @@ export function getToolInstallStatus(status) {
   if (status.has9Router) return { status: "connected" };
   return { status: "not_configured" };
 }
+
+/** True when the tool is installed and points at 9router (badge: "Connected"). */
+export function isCliToolConfigured(status) {
+  return getToolInstallStatus(status).status === "connected";
+}

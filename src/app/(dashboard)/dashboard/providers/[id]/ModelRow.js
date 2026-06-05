@@ -4,7 +4,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
-    ? "border-red-500/40"
+    ? "border-danger/40"
     : "border-border";
 
   const iconColor = testStatus === "ok"
@@ -58,7 +58,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         {isCustom ? (
           <button
             onClick={onDeleteAlias}
-            className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
+            className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-danger/10 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
             title="Remove custom model"
           >
             <span className="material-symbols-outlined text-sm">close</span>
@@ -66,7 +66,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         ) : onDisable ? (
           <button
             onClick={onDisable}
-            className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
+            className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-danger/10 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
             title="Disable this model"
           >
             <span className="material-symbols-outlined text-sm">close</span>

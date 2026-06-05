@@ -929,7 +929,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
       {/* Delete button */}
       <button
         onClick={onDeleteAlias}
-        className="p-1 hover:bg-red-50 rounded text-red-500"
+        className="p-1 hover:bg-red-50 rounded text-danger"
         title="Remove model"
       >
         <span className="material-symbols-outlined text-sm">delete</span>
@@ -1214,7 +1214,7 @@ function ConnectionRow({ connection, isOAuth, isFirst, isLast, onMoveUp, onMoveD
             </Badge>
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
             {connection.lastError && connection.isActive !== false && (
-              <span className="text-xs text-red-500 truncate max-w-[300px]" title={connection.lastError}>
+              <span className="text-xs text-danger truncate max-w-[300px]" title={connection.lastError}>
                 {connection.lastError}
               </span>
             )}
@@ -1236,7 +1236,7 @@ function ConnectionRow({ connection, isOAuth, isFirst, isLast, onMoveUp, onMoveD
           <button onClick={onEdit} className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary">
             <span className="material-symbols-outlined text-[18px]">edit</span>
           </button>
-          <button onClick={onDelete} className="p-2 hover:bg-red-500/10 rounded text-red-500">
+          <button onClick={onDelete} className="p-2 hover:bg-danger/10 rounded text-danger">
             <span className="material-symbols-outlined text-[18px]">delete</span>
           </button>
         </div>

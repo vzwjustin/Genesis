@@ -95,7 +95,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           </div>
         )}
         {testStatus === "error" && (
-          <div className="flex items-start gap-2 text-sm text-red-500">
+          <div className="flex items-start gap-2 text-sm text-danger">
             <span className="material-symbols-outlined text-base shrink-0">cancel</span>
             <span>{testError || "Model not reachable"}</span>
           </div>

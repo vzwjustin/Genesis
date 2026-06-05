@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, Button, Skeleton } from "@/shared/components";
 import { useDashboardSecurity } from "@/shared/hooks/useDashboardSecurity";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
-import { getToolInstallStatus } from "@/shared/components/ConfigStatusBadge";
+import { isCliToolConfigured } from "@/shared/components/ConfigStatusBadge";
 
 const QUICK_LINKS = [
   { href: "/dashboard/endpoint", label: "Endpoint", icon: "api", desc: "URLs, tunnel, API keys" },
@@ -60,7 +60,7 @@ export default function DashboardOverviewClient() {
           const toolIds = Object.keys(CLI_TOOLS);
           let configured = 0;
           for (const id of toolIds) {
-            if (getToolInstallStatus(statuses[id]).status === "configured") configured++;
+            if (isCliToolConfigured(statuses[id])) configured++;
           }
           setCliStats({ configured, total: toolIds.length });
         }

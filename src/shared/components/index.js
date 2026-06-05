@@ -45,7 +45,7 @@ export { default as ProviderInfoCard } from "./ProviderInfoCard";
 export * from "./layouts";
 
 
-export { default as ConfigStatusBadge, getToolInstallStatus } from "./ConfigStatusBadge";
+export { default as ConfigStatusBadge, getToolInstallStatus, isCliToolConfigured } from "./ConfigStatusBadge";
 export { default as SidebarSecurityHint } from "./SidebarSecurityHint";
 export { default as EmptyState } from "./EmptyState";
 export { default as MobileStickyActionBar } from "./MobileStickyActionBar";

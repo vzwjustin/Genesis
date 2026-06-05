@@ -764,7 +764,7 @@ export default function ProxyPoolsPage() {
                   </button>
                   <button
                     onClick={() => handleDelete(pool)}
-                    className="p-2 rounded hover:bg-red-500/10 text-red-500"
+                    className="p-2 rounded hover:bg-danger/10 text-danger"
                     title="Delete"
                   >
                     <span className="material-symbols-outlined text-[18px]">delete</span>

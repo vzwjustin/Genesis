@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { CardSkeleton, SegmentedControl, EmptyState } from "@/shared/components";
 import { CLI_TOOLS, MITM_TOOLS } from "@/shared/constants/cliTools";
-import { getToolInstallStatus } from "@/shared/components/ConfigStatusBadge";
+import { isCliToolConfigured } from "@/shared/components/ConfigStatusBadge";
 import { MitmLinkCard } from "./components";
 import ToolSummaryCard from "./components/ToolSummaryCard";
 
@@ -38,9 +38,8 @@ export default function CLIToolsPageClient({ machineId }) {
   const regularTools = useMemo(() => {
     return Object.entries(CLI_TOOLS).filter(([toolId]) => {
       if (filter === "all") return true;
-      const status = getToolInstallStatus(toolStatuses[toolId]).status;
-      if (filter === "configured") return status === "configured";
-      return status !== "configured";
+      if (filter === "configured") return isCliToolConfigured(toolStatuses[toolId]);
+      return !isCliToolConfigured(toolStatuses[toolId]);
     });
   }, [filter, toolStatuses]);
 
@@ -59,9 +58,7 @@ export default function CLIToolsPageClient({ machineId }) {
 
   const mitmTools = Object.entries(MITM_TOOLS);
   const toolIds = Object.keys(CLI_TOOLS);
-  const configuredCount = toolIds.filter(
-    (id) => getToolInstallStatus(toolStatuses[id]).status === "configured"
-  ).length;
+  const configuredCount = toolIds.filter((id) => isCliToolConfigured(toolStatuses[id])).length;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-1 sm:px-0">

@@ -1374,7 +1374,7 @@ export default function ProviderDetailPage() {
           })()}
         </div>
         {!!modelsTestError && (
-          <p className="text-xs text-red-500 mb-3 break-words">{modelsTestError}</p>
+          <p className="text-xs text-danger mb-3 break-words">{modelsTestError}</p>
         )}
         {renderModelsSection()}
       </Card>
