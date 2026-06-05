@@ -47,24 +47,6 @@ export default function HermesToolCard({
 
   const configStatus = getConfigStatus();
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setHermesStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !hermesStatus) {
-      checkStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -74,14 +56,6 @@ export default function HermesToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  useEffect(() => {
-    if (hermesStatus?.installed && !hasInitializedModel.current) {
-      hasInitializedModel.current = true;
-      const cfg = hermesStatus.settings?.model;
-      if (cfg?.default) setSelectedModel(cfg.default);
-    }
-  }, [hermesStatus]);
 
   const checkStatus = async () => {
     setChecking(true);
@@ -95,6 +69,35 @@ export default function HermesToolCard({
       setChecking(false);
     }
   };
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) queueMicrotask(() => setHermesStatus(initialStatus));
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (isExpanded && !hermesStatus) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      checkStatus();
+      fetchModelAliases();
+    }
+    if (isExpanded) fetchModelAliases();
+  }, [isExpanded]);
+
+
+  useEffect(() => {
+    if (hermesStatus?.installed && !hasInitializedModel.current) {
+      hasInitializedModel.current = true;
+      const cfg = hermesStatus.settings?.model;
+      if (cfg?.default) queueMicrotask(() => setSelectedModel(cfg.default));
+    }
+  }, [hermesStatus]);
+
 
   const normalizeLocalhost = (url) => url.replace("://localhost", "://127.0.0.1");
 

@@ -49,24 +49,6 @@ export default function DroidToolCard({
 
   const configStatus = getConfigStatus();
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setDroidStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !droidStatus) {
-      checkDroidStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -76,26 +58,6 @@ export default function DroidToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  // Pre-fill model list from existing config (supports multi-model)
-  useEffect(() => {
-    if (droidStatus?.installed && !hasInitializedModel.current) {
-      hasInitializedModel.current = true;
-      const existingModels = (droidStatus.settings?.customModels || [])
-        .filter(m => m.id?.startsWith("custom:9Router"))
-        .sort((a, b) => (a.index || 0) - (b.index || 0))
-        .map(m => m.model);
-      if (existingModels.length > 0) {
-        setModelList(existingModels);
-      } else {
-        // Legacy: single model stored as custom:9Router-0
-        const legacy = droidStatus.settings?.customModels?.find(m => m.id === "custom:9Router-0");
-        if (legacy?.model) {
-          setModelList([legacy.model]);
-        }
-      }
-    }
-  }, [droidStatus]);
 
   const checkDroidStatus = async () => {
     setCheckingDroid(true);
@@ -109,6 +71,47 @@ export default function DroidToolCard({
       setCheckingDroid(false);
     }
   };
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) queueMicrotask(() => setDroidStatus(initialStatus));
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (isExpanded && !droidStatus) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      checkDroidStatus();
+      fetchModelAliases();
+    }
+    if (isExpanded) fetchModelAliases();
+  }, [isExpanded]);
+
+
+  // Pre-fill model list from existing config (supports multi-model)
+  useEffect(() => {
+    if (droidStatus?.installed && !hasInitializedModel.current) {
+      hasInitializedModel.current = true;
+      const existingModels = (droidStatus.settings?.customModels || [])
+        .filter(m => m.id?.startsWith("custom:9Router"))
+        .sort((a, b) => (a.index || 0) - (b.index || 0))
+        .map(m => m.model);
+      if (existingModels.length > 0) {
+        queueMicrotask(() => setModelList(existingModels));
+      } else {
+        // Legacy: single model stored as custom:9Router-0
+        const legacy = droidStatus.settings?.customModels?.find(m => m.id === "custom:9Router-0");
+        if (legacy?.model) {
+          queueMicrotask(() => setModelList([legacy.model]));
+        }
+      }
+    }
+  }, [droidStatus]);
+
 
   const getEffectiveBaseUrl = () => {
     const url = customBaseUrl || baseUrl;

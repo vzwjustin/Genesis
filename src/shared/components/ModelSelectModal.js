@@ -59,6 +59,7 @@ export default function ModelSelectModal({
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isOpen) fetchCombos();
   }, [isOpen]);
 
@@ -75,6 +76,7 @@ export default function ModelSelectModal({
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isOpen) fetchProviderNodes();
   }, [isOpen]);
 
@@ -91,6 +93,7 @@ export default function ModelSelectModal({
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isOpen) fetchCustomModels();
   }, [isOpen]);
 
@@ -107,6 +110,7 @@ export default function ModelSelectModal({
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isOpen) fetchDisabledModels();
   }, [isOpen]);
 

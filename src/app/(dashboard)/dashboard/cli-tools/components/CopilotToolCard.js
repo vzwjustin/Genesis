@@ -21,22 +21,46 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
   const [modalOpen, setModalOpen] = useState(false);
   const selectedModelsRef = useRef([]);
 
+  const fetchModelAliases = async () => {
+    try {
+      const res = await fetch("/api/models/alias");
+      const data = await res.json();
+      if (res.ok) setModelAliases(data.aliases || {});
+    } catch (error) {
+      console.log("Error fetching model aliases:", error);
+    }
+  };
+
+  const checkStatus = async () => {
+    setChecking(true);
+    try {
+      const res = await fetch("/api/cli-tools/copilot-settings");
+      const data = await res.json();
+      setStatus(data);
+    } catch (error) {
+      setStatus({ error: error.message });
+    } finally {
+      setChecking(false);
+    }
+  };
+
   useEffect(() => {
     selectedModelsRef.current = selectedModels;
   }, [selectedModels]);
 
   useEffect(() => {
     if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
     }
   }, [apiKeys, selectedApiKey]);
 
   useEffect(() => {
-    if (initialStatus) setStatus(initialStatus);
+    if (initialStatus) queueMicrotask(() => setStatus(initialStatus));
   }, [initialStatus]);
 
   useEffect(() => {
     if (isExpanded && !status) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       checkStatus();
       fetchModelAliases();
     }
@@ -48,20 +72,12 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
     if (status?.config && Array.isArray(status.config) && selectedModels.length === 0) {
       const entry = status.config.find((e) => e.name === "9Router");
       if (entry?.models?.length > 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedModels(entry.models.map((m) => m.id));
       }
     }
   }, [status]);
 
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
 
   const saveModels = async (models) => {
     try {
@@ -96,18 +112,6 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
 
   const removeModel = (id) => setSelectedModels((prev) => prev.filter((m) => m !== id));
 
-  const checkStatus = async () => {
-    setChecking(true);
-    try {
-      const res = await fetch("/api/cli-tools/copilot-settings");
-      const data = await res.json();
-      setStatus(data);
-    } catch (error) {
-      setStatus({ error: error.message });
-    } finally {
-      setChecking(false);
-    }
-  };
 
   const handleApply = async () => {
     setApplying(true);

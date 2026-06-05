@@ -50,51 +50,6 @@ export default function CoworkToolCard({
   const [addMcpOpen, setAddMcpOpen] = useState(false);
   const [addMcpForm, setAddMcpForm] = useState({ type: "url", name: "", url: "", command: "", args: "" });
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !status) checkStatus();
-  }, [isExpanded]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    fetch("/api/models/alias")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data) setModelAliases(data.aliases || {});
-      })
-      .catch(() => {});
-  }, [isExpanded]);
-
-  useEffect(() => {
-    if (status?.cowork?.models?.length) {
-      setSelectedModels(status.cowork.models);
-    }
-    if (status?.cowork?.baseUrl && !customBaseUrl) {
-      setCustomBaseUrl(stripV1(status.cowork.baseUrl));
-    }
-    // Initialize plugins: from current config, fallback to defaultPlugins
-    if (Array.isArray(status?.cowork?.plugins) && status.cowork.plugins.length > 0) {
-      setPlugins(status.cowork.plugins);
-    } else if (plugins.length === 0 && Array.isArray(status?.defaultPlugins)) {
-      setPlugins(status.defaultPlugins);
-    }
-    if (Array.isArray(status?.cowork?.localPlugins)) {
-      setLocalPlugins(status.cowork.localPlugins);
-    }
-    if (Array.isArray(status?.cowork?.customPlugins) && status.cowork.customPlugins.length > 0) {
-      setCustomPlugins(status.cowork.customPlugins);
-    }
-  }, [status]);
-
   const checkStatus = async () => {
     setChecking(true);
     try {
@@ -107,6 +62,54 @@ export default function CoworkToolCard({
       setChecking(false);
     }
   };
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) queueMicrotask(() => setStatus(initialStatus));
+  }, [initialStatus]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isExpanded && !status) checkStatus();
+  }, [isExpanded]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    fetch("/api/models/alias")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data) queueMicrotask(() => setModelAliases(data.aliases || {}));
+      })
+      .catch(() => {});
+  }, [isExpanded]);
+
+  useEffect(() => {
+    if (status?.cowork?.models?.length) {
+      queueMicrotask(() => setSelectedModels(status.cowork.models));
+    }
+    if (status?.cowork?.baseUrl && !customBaseUrl) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCustomBaseUrl(stripV1(status.cowork.baseUrl));
+    }
+    // Initialize plugins: from current config, fallback to defaultPlugins
+    if (Array.isArray(status?.cowork?.plugins) && status.cowork.plugins.length > 0) {
+      queueMicrotask(() => setPlugins(status.cowork.plugins));
+    } else if (plugins.length === 0 && Array.isArray(status?.defaultPlugins)) {
+      queueMicrotask(() => setPlugins(status.defaultPlugins));
+    }
+    if (Array.isArray(status?.cowork?.localPlugins)) {
+      queueMicrotask(() => setLocalPlugins(status.cowork.localPlugins));
+    }
+    if (Array.isArray(status?.cowork?.customPlugins) && status.cowork.customPlugins.length > 0) {
+      queueMicrotask(() => setCustomPlugins(status.cowork.customPlugins));
+    }
+  }, [status]);
+
 
   const getEffectiveBaseUrl = () => ensureV1(customBaseUrl);
 

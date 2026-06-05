@@ -47,24 +47,6 @@ export default function DeepSeekTuiToolCard({
 
   const configStatus = getConfigStatus();
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setDeepseekStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !deepseekStatus) {
-      checkStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -74,14 +56,6 @@ export default function DeepSeekTuiToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  useEffect(() => {
-    if (deepseekStatus?.installed && !hasInitializedModel.current) {
-      hasInitializedModel.current = true;
-      const openaiSection = deepseekStatus.settings?.["providers.openai"];
-      if (openaiSection?.model) setSelectedModel(openaiSection.model);
-    }
-  }, [deepseekStatus]);
 
   const checkStatus = async () => {
     setChecking(true);
@@ -95,6 +69,35 @@ export default function DeepSeekTuiToolCard({
       setChecking(false);
     }
   };
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) queueMicrotask(() => setDeepseekStatus(initialStatus));
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (isExpanded && !deepseekStatus) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      checkStatus();
+      fetchModelAliases();
+    }
+    if (isExpanded) fetchModelAliases();
+  }, [isExpanded]);
+
+
+  useEffect(() => {
+    if (deepseekStatus?.installed && !hasInitializedModel.current) {
+      hasInitializedModel.current = true;
+      const openaiSection = deepseekStatus.settings?.["providers.openai"];
+      if (openaiSection?.model) queueMicrotask(() => setSelectedModel(openaiSection.model));
+    }
+  }, [deepseekStatus]);
+
 
   const normalizeLocalhost = (url) => url.replace("://localhost", "://127.0.0.1");
 

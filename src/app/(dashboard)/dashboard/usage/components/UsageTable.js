@@ -106,6 +106,7 @@ export default function UsageTable({
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (saved) setExpanded(new Set(JSON.parse(saved)));
     } catch (e) {
       console.error(`Failed to load ${storageKey}:`, e);

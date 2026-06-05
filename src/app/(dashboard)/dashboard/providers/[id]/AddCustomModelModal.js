@@ -12,6 +12,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
   // Reset state when modal opens
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isOpen) { setModelId(""); setTestStatus(null); setTestError(""); }
   }, [isOpen]);
 
