@@ -19,6 +19,7 @@ import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.j
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
+import { compressWithHeadroom } from "../rtk/headroom.js";
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -27,7 +28,7 @@ import { compressMessages, formatRtkLog } from "../rtk/index.js";
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, sourceFormatOverride, providerThinking }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, headroomEnabled, sourceFormatOverride, providerThinking }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -113,6 +114,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
+
+  // Headroom: ML compression of full message history (prose, RAG, long conversations)
+  if (headroomEnabled) {
+    const hrStats = await compressWithHeadroom(translatedBody, model);
+    if (hrStats && hrStats.saved > 0) {
+      const pct = Math.round((hrStats.saved / hrStats.before) * 100);
+      console.log(`[HEADROOM] saved ${hrStats.saved}B / ${hrStats.before}B (${pct}%)`);
+    }
+  }
 
   // RTK: compress tool_result content
   const rtkStats = compressMessages(translatedBody, rtkEnabled);

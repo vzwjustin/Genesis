@@ -51,40 +51,6 @@ export default function ClaudeToolCard({
 
   const configStatus = getConfigStatus();
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setClaudeStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !claudeStatus) {
-      checkClaudeStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
-  useEffect(() => {
-    fetch("/api/settings").then(r => r.json()).then(data => {
-      setCcFilterNaming(!!data.ccFilterNaming);
-    }).catch(() => {});
-  }, []);
-
-  const handleCcFilterNamingToggle = async (e) => {
-    const value = e.target.checked;
-    setCcFilterNaming(value);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ccFilterNaming: value }),
-    }).catch(() => {});
-  };
-
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -94,28 +60,6 @@ export default function ClaudeToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  useEffect(() => {
-    if (claudeStatus?.installed && !hasInitializedModels.current) {
-      hasInitializedModels.current = true;
-      const env = claudeStatus.settings?.env || {};
-
-      tool.defaultModels.forEach((model) => {
-        if (model.envKey) {
-          const value = env[model.envKey] || model.defaultValue || "";
-          // Only sync initial values from file once
-          if (value) {
-            onModelMappingChange(model.alias, value);
-          }
-        }
-      });
-      // Only set selectedApiKey if it exists in apiKeys list
-      const tokenFromFile = env.ANTHROPIC_AUTH_TOKEN;
-      if (tokenFromFile && apiKeys?.some(k => k.key === tokenFromFile)) {
-        setSelectedApiKey(tokenFromFile);
-      }
-    }
-  }, [claudeStatus, apiKeys, tool.defaultModels, onModelMappingChange]);
 
   const checkClaudeStatus = async () => {
     setCheckingClaude(true);
@@ -129,6 +73,61 @@ export default function ClaudeToolCard({
       setCheckingClaude(false);
     }
   };
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) queueMicrotask(() => setClaudeStatus(initialStatus));
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (isExpanded && !claudeStatus) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      checkClaudeStatus();
+      fetchModelAliases();
+    }
+    if (isExpanded) fetchModelAliases();
+  }, [isExpanded]);
+
+  useEffect(() => {
+    fetch("/api/settings").then(r => r.json()).then(data => {
+      queueMicrotask(() => setCcFilterNaming(!!data.ccFilterNaming));
+    }).catch(() => {});
+  }, []);
+
+  const handleCcFilterNamingToggle = async (e) => {
+    const value = e.target.checked;
+    setCcFilterNaming(value);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ccFilterNaming: value }),
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (claudeStatus?.installed && !hasInitializedModels.current) {
+      hasInitializedModels.current = true;
+      const env = claudeStatus.settings?.env || {};
+
+      tool.defaultModels.forEach((model) => {
+        if (model.envKey) {
+          const value = env[model.envKey] || model.defaultValue || "";
+          if (value) {
+            onModelMappingChange(model.alias, value);
+          }
+        }
+      });
+      const tokenFromFile = env.ANTHROPIC_AUTH_TOKEN;
+      if (tokenFromFile && apiKeys?.some(k => k.key === tokenFromFile)) {
+        queueMicrotask(() => setSelectedApiKey(tokenFromFile));
+      }
+    }
+  }, [claudeStatus, apiKeys, tool.defaultModels, onModelMappingChange]);
 
   const getEffectiveBaseUrl = () => {
     const url = customBaseUrl || baseUrl;

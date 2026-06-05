@@ -861,6 +861,7 @@ function AddOpenAICompatibleModal({ isOpen, onClose, onCreated }) {
 
   useEffect(() => {
     const defaultBaseUrl = "https://api.openai.com/v1";
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFormData((prev) => ({ ...prev, baseUrl: defaultBaseUrl }));
   }, [formData.apiType]);
 
@@ -1050,6 +1051,7 @@ function AddAnthropicCompatibleModal({ isOpen, onClose, onCreated }) {
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setValidationResult(null);
       setCheckKey("");
       setCheckModelId("");

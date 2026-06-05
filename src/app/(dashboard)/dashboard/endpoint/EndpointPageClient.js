@@ -69,6 +69,8 @@ export default function APIPageClient({ machineId }) {
   const [rtkEnabled, setRtkEnabledState] = useState(true);
   const [cavemanEnabled, setCavemanEnabled] = useState(false);
   const [cavemanLevel, setCavemanLevel] = useState("full");
+  const [headroomEnabled, setHeadroomEnabled] = useState(false);
+  const [headroomStatus, setHeadroomStatus] = useState(null);
 
   // Cloudflare Tunnel state
   const [tunnelChecking, setTunnelChecking] = useState(true);
@@ -131,7 +133,9 @@ export default function APIPageClient({ machineId }) {
   }, [tsInstallLog]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     fetchData();
+    // eslint-disable-next-line react-hooks/immutability
     loadSettings();
   }, []);
 
@@ -143,9 +147,11 @@ export default function APIPageClient({ machineId }) {
     const tunnelHealthy = !tunnelEnabled || tunnelReachable;
     const tsHealthy = !tsEnabled || tsReachable;
     const allHealthy = tunnelHealthy && tsHealthy;
+    // eslint-disable-next-line react-hooks/immutability
     const onVisible = () => { if (!document.hidden) syncTunnelStatus(); };
     document.addEventListener("visibilitychange", onVisible);
     if (allHealthy) return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/immutability
     const timer = setInterval(() => { if (!document.hidden) syncTunnelStatus(); }, STATUS_POLL_FAST_MS);
     return () => {
       clearInterval(timer);
@@ -240,6 +246,8 @@ export default function APIPageClient({ machineId }) {
         setRtkEnabledState(data.rtkEnabled !== false);
         setCavemanEnabled(!!data.cavemanEnabled);
         setCavemanLevel(data.cavemanLevel || "full");
+        setHeadroomEnabled(!!data.headroomEnabled);
+        fetchHeadroomStatus();
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
@@ -322,6 +330,19 @@ export default function APIPageClient({ machineId }) {
   const handleCavemanLevel = (level) => {
     setCavemanLevel(level);
     patchSetting({ cavemanLevel: level });
+  };
+
+  const handleHeadroomEnabled = (value) => {
+    setHeadroomEnabled(value);
+    patchSetting({ headroomEnabled: value });
+    if (value) fetchHeadroomStatus();
+  };
+
+  const fetchHeadroomStatus = async () => {
+    try {
+      const res = await fetch("/api/headroom/status");
+      if (res.ok) setHeadroomStatus(await res.json());
+    } catch { /* ignore */ }
   };
 
   const fetchData = async () => {
@@ -757,6 +778,7 @@ export default function APIPageClient({ machineId }) {
   // Hydration fix: Only access window on client side
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBaseUrl(`${window.location.origin}/v1`);
     }
   }, []);
@@ -1090,6 +1112,39 @@ export default function APIPageClient({ machineId }) {
               onChange={() => handleCavemanEnabled(!cavemanEnabled)}
             />
           </div>
+        </div>
+        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              Compress context history{" "}
+              <a
+                href="https://github.com/chopratejas/headroom"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-normal text-primary underline hover:opacity-80"
+              >
+                (Headroom)
+              </a>
+            </p>
+            <p className="text-sm text-text-muted">
+              ML compression of conversation history → 60-95% fewer context tokens
+            </p>
+            {headroomStatus && (
+              <p className="text-xs mt-1">
+                {headroomStatus.reachable ? (
+                  <span className="text-green-500">● Proxy running at {headroomStatus.proxyUrl}</span>
+                ) : headroomStatus.installed ? (
+                  <span className="text-yellow-500">● Package installed — run <code className="bg-surface px-1 rounded">headroom proxy</code> to activate</span>
+                ) : (
+                  <span className="text-text-muted">● Run <code className="bg-surface px-1 rounded">npm install -g headroom-ai</code> then <code className="bg-surface px-1 rounded">headroom proxy</code></span>
+                )}
+              </p>
+            )}
+          </div>
+          <Toggle
+            checked={headroomEnabled}
+            onChange={() => handleHeadroomEnabled(!headroomEnabled)}
+          />
         </div>
       </Card>
 

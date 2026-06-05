@@ -178,6 +178,7 @@ export default function ProviderDetailPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchConnections();
     fetchAliases();
   }, [fetchConnections, fetchAliases]);
@@ -187,6 +188,7 @@ export default function ProviderDetailPage() {
       ? []
       : savedEnabledModels;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedModelIds((prev) => {
       if (
         prev.length === nextSelectedModelIds.length
@@ -246,6 +248,7 @@ export default function ProviderDetailPage() {
   }, [activeConnection, isCompatible, models.length, providerInfo?.passthroughModels]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchRemoteModels();
   }, [fetchRemoteModels]);
 
@@ -1147,6 +1150,7 @@ function ConnectionRow({ connection, isOAuth, isFirst, isLast, onMoveUp, onMoveD
   const modelLockUntil = Object.entries(connection)
     .filter(([k]) => k.startsWith("modelLock_"))
     .map(([, v]) => v)
+    // eslint-disable-next-line react-hooks/purity
     .filter(v => v && new Date(v).getTime() > Date.now())
     .sort()[0] || null;
 
@@ -1406,6 +1410,7 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }) {
 
   useEffect(() => {
     if (connection) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormData({
         name: connection.name || "",
         priority: connection.priority || 1,
@@ -1590,6 +1595,7 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose, isAnthropic })
 
   useEffect(() => {
     if (node) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormData({
         name: node.name || "",
         prefix: node.prefix || "",

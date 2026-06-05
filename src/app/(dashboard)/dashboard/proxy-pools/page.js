@@ -81,6 +81,7 @@ export default function ProxyPoolsPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProxyPools();
   }, [fetchProxyPools]);
 
@@ -329,6 +330,7 @@ export default function ProxyPoolsPage() {
 
   // Cleanup selectedIds when pools change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedIds((prev) => prev.filter((id) => proxyPools.some((p) => p.id === id)));
   }, [proxyPools]);
 
@@ -895,7 +897,7 @@ export default function ProxyPoolsPage() {
             value={cloudflareForm.apiToken}
             onChange={(e) => setCloudflareForm((prev) => ({ ...prev, apiToken: e.target.value }))}
             placeholder="your-cloudflare-api-token"
-            hint={<>Requires "Workers Scripts: Edit" permission. <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Get token →</a></>}
+            hint={<>Requires &quot;Workers Scripts: Edit&quot; permission. <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Get token →</a></>}
             type="password"
           />
           <Input

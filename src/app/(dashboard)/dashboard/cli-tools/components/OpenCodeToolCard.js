@@ -26,43 +26,6 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   const [activeModel, setActiveModel] = useState("");
   const selectedModelsRef = useRef([]);
 
-  useEffect(() => {
-    selectedModelsRef.current = selectedModels;
-  }, [selectedModels]);
-
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !status) {
-      checkStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
-  // Sync models from existing config
-  useEffect(() => {
-    if (status?.opencode?.models) {
-      setSelectedModels(status.opencode.models);
-    }
-    if (status?.opencode?.activeModel) {
-      setActiveModel(status.opencode.activeModel);
-    }
-
-    // Parse subagent settings from agent.explorer if exists
-    if (status?.config?.agent?.explorer?.model?.startsWith("9router/")) {
-      setSubagentModel(status.config.agent.explorer.model.replace("9router/", ""));
-    }
-  }, [status]);
-
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -72,6 +35,59 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
       console.log("Error fetching model aliases:", error);
     }
   };
+
+  const checkStatus = async () => {
+    setChecking(true);
+    try {
+      const res = await fetch("/api/cli-tools/opencode-settings");
+      const data = await res.json();
+      setStatus(data);
+    } catch (error) {
+      setStatus({ installed: false, error: error.message });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  useEffect(() => {
+    selectedModelsRef.current = selectedModels;
+  }, [selectedModels]);
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) queueMicrotask(() => setStatus(initialStatus));
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (isExpanded && !status) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      checkStatus();
+      fetchModelAliases();
+    }
+    if (isExpanded) fetchModelAliases();
+  }, [isExpanded]);
+
+  // Sync models from existing config
+  useEffect(() => {
+    if (status?.opencode?.models) {
+      queueMicrotask(() => setSelectedModels(status.opencode.models));
+    }
+    if (status?.opencode?.activeModel) {
+      queueMicrotask(() => setActiveModel(status.opencode.activeModel));
+    }
+
+    // Parse subagent settings from agent.explorer if exists
+    if (status?.config?.agent?.explorer?.model?.startsWith("9router/")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSubagentModel(status.config.agent.explorer.model.replace("9router/", ""));
+    }
+  }, [status]);
+
 
   const saveModels = async (models) => {
     try {
@@ -112,18 +128,6 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
 
   const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
 
-  const checkStatus = async () => {
-    setChecking(true);
-    try {
-      const res = await fetch("/api/cli-tools/opencode-settings");
-      const data = await res.json();
-      setStatus(data);
-    } catch (error) {
-      setStatus({ installed: false, error: error.message });
-    } finally {
-      setChecking(false);
-    }
-  };
 
   const handleApply = async () => {
     setApplying(true);

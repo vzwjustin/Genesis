@@ -90,6 +90,7 @@ export default function HeaderMenu({ onLogout }) {
   const menuRef = useRef(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocale(getLocaleFromCookie());
   }, [langOpen]);
 

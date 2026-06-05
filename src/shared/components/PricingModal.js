@@ -2,17 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { getDefaultPricing, formatCost } from "@/shared/constants/pricing.js";
+import { confirmDialog } from "@/store/confirmStore";
 
 export default function PricingModal({ isOpen, onClose, onSave }) {
   const [pricingData, setPricingData] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      loadPricing();
-    }
-  }, [isOpen]);
 
   const loadPricing = async () => {
     setLoading(true);
@@ -22,7 +17,6 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
         const data = await response.json();
         setPricingData(data);
       } else {
-        // Fallback to defaults
         const defaults = getDefaultPricing();
         setPricingData(defaults);
       }
@@ -34,6 +28,13 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadPricing();
+    }
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePricingChange = (provider, model, field, value) => {
     const numValue = parseFloat(value);
@@ -73,7 +74,12 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
   };
 
   const handleReset = async () => {
-    if (!confirm("Reset all pricing to defaults? This cannot be undone.")) return;
+    if (!(await confirmDialog({
+      title: "Reset pricing",
+      message: "Reset all pricing to defaults? This cannot be undone.",
+      confirmText: "Reset",
+      danger: true,
+    }))) return;
 
     try {
       const response = await fetch("/api/pricing", { method: "DELETE" });

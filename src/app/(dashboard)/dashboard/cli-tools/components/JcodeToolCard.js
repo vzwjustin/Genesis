@@ -45,24 +45,6 @@ export default function JcodeToolCard({
 
   const configStatus = getConfigStatus();
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setJcodeStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !jcodeStatus) {
-      checkJcodeStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -72,23 +54,6 @@ export default function JcodeToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  useEffect(() => {
-    if (jcodeStatus?.installed && !hasInitializedModel.current) {
-      hasInitializedModel.current = true;
-      const provider = jcodeStatus.config?.providers?.["9router"];
-      if (provider) {
-        if (provider.default_model) {
-          setSelectedModel(provider.default_model);
-        }
-        // Try to match API key from env file
-        const envApiKey = jcodeStatus.envApiKey;
-        if (envApiKey && apiKeys?.some(k => k.key === envApiKey)) {
-          setSelectedApiKey(envApiKey);
-        }
-      }
-    }
-  }, [jcodeStatus, apiKeys]);
 
   const checkJcodeStatus = async () => {
     setCheckingJcode(true);
@@ -102,6 +67,44 @@ export default function JcodeToolCard({
       setCheckingJcode(false);
     }
   };
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) queueMicrotask(() => setJcodeStatus(initialStatus));
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (isExpanded && !jcodeStatus) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      checkJcodeStatus();
+      fetchModelAliases();
+    }
+    if (isExpanded) fetchModelAliases();
+  }, [isExpanded]);
+
+
+  useEffect(() => {
+    if (jcodeStatus?.installed && !hasInitializedModel.current) {
+      hasInitializedModel.current = true;
+      const provider = jcodeStatus.config?.providers?.["9router"];
+      if (provider) {
+        if (provider.default_model) {
+          queueMicrotask(() => setSelectedModel(provider.default_model));
+        }
+        // Try to match API key from env file
+        const envApiKey = jcodeStatus.envApiKey;
+        if (envApiKey && apiKeys?.some(k => k.key === envApiKey)) {
+          queueMicrotask(() => setSelectedApiKey(envApiKey));
+        }
+      }
+    }
+  }, [jcodeStatus, apiKeys]);
+
 
   const normalizeLocalhost = (url) => url.replace("://localhost", "://127.0.0.1");
 

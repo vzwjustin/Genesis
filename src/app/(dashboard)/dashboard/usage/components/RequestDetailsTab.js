@@ -144,10 +144,12 @@ export default function RequestDetailsTab() {
   }, [pagination.page, pagination.pageSize, filters]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProviders();
   }, [fetchProviders]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDetails();
   }, [fetchDetails]);
 

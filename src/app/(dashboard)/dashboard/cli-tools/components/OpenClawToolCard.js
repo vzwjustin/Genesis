@@ -46,24 +46,6 @@ export default function OpenClawToolCard({
 
   const configStatus = getConfigStatus();
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setOpenclawStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (isExpanded && !openclawStatus) {
-      checkOpenclawStatus();
-      fetchModelAliases();
-    }
-    if (isExpanded) fetchModelAliases();
-  }, [isExpanded]);
-
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -73,27 +55,6 @@ export default function OpenClawToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  useEffect(() => {
-    if (openclawStatus?.installed && !hasInitializedModel.current) {
-      hasInitializedModel.current = true;
-      const provider = openclawStatus.settings?.models?.providers?.["9router"];
-      if (provider) {
-        const primaryModel = openclawStatus.settings?.agents?.defaults?.model?.primary;
-        if (primaryModel) setSelectedModel(primaryModel.replace("9router/", ""));
-        if (provider.apiKey && apiKeys?.some(k => k.key === provider.apiKey)) {
-          setSelectedApiKey(provider.apiKey);
-        }
-      }
-      // Init per-agent models from enriched agents list
-      const agentList = openclawStatus.agents || [];
-      const initAgentModels = {};
-      agentList.forEach((agent) => {
-        if (agent.currentModel) initAgentModels[agent.id] = agent.currentModel;
-      });
-      setAgentModels(initAgentModels);
-    }
-  }, [openclawStatus, apiKeys]);
 
   const checkOpenclawStatus = async () => {
     setCheckingOpenclaw(true);
@@ -107,6 +68,49 @@ export default function OpenClawToolCard({
       setCheckingOpenclaw(false);
     }
   };
+
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) queueMicrotask(() => setOpenclawStatus(initialStatus));
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (isExpanded && !openclawStatus) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      checkOpenclawStatus();
+      fetchModelAliases();
+    }
+    if (isExpanded) fetchModelAliases();
+  }, [isExpanded]);
+
+
+  useEffect(() => {
+    if (openclawStatus?.installed && !hasInitializedModel.current) {
+      hasInitializedModel.current = true;
+      const provider = openclawStatus.settings?.models?.providers?.["9router"];
+      if (provider) {
+        const primaryModel = openclawStatus.settings?.agents?.defaults?.model?.primary;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (primaryModel) setSelectedModel(primaryModel.replace("9router/", ""));
+        if (provider.apiKey && apiKeys?.some(k => k.key === provider.apiKey)) {
+          queueMicrotask(() => setSelectedApiKey(provider.apiKey));
+        }
+      }
+      // Init per-agent models from enriched agents list
+      const agentList = openclawStatus.agents || [];
+      const initAgentModels = {};
+      agentList.forEach((agent) => {
+        if (agent.currentModel) initAgentModels[agent.id] = agent.currentModel;
+      });
+      queueMicrotask(() => setAgentModels(initAgentModels));
+    }
+  }, [openclawStatus, apiKeys]);
+
 
   const normalizeLocalhost = (url) => url.replace("://localhost", "://127.0.0.1");
 

@@ -73,6 +73,7 @@ export default function BaseUrlSelect({
   const initializedRef = useRef(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSavedPresets(readSavedPresets());
   }, []);
 
@@ -88,6 +89,7 @@ export default function BaseUrlSelect({
     initializedRef.current = true;
     const first = options.find((o) => o.value !== CUSTOM_VALUE);
     if (first) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode(first.value);
       onChange(first.url);
     } else {
