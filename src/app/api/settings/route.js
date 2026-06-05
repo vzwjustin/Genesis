@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
+import { getRemoteExposureBlockReason, isRemoteExposureRequest } from "@/lib/security/exposureGate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -82,6 +83,15 @@ export async function GET() {
 export async function PATCH(request) {
   try {
     const body = await request.json();
+
+    if (isRemoteExposureRequest(body)) {
+      const current = await getSettings();
+      const blockReason = getRemoteExposureBlockReason({ ...current, ...body });
+      if (blockReason) {
+        return NextResponse.json({ error: blockReason }, { status: 400 });
+      }
+    }
+
     const unsupportedKey = validatePatchKeys(body);
     if (unsupportedKey) {
       return NextResponse.json({ error: `Unsupported setting: ${unsupportedKey}` }, { status: 400 });

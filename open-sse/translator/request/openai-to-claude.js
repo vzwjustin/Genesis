@@ -298,12 +298,18 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
 // Convert OpenAI tool choice to Claude format
 function convertOpenAIToolChoice(choice) {
   if (!choice) return { type: "auto" };
-  if (typeof choice === "object" && choice.type) return choice;
   if (choice === "auto" || choice === "none") return { type: "auto" };
   if (choice === "required") return { type: "any" };
-  if (typeof choice === "object" && choice.function) {
+  if (typeof choice === "object" && choice.type === "function" && choice.function?.name) {
     return { type: "tool", name: choice.function.name };
   }
+  if (typeof choice === "object" && choice.type === "tool" && choice.name) {
+    return { type: "tool", name: choice.name };
+  }
+  if (typeof choice === "object" && choice.function?.name) {
+    return { type: "tool", name: choice.function.name };
+  }
+  if (typeof choice === "object" && choice.type) return choice;
   return { type: "auto" };
 }
 

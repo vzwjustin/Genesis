@@ -162,9 +162,9 @@ const getPageInfo = (pathname) => {
     };
   if (pathname === "/dashboard")
     return {
-      title: "Endpoint",
-      description: "Copy local, tunnel, and secure API endpoints",
-      icon: "api",
+      title: "Overview",
+      description: "Security status, quick links, and where to go next",
+      icon: "home",
       breadcrumbs: [],
     };
   return { title: "", description: "", breadcrumbs: [] };

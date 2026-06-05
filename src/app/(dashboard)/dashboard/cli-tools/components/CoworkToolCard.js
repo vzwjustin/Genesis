@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, ManualConfigModal, ComboFormModal, McpMarketplaceModal, ModelSelectModal } from "@/shared/components";
+import ConfigStatusBadge from "@/shared/components/ConfigStatusBadge";
+import { revealApiKey } from "@/shared/utils/revealApiKey";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
@@ -62,14 +64,7 @@ export default function CoworkToolCard({
       setChecking(false);
     }
   };
-
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
+useEffect(() => {
     if (initialStatus) queueMicrotask(() => setStatus(initialStatus));
   }, [initialStatus]);
 
@@ -134,7 +129,7 @@ export default function CoworkToolCard({
     setApplying(true);
     try {
       const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
+        || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
         || (!cloudEnabled ? "sk_9router" : null);
 
       const res = await fetch(ENDPOINT, {
@@ -257,9 +252,7 @@ export default function CoworkToolCard({
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h3 className="font-medium text-sm">{tool.name}</h3>
-              {configStatus === "configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">Connected</span>}
-              {configStatus === "not_configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded-full">Not configured</span>}
-              {configStatus === "other" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full">Other</span>}
+              <ConfigStatusBadge status={configStatus} />
             </div>
             <p className="text-xs text-text-muted truncate">{tool.description}</p>
           </div>
@@ -277,20 +270,16 @@ export default function CoworkToolCard({
           )}
 
           {!checking && status && !status.installed && (
-            <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-yellow-500">warning</span>
-                <div className="flex-1">
-                  <p className="font-medium text-yellow-600 dark:text-yellow-400">Claude Desktop (Cowork mode) not detected</p>
-                  <p className="text-sm text-text-muted">Open Claude Desktop → Help → Troubleshooting → Enable Developer mode → Configure third-party inference, then return here.</p>
-                </div>
-              </div>
-              <div className="pl-9">
-                <Button variant="secondary" size="sm" onClick={() => setShowManualConfigModal(true)} className="!bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30">
-                  <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
-                  Manual Config
-                </Button>
-              </div>
+            <div className="flex flex-col gap-3">
+              <InlineAlert
+                variant="caution"
+                title="Claude Desktop (Cowork mode) not detected"
+                message="Open Claude Desktop → Help → Troubleshooting → Enable Developer mode → Configure third-party inference, then return here."
+              />
+              <Button variant="secondary" size="sm" onClick={() => setShowManualConfigModal(true)} className="w-fit !bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30">
+                <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
+                Manual Config
+              </Button>
             </div>
           )}
 

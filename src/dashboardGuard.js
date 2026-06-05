@@ -87,6 +87,15 @@ function isLoopbackHostname(h) {
   return LOOPBACK_HOSTS.has(normalizeHostHeaderHostname(h));
 }
 
+function isLoopbackIp(ip) {
+  if (!ip) return false;
+  const trimmed = ip.trim();
+  if (LOOPBACK_HOSTS.has(trimmed.toLowerCase())) return true;
+  if (trimmed.startsWith("127.")) return true;
+  if (trimmed === "::1" || trimmed.startsWith("fe80:")) return true;
+  return false;
+}
+
 function isLocalRequest(request) {
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
   const origin = request.headers.get("origin");
@@ -95,6 +104,14 @@ function isLocalRequest(request) {
       if (!isLoopbackHostname(new URL(origin).hostname)) return false;
     } catch { return false; }
   }
+  // Reject remote clients spoofing loopback Host via proxy headers
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    const clientIp = xff.split(",")[0].trim();
+    if (clientIp && !isLoopbackIp(clientIp)) return false;
+  }
+  const realIp = request.headers.get("x-real-ip");
+  if (realIp && !isLoopbackIp(realIp.trim())) return false;
   return true;
 }
 
@@ -121,8 +138,8 @@ async function canAccessPublicLlmApi(request) {
 
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + auth (JWT or requireLogin=false)
-  if (isLocalRequest(request) && await isAuthenticated(request)) return true;
+  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + dashboard session
+  if (isLocalRequest(request) && await isDashboardAccessAllowed(request)) return true;
   return false;
 }
 
@@ -140,11 +157,17 @@ async function loadSettings() {
   }
 }
 
-async function isAuthenticated(request) {
+/** Dashboard UI / local-only routes: JWT or requireLogin disabled. */
+async function isDashboardAccessAllowed(request) {
   if (await hasValidToken(request)) return true;
   const settings = await loadSettings();
   if (settings && settings.requireLogin === false) return true;
   return false;
+}
+
+/** Management API routes: JWT or CLI token only — never requireLogin=false. */
+async function isApiAuthenticated(request) {
+  return await hasValidToken(request);
 }
 
 function isPublicApi(pathname) {
@@ -163,10 +186,16 @@ export const __test__ = {
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
+  const isLocalOnlyPath = LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p));
+
   // Local-only gate for spawn-capable / host-secret routes.
-  if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
+  if (isLocalOnlyPath) {
     if (!(await canAccessLocalOnlyRoute(request))) {
       return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
+    }
+    // Local-only routes are fully authenticated above unless also always-protected.
+    if (!ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
+      return NextResponse.next();
     }
   }
 
@@ -185,7 +214,7 @@ export async function proxy(request) {
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
-    if (await hasValidCliToken(request) || await isAuthenticated(request))
+    if (await hasValidCliToken(request) || await isApiAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -193,7 +222,7 @@ export async function proxy(request) {
   // Protect all dashboard routes
   if (pathname.startsWith("/dashboard")) {
     let requireLogin = true;
-    let tunnelDashboardAccess = true;
+    let tunnelDashboardAccess = false;
 
     try {
       const settings = await loadSettings();

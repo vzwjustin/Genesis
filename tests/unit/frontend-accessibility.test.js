@@ -136,7 +136,7 @@ describe("frontend accessibility regressions", () => {
     expect(tools).toContain("Connect Cline coding sessions");
     expect(tools).toContain("Connect Continue configs to 9Router");
     expect(tools).not.toContain("AI Assistant");
-    expect(toolCards).toContain("Remote server? Use manual setup instead.");
+    expect(toolCards).toContain("CliNotDetectedPanel");
     expect(toolCards).not.toContain("Manual configuration is still available if 9router is deployed on a remote server.");
   });
 

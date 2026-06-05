@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, Badge, Modal, Input, ModelSelectModal } from "@/shared/components";
+import { revealApiKey } from "@/shared/utils/revealApiKey";
 import Image from "next/image";
 
 export default function AntigravityToolCard({
@@ -65,14 +66,7 @@ export default function AntigravityToolCard({
       setStatus({ running: false });
     }
   };
-
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
+useEffect(() => {
     if (initialStatus) queueMicrotask(() => setStatus(initialStatus));
   }, [initialStatus]);
 
@@ -121,7 +115,7 @@ export default function AntigravityToolCard({
     setStartingStep("cert");
     try {
       const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
+        || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
         || (!cloudEnabled ? "sk_9router" : null);
 
       const res = await fetch("/api/cli-tools/antigravity-mitm", {
@@ -393,10 +387,7 @@ export default function AntigravityToolCard({
 
           {/* Windows admin warning */}
           {!isRunning && serverIsWindows && (
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-yellow-500/10 text-yellow-600 border border-yellow-500/20">
-              <span className="material-symbols-outlined text-[14px]">warning</span>
-              <span>Windows: Run terminal (9Router) as Administrator to enable MITM</span>
-            </div>
+            <InlineAlert variant="caution" compact message="Windows: Run the 9Router terminal as Administrator to enable MITM." />
           )}
 
           {/* When stopped: how it works */}
@@ -427,10 +418,7 @@ export default function AntigravityToolCard({
         size="sm"
       >
         <div className="flex flex-col gap-4">
-          <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-            <span className="material-symbols-outlined text-yellow-500 text-[20px]">warning</span>
-            <p className="text-xs text-text-muted">Required for SSL certificate and DNS configuration</p>
-          </div>
+          <InlineAlert variant="caution" compact message="Required for SSL certificate and DNS configuration." />
 
           <Input
             type="password"

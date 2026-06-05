@@ -10,6 +10,7 @@ import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
+import SidebarSecurityHint from "./SidebarSecurityHint";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
 const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
@@ -17,6 +18,7 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 const navItems = [
+  { href: "/dashboard", label: "Overview", icon: "home" },
   { href: "/dashboard/endpoint", label: "Endpoint", icon: "api" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
   // { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" }, // Hidden
@@ -86,10 +88,10 @@ export default function Sidebar({ onClose }) {
   }, []);
 
   const isActive = (href) => {
-    if (href === "/dashboard/endpoint") {
-      return pathname === "/dashboard" || pathname.startsWith("/dashboard/endpoint");
+    if (href === "/dashboard") {
+      return pathname === "/dashboard";
     }
-    return pathname.startsWith(href);
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   // Open manual update panel (no countdown yet — user must click Copy to trigger shutdown)
@@ -206,6 +208,8 @@ export default function Sidebar({ onClose }) {
             </div>
           )}
         </div>
+
+        <SidebarSecurityHint />
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">

@@ -11,6 +11,7 @@ import {
   Modal,
   Select,
   Toggle,
+  EmptyState,
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
@@ -317,6 +318,14 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+      {!searchQuery.trim() && connections.length === 0 && (
+        <EmptyState
+          icon="dns"
+          title="No providers connected yet"
+          description="Connect an OAuth account or add an API key to start routing requests."
+          action={{ label: "Browse providers below", href: "#oauth-providers" }}
+        />
+      )}
       {!hasAnyResult && (
         <div className="text-center py-8 border border-dashed border-border rounded-xl">
           <span className="material-symbols-outlined text-[32px] text-text-muted mb-2">
@@ -329,7 +338,7 @@ export default function ProvidersPage() {
       {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+          <h2 id="oauth-providers" className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
             Custom Providers (OpenAI/Anthropic Compatible){" "}
           </h2>
           <div className="grid grid-cols-1 gap-2 sm:flex sm:w-auto">

@@ -32,11 +32,6 @@ export function useToolCard({ initialStatus, apiKeys, statusEndpoint }) {
     }
   }, [statusEndpoint]);
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
-    }
-  }, [apiKeys, selectedApiKey]);
 
   useEffect(() => {
     if (initialStatus) queueMicrotask(() => setStatus(initialStatus));

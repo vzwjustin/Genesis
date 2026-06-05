@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
+import ConfigStatusBadge from "@/shared/components/ConfigStatusBadge";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import CliNotDetectedPanel from "./CliNotDetectedPanel";
 
 export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [codexStatus, setCodexStatus] = useState(initialStatus || null);
@@ -45,14 +47,7 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
       setCheckingCodex(false);
     }
   };
-
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
+useEffect(() => {
     if (initialStatus) queueMicrotask(() => setCodexStatus(initialStatus));
   }, [initialStatus]);
 
@@ -207,9 +202,7 @@ model = "${effectiveSubagentModel}"
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h3 className="font-medium text-sm">{tool.name}</h3>
-              {configStatus === "configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">Connected</span>}
-              {configStatus === "not_configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded-full">Not configured</span>}
-              {configStatus === "other" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full">Other</span>}
+              <ConfigStatusBadge status={configStatus} />
             </div>
             <p className="text-xs text-text-muted truncate">{tool.description}</p>
           </div>
@@ -228,25 +221,12 @@ model = "${effectiveSubagentModel}"
 
           {!checkingCodex && codexStatus && !codexStatus.installed && (
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-yellow-500">warning</span>
-                  <div className="flex-1">
-                    <p className="font-medium text-yellow-600 dark:text-yellow-400">Codex CLI not detected locally</p>
-                    <p className="text-sm text-text-muted">Remote server? Use manual setup instead.</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 pl-9">
-                  <Button variant="secondary" size="sm" onClick={() => setShowManualConfigModal(true)} className="!bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30">
-                    <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
-                    Manual Config
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
-                    <span className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
-                    {showInstallGuide ? "Hide" : "How to Install"}
-                  </Button>
-                </div>
-              </div>
+              <CliNotDetectedPanel
+                cliName="Codex CLI"
+                onManualConfig={() => setShowManualConfigModal(true)}
+                onToggleInstallGuide={() => setShowInstallGuide(!showInstallGuide)}
+                showInstallGuide={showInstallGuide}
+              />
               {showInstallGuide && (
                 <div className="p-4 bg-surface border border-border rounded-lg">
                   <h4 className="font-medium mb-3">Installation Guide</h4>

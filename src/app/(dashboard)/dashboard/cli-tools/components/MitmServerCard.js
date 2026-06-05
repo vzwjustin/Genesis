@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Badge, Input } from "@/shared/components";
+import InlineAlert from "@/shared/components/InlineAlert";
+import { revealApiKey } from "@/shared/utils/revealApiKey";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
@@ -75,7 +77,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
         });
       } else if (action === "start") {
         const keyToUse = selectedApiKey?.trim()
-          || (apiKeys?.length > 0 ? apiKeys[0].key : null)
+          || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
           || (!cloudEnabled ? "sk_9router" : null);
         res = await fetch("/api/cli-tools/antigravity-mitm", {
           method: "POST",
@@ -212,6 +214,14 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           {/* Action buttons */}
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" data-i18n-skip="true">
             {status?.certExists && !status?.certTrusted && (
+              <InlineAlert
+                variant="caution"
+                message="Certificate exists but is not trusted by your system. Trust it so CLI tools accept HTTPS."
+                compact
+                className="w-full sm:flex-1"
+              />
+            )}
+            {status?.certExists && !status?.certTrusted && (
               <button
                 onClick={() => handleAction("trust-cert")}
                 disabled={loading}
@@ -269,10 +279,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
-            <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <span className="material-symbols-outlined text-yellow-500 text-[20px]">warning</span>
-              <p className="text-xs text-text-muted">Required for SSL certificate and server startup</p>
-            </div>
+            <InlineAlert variant="caution" compact message="Required for SSL certificate and server startup." />
             <Input
               type="password"
               placeholder="Enter sudo password"
@@ -303,16 +310,15 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="mx-4 flex w-full max-w-md flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Port 443 Already In Use</h3>
-            <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <span className="material-symbols-outlined text-yellow-500 text-[20px]">warning</span>
-              <div className="flex flex-col gap-1 text-xs text-text-muted">
+            <InlineAlert variant="caution" compact>
+              <div className="flex flex-col gap-1 text-xs">
                 <p>Port 443 is currently used by another process:</p>
-                <p className="font-mono text-text-main" data-i18n-skip="true">
+                <p className="font-mono" data-i18n-skip="true">
                   {port443Conflict.owner.name} (PID {port443Conflict.owner.pid})
                 </p>
                 <p>Kill this process to start MITM Server?</p>
               </div>
-            </div>
+            </InlineAlert>
             <div className="flex items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => { setPort443Conflict(null); setLoading(false); }} disabled={loading}>
                 Cancel

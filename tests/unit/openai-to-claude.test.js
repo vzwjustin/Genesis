@@ -11,6 +11,17 @@ import { openaiToClaudeRequest } from "../../open-sse/translator/request/openai-
 import { openaiToClaudeResponse } from "../../open-sse/translator/response/openai-to-claude.js";
 
 describe("openaiToClaudeRequest", () => {
+  it("maps OpenAI function tool_choice to Claude tool format", () => {
+    const body = {
+      messages: [{ role: "user", content: "run tool" }],
+      tools: [{ type: "function", function: { name: "my_tool", parameters: {} } }],
+      tool_choice: { type: "function", function: { name: "my_tool" } },
+    };
+
+    const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
+    expect(result.tool_choice).toEqual({ type: "tool", name: "my_tool" });
+  });
+
   describe("response_format handling", () => {
     it("should inject JSON schema instructions for json_schema type", () => {
       const body = {
@@ -145,7 +156,8 @@ describe("openaiToClaudeResponse", () => {
               })
             }
           }]
-        }
+        },
+        finish_reason: "tool_calls"
       }]
     };
 

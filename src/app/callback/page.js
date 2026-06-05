@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import InlineAlert from "@/shared/components/InlineAlert";
 import { useSearchParams } from "next/navigation";
 
 /**
@@ -110,13 +111,12 @@ function CallbackContent() {
 
         {status === "manual" && (
           <>
-            <div className="size-16 mx-auto mb-4 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-yellow-600">info</span>
-            </div>
-            <h1 className="text-xl font-semibold mb-2">Copy This URL</h1>
-            <p className="text-text-muted mb-4">
-              Please copy the URL from the address bar and paste it in the application.
-            </p>
+            <h1 className="text-xl font-semibold mb-4">Copy This URL</h1>
+            <InlineAlert
+              variant="caution"
+              message="Copy the URL from the address bar and paste it in the application."
+              className="text-left mb-4"
+            />
             <div className="bg-surface border border-border rounded-lg p-3 text-left">
               <code className="text-xs break-all">{typeof window !== "undefined" ? window.location.href : ""}</code>
             </div>

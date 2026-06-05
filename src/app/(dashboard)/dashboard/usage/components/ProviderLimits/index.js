@@ -973,10 +973,11 @@ export default function ProviderLimits() {
 
       {/* Provider cards: 2 columns, compact */}
       {expiringFirst && (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          Expiring-first currently reorders accounts inside the current page.
-          Cross-page ordering still follows backend pagination.
-        </div>
+        <InlineAlert
+          variant="warning"
+          compact
+          message="Expiring-first reorders accounts on the current page only. Cross-page ordering still follows backend pagination."
+        />
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

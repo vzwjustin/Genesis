@@ -38,6 +38,10 @@ export const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 const REFRESH_RESULT_TTL_MS = process.env.NODE_ENV === "test" ? 0 : 10_000;
 const refreshDedupCache = new Map();
 
+export function __clearRefreshDedupCacheForTests() {
+  refreshDedupCache.clear();
+}
+
 async function dedupRefresh(provider, oldToken, fn, log) {
   if (!oldToken) return fn();
   const key = `${provider}:${oldToken}`;
@@ -56,7 +60,11 @@ async function dedupRefresh(provider, oldToken, fn, log) {
   const promise = (async () => {
     try {
       const result = await fn();
-      refreshDedupCache.set(key, { result, expiresAt: Date.now() + REFRESH_RESULT_TTL_MS });
+      if (result != null) {
+        refreshDedupCache.set(key, { result, expiresAt: Date.now() + REFRESH_RESULT_TTL_MS });
+      } else {
+        refreshDedupCache.delete(key);
+      }
       return result;
     } catch (err) {
       refreshDedupCache.delete(key);

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button, Toggle, Input } from "@/shared/components";
+import { Card, Button, Toggle, Input, SecurityWarning } from "@/shared/components";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
+import { SECURITY_COPY } from "@/shared/constants/securityCopy";
 
 export default function ProfilePage() {
   const { theme, setTheme, isDark } = useTheme();
@@ -172,6 +173,11 @@ export default function ProfilePage() {
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
+    if (passwords.new.length < 8) {
+      setPassStatus({ type: "error", message: "Password must be at least 8 characters" });
+      return;
+    }
+
     if (passwords.new !== passwords.confirm) {
       setPassStatus({ type: "error", message: "Passwords do not match" });
       return;
@@ -193,7 +199,14 @@ export default function ProfilePage() {
       const data = await res.json();
 
       if (res.ok) {
-        setPassStatus({ type: "success", message: "Password updated successfully" });
+        const wasFirstPassword = !settings.hasPassword;
+        setSettings((prev) => ({ ...prev, hasPassword: true }));
+        setPassStatus({
+          type: "success",
+          message: wasFirstPassword
+            ? "Password set. You can now enable tunnels from Endpoint."
+            : "Password updated successfully",
+        });
         setPasswords({ current: "", new: "", confirm: "" });
       } else {
         setPassStatus({ type: "error", message: data.error || "Failed to update password" });
@@ -268,6 +281,22 @@ export default function ProfilePage() {
       }
     } catch (err) {
       console.error("Failed to update combo sticky limit:", err);
+    }
+  };
+
+
+  const updateRequireApiKey = async (requireApiKey) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requireApiKey }),
+      });
+      if (res.ok) {
+        setSettings((prev) => ({ ...prev, requireApiKey }));
+      }
+    } catch (err) {
+      console.error("Failed to update require API key:", err);
     }
   };
 
@@ -603,12 +632,10 @@ export default function ProfilePage() {
             <h3 className="text-base sm:text-lg font-semibold">Security</h3>
           </div>
           <div className="flex flex-col gap-4">
-            <div className="flex items-start sm:items-center justify-between gap-4">
+            <div id="require-login-toggle" className="flex items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm sm:text-base">Require login</p>
-                <p className="text-xs sm:text-sm text-text-muted">
-                  When ON, dashboard requires password. When OFF, access without login.
-                </p>
+                <p className="text-xs sm:text-sm text-text-muted">{SECURITY_COPY.requireLoginHelp}</p>
               </div>
               <Toggle
                 checked={settings.requireLogin === true}
@@ -616,6 +643,32 @@ export default function ProfilePage() {
                 disabled={loading}
               />
             </div>
+            {!loading && settings.requireLogin === false && (
+              <SecurityWarning
+                message={SECURITY_COPY.requireLoginOff}
+                action={{ label: "Enable login", href: "#require-login-toggle" }}
+              />
+            )}
+            {!loading && settings.hasPassword === false && (
+              <SecurityWarning message={SECURITY_COPY.defaultPassword} />
+            )}
+            <div id="require-api-key-toggle" className="flex items-start sm:items-center justify-between gap-4 pt-4 border-t border-border/50">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Require API key</p>
+                <p className="text-xs sm:text-sm text-text-muted">{SECURITY_COPY.requireApiKeyHelp}</p>
+              </div>
+              <Toggle
+                checked={settings.requireApiKey === true}
+                onChange={() => updateRequireApiKey(!settings.requireApiKey)}
+                disabled={loading}
+              />
+            </div>
+            {!loading && settings.requireApiKey !== true && (
+              <SecurityWarning
+                message={SECURITY_COPY.requireApiKeyOff}
+                action={{ label: "Endpoint settings", href: "/dashboard/endpoint" }}
+              />
+            )}
             {settings.requireLogin === true && (
               <form onSubmit={handlePasswordChange} className="flex flex-col gap-4 pt-4 border-t border-border/50">
                 {settings.hasPassword && (

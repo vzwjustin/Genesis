@@ -16,7 +16,7 @@ const DEFAULT_SETTINGS = {
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
   requireLogin: true,
-  tunnelDashboardAccess: true,
+  tunnelDashboardAccess: false,
   authMode: "password",
   oidcIssuerUrl: "",
   oidcClientId: "",

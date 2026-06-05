@@ -276,10 +276,7 @@ export default function MitmToolCard({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
-            <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <span className="material-symbols-outlined text-yellow-500 text-[20px]">warning</span>
-              <p className="text-xs text-text-muted">Required to modify /etc/hosts and flush DNS cache</p>
-            </div>
+            <InlineAlert variant="caution" compact message="Required to modify /etc/hosts and flush DNS cache." />
             <Input
               type="password"
               placeholder="Enter sudo password"

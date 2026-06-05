@@ -2,6 +2,14 @@
 
 // Valid OpenAI content block types
 export const VALID_OPENAI_CONTENT_TYPES = ["text", "image_url", "image", "input_audio", "audio_url"];
+function flattenTextOnlyParts(blocks) {
+  if (!blocks.length) return "";
+  if (blocks.every((block) => block.type === "text")) {
+    return blocks.map((block) => block.text || "").join("\n");
+  }
+  return blocks;
+}
+
 export const VALID_OPENAI_MESSAGE_TYPES = ["text", "image_url", "image", "tool_calls", "tool_result"];
 
 function flattenTextOnlyContent(blocks) {
@@ -59,7 +67,8 @@ export function filterToOpenAIFormat(body) {
       const flattened = flattenTextOnlyContent(filteredContent);
       if (flattened !== null) return { ...msg, content: flattened };
       
-      return { ...msg, content: filteredContent };
+      const flattened = flattenTextOnlyParts(filteredContent);
+      return { ...msg, content: typeof flattened === "string" ? flattened : filteredContent };
     }
     
     return msg;

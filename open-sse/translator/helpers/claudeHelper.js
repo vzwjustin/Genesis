@@ -50,16 +50,20 @@ export function fixToolUseOrdering(messages) {
     }
   }
 
+  const contentHasToolUse = (content) =>
+    Array.isArray(content) && content.some((b) => b.type === "tool_use");
+
   // Pass 2: Merge consecutive same-role messages
   const merged = [];
 
   for (const msg of messages) {
     const last = merged[merged.length - 1];
+    const msgContent = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
+    const skipMerge = last?.role === "assistant" && (contentHasToolUse(last.content) || contentHasToolUse(msgContent));
 
-    if (last && last.role === msg.role) {
+    if (last && last.role === msg.role && !skipMerge) {
       // Merge content arrays
       const lastContent = Array.isArray(last.content) ? last.content : [{ type: "text", text: last.content }];
-      const msgContent = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
 
       // Put tool_result first, then other content
       const toolResults = [...lastContent.filter(b => b.type === "tool_result"), ...msgContent.filter(b => b.type === "tool_result")];

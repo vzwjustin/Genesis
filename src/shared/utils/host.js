@@ -1,10 +1,23 @@
-export function normalizeHostHeaderHostname(value) {
-  if (!value) return "";
-  let host = String(value).trim().toLowerCase();
-  if (host.startsWith("[")) {
-    const end = host.indexOf("]");
-    return end === -1 ? "" : host.slice(1, end);
+/**
+ * Extract lowercase hostname from an HTTP Host header (port and IPv6 brackets removed).
+ * @param {string|null|undefined} hostHeader
+ * @returns {string}
+ */
+export function normalizeHostHeaderHostname(hostHeader) {
+  if (!hostHeader || typeof hostHeader !== "string") return "";
+
+  const trimmed = hostHeader.trim().toLowerCase();
+  if (!trimmed) return "";
+
+  if (trimmed.startsWith("[")) {
+    const end = trimmed.indexOf("]");
+    if (end > 0) return trimmed.slice(1, end);
   }
-  if ((host.match(/:/g) || []).length === 1) return host.split(":")[0];
-  return host;
+
+  const lastColon = trimmed.lastIndexOf(":");
+  if (lastColon > -1 && /^\d+$/.test(trimmed.slice(lastColon + 1))) {
+    return trimmed.slice(0, lastColon);
+  }
+
+  return trimmed;
 }

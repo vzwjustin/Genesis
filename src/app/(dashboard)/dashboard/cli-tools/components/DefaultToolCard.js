@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card, ModelSelectModal } from "@/shared/components";
+import InlineAlert from "@/shared/components/InlineAlert";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
@@ -13,7 +14,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
   
   // Initialize state directly with computed value - no need for useEffect
   const [selectedApiKey, setSelectedApiKey] = useState(() => 
-    apiKeys?.length > 0 ? apiKeys[0].key : ""
+    ""
   );
 
   const replaceVars = (text) => {
@@ -99,39 +100,17 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
 
   const renderNotes = () => {
     if (!tool.notes || tool.notes.length === 0) return null;
-    
+
     return (
       <div className="flex flex-col gap-2 mb-4">
         {tool.notes.map((note, index) => {
-          // Skip cloudCheck note if tunnel or cloud is enabled
           if (note.type === "cloudCheck" && (cloudEnabled || tunnelEnabled)) return null;
-          
+
           const isWarning = note.type === "warning";
           const isError = note.type === "cloudCheck" && !cloudEnabled && !tunnelEnabled;
-          
-          let bgClass = "bg-blue-500/10 border-blue-500/30";
-          let textClass = "text-blue-600 dark:text-blue-400";
-          let iconClass = "text-blue-500";
-          let icon = "info";
-          
-          if (isWarning) {
-            bgClass = "bg-yellow-500/10 border-yellow-500/30";
-            textClass = "text-yellow-600 dark:text-yellow-400";
-            iconClass = "text-yellow-500";
-            icon = "warning";
-          } else if (isError) {
-            bgClass = "bg-red-500/10 border-red-500/30";
-            textClass = "text-red-600 dark:text-red-400";
-            iconClass = "text-red-500";
-            icon = "error";
-          }
-          
-          return (
-            <div key={index} className={`flex items-start gap-3 p-3 rounded-lg border ${bgClass}`}>
-              <span className={`material-symbols-outlined text-lg ${iconClass}`}>{icon}</span>
-              <p className={`text-sm ${textClass}`}>{note.text}</p>
-            </div>
-          );
+          const variant = isError ? "danger" : isWarning ? "caution" : "info";
+
+          return <InlineAlert key={index} variant={variant} message={note.text} />;
         })}
       </div>
     );

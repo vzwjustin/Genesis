@@ -143,6 +143,34 @@ describe("dashboard guard public LLM API access", () => {
   });
 });
 
+describe("dashboard guard management API access", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  it("rejects management API when requireLogin=false and no JWT/CLI token", async () => {
+    const response = await proxy(request("/api/keys", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Unauthorized");
+  });
+
+  it("rejects management API from tunnel host even when requireLogin=false", async () => {
+    const response = await proxy(request("/api/translator/send", {
+      host: "router.example.com",
+    }));
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe("dashboard guard local-only access", () => {
   beforeEach(() => {
     vi.clearAllMocks();

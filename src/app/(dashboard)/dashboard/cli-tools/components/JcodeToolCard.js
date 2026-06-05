@@ -2,10 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
+import ConfigStatusBadge from "@/shared/components/ConfigStatusBadge";
+import InlineAlert from "@/shared/components/InlineAlert";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import { revealApiKey } from "@/shared/utils/revealApiKey";
+import CliNotDetectedPanel from "./CliNotDetectedPanel";
 
 export default function JcodeToolCard({
   tool,
@@ -67,14 +71,7 @@ export default function JcodeToolCard({
       setCheckingJcode(false);
     }
   };
-
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      queueMicrotask(() => setSelectedApiKey(apiKeys[0].key));
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
+useEffect(() => {
     if (initialStatus) queueMicrotask(() => setJcodeStatus(initialStatus));
   }, [initialStatus]);
 
@@ -130,7 +127,7 @@ export default function JcodeToolCard({
     setMessage(null);
     try {
       const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
+        || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
         || (!cloudEnabled ? "sk_9router" : null);
 
       const res = await fetch("/api/cli-tools/jcode-settings", {
@@ -223,9 +220,7 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h3 className="font-medium text-sm">{tool.name}</h3>
-              {configStatus === "configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">Connected</span>}
-              {configStatus === "not_configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded-full">Not configured</span>}
-              {configStatus === "other" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full">Other</span>}
+              <ConfigStatusBadge status={configStatus} />
             </div>
             <p className="text-xs text-text-muted truncate">{tool.description}</p>
           </div>
@@ -244,25 +239,10 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
 
           {!checkingJcode && jcodeStatus && !jcodeStatus.installed && (
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-yellow-500">warning</span>
-                  <div className="flex-1">
-                    <p className="font-medium text-yellow-600 dark:text-yellow-400">jcode CLI not detected locally</p>
-                    <p className="text-sm text-text-muted mt-1">Install jcode to enable automatic configuration:</p>
-                    <code className="block mt-2 p-2 bg-black/20 rounded text-xs font-mono">
-                      curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
-                    </code>
-                    <p className="text-sm text-text-muted mt-2">Remote server? Use manual setup instead.</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 pl-9">
-                  <Button variant="secondary" size="sm" onClick={() => setShowManualConfigModal(true)} className="!bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30">
-                    <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
-                    Manual Config
-                  </Button>
-                </div>
-              </div>
+              <CliNotDetectedPanel
+                cliName="jcode CLI"
+                onManualConfig={() => setShowManualConfigModal(true)}
+              />
             </div>
           )}
 
@@ -273,16 +253,12 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 {tool.notes && tool.notes.length > 0 && (
                   <div className="flex flex-col gap-2 mb-2">
                     {tool.notes.map((note, idx) => (
-                      <div key={idx} className={`flex items-start gap-2 p-2 rounded text-xs ${
-                        note.type === "info" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-                        note.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
-                        "bg-gray-500/10 text-text-muted"
-                      }`}>
-                        <span className="material-symbols-outlined text-[14px] mt-0.5">
-                          {note.type === "info" ? "info" : note.type === "warning" ? "warning" : "help"}
-                        </span>
-                        <span>{note.text}</span>
-                      </div>
+                      <InlineAlert
+                        key={idx}
+                        variant={note.type === "warning" ? "caution" : note.type === "error" ? "danger" : "info"}
+                        message={note.text}
+                        compact
+                      />
                     ))}
                   </div>
                 )}

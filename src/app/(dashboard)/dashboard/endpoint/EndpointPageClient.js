@@ -2,8 +2,17 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
+import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, SecurityWarning } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { SECURITY_COPY } from "@/shared/constants/securityCopy";
+import InlineAlert from "@/shared/components/InlineAlert";
+import { revealApiKey } from "@/shared/utils/revealApiKey";
+import { maskApiKeyForDisplay } from "@/shared/utils/apiKey";
+import { getExposureErrorAction } from "@/shared/utils/exposureErrorAction";
+
+function exposureStatus(type, message) {
+  return { type, message, action: getExposureErrorAction(message) };
+}
 
 const TUNNEL_BENEFITS = [
   { icon: "public", title: "Reach it remotely", desc: "Call your API from any network" },
@@ -92,6 +101,7 @@ export default function APIPageClient({ machineId }) {
   const [tsLoading, setTsLoading] = useState(false);
   const [tsProgress, setTsProgress] = useState("");
   const [tsStatus, setTsStatus] = useState(null);
+  const [settingsStatus, setSettingsStatus] = useState(null);
   const [tsAuthUrl, setTsAuthUrl] = useState("");
   const [tsAuthLabel, setTsAuthLabel] = useState("");
   const [tsInstalled, setTsInstalled] = useState(null); // null=checking, true/false
@@ -125,8 +135,8 @@ export default function APIPageClient({ machineId }) {
   // Security gate: block remote exposure while dashboard uses default password or login is off.
   const isLoginUnsafe = !requireLogin || !hasPassword;
   const unsafeReason = !requireLogin
-    ? "Enable \"Require login\" and set a custom password before activating the tunnel."
-    : "Change the default dashboard password before activating the tunnel.";
+    ? SECURITY_COPY.preEnableLoginOff
+    : SECURITY_COPY.preEnableDefaultPassword;
 
   // Auto-scroll install log
   useEffect(() => {
@@ -274,15 +284,22 @@ export default function APIPageClient({ machineId }) {
   };
 
   const handleTunnelDashboardAccess = async (value) => {
+    setSettingsStatus(null);
     try {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tunnelDashboardAccess: value }),
       });
-      if (res.ok) setTunnelDashboardAccess(value);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setTunnelDashboardAccess(value);
+      } else {
+        const msg = data.error || "Failed to update tunnel dashboard access";
+        setSettingsStatus(exposureStatus("error", msg));
+      }
     } catch (error) {
-      console.log("Error updating tunnelDashboardAccess:", error);
+      setSettingsStatus(exposureStatus("error", error.message));
     }
   };
 
@@ -441,7 +458,7 @@ export default function APIPageClient({ machineId }) {
       polling = false;
       const data = await res.json();
       if (!res.ok) {
-        setTunnelStatus({ type: "error", message: data.error || "Failed to enable tunnel" });
+        setTunnelStatus(exposureStatus("error", data.error || "Failed to enable tunnel"));
         return;
       }
 
@@ -620,7 +637,7 @@ export default function APIPageClient({ machineId }) {
                 } else if (data2.funnelNotEnabled && data2.enableUrl) {
                   await pollFunnelEnable(data2.enableUrl);
                 } else {
-                  setTsStatus({ type: "error", message: data2.error || "Failed to start funnel" });
+                  setTsStatus(exposureStatus("error", data2.error || "Failed to start funnel"));
                 }
                 return;
               }
@@ -637,7 +654,7 @@ export default function APIPageClient({ machineId }) {
         return;
       }
 
-      setTsStatus({ type: "error", message: data.error || "Failed to connect" });
+      setTsStatus(exposureStatus("error", data.error || "Failed to connect"));
     } catch (error) {
       setTsStatus({ type: "error", message: error.message });
     } finally {
@@ -667,7 +684,7 @@ export default function APIPageClient({ machineId }) {
         if (data.funnelNotEnabled) continue;
         if (data.error) {
           clearUserAuth();
-          setTsStatus({ type: "error", message: data.error });
+          setTsStatus(exposureStatus("error", data.error));
           return;
         }
       } catch { /* retry */ }
@@ -688,7 +705,7 @@ export default function APIPageClient({ machineId }) {
         setShowDisableTsModal(false);
         setTsStatus({ type: "success", message: "Tailscale disabled" });
       } else {
-        setTsStatus({ type: "error", message: data.error || "Failed to disable Tailscale" });
+        setTsStatus(exposureStatus("error", data.error || "Failed to disable Tailscale"));
       }
     } catch (e) {
       setTsStatus({ type: "error", message: e.message });
@@ -768,18 +785,41 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
-  const maskKey = (fullKey) => {
-    if (!fullKey) return "";
-    return fullKey.length > 8 ? fullKey.slice(0, 8) + "..." : fullKey;
+  const [revealedKeys, setRevealedKeys] = useState({});
+
+  const displayKey = (key) => {
+    if (visibleKeys.has(key.id) && revealedKeys[key.id]) return revealedKeys[key.id];
+    return key.key?.includes("…") ? key.key : maskApiKeyForDisplay(key.key);
   };
 
-  const toggleKeyVisibility = (keyId) => {
-    setVisibleKeys(prev => {
-      const next = new Set(prev);
-      if (next.has(keyId)) next.delete(keyId);
-      else next.add(keyId);
-      return next;
-    });
+  const toggleKeyVisibility = async (keyId) => {
+    if (visibleKeys.has(keyId)) {
+      setVisibleKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(keyId);
+        return next;
+      });
+      return;
+    }
+    const full = revealedKeys[keyId] || await revealApiKey(keyId);
+    if (!full) return;
+    setRevealedKeys((prev) => ({ ...prev, [keyId]: full }));
+    setVisibleKeys((prev) => new Set(prev).add(keyId));
+    setTimeout(() => {
+      setVisibleKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(keyId);
+        return next;
+      });
+    }, 30000);
+  };
+
+  const copyKey = async (key) => {
+    const full = revealedKeys[key.id] || await revealApiKey(key.id);
+    if (full) {
+      setRevealedKeys((prev) => ({ ...prev, [key.id]: full }));
+      copy(full, key.id);
+    }
   };
 
   const [baseUrl, setBaseUrl] = useState("/v1");
@@ -874,9 +914,8 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelStatus?.type === "error" ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-red-300 dark:border-red-800 bg-red-500/5 text-sm text-red-600 dark:text-red-400">
-                  <span className="material-symbols-outlined text-sm">error</span>
-                  {tunnelStatus.message}
+                <div className="flex-1 min-w-0">
+                  <ExposureInlineAlert status={tunnelStatus} compact />
                 </div>
                 <Button size="sm" icon="cloud_upload" onClick={() => setShowEnableTunnelModal(true)}>Enable</Button>
               </>
@@ -1015,19 +1054,17 @@ export default function APIPageClient({ machineId }) {
           <div className="mt-4 flex flex-col gap-2">
             {!requireApiKey && (
               <SecurityWarning
-                message="Require API key is disabled — your endpoint is publicly accessible without authentication."
+                message={SECURITY_COPY.requireApiKeyOff}
                 action={{ label: "Enable", href: "#require-api-key" }}
               />
             )}
             {(!requireLogin || !hasPassword) && (
               <SecurityWarning
                 message={
-                  !requireLogin
-                    ? "Require login is disabled — anyone can access your dashboard via tunnel."
-                    : "Dashboard uses the default password — change it in Profile settings."
+                  !requireLogin ? SECURITY_COPY.tunnelLoginOff : SECURITY_COPY.tunnelDefaultPassword
                 }
                 action={{
-                  label: !requireLogin ? "Enable" : "Change password",
+                  label: !requireLogin ? "Open settings" : "Change password",
                   href: "/dashboard/profile",
                 }}
               />
@@ -1036,6 +1073,12 @@ export default function APIPageClient({ machineId }) {
         )}
 
         {/* Tunnel dashboard access option */}
+        {settingsStatus && (
+          <div className="mt-3">
+            <ExposureInlineAlert status={settingsStatus} />
+          </div>
+        )}
+
         {(tunnelEnabled || tsEnabled) && (
           <div className="mt-4 pt-4 border-t border-border flex items-center gap-3">
             <Toggle
@@ -1044,7 +1087,7 @@ export default function APIPageClient({ machineId }) {
             />
             <div className="flex items-center gap-1.5">
               <p className="font-medium text-sm">Allow dashboard access via tunnel</p>
-              <Tooltip text="When enabled, the dashboard can be accessed through your tunnel or Tailscale URL (login still required). When disabled, dashboard access via tunnel/Tailscale is completely blocked." />
+              <Tooltip text={SECURITY_COPY.tunnelDashboardAccessHelp} />
             </div>
           </div>
         )}
@@ -1165,9 +1208,7 @@ export default function APIPageClient({ machineId }) {
         <div className="flex items-center justify-between pb-4 mb-4 border-b border-border">
           <div>
             <p className="font-medium">Require API key</p>
-            <p className="text-sm text-text-muted">
-              Requests without a valid key will be rejected
-            </p>
+            <p className="text-sm text-text-muted">{SECURITY_COPY.requireApiKeyHelp}</p>
           </div>
           <Toggle
             checked={requireApiKey}
@@ -1175,6 +1216,7 @@ export default function APIPageClient({ machineId }) {
           />
         </div>
 
+        <p className="text-xs text-text-muted mb-3">{SECURITY_COPY.apiKeysMasked}</p>
         {keys.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
@@ -1197,7 +1239,7 @@ export default function APIPageClient({ machineId }) {
                   <p className="text-sm font-medium">{key.name}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <code className="text-xs text-text-muted font-mono">
-                      {visibleKeys.has(key.id) ? key.key : maskKey(key.key)}
+                      {displayKey(key)}
                     </code>
                     <button
                       onClick={() => toggleKeyVisibility(key.id)}
@@ -1209,7 +1251,7 @@ export default function APIPageClient({ machineId }) {
                       </span>
                     </button>
                     <button
-                      onClick={() => copy(key.key, key.id)}
+                      onClick={() => copyKey(key)}
                       className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                     >
                       <span className="material-symbols-outlined text-[14px]">
@@ -1298,14 +1340,11 @@ export default function APIPageClient({ machineId }) {
         onClose={() => setCreatedKey(null)}
       >
         <div className="flex flex-col gap-4">
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-            <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2 font-medium">
-              Save this key now!
-            </p>
-            <p className="text-sm text-yellow-700 dark:text-yellow-300">
-              This is the only time you will see this key. Store it securely.
-            </p>
-          </div>
+          <InlineAlert
+            variant="caution"
+            title="Save this key now!"
+            message="This is the only time you will see this key. Store it securely."
+          />
           <div className="flex gap-2">
             <Input
               value={createdKey || ""}
@@ -1451,7 +1490,7 @@ export default function APIPageClient({ machineId }) {
             </div>
           )}
 
-          {tsStatus && <StatusAlert status={tsStatus} />}
+          {tsStatus && <ExposureInlineAlert status={tsStatus} />}
         </div>
       </Modal>
 
@@ -1531,9 +1570,16 @@ function CompressionStatRow({ stats, kind }) {
   );
 }
 
-/** Reusable status alert */
-function StatusAlert({ status, className = "" }) {
-  // Render URLs in message as clickable links
+/** Status alert with optional exposure-gate action link */
+function ExposureInlineAlert({ status, className = "", compact = false }) {
+  const variantMap = {
+    success: "info",
+    warning: "caution",
+    info: "info",
+    error: "danger",
+  };
+  const variant = variantMap[status.type] || "danger";
+
   const renderMessage = (msg) => {
     const parts = msg.split(/(https?:\/\/[^\s]+)/g);
     return parts.map((part, i) =>
@@ -1543,14 +1589,25 @@ function StatusAlert({ status, className = "" }) {
     );
   };
 
+  if (status.type === "success") {
+    return (
+      <div className={`p-2 rounded text-sm bg-green-500/10 text-green-600 dark:text-green-400 ${className}`}>
+        {renderMessage(status.message)}
+      </div>
+    );
+  }
+
   return (
-    <div className={`p-2 rounded text-sm ${className} ${status.type === "success" ? "bg-green-500/10 text-green-600 dark:text-green-400" :
-        status.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
-        status.type === "info" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-          "bg-red-500/10 text-red-600 dark:text-red-400"
-      }`}>
-      {renderMessage(status.message)}
-    </div>
+    <InlineAlert
+      variant={variant}
+      action={status.action}
+      className={className}
+      compact={compact}
+    >
+      <p className={compact ? "text-xs leading-relaxed" : "text-xs sm:text-sm leading-relaxed"}>
+        {renderMessage(status.message)}
+      </p>
+    </InlineAlert>
   );
 }
 
@@ -1563,28 +1620,6 @@ function Tooltip({ text }) {
         {text}
       </span>
     </span>
-  );
-}
-
-/** Security warning banner with optional action link */
-function SecurityWarning({ message, action }) {
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
-      <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">warning</span>
-      <p className="text-xs flex-1">{message}</p>
-      {action && (
-        <a
-          href={action.href}
-          className="text-xs font-medium underline shrink-0 hover:opacity-80"
-          onClick={action.href.startsWith("#") ? (e) => {
-            e.preventDefault();
-            document.getElementById(action.href.slice(1))?.scrollIntoView({ behavior: "smooth" });
-          } : undefined}
-        >
-          {action.label}
-        </a>
-      )}
-    </div>
   );
 }
 
