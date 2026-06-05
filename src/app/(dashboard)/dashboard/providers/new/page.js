@@ -85,7 +85,7 @@ export default function NewProviderPage() {
         </Link>
         <h1 className="text-3xl font-semibold tracking-tight">Add New Provider</h1>
         <p className="text-text-muted mt-2">
-          Configure a new AI provider to use with your applications.
+          Add a provider connection for app and CLI traffic.
         </p>
       </div>
 
@@ -183,7 +183,7 @@ export default function NewProviderPage() {
             placeholder="e.g., Production API, Dev Environment"
             value={formData.displayName}
             onChange={(e) => handleChange("displayName", e.target.value)}
-            hint="Optional. A friendly name to identify this configuration."
+            hint="Optional label for this connection."
           />
 
           {/* Active Toggle */}
@@ -191,7 +191,7 @@ export default function NewProviderPage() {
             checked={formData.isActive}
             onChange={(checked) => handleChange("isActive", checked)}
             label="Active"
-            description="Enable this provider for use in your applications"
+            description="Allow 9Router to send traffic through this provider"
           />
 
           {/* Error Message */}
@@ -217,4 +217,3 @@ export default function NewProviderPage() {
     </div>
   );
 }
-
