@@ -166,6 +166,16 @@ export async function POST(request) {
       mergedProviderSpecificData.proxyPoolId = proxyPoolId;
     }
 
+    if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider) || isCustomEmbeddingProvider(provider)) {
+      const existing = await getProviderConnections({ provider });
+      if (existing.length > 0) {
+        return NextResponse.json(
+          { error: "Only one connection is allowed per compatible node. Add another node if you need more connections." },
+          { status: 400 }
+        );
+      }
+    }
+
     const newConnection = await createProviderConnection({
       provider,
       authType: isWebCookieProvider ? "cookie" : "apikey",

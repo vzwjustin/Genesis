@@ -4,6 +4,16 @@ import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
 
+let rtkEnabled = false;
+
+export function setRtkEnabled(enabled) {
+  rtkEnabled = enabled === true;
+}
+
+export function isRtkEnabled() {
+  return rtkEnabled;
+}
+
 // Returns the index of the last message that carries a cache_control marker
 // (either at the top-level or inside a content block). RTK must not touch
 // any message at or before this index — doing so would change the content
@@ -23,7 +33,7 @@ export function findLastCacheBoundary(messages) {
 }
 
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
-export function compressMessages(body, enabled) {
+export function compressMessages(body, enabled = rtkEnabled) {
   if (!enabled) return null;
   if (!body) return null;
 

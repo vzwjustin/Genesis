@@ -4,6 +4,12 @@
 export const VALID_OPENAI_CONTENT_TYPES = ["text", "image_url", "image", "input_audio", "audio_url"];
 export const VALID_OPENAI_MESSAGE_TYPES = ["text", "image_url", "image", "tool_calls", "tool_result"];
 
+function flattenTextOnlyContent(blocks) {
+  if (!Array.isArray(blocks) || blocks.length === 0) return null;
+  if (!blocks.every((block) => block?.type === "text")) return null;
+  return blocks.map((block) => block.text || "").join("\n");
+}
+
 // Filter messages to OpenAI standard format
 // Remove: thinking, redacted_thinking, signature, and other non-OpenAI blocks
 export function filterToOpenAIFormat(body) {
@@ -49,6 +55,9 @@ export function filterToOpenAIFormat(body) {
       if (filteredContent.length === 0) {
         filteredContent.push({ type: "text", text: "" });
       }
+
+      const flattened = flattenTextOnlyContent(filteredContent);
+      if (flattened !== null) return { ...msg, content: flattened };
       
       return { ...msg, content: filteredContent };
     }
@@ -127,4 +136,3 @@ export function filterToOpenAIFormat(body) {
 
   return body;
 }
-
