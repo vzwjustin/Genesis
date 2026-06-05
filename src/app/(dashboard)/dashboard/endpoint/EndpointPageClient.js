@@ -71,6 +71,7 @@ export default function APIPageClient({ machineId }) {
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [headroomStatus, setHeadroomStatus] = useState(null);
+  const [compressionStats, setCompressionStats] = useState(null);
 
   // Cloudflare Tunnel state
   const [tunnelChecking, setTunnelChecking] = useState(true);
@@ -248,6 +249,7 @@ export default function APIPageClient({ machineId }) {
         setCavemanLevel(data.cavemanLevel || "full");
         setHeadroomEnabled(!!data.headroomEnabled);
         fetchHeadroomStatus();
+        fetchCompressionStats();
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
@@ -342,6 +344,13 @@ export default function APIPageClient({ machineId }) {
     try {
       const res = await fetch("/api/headroom/status");
       if (res.ok) setHeadroomStatus(await res.json());
+    } catch { /* ignore */ }
+  };
+
+  const fetchCompressionStats = async () => {
+    try {
+      const res = await fetch("/api/compression/stats");
+      if (res.ok) setCompressionStats(await res.json());
     } catch { /* ignore */ }
   };
 
@@ -1065,6 +1074,7 @@ export default function APIPageClient({ machineId }) {
             <p className="text-sm text-text-muted">
               git/grep/ls/tree/logs → 60-90% fewer input tokens
             </p>
+            <CompressionStatRow stats={compressionStats?.tools?.rtk} kind="bytes" />
           </div>
           <Toggle
             checked={rtkEnabled}
@@ -1087,6 +1097,7 @@ export default function APIPageClient({ machineId }) {
             <p className="text-sm text-text-muted">
               Terse-style system prompt → ~65% fewer output tokens (up to 87%)
             </p>
+            <CompressionStatRow stats={compressionStats?.tools?.caveman} kind="injections" />
           </div>
           <div className="flex items-center gap-3 shrink-0">
             {cavemanEnabled && (
@@ -1127,23 +1138,14 @@ export default function APIPageClient({ machineId }) {
               </a>
             </p>
             <p className="text-sm text-text-muted">
-              ML compression of conversation history → 60-95% fewer context tokens
+              Headroom is coming soon. Context-history compression stays disabled until the proxy/cloud path is ready.
             </p>
-            {headroomStatus && (
-              <p className="text-xs mt-1">
-                {headroomStatus.reachable ? (
-                  <span className="text-green-500">● Proxy running at {headroomStatus.proxyUrl}</span>
-                ) : headroomStatus.installed ? (
-                  <span className="text-yellow-500">● Package installed — run <code className="bg-surface px-1 rounded">headroom proxy</code> to activate</span>
-                ) : (
-                  <span className="text-text-muted">● Run <code className="bg-surface px-1 rounded">npm install -g headroom-ai</code> then <code className="bg-surface px-1 rounded">headroom proxy</code></span>
-                )}
-              </p>
-            )}
+            <span className="mt-2 inline-flex rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">Coming soon</span>
           </div>
           <Toggle
-            checked={headroomEnabled}
-            onChange={() => handleHeadroomEnabled(!headroomEnabled)}
+            checked={false}
+            onChange={() => {}}
+            disabled
           />
         </div>
       </Card>
@@ -1498,6 +1500,33 @@ function EndpointRow({ label, url, copyId, copied, onCopy, badge, actions }) {
         <span className="material-symbols-outlined text-[18px]">{copied === copyId ? "check" : "content_copy"}</span>
       </button>
       {actions}
+    </div>
+  );
+}
+
+function formatBytes(value) {
+  const bytes = Number(value) || 0;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+function CompressionStatRow({ stats, kind }) {
+  if (!stats) return null;
+  const detail = stats.lastDetail ? ` · ${stats.lastDetail}` : "";
+  const savedLabel = kind === "injections"
+    ? `Prompt injections ${stats.hits || 0}`
+    : `Saved ${formatBytes(stats.bytesSaved)}`;
+  const tokenLabel = stats.tokenSavingsAvailable
+    ? `Est. tokens saved ${stats.estimatedTokensSaved || 0}`
+    : "Savings not measurable";
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+      <span>{savedLabel}</span>
+      <span>{tokenLabel}</span>
+      <span>Hits {stats.hits || 0}</span>
+      <span>Requests {stats.requests || 0}{detail}</span>
     </div>
   );
 }
