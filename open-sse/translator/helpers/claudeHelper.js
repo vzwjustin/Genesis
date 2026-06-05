@@ -191,10 +191,22 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
     body.tools = body.tools.map((tool, i) => {
       const { cache_control, ...rest } = tool;
-      if (i === body.tools.length - 1) {
-        return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
+      let cleanedTool;
+      if (!tool.type || tool.type === "function") {
+        // Client tools — strip model and type
+        const { model, type, ...clientRest } = rest;
+        cleanedTool = { ...clientRest };
+      } else {
+        // Built-in tools — preserve all properties, but strip provider prefix from model
+        cleanedTool = { ...rest };
+        if (typeof cleanedTool.model === "string" && cleanedTool.model.includes("/")) {
+          cleanedTool.model = cleanedTool.model.slice(cleanedTool.model.indexOf("/") + 1);
+        }
       }
-      return rest;
+      if (i === body.tools.length - 1) {
+        return { ...cleanedTool, cache_control: { type: "ephemeral", ttl: "1h" } };
+      }
+      return cleanedTool;
     });
 
     // Remove tools array and tool_choice if empty after filtering

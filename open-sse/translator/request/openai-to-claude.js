@@ -140,7 +140,11 @@ Respond ONLY with the JSON object, no other text.`);
       // Pass-through built-in tools (e.g. web_search_20250305) without prefix or conversion
       const toolType = tool.type;
       if (toolType && toolType !== "function") {
-        result.tools.push(tool);
+        const passthrough = { ...tool };
+        if (typeof passthrough.model === "string" && passthrough.model.includes("/")) {
+          passthrough.model = passthrough.model.slice(passthrough.model.indexOf("/") + 1);
+        }
+        result.tools.push(passthrough);
         continue;
       }
 
