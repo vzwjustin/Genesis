@@ -34,6 +34,17 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 
+  // Preprocess: strip provider prefix from any tool model properties
+  // This fixes clients that send built-in tools with prefixed model names
+  if (body.tools && Array.isArray(body.tools)) {
+    body.tools = body.tools.map(tool => {
+      if (tool && typeof tool.model === "string" && tool.model.includes("/")) {
+        return { ...tool, model: tool.model.slice(tool.model.indexOf("/") + 1) };
+      }
+      return tool;
+    });
+  }
+
   // Build clientRawRequest for logging (if not provided)
   if (!clientRawRequest) {
     const url = new URL(request.url);
