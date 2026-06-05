@@ -6,9 +6,9 @@ import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 const TUNNEL_BENEFITS = [
-  { icon: "public", title: "Access Anywhere", desc: "Use your API from any network" },
-  { icon: "group", title: "Share Endpoint", desc: "Share URL with team members" },
-  { icon: "code", title: "Use in Cursor/Cline", desc: "Connect AI tools remotely" },
+  { icon: "public", title: "Reach it remotely", desc: "Call your API from any network" },
+  { icon: "group", title: "Share with teammates", desc: "Give teammates a stable URL" },
+  { icon: "code", title: "Use in coding tools", desc: "Point coding tools at it" },
   { icon: "lock", title: "Encrypted", desc: "End-to-end TLS via Cloudflare" },
 ];
 

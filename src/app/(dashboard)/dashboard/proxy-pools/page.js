@@ -787,7 +787,7 @@ export default function ProxyPoolsPage() {
       >
         <div className="flex flex-col gap-4">
           <div>
-            <label className="text-sm font-medium text-text-main mb-1 block">Paste Proxy List (One per line)</label>
+            <label className="text-sm font-medium text-text-main mb-1 block">Proxy list (one per line)</label>
             <textarea
               value={batchImportText}
               onChange={(e) => setBatchImportText(e.target.value)}
