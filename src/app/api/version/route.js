@@ -27,11 +27,24 @@ function fetchLatestVersion() {
 }
 
 function compareVersions(a, b) {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
+  // Strip any pre-release/build suffix (e.g. "0.4.66-beta.1") and coerce each
+  // numeric segment, defaulting missing/non-numeric parts to 0 so versions with
+  // differing segment counts still compare correctly.
+  const parse = (v) =>
+    String(v)
+      .split("-")[0]
+      .split(".")
+      .map((n) => {
+        const num = parseInt(n, 10);
+        return Number.isFinite(num) ? num : 0;
+      });
+  const pa = parse(a);
+  const pb = parse(b);
   for (let i = 0; i < 3; i++) {
-    if (pa[i] > pb[i]) return 1;
-    if (pa[i] < pb[i]) return -1;
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x > y) return 1;
+    if (x < y) return -1;
   }
   return 0;
 }
