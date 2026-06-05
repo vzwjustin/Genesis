@@ -204,8 +204,10 @@ export async function proxy(request) {
         // Block tunnel/tailscale access if disabled (redirect to login)
         if (!tunnelDashboardAccess) {
           const host = normalizeHostHeaderHostname(request.headers.get("host"));
-          const tunnelHost = settings.tunnelUrl ? new URL(settings.tunnelUrl).hostname.toLowerCase() : "";
-          const tailscaleHost = settings.tailscaleUrl ? new URL(settings.tailscaleUrl).hostname.toLowerCase() : "";
+          let tunnelHost = "";
+          let tailscaleHost = "";
+          try { tunnelHost = settings.tunnelUrl ? new URL(settings.tunnelUrl).hostname.toLowerCase() : ""; } catch {}
+          try { tailscaleHost = settings.tailscaleUrl ? new URL(settings.tailscaleUrl).hostname.toLowerCase() : ""; } catch {}
           if ((tunnelHost && host === tunnelHost) || (tailscaleHost && host === tailscaleHost)) {
             return NextResponse.redirect(new URL("/login", request.url));
           }
