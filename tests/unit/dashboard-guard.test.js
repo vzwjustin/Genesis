@@ -182,6 +182,25 @@ describe("dashboard guard local-only access", () => {
     expect(response).toBe(mocks.nextResponse);
   });
 
+  it("allows local-only route on bracketed IPv6 loopback when requireLogin=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "[::1]:20128",
+      origin: "http://[::1]:20128",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("allows local-only route on raw IPv6 loopback host when requireLogin=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const localRequest = request("/api/cli-tools/antigravity-mitm", { host: "::1" });
+
+    expect(__test__.isLocalRequest(localRequest)).toBe(true);
+  });
+
   it("rejects local-only route from tunnel host even when requireLogin=false", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
@@ -221,5 +240,25 @@ describe("dashboard guard helpers", () => {
     });
 
     expect(__test__.extractApiKey(apiRequest)).toBe("bearer-key");
+  });
+});
+
+describe("dashboard guard tunnel dashboard access", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({
+      requireLogin: true,
+      tunnelDashboardAccess: false,
+      tunnelUrl: "http://[::1]:20128",
+    });
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  it("blocks disabled tunnel dashboard access for bracketed IPv6 host", async () => {
+    const response = await proxy(request("/dashboard", { host: "[::1]:20128" }));
+
+    expect(response.status).toBe(307);
+    expect(String(response.url)).toContain("/login");
   });
 });

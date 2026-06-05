@@ -35,7 +35,7 @@ async function refreshXaiToken(refreshToken, log) {
 export const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
 // Dedup: cache in-flight promise + recent result to prevent refresh_token_reused (Auth0 family revoke)
-const REFRESH_RESULT_TTL_MS = 10_000;
+const REFRESH_RESULT_TTL_MS = process.env.NODE_ENV === "test" ? 0 : 10_000;
 const refreshDedupCache = new Map();
 
 async function dedupRefresh(provider, oldToken, fn, log) {

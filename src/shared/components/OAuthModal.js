@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { isTrustedOAuthMessageOrigin } from "@/shared/utils/oauthOrigin";
 
 /**
  * OAuth Modal Component
@@ -65,7 +66,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       setError(err.message);
       setStep("error");
     }
-  }, [authData, provider, onSuccess]);
+  }, [authData, provider, onSuccess, oauthMeta]);
 
   const completeXaiManualCode = useCallback(async (code) => {
     if (!authData?.state) return;
@@ -393,6 +394,13 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         return;
       }
 
+      if (authData.state && state !== authData.state) {
+        callbackProcessedRef.current = true;
+        setError("Invalid OAuth state");
+        setStep("error");
+        return;
+      }
+
       if (code) {
         callbackProcessedRef.current = true;
         await exchangeTokens(code, state);
@@ -402,9 +410,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     // Method 1: postMessage from popup
     const handleMessage = (event) => {
       // Allow messages from same origin or localhost (any port)
-      const isLocalhost = event.origin.includes("localhost") || event.origin.includes("127.0.0.1");
-      const isSameOrigin = event.origin === window.location.origin;
-      if (!isLocalhost && !isSameOrigin) return;
+      if (!isTrustedOAuthMessageOrigin(event.origin, window.location.origin)) return;
       
       if (event.data?.type === "oauth_callback") {
         handleCallback(event.data.data);
@@ -485,6 +491,10 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
 
       if (!code) {
         throw new Error(provider === "xai" ? "Paste the callback URL or copied xAI code" : "No authorization code found in URL");
+      }
+
+      if (authData?.state && state !== authData.state) {
+        throw new Error("Invalid OAuth state");
       }
 
       await exchangeTokens(code, state);

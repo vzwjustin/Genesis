@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import { marked } from "marked";
 import { GITHUB_CONFIG } from "@/shared/constants/config";
+import { sanitizeHtml } from "@/shared/utils/sanitizeHtml";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -24,7 +25,7 @@ export default function ChangelogModal({ isOpen, onClose }) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.text();
       })
-      .then((md) => setHtml(marked.parse(md)))
+      .then((md) => setHtml(sanitizeHtml(marked.parse(md))))
       .catch((err) => setError(err.message || "Failed to load"))
       .finally(() => setLoading(false));
   }, [isOpen, html]);
