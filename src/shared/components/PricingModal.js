@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getDefaultPricing, formatCost } from "@/shared/constants/pricing.js";
+import { confirmDialog } from "@/store/confirmStore";
 
 export default function PricingModal({ isOpen, onClose, onSave }) {
   const [pricingData, setPricingData] = useState({});
@@ -73,7 +74,12 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
   };
 
   const handleReset = async () => {
-    if (!confirm("Reset all pricing to defaults? This cannot be undone.")) return;
+    if (!(await confirmDialog({
+      title: "Reset pricing",
+      message: "Reset all pricing to defaults? This cannot be undone.",
+      confirmText: "Reset",
+      danger: true,
+    }))) return;
 
     try {
       const response = await fetch("/api/pricing", { method: "DELETE" });

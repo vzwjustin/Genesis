@@ -8,6 +8,7 @@ import { parseQuotaData, calculatePercentage } from "./utils";
 import Card from "@/shared/components/Card";
 import { EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { confirmDialog } from "@/store/confirmStore";
 
 function getConnectionLabel(connection) {
   const isEmail = (value) =>
@@ -392,7 +393,12 @@ export default function ProviderLimits() {
 
   const handleDeleteConnection = useCallback(
     async (id) => {
-      if (!confirm("Delete this connection?")) return;
+      if (!(await confirmDialog({
+        title: "Delete connection",
+        message: "Delete this connection? This cannot be undone.",
+        confirmText: "Delete",
+        danger: true,
+      }))) return;
       setDeletingId(id);
       try {
         const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
