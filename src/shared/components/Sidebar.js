@@ -44,13 +44,20 @@ export default function Sidebar({ onClose }) {
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
+  const [releaseInfo, setReleaseInfo] = useState(null);
+  const [selectedReleaseVersion, setSelectedReleaseVersion] = useState("");
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [installStarting, setInstallStarting] = useState(false);
+  const [updateError, setUpdateError] = useState("");
   const [shutdownCountdown, setShutdownCountdown] = useState(0);
   const [enableTranslator, setEnableTranslator] = useState(false);
   const { copied, copy } = useCopyToClipboard(2000);
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
+  const releases = releaseInfo?.releases || [];
+  const selectedRelease = releases.find((release) => release.version === selectedReleaseVersion) || releases[0];
+  const selectedInstallCmd = selectedRelease?.installCommand || INSTALL_CMD;
 
   useEffect(() => {
     fetch("/api/settings")
@@ -67,6 +74,17 @@ export default function Sidebar({ onClose }) {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch("/api/version/releases")
+      .then(res => res.json())
+      .then(data => {
+        setReleaseInfo(data);
+        const firstSelectable = data.releases?.find((release) => !release.isCurrent) || data.releases?.[0];
+        if (firstSelectable) setSelectedReleaseVersion(firstSelectable.version);
+      })
+      .catch(() => {});
+  }, []);
+
   const isActive = (href) => {
     if (href === "/dashboard/endpoint") {
       return pathname === "/dashboard" || pathname.startsWith("/dashboard/endpoint");
@@ -78,12 +96,13 @@ export default function Sidebar({ onClose }) {
   const handleUpdate = () => {
     setShowUpdateModal(false);
     setIsUpdating(true);
+    setUpdateError("");
   };
 
   // Triggered by Copy button inside ManualUpdatePanel: copy + countdown + shutdown
   const handleCopyAndShutdown = async () => {
-    try { await navigator.clipboard.writeText(INSTALL_CMD); } catch { /* clipboard blocked */ }
-    copy(INSTALL_CMD);
+    try { await navigator.clipboard.writeText(selectedInstallCmd); } catch { /* clipboard blocked */ }
+    copy(selectedInstallCmd);
     let remaining = UPDATER_CONFIG.shutdownCountdownSec;
     setShutdownCountdown(remaining);
     const timer = setInterval(() => {
@@ -99,7 +118,28 @@ export default function Sidebar({ onClose }) {
 
   const handleCancelUpdate = () => {
     setIsUpdating(false);
+    setInstallStarting(false);
+    setUpdateError("");
     setShutdownCountdown(0);
+  };
+
+  const handleInstallSelectedRelease = async () => {
+    if (!selectedRelease) return;
+    setInstallStarting(true);
+    setUpdateError("");
+    try {
+      const res = await fetch("/api/version/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: selectedRelease.version }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Failed to start updater");
+      setIsDisconnected(true);
+    } catch (error) {
+      setInstallStarting(false);
+      setUpdateError(error.message || "Failed to start updater");
+    }
   };
 
   // Note: legacy updater poll removed. New flow: copy install cmd + shutdown server,
@@ -122,7 +162,7 @@ export default function Sidebar({ onClose }) {
     <>
       <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
         {/* Traffic lights */}
-        <div className="flex items-center gap-2 px-6 pt-5 pb-2">
+        <div className="flex items-center gap-2 px-6 pt-5 pb-2" aria-hidden="true">
           <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
           <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
           <div className="w-3 h-3 rounded-full bg-[#27C93F]" />
@@ -141,25 +181,25 @@ export default function Sidebar({ onClose }) {
               <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
             </div>
           </Link>
-          {updateInfo && (
+          {(updateInfo || releases.length > 0) && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
               <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
-                ↑ New version available: v{updateInfo.latestVersion}
+                {updateInfo ? `↑ New version available: v${updateInfo.latestVersion}` : "Release history available"}
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowUpdateModal(true)}
                   className="px-2 py-1 rounded bg-green-600 hover:bg-green-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-[11px] font-semibold transition-colors cursor-pointer"
                 >
-                  Update now
+                  Versions
                 </button>
                 <button
-                  onClick={() => copy(INSTALL_CMD)}
+                  onClick={() => copy(selectedInstallCmd)}
                   title="Copy install command"
                   className="flex-1 text-left hover:opacity-80 transition-opacity cursor-pointer min-w-0"
                 >
                   <code className="block text-[10px] text-green-600/80 dark:text-amber-400/70 font-mono truncate">
-                    {copied ? "✓ copied!" : INSTALL_CMD}
+                    {copied ? "✓ copied!" : selectedInstallCmd}
                   </code>
                 </button>
               </div>
@@ -174,6 +214,7 @@ export default function Sidebar({ onClose }) {
               key={item.href}
               href={item.href}
               onClick={onClose}
+              aria-current={isActive(item.href) ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
                 isActive(item.href)
@@ -202,6 +243,8 @@ export default function Sidebar({ onClose }) {
             {/* Media Providers accordion */}
             <button
               onClick={() => setMediaOpen((v) => !v)}
+              aria-expanded={mediaOpen}
+              aria-controls="sidebar-media-providers"
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
                 pathname.startsWith("/dashboard/media-providers")
@@ -216,12 +259,13 @@ export default function Sidebar({ onClose }) {
               </span>
             </button>
             {mediaOpen && (
-              <div className="pl-4">
+              <div id="sidebar-media-providers" className="pl-4">
                 {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
                   <Link
                     key={kind.id}
                     href={`/dashboard/media-providers/${kind.id}`}
                     onClick={onClose}
+                    aria-current={pathname.startsWith(`/dashboard/media-providers/${kind.id}`) ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
                       pathname.startsWith(`/dashboard/media-providers/${kind.id}`)
@@ -237,6 +281,7 @@ export default function Sidebar({ onClose }) {
                   key={COMBINED_WEB_ITEM.id}
                   href={COMBINED_WEB_ITEM.href}
                   onClick={onClose}
+                  aria-current={pathname.startsWith(COMBINED_WEB_ITEM.href) ? "page" : undefined}
                   className={cn(
                     "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
                     pathname.startsWith(COMBINED_WEB_ITEM.href)
@@ -255,6 +300,7 @@ export default function Sidebar({ onClose }) {
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
+                aria-current={isActive(item.href) ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
                   isActive(item.href)
@@ -282,6 +328,7 @@ export default function Sidebar({ onClose }) {
                   key={item.href}
                   href={item.href}
                   onClick={onClose}
+                  aria-current={isActive(item.href) ? "page" : undefined}
                   className={cn(
                     "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
                     isActive(item.href)
@@ -306,6 +353,7 @@ export default function Sidebar({ onClose }) {
             <Link
               href="/dashboard/profile"
               onClick={onClose}
+              aria-current={isActive("/dashboard/profile") ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
                 isActive("/dashboard/profile")
@@ -360,8 +408,8 @@ export default function Sidebar({ onClose }) {
         onClose={() => setShowUpdateModal(false)}
         onConfirm={handleUpdate}
         title="Update 9Router"
-        message={`Show install command for v${updateInfo?.latestVersion || ""}? You can copy it and shutdown to install manually.`}
-        confirmText="Show Command"
+        message="Open release history to upgrade or downgrade 9Router from GitHub releases."
+        confirmText="Release history"
         cancelText="Cancel"
         variant="primary"
       />
@@ -372,7 +420,14 @@ export default function Sidebar({ onClose }) {
           {isUpdating ? (
             <ManualUpdatePanel
               latestVersion={updateInfo?.latestVersion}
-              installCmd={INSTALL_CMD}
+              installCmd={selectedInstallCmd}
+              releases={releases}
+              selectedReleaseVersion={selectedReleaseVersion}
+              selectedRelease={selectedRelease}
+              onSelectRelease={setSelectedReleaseVersion}
+              onInstallSelected={handleInstallSelectedRelease}
+              installStarting={installStarting}
+              updateError={updateError}
               copied={copied}
               onCopyAndShutdown={handleCopyAndShutdown}
               onCancel={handleCancelUpdate}
@@ -401,25 +456,59 @@ Sidebar.propTypes = {
   onClose: PropTypes.func,
 };
 
-function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdown, onCancel, countdown, isDisconnected }) {
+function ManualUpdatePanel({ latestVersion, installCmd, releases, selectedReleaseVersion, selectedRelease, onSelectRelease, onInstallSelected, installStarting, updateError, copied, onCopyAndShutdown, onCancel, countdown, isDisconnected }) {
   const isCountingDown = countdown > 0;
   return (
-    <div className="w-full max-w-lg rounded-xl bg-neutral-900/95 border border-white/10 p-6 text-white">
+    <div className="w-full max-w-xl rounded-xl bg-neutral-900/95 border border-white/10 p-6 text-white">
       <div className="flex items-center gap-3 mb-4">
         <div className="flex items-center justify-center size-11 rounded-full bg-amber-500/20 text-amber-400">
-          <span className="material-symbols-outlined text-[24px]">content_copy</span>
+          <span className="material-symbols-outlined text-[24px]">system_update_alt</span>
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Update 9Router{latestVersion ? ` to v${latestVersion}` : ""}</h2>
+          <h2 className="text-lg font-semibold">Release history</h2>
           <p className="text-xs text-white/60">
             {isDisconnected
-              ? "Server stopped. Paste the command into a terminal to install."
+              ? "Updater started. 9Router will restart when installation finishes."
               : isCountingDown
                 ? `Command copied. Server will stop in ${countdown}s...`
-                : "Click the button below to copy the install command and shutdown."}
+                : latestVersion
+                  ? `Latest GitHub release: v${latestVersion}`
+                  : "Upgrade or downgrade from GitHub release history."}
           </p>
         </div>
       </div>
+
+      {releases.length > 0 && (
+        <label className="mb-4 block">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-white/50">Target version</span>
+          <select
+            value={selectedReleaseVersion}
+            onChange={(event) => onSelectRelease(event.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-amber-400/60"
+          >
+            {releases.map((release) => (
+              <option key={release.version} value={release.version}>
+                v{release.version} — {release.direction}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {selectedRelease && (
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/70">
+          <div className="flex items-center justify-between gap-3">
+            <span>{selectedRelease.name || `v${selectedRelease.version}`}</span>
+            <span className="rounded bg-amber-500/15 px-2 py-0.5 text-amber-300 capitalize">{selectedRelease.direction}</span>
+          </div>
+        </div>
+      )}
+
+      {updateError && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          {updateError}
+        </div>
+      )}
 
       <p className="text-sm text-white/80 mb-2">Install command:</p>
       <div className="w-full px-3 py-2 rounded bg-white/5 mb-4">
@@ -427,9 +516,9 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
       </div>
 
       <ol className="text-xs text-white/70 space-y-1 list-decimal list-inside mb-4">
-        <li>Click <strong>Copy & Shutdown</strong> below.</li>
-        <li>Paste the command into your terminal and press Enter.</li>
-        <li>Run <code className="px-1 rounded bg-white/10 text-green-400">9router</code> again after install.</li>
+        <li>Click <strong>Install & Restart</strong> for automatic upgrade or downgrade.</li>
+        <li>If automatic install is unavailable, copy the command and run it manually.</li>
+        <li>9Router restarts after the selected version installs.</li>
       </ol>
 
       {isDisconnected ? (
@@ -441,8 +530,11 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
           <Button variant="secondary" onClick={onCancel} disabled={isCountingDown}>
             Cancel
           </Button>
-          <Button variant="primary" fullWidth onClick={onCopyAndShutdown} disabled={isCountingDown}>
+          <Button variant="outline" onClick={onCopyAndShutdown} disabled={isCountingDown || installStarting}>
             {copied ? "✓ Copied — shutting down..." : isCountingDown ? `Shutting down in ${countdown}s` : "Copy & Shutdown"}
+          </Button>
+          <Button variant="primary" fullWidth onClick={onInstallSelected} loading={installStarting} disabled={!selectedRelease || isCountingDown}>
+            Install & Restart
           </Button>
         </div>
       )}
@@ -453,6 +545,13 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
 ManualUpdatePanel.propTypes = {
   latestVersion: PropTypes.string,
   installCmd: PropTypes.string.isRequired,
+  releases: PropTypes.array,
+  selectedReleaseVersion: PropTypes.string,
+  selectedRelease: PropTypes.object,
+  onSelectRelease: PropTypes.func.isRequired,
+  onInstallSelected: PropTypes.func.isRequired,
+  installStarting: PropTypes.bool,
+  updateError: PropTypes.string,
   copied: PropTypes.bool,
   onCopyAndShutdown: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,

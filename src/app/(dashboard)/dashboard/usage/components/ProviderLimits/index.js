@@ -792,9 +792,11 @@ export default function ProviderLimits() {
                   aria-label="Close provider filter"
                   onClick={() => setProviderMenuOpen(false)}
                 />
-                <div className="absolute left-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-black/10 bg-surface/95 p-1.5 shadow-xl shadow-black/10 backdrop-blur dark:border-white/10 dark:bg-surface/95 sm:w-72">
+                <div role="menu" className="absolute left-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-black/10 bg-surface/95 p-1.5 shadow-xl shadow-black/10 backdrop-blur dark:border-white/10 dark:bg-surface/95 sm:w-72">
                   <button
                     type="button"
+                    role="menuitemradio"
+                    aria-checked={providerFilter === "all"}
                     onClick={() => {
                       if (shouldResetPage(providerFilter, "all")) {
                         setPage(1);
@@ -820,6 +822,8 @@ export default function ProviderLimits() {
                       <button
                         key={provider}
                         type="button"
+                        role="menuitemradio"
+                        aria-checked={providerFilter === provider}
                         onClick={() => {
                           if (shouldResetPage(providerFilter, provider)) {
                             setPage(1);
@@ -927,6 +931,8 @@ export default function ProviderLimits() {
           {/* Auto-refresh toggle */}
           <button
             onClick={() => setAutoRefresh((prev) => !prev)}
+            aria-pressed={autoRefresh}
+            aria-label={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
             title={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}
           >
@@ -952,6 +958,7 @@ export default function ProviderLimits() {
             type="button"
             onClick={refreshAll}
             disabled={refreshingAll}
+            aria-label="Refresh all quotas"
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs text-text-primary transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5 disabled:opacity-50"
             title="Refresh all"
           >

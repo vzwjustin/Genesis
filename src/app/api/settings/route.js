@@ -11,6 +11,53 @@ const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
 
+const ALLOWED_PATCH_KEYS = new Set([
+  "authMode",
+  "cavemanEnabled",
+  "cavemanLevel",
+  "ccFilterNaming",
+  "cloudEnabled",
+  "cloudUrl",
+  "comboStrategies",
+  "comboStrategy",
+  "comboStickyRoundRobinLimit",
+  "currentPassword",
+  "enableObservability",
+  "headroomEnabled",
+  "newPassword",
+  "observabilityBatchSize",
+  "observabilityFlushIntervalMs",
+  "observabilityMaxJsonSize",
+  "observabilityMaxRecords",
+  "oidcClientId",
+  "oidcClientSecret",
+  "oidcIssuerUrl",
+  "oidcLoginLabel",
+  "oidcScopes",
+  "outboundNoProxy",
+  "outboundProxyEnabled",
+  "outboundProxyUrl",
+  "providerStrategies",
+  "providerThinking",
+  "requireApiKey",
+  "requireLogin",
+  "rtkEnabled",
+  "stickyRoundRobinLimit",
+  "tailscaleEnabled",
+  "tailscaleUrl",
+  "tunnelDashboardAccess",
+  "tunnelEnabled",
+  "tunnelProvider",
+  "tunnelUrl",
+]);
+
+function validatePatchKeys(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!ALLOWED_PATCH_KEYS.has(key)) return key;
+  }
+  return null;
+}
+
 export async function GET() {
   try {
     const settings = await getSettings();
@@ -35,6 +82,10 @@ export async function GET() {
 export async function PATCH(request) {
   try {
     const body = await request.json();
+    const unsupportedKey = validatePatchKeys(body);
+    if (unsupportedKey) {
+      return NextResponse.json({ error: `Unsupported setting: ${unsupportedKey}` }, { status: 400 });
+    }
 
     // If updating password, hash it
     if (body.newPassword) {

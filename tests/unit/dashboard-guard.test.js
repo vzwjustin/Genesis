@@ -54,11 +54,21 @@ describe("dashboard guard public LLM API access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
-  it("allows loopback public LLM API without API key", async () => {
+  it("rejects loopback-looking public LLM API without API key", async () => {
     const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }));
 
-    expect(response).toBe(mocks.nextResponse);
-    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("rejects public LLM API when remote client spoofs loopback host", async () => {
+    const response = await proxy(request("/api/v1/chat/completions", {
+      host: "localhost:20128",
+      "x-forwarded-for": "203.0.113.9",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
   });
 
   it("rejects remote rewritten public LLM API without API key", async () => {
@@ -68,11 +78,18 @@ describe("dashboard guard public LLM API access", () => {
     expect(response.body.error).toBe("API key required for remote API access");
   });
 
-  it("allows loopback rewritten public LLM API without API key", async () => {
+  it("rejects loopback rewritten public LLM API without API key", async () => {
     const response = await proxy(request("/api/v1/chat/completions", { host: "localhost:20128" }));
 
-    expect(response).toBe(mocks.nextResponse);
-    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("rejects codex rewrite endpoint without API key", async () => {
+    const response = await proxy(request("/codex/responses", { host: "router.example.com" }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
   });
 
   it("rejects remote beta public LLM API without API key", async () => {
