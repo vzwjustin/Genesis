@@ -203,13 +203,13 @@ export default function Sidebar({ onClose }) {
           </Link>
           {(updateInfo || releases.length > 0) && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
-              <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
+              <span className="text-xs font-semibold text-success dark:text-warning">
                 {updateInfo ? `↑ New version available: v${updateInfo.latestVersion}` : "Release history available"}
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowUpdateModal(true)}
-                  className="px-2 py-1 rounded bg-green-600 hover:bg-green-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                  className="px-2 py-1 rounded bg-success hover:bg-success/90 dark:bg-warning dark:hover:bg-warning/90 text-white text-[11px] font-semibold transition-colors cursor-pointer"
                 >
                   Versions
                 </button>
@@ -405,7 +405,7 @@ export default function Sidebar({ onClose }) {
             />
           ) : (
             <div className="text-center p-8">
-              <div className="flex items-center justify-center size-16 rounded-full bg-red-500/20 text-red-500 mx-auto mb-4">
+              <div className="flex items-center justify-center size-16 rounded-full bg-red-500/20 text-danger mx-auto mb-4">
                 <span className="material-symbols-outlined text-[32px]">power_off</span>
               </div>
               <h2 className="text-xl font-semibold text-white mb-2">Server Disconnected</h2>
@@ -474,7 +474,7 @@ function ManualUpdatePanel({ latestVersion, installCmd, releases, selectedReleas
       )}
 
       {updateError && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-red-200">
           {updateError}
         </div>
       )}

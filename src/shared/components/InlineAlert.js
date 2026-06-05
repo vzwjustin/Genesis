@@ -5,24 +5,24 @@ import { cn } from "@/shared/utils/cn";
 
 const VARIANTS = {
   warning: {
-    wrapper: "bg-amber-500/10 border-amber-500/20 text-amber-800 dark:text-amber-300",
+    wrapper: "bg-warning/10 border-warning/30 text-warning",
     icon: "warning",
-    iconClass: "text-amber-600 dark:text-amber-400",
+    iconClass: "text-warning",
   },
   info: {
-    wrapper: "bg-blue-500/10 border-blue-500/20 text-blue-800 dark:text-blue-300",
+    wrapper: "bg-info/10 border-info/30 text-info",
     icon: "info",
-    iconClass: "text-blue-600 dark:text-blue-400",
+    iconClass: "text-info",
   },
   danger: {
-    wrapper: "bg-red-500/10 border-red-500/20 text-red-800 dark:text-red-300",
+    wrapper: "bg-danger/10 border-danger/30 text-danger",
     icon: "error",
-    iconClass: "text-red-600 dark:text-red-400",
+    iconClass: "text-danger",
   },
   caution: {
-    wrapper: "bg-yellow-500/10 border-yellow-500/30 text-yellow-800 dark:text-yellow-300",
+    wrapper: "bg-warning/10 border-warning/30 text-warning",
     icon: "warning",
-    iconClass: "text-yellow-600 dark:text-yellow-400",
+    iconClass: "text-warning",
   },
 };
 
@@ -44,7 +44,7 @@ export default function InlineAlert({
   return (
     <div
       className={cn(
-        "flex items-start gap-2 border rounded-lg",
+        "flex items-start gap-2 border rounded-brand",
         compact ? "px-3 py-2" : "px-3 py-2.5",
         styles.wrapper,
         className

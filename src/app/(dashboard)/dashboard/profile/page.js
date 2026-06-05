@@ -560,7 +560,7 @@ export default function ProfilePage() {
                 <p className="text-sm text-text-muted">Running on your machine</p>
               </div>
             </div>
-            <div className="inline-flex p-1 rounded-lg bg-black/5 dark:bg-white/5 w-full sm:w-auto">
+            <div className="inline-flex p-1 rounded-lg bg-bg-alt w-full sm:w-auto">
               {["light", "dark", "system"].map((option) => (
                 <button
                   key={option}
@@ -569,7 +569,7 @@ export default function ProfilePage() {
                   className={cn(
                     "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-all flex-1 sm:flex-initial",
                     theme === option
-                      ? "bg-white dark:bg-white/10 text-text-main shadow-sm"
+                      ? "bg-surface text-text-main shadow-sm"
                       : "text-text-muted hover:text-text-main"
                   )}
                 >
@@ -616,7 +616,7 @@ export default function ProfilePage() {
               />
             </div>
             {dbStatus.message && (
-              <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+              <p className={`text-sm ${dbStatus.type === "error" ? "text-danger" : "text-green-600 dark:text-green-400"}`}>
                 {dbStatus.message}
               </p>
             )}
@@ -714,7 +714,7 @@ export default function ProfilePage() {
                 </div>
 
                 {passStatus.message && (
-                  <p className={`text-xs sm:text-sm ${passStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+                  <p className={`text-xs sm:text-sm ${passStatus.type === "error" ? "text-danger" : "text-green-500"}`}>
                     {passStatus.message}
                   </p>
                 )}
@@ -785,7 +785,7 @@ export default function ProfilePage() {
                         "text-left rounded-lg border p-3 transition-colors",
                         active
                           ? "border-primary bg-primary/5"
-                          : "border-border bg-bg hover:bg-black/5 dark:hover:bg-white/5"
+                          : "border-border bg-bg hover:bg-surface-2"
                       )}
                       disabled={loading || oidcLoading}
                     >
@@ -866,25 +866,25 @@ export default function ProfilePage() {
             </div>
 
             {oidcTestStatus.message && (
-              <p className={`text-xs sm:text-sm ${oidcTestStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+              <p className={`text-xs sm:text-sm ${oidcTestStatus.type === "error" ? "text-danger" : "text-green-500"}`}>
                 {oidcTestStatus.message}
               </p>
             )}
 
             {oidcStatus.message && (
-              <p className={`text-xs sm:text-sm ${oidcStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+              <p className={`text-xs sm:text-sm ${oidcStatus.type === "error" ? "text-danger" : "text-green-500"}`}>
                 {oidcStatus.message}
               </p>
             )}
 
             {settings.authMode === "oidc" && (
-              <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+              <p className="text-xs sm:text-sm text-warning">
                 OIDC login is currently active. Password login is disabled until you switch back.
               </p>
             )}
 
             {settings.authMode === "both" && (
-              <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+              <p className="text-xs sm:text-sm text-warning">
                 Password and OIDC login are both active.
               </p>
             )}
@@ -1048,7 +1048,7 @@ export default function ProfilePage() {
             )}
 
             {proxyStatus.message && (
-              <p className={`text-xs sm:text-sm ${proxyStatus.type === "error" ? "text-red-500" : "text-green-500"} pt-2 border-t border-border/50`}>
+              <p className={`text-xs sm:text-sm ${proxyStatus.type === "error" ? "text-danger" : "text-green-500"} pt-2 border-t border-border/50`}>
                 {proxyStatus.message}
               </p>
             )}

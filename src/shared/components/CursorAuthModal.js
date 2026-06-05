@@ -126,12 +126,12 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
             {windowsManual && (
               <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-200 dark:border-amber-800 flex flex-col gap-2">
                 <div className="flex gap-2 items-center">
-                  <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">info</span>
+                  <span className="material-symbols-outlined text-warning">info</span>
                   <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
                     Could not read Cursor database automatically.
                   </p>
                 </div>
-                <p className="text-xs text-amber-700 dark:text-amber-300">
+                <p className="text-xs text-warning">
                   Make sure Cursor IDE has been opened at least once, then click <strong>Retry</strong>. If the problem persists, paste your tokens manually below.
                 </p>
                 <Button onClick={runAutoDetect} variant="outline" fullWidth>
@@ -155,7 +155,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
             {/* Access Token Input */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                Access Token <span className="text-red-500">*</span>
+                Access Token <span className="text-danger">*</span>
               </label>
               <textarea
                 value={accessToken}
@@ -169,7 +169,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
             {/* Machine ID Input */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                Machine ID <span className="text-red-500">*</span>
+                Machine ID <span className="text-danger">*</span>
               </label>
               <Input
                 value={machineId}
@@ -182,7 +182,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
             {/* Error Display */}
             {error && (
               <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                <p className="text-sm text-danger dark:text-danger">{error}</p>
               </div>
             )}
 

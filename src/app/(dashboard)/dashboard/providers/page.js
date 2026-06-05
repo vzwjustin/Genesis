@@ -1297,7 +1297,7 @@ function ProviderTestResultsView({ results }) {
             className={`shrink-0 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
               r.valid
                 ? "bg-emerald-500/15 text-emerald-400"
-                : "bg-red-500/15 text-danger"
+                : "bg-danger/10 text-danger"
             }`}
           >
             {r.valid ? "OK" : r.diagnosis?.type || "ERROR"}
