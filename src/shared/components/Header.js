@@ -41,7 +41,7 @@ const getPageInfo = (pathname) => {
     const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kindId);
     return {
       title: kindConfig?.label || kindId,
-      description: `Manage your ${kindConfig?.label || kindId} providers`,
+      description: `Connect ${kindConfig?.label || kindId} providers`,
       icon: kindConfig?.icon || "perm_media",
       breadcrumbs: [],
     };
@@ -71,14 +71,14 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/providers") && !pathname.includes("/media-providers"))
     return {
       title: "Providers",
-      description: "Manage your AI provider connections",
+      description: "Connect, test, and route AI providers",
       icon: "dns",
       breadcrumbs: [],
     };
   if (pathname.includes("/combos"))
     return {
       title: "Combos",
-      description: "Model combos with fallback",
+      description: "Build ordered model failover chains",
       icon: "layers",
       breadcrumbs: [],
     };
@@ -86,7 +86,7 @@ const getPageInfo = (pathname) => {
     return {
       title: "Usage & Analytics",
       description:
-        "Monitor your API usage, token consumption, and request logs",
+        "Review spend, tokens, quota, and request history",
       icon: "bar_chart",
       breadcrumbs: [],
     };
@@ -100,7 +100,7 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/quota"))
     return {
       title: "Quota Tracker",
-      description: "Track and manage your API quota limits",
+      description: "Watch provider limits before requests fail",
       icon: "data_usage",
       breadcrumbs: [],
     };
@@ -114,35 +114,35 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/cli-tools"))
     return {
       title: "CLI Tools",
-      description: "Configure CLI tools",
+      description: "Install and point local AI tools at 9Router",
       icon: "terminal",
       breadcrumbs: [],
     };
   if (pathname.includes("/proxy-pools"))
     return {
       title: "Proxy Pools",
-      description: "Manage your proxy pool configurations",
+      description: "Group outbound proxies for provider routing",
       icon: "lan",
       breadcrumbs: [],
     };
   if (pathname.includes("/skills"))
     return {
       title: "Agent Skills",
-      description: "Copy a link and paste to your AI to use 9Router — no install needed",
+      description: "Share ready-to-use capability links with AI agents",
       icon: "extension",
       breadcrumbs: [],
     };
   if (pathname.includes("/endpoint"))
     return {
       title: "Endpoint",
-      description: "API endpoint configuration",
+      description: "Copy local, tunnel, and secure API endpoints",
       icon: "api",
       breadcrumbs: [],
     };
   if (pathname.includes("/profile"))
     return {
       title: "Settings",
-      description: "Manage your preferences",
+      description: "Set account, security, and UI preferences",
       icon: "settings",
       breadcrumbs: [],
     };
@@ -163,7 +163,7 @@ const getPageInfo = (pathname) => {
   if (pathname === "/dashboard")
     return {
       title: "Endpoint",
-      description: "API endpoint configuration",
+      description: "Copy local, tunnel, and secure API endpoints",
       icon: "api",
       breadcrumbs: [],
     };
