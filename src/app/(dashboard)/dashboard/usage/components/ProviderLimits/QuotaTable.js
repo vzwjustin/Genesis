@@ -142,7 +142,7 @@ export default function QuotaTable({
           {sortedQuotas.length} quota{sortedQuotas.length > 1 ? "s" : ""}
         </div>
         {showSortLabel && (
-          <div className="rounded-md border border-black/10 bg-black/[0.02] px-2 py-1 text-[10px] text-text-muted dark:border-white/10 dark:bg-white/[0.03]">
+          <div className="rounded-md border border-border bg-bg-alt px-2 py-1 text-[10px] text-text-muted">
             {sortLabel}
           </div>
         )}
@@ -173,7 +173,7 @@ export default function QuotaTable({
                   <td className={`${cellPad} w-[45%]`}>
                     <div className={compact ? "space-y-1" : "space-y-1.5"}>
                       <div className={`${compact ? "h-1" : "h-1.5"} rounded-full overflow-hidden border ${colors.bgLight} ${
-                        quota.remaining === 0 ? "border-black/10 dark:border-white/10" : "border-transparent"
+                        quota.remaining === 0 ? "border-border" : "border-transparent"
                       }`}>
                         <div
                           className={`h-full transition-all duration-300 ${colors.bg}`}
@@ -227,7 +227,7 @@ export default function QuotaTable({
       </div>
 
       {totalPages > 1 && (
-        <div className="rounded-md border border-black/10 bg-black/[0.02] px-2 py-1.5 dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="rounded-md border border-border bg-bg-alt px-2 py-1.5">
           <div className="flex items-center justify-between gap-2 text-[10px] text-text-muted">
             <span>
               Showing {pageStart}-{pageEnd} of {sortedQuotas.length}

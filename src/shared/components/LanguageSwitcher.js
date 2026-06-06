@@ -142,7 +142,7 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
             className="relative w-full bg-surface border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-2xl flex flex-col max-h-[80vh]"
           >
             {/* Modal header */}
-            <div className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5">
+            <div className="flex items-center justify-between p-3 border-b border-border-subtle">
               <h2 className="text-lg font-semibold text-text-main">Select Language</h2>
               <button
                 onClick={() => setIsOpen(false)}

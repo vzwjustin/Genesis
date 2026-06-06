@@ -355,7 +355,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
                 {error && (
                   <div className="bg-danger/10 p-3 rounded-lg border border-danger/20">
-                    <p className="text-sm text-danger dark:text-danger">{error}</p>
+                    <p className="text-sm text-danger">{error}</p>
                   </div>
                 )}
 

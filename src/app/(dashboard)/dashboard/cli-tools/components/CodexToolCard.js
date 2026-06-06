@@ -233,12 +233,12 @@ model = "${effectiveSubagentModel}"
                   <div className="space-y-3 text-sm">
                     <div>
                       <p className="text-text-muted mb-1">macOS / Linux / Windows:</p>
-                      <code className="block px-3 py-2 bg-black/5 dark:bg-white/5 rounded font-mono text-xs">npm install -g @openai/codex</code>
+                      <code className="block px-3 py-2 bg-surface-2 rounded font-mono text-xs">npm install -g @openai/codex</code>
                     </div>
-                    <p className="text-text-muted">After installation, run <code className="px-1 bg-black/5 dark:bg-white/5 rounded">codex</code> to verify.</p>
+                    <p className="text-text-muted">After installation, run <code className="px-1 bg-surface-2 rounded">codex</code> to verify.</p>
                     <div className="pt-2 border-t border-border">
                       <p className="text-text-muted text-xs">
-                        Codex uses <code className="px-1 bg-black/5 dark:bg-white/5 rounded">~/.codex/auth.json</code> with <code className="px-1 bg-black/5 dark:bg-white/5 rounded">OPENAI_API_KEY</code>.
+                        Codex uses <code className="px-1 bg-surface-2 rounded">~/.codex/auth.json</code> with <code className="px-1 bg-surface-2 rounded">OPENAI_API_KEY</code>.
                         Click &quot;Apply&quot; to auto-configure.
                       </p>
                     </div>
