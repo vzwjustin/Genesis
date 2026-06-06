@@ -1224,7 +1224,8 @@ export default function ProviderDetailPage() {
                       value={providerStickyLimit}
                       onChange={(e) => handleStickyLimitChange(e.target.value)}
                       placeholder="1"
-                      className="w-14 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary"
+                      aria-label="Sticky limit"
+                      className="w-14 px-2 py-1 text-xs border border-border rounded-md bg-surface-2 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 transition-all"
                     />
                   </div>
                 )}
