@@ -98,7 +98,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, passthrough }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && provider === "codex");
   if (!isSSE) return null; // not handled here
@@ -156,14 +156,16 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       const hasToolCalls = toolCalls.length > 0;
 
       if (sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {
-        finalResp = {
-          response: {
-            candidates: [{ content: { role: "model", parts: [{ text: textContent || "" }] }, finishReason: "STOP", index: 0 }],
-            usageMetadata: { promptTokenCount: inTokens, candidatesTokenCount: outTokens, totalTokenCount: inTokens + outTokens },
-            modelVersion: model,
-            responseId: jsonResponse.id || `resp_${Date.now()}`
-          }
+        const geminiBody = {
+          candidates: [{ content: { role: "model", parts: [{ text: textContent || "" }] }, finishReason: "STOP", index: 0 }],
+          usageMetadata: { promptTokenCount: inTokens, candidatesTokenCount: outTokens, totalTokenCount: inTokens + outTokens },
+          modelVersion: model,
+          responseId: jsonResponse.id || `resp_${Date.now()}`
         };
+        // Antigravity wraps in { response: ... }, plain Gemini does not
+        finalResp = sourceFormat === FORMATS.ANTIGRAVITY
+          ? { response: geminiBody }
+          : geminiBody;
       } else {
         const message = { role: "assistant", content: textContent || (hasToolCalls ? null : "") };
         if (hasToolCalls) message.tool_calls = toolCalls;
@@ -214,7 +216,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     // When content is empty (e.g. thinking models that used all tokens for reasoning),
     // reasoning_content is the only useful output and must be preserved.
     // Previously this was unconditional, which broke Qwen3.5, Claude extended thinking, etc.
-    if (parsed?.choices) {
+    // PASSTHROUGH GUARD: In passthrough mode, preserve all provider-specific fields including reasoning_content.
+    if (!passthrough && parsed?.choices) {
       for (const choice of parsed.choices) {
         if (choice?.message?.reasoning_content && choice.message.content) {
           delete choice.message.reasoning_content;

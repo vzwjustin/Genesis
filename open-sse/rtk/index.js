@@ -3,6 +3,7 @@
 import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
+import { smartTruncate } from "./filters/smartTruncate.js";
 
 let rtkEnabled = false;
 
@@ -32,6 +33,30 @@ export function findLastCacheBoundary(messages) {
   return -1;
 }
 
+function snapshotCacheProtectedRegion(items, cacheFloor) {
+  if (cacheFloor < 0 || !Array.isArray(items)) return null;
+  const snap = [];
+  for (let i = 0; i <= cacheFloor; i++) {
+    snap.push(JSON.stringify(items[i]));
+  }
+  return snap;
+}
+
+function verifyCacheBoundaryIntegrity(items, cacheFloor, snapshot) {
+  if (cacheFloor < 0 || !snapshot) return true;
+  for (let i = 0; i <= cacheFloor; i++) {
+    if (JSON.stringify(items[i]) !== snapshot[i]) return false;
+  }
+  return true;
+}
+
+function restoreItems(items, snapshot) {
+  if (!Array.isArray(items) || !Array.isArray(snapshot)) return;
+  for (let i = 0; i < snapshot.length; i++) {
+    items[i] = snapshot[i];
+  }
+}
+
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
 export function compressMessages(body, enabled = rtkEnabled) {
   if (!enabled) return null;
@@ -48,12 +73,16 @@ export function compressMessages(body, enabled = rtkEnabled) {
     : null;
   if (!items) return null;
 
-  // Never compress messages at or before the last cache_control boundary —
-  // those bytes are part of the cached prefix; mutating them invalidates the cache.
-  const cacheFloor = findLastCacheBoundary(items);
-
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
+  let cacheFloor = -1;
+  let protectedSnapshot = null;
+  let itemsSnapshot = null;
   try {
+    // Never compress messages at or before the last cache_control boundary —
+    // those bytes are part of the cached prefix; mutating them invalidates the cache.
+    cacheFloor = findLastCacheBoundary(items);
+    protectedSnapshot = snapshotCacheProtectedRegion(items, cacheFloor);
+    itemsSnapshot = items.map((item) => JSON.parse(JSON.stringify(item)));
     for (let i = 0; i < items.length; i++) {
       if (i <= cacheFloor) continue; // protected by cache boundary
       const msg = items[i];
@@ -113,8 +142,15 @@ export function compressMessages(body, enabled = rtkEnabled) {
         }
       }
     }
+
+    if (!verifyCacheBoundaryIntegrity(items, cacheFloor, protectedSnapshot)) {
+      console.error("[RTK] CRITICAL: cache boundary integrity violation — reverting all compression");
+      restoreItems(items, itemsSnapshot);
+      return null;
+    }
   } catch (e) {
     console.warn("[RTK] compressMessages error:", e.message);
+    restoreItems(items, itemsSnapshot);
     return null;
   }
   return stats;
@@ -159,23 +195,31 @@ function compressText(text, stats, shape) {
     return text;
   }
 
-  const fn = autoDetectFilter(text);
-  if (!fn) {
+  const namedFilter = autoDetectFilter(text);
+  const candidates = [];
+
+  if (namedFilter && namedFilter.filterName !== "smart-truncate") {
+    const namedOut = safeApply(namedFilter, text);
+    if (namedOut && namedOut.length > 0 && namedOut.length < bytesIn) {
+      candidates.push({ out: namedOut, filter: namedFilter.filterName || namedFilter.name || "named" });
+    }
+  }
+
+  // Fallback (Req 7.8) and secondary fallback when named filter fails or grows (Req 7.9, 7.10)
+  const truncOut = safeApply(smartTruncate, text);
+  if (truncOut && truncOut.length > 0 && truncOut.length < bytesIn) {
+    candidates.push({ out: truncOut, filter: "smart-truncate" });
+  }
+
+  if (candidates.length === 0) {
     stats.bytesAfter += bytesIn;
     return text;
   }
 
-  const out = safeApply(fn, text);
-
-  // Safety: never return empty, never grow the input
-  if (!out || out.length === 0 || out.length >= bytesIn) {
-    stats.bytesAfter += bytesIn;
-    return text;
-  }
-
-  stats.bytesAfter += out.length;
-  stats.hits.push({ shape, filter: fn.filterName || fn.name, saved: bytesIn - out.length });
-  return out;
+  const best = candidates.reduce((a, b) => (a.out.length <= b.out.length ? a : b));
+  stats.bytesAfter += best.out.length;
+  stats.hits.push({ shape, filter: best.filter, saved: bytesIn - best.out.length });
+  return best.out;
 }
 
 // Convenience: format a log line from stats

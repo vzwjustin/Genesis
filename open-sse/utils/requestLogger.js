@@ -33,8 +33,14 @@ function formatTimestamp(date = new Date()) {
   return `${y}${m}${d}_${h}${min}${s}_${ms}`;
 }
 
-// Create log session folder: {sourceFormat}_{targetFormat}_{model}_{timestamp}
-async function createLogSession(sourceFormat, targetFormat, model) {
+export function formatLogFolderPrefix(sourceFormat, targetFormat, model, { passthrough = false } = {}) {
+  const safeModel = (model || "unknown").replace(/[/:]/g, "-");
+  const modePrefix = passthrough ? "passthrough_" : "";
+  return `${modePrefix}${sourceFormat}_${targetFormat}_${safeModel}`;
+}
+
+// Create log session folder: [{passthrough}_]{sourceFormat}_{targetFormat}_{model}_{timestamp}
+async function createLogSession(sourceFormat, targetFormat, model, options = {}) {
   await ensureNodeModules();
   if (!fs || !LOGS_DIR) return null;
   
@@ -44,8 +50,7 @@ async function createLogSession(sourceFormat, targetFormat, model) {
     }
     
     const timestamp = formatTimestamp();
-    const safeModel = (model || "unknown").replace(/[/:]/g, "-");
-    const folderName = `${sourceFormat}_${targetFormat}_${safeModel}_${timestamp}`;
+    const folderName = `${formatLogFolderPrefix(sourceFormat, targetFormat, model, options)}_${timestamp}`;
     const sessionPath = path.join(LOGS_DIR, folderName);
     
     fs.mkdirSync(sessionPath, { recursive: true });
@@ -69,25 +74,21 @@ function writeJsonFile(sessionPath, filename, data) {
   }
 }
 
-// Mask sensitive data in headers (DISABLED - keep full token for testing)
 function maskSensitiveHeaders(headers) {
   if (!headers) return {};
-  return { ...headers };
-  
-  // Old masking code (disabled):
-  // const masked = { ...headers };
-  // const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
-  // 
-  // for (const key of Object.keys(masked)) {
-  //   const lowerKey = key.toLowerCase();
-  //   if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
-  //     const value = masked[key];
-  //     if (value && value.length > 20) {
-  //       masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
-  //     }
-  //   }
-  // }
-  // return masked;
+  const masked = { ...headers };
+  const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
+
+  for (const key of Object.keys(masked)) {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
+      const value = masked[key];
+      if (value && value.length > 20) {
+        masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
+      }
+    }
+  }
+  return masked;
 }
 
 // No-op logger when logging is disabled
@@ -114,14 +115,14 @@ function createNoOpLogger() {
  * @param {string} model - Model name
  * @returns {Promise<object>} Promise that resolves to logger object with methods to log each stage
  */
-export async function createRequestLogger(sourceFormat, targetFormat, model) {
+export async function createRequestLogger(sourceFormat, targetFormat, model, options = {}) {
   // Return no-op logger if logging is disabled
   if (!LOGGING_ENABLED) {
     return createNoOpLogger();
   }
   
   // Wait for session to be created before returning logger
-  const sessionPath = await createLogSession(sourceFormat, targetFormat, model);
+  const sessionPath = await createLogSession(sourceFormat, targetFormat, model, options);
   
   return {
     get sessionPath() { return sessionPath; },
@@ -216,10 +217,13 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       }
     },
     
-    // 6. Log error
-    logError(error, requestBody = null) {
-      writeJsonFile(sessionPath, "6_error.json", {
+    // 8. Log error (failed or incomplete request)
+    logError(error, requestBody = null, logOptions = {}) {
+      writeJsonFile(sessionPath, "8_error.json", {
         timestamp: new Date().toISOString(),
+        failed: true,
+        incomplete: logOptions.incomplete === true,
+        passthrough: options.passthrough === true,
         error: error?.message || String(error),
         stack: error?.stack,
         requestBody

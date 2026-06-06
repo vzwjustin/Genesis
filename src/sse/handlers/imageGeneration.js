@@ -2,8 +2,7 @@ import {
   getProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  isValidApiKey,
+  authenticateRequest,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -35,13 +34,9 @@ export async function handleImageGeneration(request) {
   const binaryOutput = url.searchParams.get("response_format") === "binary";
   const modelStr = body.model;
 
-  const apiKey = extractApiKey(request);
-  const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-  }
+  const auth = await authenticateRequest(request, log);
+  if (!auth.ok) return auth.response;
+  const { apiKey, settings } = auth;
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.prompt) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
@@ -89,6 +84,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let had5xx = false;
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
@@ -102,10 +98,20 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       if (excludeConnectionIds.size === 0) {
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
       }
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return errorResponse(had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE), lastError || "All accounts unavailable");
     }
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+
+    // Requirement 3.6: If token refresh fails during pre-check, mark connection
+    // as unusable and proceed to Account_Fallback for the next available connection.
+    if (refreshedCredentials._tokenRefreshFailed) {
+      log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Token refresh failed";
+      lastStatus = 401;
+      continue;
+    }
 
     const result = await handleImageGenerationCore({
       body,
@@ -134,6 +140,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
+      if (result.status >= 500 && result.status < 600) had5xx = true;
       continue;
     }
 

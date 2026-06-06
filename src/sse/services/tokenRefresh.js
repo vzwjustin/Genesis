@@ -21,7 +21,8 @@ import {
   formatProviderCredentials as _formatProviderCredentials,
   getAllAccessTokens as _getAllAccessTokens,
   refreshKiroToken as _refreshKiroToken,
-  getRefreshLeadMs as _getRefreshLeadMs
+  getRefreshLeadMs as _getRefreshLeadMs,
+  isUnrecoverableRefreshError as _isUnrecoverableRefreshError
 } from "open-sse/services/tokenRefresh.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
@@ -57,6 +58,8 @@ export const refreshKiroToken = (refreshToken, providerSpecificData) =>
 
 export const getAccessToken = (provider, credentials) =>
   _getAccessToken(provider, credentials, log);
+
+export const isUnrecoverableRefreshError = _isUnrecoverableRefreshError;
 
 export const refreshTokenByProvider = (provider, credentials) =>
   _refreshTokenByProvider(provider, credentials, log);
@@ -197,6 +200,10 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
  * Check whether the provider token (and, for GitHub, the Copilot token) is
  * about to expire and refresh it proactively.
  *
+ * Returns credentials with `_tokenRefreshFailed = true` if a refresh was
+ * attempted but failed, signaling the caller to mark the connection as unusable
+ * and proceed to Account_Fallback.
+ *
  * @param {string} provider
  * @param {object} credentials
  * @returns {Promise<object>} updated credentials object
@@ -219,6 +226,24 @@ export async function checkAndRefreshToken(provider, credentials) {
       });
 
       const newCreds = await getAccessToken(provider, creds);
+
+      // Check for unrecoverable refresh errors (e.g., revoked refresh token)
+      if (_isUnrecoverableRefreshError(newCreds)) {
+        log.error("TOKEN_REFRESH", "Unrecoverable token refresh error — marking connection unusable", {
+          provider,
+          connectionId: creds.connectionId,
+          error: newCreds.error,
+        });
+        // Mark connection as permanently unusable (testStatus=error excludes from credential selection)
+        await updateProviderConnection(creds.connectionId, {
+          testStatus: "error",
+          lastError: `Token refresh failed: ${newCreds.error || "unrecoverable"}`,
+          lastErrorAt: new Date().toISOString(),
+        });
+        creds._tokenRefreshFailed = true;
+        return creds;
+      }
+
       if (newCreds?.accessToken) {
         const mergedCreds = {
           ...newCreds,
@@ -242,6 +267,20 @@ export async function checkAndRefreshToken(provider, credentials) {
 
         // Non-blocking: refresh projectId with the new access token
         _refreshProjectId(provider, creds.connectionId, creds.accessToken);
+      } else {
+        // Token refresh failed (returned null) — mark for Account_Fallback
+        log.warn("TOKEN_REFRESH", "Token refresh failed — marking connection unusable for fallback", {
+          provider,
+          connectionId: creds.connectionId,
+        });
+        // Mark connection as permanently unusable (testStatus=error excludes from credential selection)
+        await updateProviderConnection(creds.connectionId, {
+          testStatus: "error",
+          lastError: "Token refresh failed",
+          lastErrorAt: new Date().toISOString(),
+        });
+        creds._tokenRefreshFailed = true;
+        return creds;
       }
     }
   }

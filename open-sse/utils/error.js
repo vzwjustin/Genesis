@@ -1,12 +1,26 @@
-import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
+import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES, MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
+
+/**
+ * Pre-dispatch validation error types for HTTP 400 responses.
+ * Used when request-shape failures prevent successful request processing.
+ */
+export const VALIDATION_ERROR_TYPES = {
+  TRANSLATION_INVALID_BODY: "translation_invalid_body",
+  VALIDATION_FAILED: "validation_failed",
+  UNSUPPORTED_REQUEST: "unsupported_request",
+  MISSING_REQUIRED_FIELD: "missing_required_field",
+};
 
 /**
  * Build OpenAI-compatible error response body
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
+ * @param {object} [options] - Optional overrides
+ * @param {string} [options.errorType] - Custom error type (overrides status-based lookup)
+ * @param {string} [options.errorCode] - Custom error code (overrides status-based lookup)
  * @returns {object} Error response object
  */
-export function buildErrorBody(statusCode, message) {
+export function buildErrorBody(statusCode, message, options = {}) {
   const errorInfo = ERROR_TYPES[statusCode] || 
     (statusCode >= 500 
       ? { type: "server_error", code: "internal_server_error" }
@@ -15,8 +29,8 @@ export function buildErrorBody(statusCode, message) {
   return {
     error: {
       message: message || DEFAULT_ERROR_MESSAGES[statusCode] || "An error occurred",
-      type: errorInfo.type,
-      code: errorInfo.code
+      type: options.errorType || errorInfo.type,
+      code: options.errorCode || errorInfo.code
     }
   };
 }
@@ -25,16 +39,29 @@ export function buildErrorBody(statusCode, message) {
  * Create error Response object (for non-streaming)
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
+ * @param {object} [options] - Optional overrides for error type/code
+ * @param {string} [options.errorType] - Custom error type
+ * @param {string} [options.errorCode] - Custom error code
  * @returns {Response} HTTP Response object
  */
-export function errorResponse(statusCode, message) {
-  return new Response(JSON.stringify(buildErrorBody(statusCode, message)), {
+export function errorResponse(statusCode, message, options = {}) {
+  return new Response(JSON.stringify(buildErrorBody(statusCode, message, options)), {
     status: statusCode,
     headers: {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*"
     }
   });
+}
+
+/**
+ * Create HTTP 400 error response for pre-dispatch validation failures.
+ * @param {string} errorType - One of VALIDATION_ERROR_TYPES values
+ * @param {string} message - Descriptive error message
+ * @returns {Response} HTTP 400 Response object
+ */
+export function validationErrorResponse(errorType, message) {
+  return errorResponse(400, message, { errorType, errorCode: errorType });
 }
 
 /**
@@ -93,15 +120,18 @@ export async function parseUpstreamError(response, executor = null) {
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
+ * @param {object} [options] - Optional overrides for error type/code
+ * @param {string} [options.errorType] - Custom error type
+ * @param {string} [options.errorCode] - Custom error code
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs) {
+export function createErrorResult(statusCode, message, resetsAtMs, options = {}) {
   return {
     success: false,
     status: statusCode,
     error: message,
     resetsAtMs,
-    response: errorResponse(statusCode, message)
+    response: errorResponse(statusCode, message, options)
   };
 }
 
@@ -115,7 +145,9 @@ export function createErrorResult(statusCode, message, resetsAtMs) {
  */
 export function unavailableResponse(statusCode, message, retryAfter, retryAfterHuman) {
   const parsedDate = new Date(retryAfter).getTime();
-  const retryAfterSec = Number.isNaN(parsedDate) ? 60 : Math.max(1, Math.ceil((parsedDate - Date.now()) / 1000));
+  const minRetryDelaySec = Math.ceil(MIN_RETRY_DELAY_MS / 1000);
+  // Enforce minimum retry delay: never return Retry-After: 0 for a no-capacity state
+  const retryAfterSec = Number.isNaN(parsedDate) ? 60 : Math.max(minRetryDelaySec, Math.ceil((parsedDate - Date.now()) / 1000));
   const msg = `${message} (${retryAfterHuman})`;
   return new Response(
     JSON.stringify({ error: { message: msg } }),

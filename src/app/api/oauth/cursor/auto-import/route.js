@@ -56,7 +56,12 @@ function getCandidatePaths(platform) {
     ];
   }
 
-  if (platform === "linux") {
+  if (
+    platform === "linux"
+    || platform === "freebsd"
+    || platform === "openbsd"
+    || platform === "netbsd"
+  ) {
     return [join(home, ".config/Cursor/User/globalStorage/state.vscdb")];
   }
 
@@ -185,14 +190,6 @@ export async function GET() {
 
     if (!candidates) {
       return NextResponse.json({ found: false, error: "Unsupported platform" }, { status: 400 });
-    }
-
-    if (platform === "linux") {
-      const dbPath = candidates[0];
-      return NextResponse.json({
-        found: false,
-        error: "Cursor database not found. Make sure Cursor IDE is installed and you are logged in.",
-      });
     }
 
     let dbPath = null;

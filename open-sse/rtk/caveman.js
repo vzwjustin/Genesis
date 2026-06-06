@@ -9,22 +9,22 @@ const SEP = "\n\n";
 
 export function injectCaveman(body, format, level) {
   const prompt = CAVEMAN_PROMPTS[level];
-  if (!body || !prompt) return;
+  if (!body || !prompt) return false;
 
   switch (format) {
     case FORMATS.CLAUDE:
       injectClaudeSystem(body, prompt);
-      return;
+      return true;
     case FORMATS.GEMINI:
     case FORMATS.GEMINI_CLI:
     case FORMATS.VERTEX:
     case FORMATS.ANTIGRAVITY:
       // Antigravity wraps Gemini shape in body.request → injectGeminiSystem handles it
       injectGeminiSystem(body, prompt);
-      return;
+      return true;
     default:
       // OpenAI and OpenAI-shaped formats (responses/codex/cursor/kiro/ollama)
-      injectMessagesSystem(body, prompt);
+      return injectMessagesSystem(body, prompt);
   }
 }
 
@@ -35,13 +35,13 @@ function injectMessagesSystem(body, prompt) {
     body.instructions = body.instructions
       ? `${body.instructions}${SEP}${prompt}`
       : prompt;
-    return;
+    return true;
   }
 
   const arr = Array.isArray(body.messages) ? body.messages
     : Array.isArray(body.input) ? body.input
     : null;
-  if (!arr) return;
+  if (!arr) return false;
 
   const idx = arr.findIndex(m => m && (m.role === "system" || m.role === "developer"));
   if (idx >= 0) {
@@ -55,6 +55,7 @@ function injectMessagesSystem(body, prompt) {
   } else {
     arr.unshift({ role: "system", content: prompt });
   }
+  return true;
 }
 
 function appendToOpenAIMessage(msg, prompt) {

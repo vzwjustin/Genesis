@@ -6,7 +6,7 @@ import { createStreamController } from "../utils/streamHandler.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
-import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
+import { createErrorResult, parseUpstreamError, formatProviderError, VALIDATION_ERROR_TYPES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -17,25 +17,44 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
+import { cleanAnthropicToolDefinitions } from "../translator/helpers/claudeHelper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom } from "../rtk/headroom.js";
-import { recordCompressionStats } from "@/lib/compressionStats.js";
-
-const HEADROOM_AVAILABLE = false;
+import { recordCompressionStats, saveCompressionStats } from "@/lib/compressionStats.js";
 
 /**
  * Core chat handler - shared between SSE and Worker
  * @param {object} options.body - Request body
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} options.credentials - Provider credentials
+ * @param {boolean} options.passthroughCompression - Whether to allow compression in passthrough mode
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, headroomEnabled, sourceFormatOverride, providerThinking }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, headroomEnabled, passthroughCompression, sourceFormatOverride, providerThinking }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
-  const sourceFormat = sourceFormatOverride || detectFormat(body);
+  // Pre-dispatch schema validation: body must contain recognizable content
+  if (!body || typeof body !== "object") {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Request body must be a JSON object", undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
+  }
+
+  const sourceFormat = sourceFormatOverride || detectFormat(body, clientRawRequest?.headers);
+
+  // Pre-dispatch validation: source format must be a recognized format
+  const VALID_FORMATS = new Set(Object.values(FORMATS));
+  if (!sourceFormat || !VALID_FORMATS.has(sourceFormat)) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Unsupported or unrecognized request format: ${sourceFormat || "unknown"}`, undefined, { errorType: VALIDATION_ERROR_TYPES.UNSUPPORTED_REQUEST, errorCode: VALIDATION_ERROR_TYPES.UNSUPPORTED_REQUEST });
+  }
+
+  const hasMessages = body.messages && Array.isArray(body.messages);
+  const hasInput = body.input && (Array.isArray(body.input) || typeof body.input === "string");
+  const hasContents = body.contents && Array.isArray(body.contents);
+  const hasRequest = body.request?.contents && Array.isArray(body.request.contents);
+  if (!hasMessages && !hasInput && !hasContents && !hasRequest) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Request body missing required field: messages, input, or contents", undefined, { errorType: VALIDATION_ERROR_TYPES.MISSING_REQUIRED_FIELD, errorCode: VALIDATION_ERROR_TYPES.MISSING_REQUIRED_FIELD });
+  }
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(body, model, userAgent, ccFilterNaming);
@@ -44,11 +63,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const modelTargetFormat = getModelTargetFormat(alias, model);
   const targetFormat = modelTargetFormat || getTargetFormat(provider);
+  if (!targetFormat) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Unsupported provider target format for ${provider}/${model}`, undefined, { errorType: VALIDATION_ERROR_TYPES.UNSUPPORTED_REQUEST, errorCode: VALIDATION_ERROR_TYPES.UNSUPPORTED_REQUEST });
+  }
   const stripList = getModelStrip(alias, model);
+
+  // Early passthrough detection: needed before any body mutations to enforce
+  // "passthrough means passthrough — only model + auth are swapped" (Requirement 1.2)
+  const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
+  const passthrough = isNativePassthrough(clientTool, provider);
 
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
-  if (providerThinking?.mode && providerThinking.mode !== "auto") {
+  // PASSTHROUGH GUARD: Do NOT inject thinking config in passthrough mode — only model + auth are swapped.
+  if (!passthrough && providerThinking?.mode && providerThinking.mode !== "auto") {
     const mode = providerThinking.mode;
     if (mode === "on" && !body.thinking) {
       console.log("Injecting provider-level thinking config override: on");
@@ -67,8 +95,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
   // Only force non-streaming when client didn't explicitly request it.
-  const detectedTool = detectClientTool(clientRawRequest?.headers || {}, body);
-  if (detectedTool === "deepseek-tui" && body.stream !== true) stream = false;
+  if (clientTool === "deepseek-tui" && body.stream !== true) stream = false;
 
   // Check client Accept header preference for non-streaming requests
   // This fixes AI SDK compatibility where clients send Accept: application/json
@@ -79,34 +106,55 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     stream = false;
   }
 
-  const reqLogger = await createRequestLogger(sourceFormat, targetFormat, model);
+  const reqLogger = await createRequestLogger(sourceFormat, targetFormat, model, { passthrough });
   if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientRawRequest.body, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
 
   // Native passthrough: CLI tool and provider are the same ecosystem
   // Skip all translation/normalization — only model and Bearer are swapped
-  const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
-  const passthrough = isNativePassthrough(clientTool, provider);
+  // (clientTool and passthrough already detected earlier, before any body mutations)
 
   let translatedBody;
   let toolNameMap;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...body, model };
+    // Anthropic compatibility: strip provider prefixes from built-in tool model fields.
+    // Passthrough preserves request shape except for this known upstream rejection fix.
+    if ((provider === "claude" || provider?.startsWith("anthropic-compatible")) && Array.isArray(translatedBody.tools)) {
+      translatedBody.tools = cleanAnthropicToolDefinitions(translatedBody.tools, provider);
+      if (translatedBody.tools.length === 0) {
+        delete translatedBody.tools;
+        delete translatedBody.tool_choice;
+      }
+    }
   } else {
-    translatedBody = translateRequest(sourceFormat, targetFormat, model, body, stream, credentials, provider, reqLogger, stripList, connectionId, clientTool);
+    try {
+      translatedBody = translateRequest(sourceFormat, targetFormat, model, body, stream, credentials, provider, reqLogger, stripList, connectionId, clientTool);
+    } catch (translationError) {
+      trackPendingRequest(model, provider, connectionId, false, true);
+      const errMsg = translationError?.message || "Translation threw an unexpected error";
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request from ${sourceFormat} to ${targetFormat}: ${errMsg}`, undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
+    }
     if (!translatedBody) {
       trackPendingRequest(model, provider, connectionId, false, true);
-      return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request for ${sourceFormat} → ${targetFormat}`);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request from ${sourceFormat} to ${targetFormat}`, undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
     }
     toolNameMap = translatedBody._toolNameMap;
     delete translatedBody._toolNameMap;
     translatedBody.model = model;
+
+    // Post-translation validation: ensure translated body is a valid object with content
+    if (!translatedBody || typeof translatedBody !== "object") {
+      trackPendingRequest(model, provider, connectionId, false, true);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Translation produced invalid output for ${targetFormat}`, undefined, { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED });
+    }
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
-  if (clientTool === "claude" && Array.isArray(translatedBody.tools)) {
+  // Passthrough (passthru) mode: do NOT alter tool definitions — preserve client's intended request shape.
+  if (!passthrough && clientTool === "claude" && Array.isArray(translatedBody.tools)) {
     const { tools: deduped, stripped } = dedupeTools(translatedBody.tools);
     if (stripped.length > 0) {
       translatedBody.tools = deduped;
@@ -118,43 +166,94 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
 
-  // Headroom: ML compression of full message history (prose, RAG, long conversations)
-  if (HEADROOM_AVAILABLE && headroomEnabled) {
-    const hrStats = await compressWithHeadroom(translatedBody, model);
-    if (hrStats && hrStats.saved > 0) {
-      const pct = Math.round((hrStats.saved / hrStats.before) * 100);
-      console.log(`[HEADROOM] saved ${hrStats.saved}B / ${hrStats.before}B (${pct}%)`);
+  // Passthrough compression guard: do NOT compress unless passthrough compression
+  // is explicitly enabled. This preserves provider-native message arrays in passthrough
+  // mode per AGENTS.md and Requirements 1.2, 7.3.
+  const compressionAllowed = !passthrough || passthroughCompression === true;
+
+  // Snapshot original body for recovery if compression fails
+  const originalBodySnapshot = compressionAllowed
+    ? JSON.stringify(translatedBody)
+    : null;
+
+  try {
+    // Headroom: ML compression of full message history (prose, RAG, long conversations)
+    if (compressionAllowed && headroomEnabled) {
+      const hrStats = await compressWithHeadroom(translatedBody, model);
+      if (hrStats && hrStats.saved > 0) {
+        const pct = Math.round((hrStats.saved / hrStats.before) * 100);
+        console.log(`[HEADROOM] saved ${hrStats.saved}B / ${hrStats.before}B (${pct}%)`);
+        // Only persist stats when compression actually produced output (Req 14.1)
+        recordCompressionStats("headroom", {
+          bytesBefore: hrStats.before || 0,
+          bytesAfter: hrStats.after || 0,
+          hits: 1,
+          detail: model,
+        }).catch(() => {});
+        saveCompressionStats({
+          subsystem: "headroom",
+          bytesBefore: hrStats.before || 0,
+          bytesAfter: hrStats.after || 0,
+        }).catch(() => {});
+      }
     }
-    recordCompressionStats("headroom", {
-      bytesBefore: hrStats?.before || 0,
-      bytesAfter: hrStats?.after || 0,
-      hits: hrStats?.saved > 0 ? 1 : 0,
-      detail: hrStats?.saved > 0 ? model : "skipped",
-    }).catch(() => {});
-  }
 
-  // RTK: compress tool_result content
-  const rtkStats = compressMessages(translatedBody, rtkEnabled);
-  const rtkLine = formatRtkLog(rtkStats);
-  if (rtkLine) console.log(rtkLine);
-  if (rtkEnabled) {
-    const filters = Array.from(new Set((rtkStats?.hits || []).map((hit) => hit.filter))).join(",");
-    recordCompressionStats("rtk", {
-      bytesBefore: rtkStats?.bytesBefore || 0,
-      bytesAfter: rtkStats?.bytesAfter || 0,
-      hits: rtkStats?.hits?.length || 0,
-      detail: filters || "no compression",
-    }).catch(() => {});
-  }
+    // RTK: compress tool_result content
+    if (compressionAllowed) {
+      const rtkStats = compressMessages(translatedBody, rtkEnabled);
+      const rtkLine = formatRtkLog(rtkStats);
+      if (rtkLine) console.log(rtkLine);
+      // Only persist stats when RTK actually compressed something (Req 14.1)
+      if (rtkEnabled && (rtkStats?.hits?.length > 0 || (rtkStats?.bytesBefore > 0 && rtkStats?.bytesAfter < rtkStats?.bytesBefore))) {
+        const filters = Array.from(new Set((rtkStats?.hits || []).map((hit) => hit.filter))).join(",");
+        recordCompressionStats("rtk", {
+          bytesBefore: rtkStats?.bytesBefore || 0,
+          bytesAfter: rtkStats?.bytesAfter || 0,
+          hits: rtkStats?.hits?.length || 0,
+          detail: filters || "no compression",
+        }).catch(() => {});
+        saveCompressionStats({
+          subsystem: "rtk",
+          bytesBefore: rtkStats?.bytesBefore || 0,
+          bytesAfter: rtkStats?.bytesAfter || 0,
+          filterHits: filters ? JSON.stringify(rtkStats.hits.map((h) => h.filter)) : null,
+        }).catch(() => {});
+      }
+    }
 
-  // Caveman: inject terse-style system prompt
-  if (cavemanEnabled && cavemanLevel) {
-    injectCaveman(translatedBody, finalFormat, cavemanLevel);
-    log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
-    recordCompressionStats("caveman", {
-      hits: 1,
-      detail: `level=${cavemanLevel}`,
-    }).catch(() => {});
+    // Caveman: inject terse-style system prompt
+    if (compressionAllowed && cavemanEnabled && cavemanLevel) {
+      const cavemanInjected = injectCaveman(translatedBody, finalFormat, cavemanLevel);
+      if (cavemanInjected) {
+        log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
+        recordCompressionStats("caveman", {
+          hits: 1,
+          detail: `level=${cavemanLevel}`,
+        }).catch(() => {});
+        saveCompressionStats({
+          subsystem: "caveman",
+          bytesBefore: 0,
+          bytesAfter: 0,
+          level: cavemanLevel,
+        }).catch(() => {});
+      }
+    }
+  } catch (compressionError) {
+    // Compression failure must never send partially compressed content (Req 7.11)
+    if (originalBodySnapshot) {
+      try {
+        const restored = JSON.parse(originalBodySnapshot);
+        Object.assign(translatedBody, restored);
+        for (const key of Object.keys(translatedBody)) {
+          if (!(key in restored)) delete translatedBody[key];
+        }
+      } catch {
+        // If restore fails, translatedBody may be partially modified but we continue
+      }
+      console.warn(`[COMPRESSION] Compression failed, continuing with original content: ${compressionError.message}`);
+    } else {
+      console.warn(`[COMPRESSION] Error during compression, continuing: ${compressionError.message}`);
+    }
   }
 
   const executor = getExecutor(provider);
@@ -209,7 +308,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
   try {
-    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, passthrough });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
@@ -248,7 +347,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
         try {
-          const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+          const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, passthrough });
           if (retryResult.response.ok) { providerResponse = retryResult.response; providerUrl = retryResult.url; }
         } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
       } else {
@@ -262,6 +361,49 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Provider returned error
   if (!providerResponse.ok) {
     trackPendingRequest(model, provider, connectionId, false, true);
+
+    // PASSTHROUGH GUARD: In passthrough mode, preserve the upstream error response shape.
+    // Do NOT reformat into a generic proxy error — relay the provider's native error body.
+    if (passthrough) {
+      let errorBody;
+      let errorBodyText;
+      const upstreamContentType = providerResponse.headers.get("content-type") || "";
+      try {
+        errorBodyText = await providerResponse.text();
+        try { errorBody = JSON.parse(errorBodyText); } catch { errorBody = null; }
+      } catch {
+        errorBodyText = "";
+        errorBody = null;
+      }
+      appendRequestLog({ model, provider, connectionId, status: `FAILED ${providerResponse.status}` }).catch(() => { });
+      saveRequestDetail(buildRequestDetail({
+        provider, model, connectionId,
+        latency: { ttft: 0, total: Date.now() - requestStartTime },
+        tokens: { prompt_tokens: 0, completion_tokens: 0 },
+        request: extractRequestConfig(body, stream),
+        providerRequest: finalBody || translatedBody || null,
+        response: { error: errorBodyText || `Upstream error: ${providerResponse.status}`, status: providerResponse.status, thinking: null },
+        status: "error"
+      })).catch(() => { });
+      const errMsg = formatProviderError(new Error(errorBodyText || `Upstream error: ${providerResponse.status}`), provider, model, providerResponse.status);
+      console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
+      reqLogger.logError(new Error(errorBodyText || "upstream error"), finalBody || translatedBody);
+
+      // Return the provider's native error body as-is
+      const responseHeaders = { "Access-Control-Allow-Origin": "*" };
+      if (upstreamContentType) responseHeaders["Content-Type"] = upstreamContentType;
+      else responseHeaders["Content-Type"] = "application/json";
+      return {
+        success: false,
+        status: providerResponse.status,
+        error: errorBodyText || `Upstream error: ${providerResponse.status}`,
+        response: new Response(errorBodyText || "", {
+          status: providerResponse.status,
+          headers: responseHeaders
+        })
+      };
+    }
+
     const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
@@ -280,21 +422,27 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     return createErrorResult(statusCode, errMsg, resetsAtMs);
   }
 
-  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess };
+  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, passthrough };
   const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
   const trackDone = () => trackPendingRequest(model, provider, connectionId, false);
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, trackDone, appendLog });
-    if (result) { streamController.handleComplete(); return result; }
+    try {
+      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, trackDone, appendLog });
+      if (result) return result;
+    } finally {
+      streamController.handleComplete();
+    }
   }
 
   // True non-streaming response
   if (!stream) {
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
-    streamController.handleComplete();
-    return result;
+    try {
+      return await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    } finally {
+      streamController.handleComplete();
+    }
   }
 
   // Streaming response

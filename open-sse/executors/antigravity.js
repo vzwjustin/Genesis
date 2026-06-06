@@ -196,7 +196,7 @@ export class AntigravityExecutor extends BaseExecutor {
     return totalMs > 0 ? totalMs : null;
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
@@ -207,7 +207,9 @@ export class AntigravityExecutor extends BaseExecutor {
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex);
-      const transformedBody = this.transformRequest(model, body, stream, credentials);
+      // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
+      // Only model name + auth header are swapped (Requirement 1.2).
+      const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
       const sessionId = transformedBody.request?.sessionId;
       const headers = this.buildHeaders(credentials, stream, sessionId);
 

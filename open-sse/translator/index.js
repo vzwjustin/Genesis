@@ -46,6 +46,7 @@ function ensureInitialized() {
   require("./response/claude-to-openai.js");
   require("./response/openai-to-claude.js");
   require("./response/gemini-to-openai.js");
+  require("./response/openai-to-gemini.js");
   require("./response/openai-to-antigravity.js");
   require("./response/openai-responses.js");
   require("./response/kiro-to-openai.js");
@@ -179,6 +180,14 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
         const converted = fromOpenAI(r, state);
         if (converted) {
           finalResults.push(...(Array.isArray(converted) ? converted : [converted]));
+        }
+      }
+      // When chunk is null (flush), also flush step 2 if step 1 produced no output.
+      // This ensures the step-2 translator can emit any buffered content (e.g. tool args).
+      if (chunk === null && results.length === 0) {
+        const flushed = fromOpenAI(null, state);
+        if (flushed) {
+          finalResults.push(...(Array.isArray(flushed) ? flushed : [flushed]));
         }
       }
       results = finalResults;

@@ -225,10 +225,12 @@ export class CursorExecutor extends BaseExecutor {
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
     const url = this.buildUrl();
     const headers = this.buildHeaders(credentials);
-    const transformedBody = this.transformRequest(model, body, stream, credentials);
+    // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
+    // Only model name + auth header are swapped (Requirement 1.2).
+    const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
 
     try {
       const shouldForceFetch = proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true || !!proxyOptions?.vercelRelayUrl;

@@ -67,7 +67,7 @@ export { createStreamController, pipeWithDisconnect, createDisconnectAwareStream
 export { getExecutor, hasSpecializedExecutor } from "./executors/index.js";
 
 // Utils
-export { errorResponse, formatProviderError } from "./utils/error.js";
+export { errorResponse, validationErrorResponse, VALIDATION_ERROR_TYPES, formatProviderError } from "./utils/error.js";
 export { 
   createSSETransformStreamWithLogger, 
   createPassthroughStreamWithLogger 
