@@ -38,16 +38,14 @@ export default function DashboardOverviewClient() {
   const [providerCount, setProviderCount] = useState(null);
   const [cliStats, setCliStats] = useState({ configured: 0, total: 0 });
   const [requestsToday, setRequestsToday] = useState(null);
-  const [version, setVersion] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [providersRes, cliRes, versionRes, usageRes] = await Promise.all([
+        const [providersRes, cliRes, usageRes] = await Promise.all([
           fetch("/api/providers"),
           fetch("/api/cli-tools/all-statuses"),
-          fetch("/api/version"),
           fetch("/api/usage/stats?period=today"),
         ]);
         if (cancelled) return;
@@ -64,10 +62,6 @@ export default function DashboardOverviewClient() {
           }
           setCliStats({ configured, total: toolIds.length });
         }
-        if (versionRes.ok) {
-          const v = await versionRes.json();
-          setVersion(v.version || "");
-        }
         if (usageRes.ok) {
           const usage = await usageRes.json();
           setRequestsToday(usage.totalRequests ?? 0);
@@ -83,12 +77,6 @@ export default function DashboardOverviewClient() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      {version ? (
-        <div className="flex justify-end">
-          <span className="text-xs text-text-muted font-mono">v{version}</span>
-        </div>
-      ) : null}
-
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {loading ? (
           <>
@@ -100,15 +88,21 @@ export default function DashboardOverviewClient() {
         ) : (
           <>
             <Card padding="sm">
-              <p className="text-xs text-text-muted">Providers</p>
-              <p className="text-2xl font-semibold mt-1">{providerCount ?? "—"}</p>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-primary text-[16px]">dns</span>
+                <p className="text-xs text-text-muted">Providers</p>
+              </div>
+              <p className="text-2xl font-semibold">{providerCount ?? "—"}</p>
               <Link href="/dashboard/providers" className="text-xs text-primary mt-2 inline-block hover:underline">
                 Manage providers
               </Link>
             </Card>
             <Card padding="sm">
-              <p className="text-xs text-text-muted">CLI tools configured</p>
-              <p className="text-2xl font-semibold mt-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-primary text-[16px]">terminal</span>
+                <p className="text-xs text-text-muted">CLI tools configured</p>
+              </div>
+              <p className="text-2xl font-semibold">
                 {cliStats.total ? `${cliStats.configured}/${cliStats.total}` : "—"}
               </p>
               <Link href="/dashboard/cli-tools" className="text-xs text-primary mt-2 inline-block hover:underline">
@@ -116,15 +110,21 @@ export default function DashboardOverviewClient() {
               </Link>
             </Card>
             <Card padding="sm">
-              <p className="text-xs text-text-muted">Requests today</p>
-              <p className="text-2xl font-semibold mt-1">{formatRequestCount(requestsToday)}</p>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-primary text-[16px]">bar_chart</span>
+                <p className="text-xs text-text-muted">Requests today</p>
+              </div>
+              <p className="text-2xl font-semibold">{formatRequestCount(requestsToday)}</p>
               <Link href="/dashboard/usage" className="text-xs text-primary mt-2 inline-block hover:underline">
                 View usage
               </Link>
             </Card>
             <Card padding="sm">
-              <p className="text-xs text-text-muted">Remote access</p>
-              <p className="text-2xl font-semibold mt-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-primary text-[16px]">public</span>
+                <p className="text-xs text-text-muted">Remote access</p>
+              </div>
+              <p className="text-2xl font-semibold">
                 {security.tunnelEnabled || security.tailscaleEnabled ? "On" : "Off"}
               </p>
               <Link href="/dashboard/endpoint" className="text-xs text-primary mt-2 inline-block hover:underline">

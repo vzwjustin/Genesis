@@ -355,7 +355,7 @@ export default function ProvidersPage() {
               variant="secondary"
               icon="add"
               onClick={() => setShowAddCompatibleModal(true)}
-              className="w-full !bg-white !text-black hover:!bg-gray-100 sm:w-auto"
+              className="w-full sm:w-auto"
             >
               Add OpenAI Compatible
             </Button>
@@ -605,19 +605,6 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
   const { connected, error, errorCode, errorTime, allDisabled } = stats;
   const isNoAuth = !!provider.noAuth;
 
-  const dotColors = {
-    free: "bg-green-500",
-    oauth: "bg-blue-500",
-    apikey: "bg-amber-500",
-    compatible: "bg-orange-500",
-  };
-  const dotLabels = {
-    free: "Free",
-    oauth: "OAuth",
-    apikey: "API Key",
-    compatible: "Compatible",
-  };
-
   return (
     <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0">
       <Card
@@ -723,19 +710,6 @@ function ApiKeyProviderCard({
   const isAnthropicCompatible = providerId.startsWith(
     ANTHROPIC_COMPATIBLE_PREFIX,
   );
-
-  const dotColors = {
-    free: "bg-green-500",
-    oauth: "bg-blue-500",
-    apikey: "bg-amber-500",
-    compatible: "bg-orange-500",
-  };
-  const dotLabels = {
-    free: "Free",
-    oauth: "OAuth",
-    apikey: "API Key",
-    compatible: "Compatible",
-  };
 
   const getIconPath = () => {
     if (isCompatible)
