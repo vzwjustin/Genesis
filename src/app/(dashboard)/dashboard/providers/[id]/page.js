@@ -1279,7 +1279,7 @@ export default function ProviderDetailPage() {
           ) : (
             <>
               {oneByOneSummary && (
-                <div className="mb-4 rounded-lg border border-border bg-black/[0.02] px-3 py-2 text-xs text-text-muted border-border dark:bg-white/[0.03]">
+                <div className="mb-4 rounded-lg border border-border bg-bg-alt px-3 py-2 text-xs text-text-muted">
                   <div className="flex flex-wrap items-center gap-3">
                     <span>Total: {oneByOneSummary.total}</span>
                     <span>Completed: {oneByOneSummary.completed}</span>

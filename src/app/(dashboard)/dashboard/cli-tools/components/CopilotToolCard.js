@@ -209,7 +209,7 @@ useEffect(() => {
             <>
               <InlineAlert
                 variant="info"
-                title={<>Writes to <code className="px-1 bg-black/5 dark:bg-white/10 rounded">chatLanguageModels.json</code></>}
+                title={<>Writes to <code className="px-1 bg-surface-2 rounded">chatLanguageModels.json</code></>}
                 message="Reload VS Code after applying for changes to take effect."
               />
 
@@ -246,7 +246,7 @@ useEffect(() => {
                         <span className="text-xs text-text-muted">No models selected</span>
                       ) : (
                         selectedModels.map((model) => (
-                          <span key={model} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-black/5 dark:bg-white/5 text-text-muted border border-transparent hover:border-border">
+                          <span key={model} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-surface-2 text-text-muted border border-transparent hover:border-border">
                             {model}
                             <button onClick={(e) => { e.stopPropagation(); removeModel(model); }} className="ml-0.5 hover:text-danger">
                               <span className="material-symbols-outlined text-[12px]">close</span>

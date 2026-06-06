@@ -816,7 +816,7 @@ export default function ProviderLimits() {
                       </span>
                     )}
                   </button>
-                  <div className="my-1 h-px bg-black/10 dark:bg-white/10" />
+                  <div className="my-1 h-px bg-border" />
                   <div className="max-h-72 overflow-y-auto pr-1">
                     {providerOptions.map((provider) => (
                       <button

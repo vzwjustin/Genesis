@@ -159,7 +159,7 @@ export default function QuotaTable({
               return (
                 <tr
                   key={`${quota.name}-${quota.index}`}
-                  className="border-b border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
+                  className="border-b border-border-subtle hover:bg-bg-alt/50 transition-colors"
                 >
                   <td className={`${cellPad} w-[30%]`}>
                     <div className="flex items-center gap-1.5 min-w-0">

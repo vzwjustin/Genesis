@@ -305,7 +305,7 @@ export default function ComboDetailPage() {
               const { providerId, model } = parseModelEntry(entry);
               const p = AI_PROVIDERS[providerId];
               return (
-                <div key={`${entry}-${idx}`} className="flex items-center gap-3 p-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.02]">
+                <div key={`${entry}-${idx}`} className="flex items-center gap-3 p-2 rounded-lg bg-bg-alt/50">
                   <span className="text-xs text-text-muted w-5 text-center">{idx + 1}</span>
                   <ProviderIcon
                     src={`/providers/${providerId}.png`}
@@ -346,7 +346,7 @@ export default function ComboDetailPage() {
               {testing ? "Running..." : "Run"}
             </Button>
           </div>
-          <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+          <pre className="text-xs font-mono bg-bg-alt p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
             {curlExample}
           </pre>
           {testError && (
@@ -380,7 +380,7 @@ export default function ComboDetailPage() {
                 </div>
               )}
               {testResult.json && (
-                <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-auto max-h-[300px] whitespace-pre-wrap break-all">
+                <pre className="text-xs font-mono bg-bg-alt p-3 rounded-lg overflow-auto max-h-[300px] whitespace-pre-wrap break-all">
                   {testResult.json}
                 </pre>
               )}
@@ -395,7 +395,7 @@ export default function ComboDetailPage() {
         {logs.length === 0 ? (
           <p className="text-xs text-text-muted italic">No usage yet.</p>
         ) : (
-          <pre className="text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-auto max-h-[400px] whitespace-pre-wrap">
+          <pre className="text-[11px] font-mono bg-bg-alt p-3 rounded-lg overflow-auto max-h-[400px] whitespace-pre-wrap">
             {logs.join("\n")}
           </pre>
         )}

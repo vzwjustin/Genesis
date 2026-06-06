@@ -109,12 +109,12 @@ export default function ProviderLimitCard({
       {loading && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <div className="h-4 bg-black/5 dark:bg-white/5 rounded animate-pulse" />
-            <div className="h-2 bg-black/5 dark:bg-white/5 rounded animate-pulse" />
+            <div className="h-4 bg-surface-2 rounded animate-pulse" />
+            <div className="h-2 bg-surface-2 rounded animate-pulse" />
           </div>
           <div className="space-y-2">
-            <div className="h-4 bg-black/5 dark:bg-white/5 rounded animate-pulse" />
-            <div className="h-2 bg-black/5 dark:bg-white/5 rounded animate-pulse" />
+            <div className="h-4 bg-surface-2 rounded animate-pulse" />
+            <div className="h-2 bg-surface-2 rounded animate-pulse" />
           </div>
         </div>
       )}
