@@ -92,7 +92,7 @@ export default function ProviderLimitCard({
         <button
           onClick={handleRefresh}
           disabled={refreshing || loading}
-          className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="p-2 rounded-lg hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           title="Refresh quota"
         >
           <span

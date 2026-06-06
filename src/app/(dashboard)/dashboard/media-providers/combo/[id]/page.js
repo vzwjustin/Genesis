@@ -320,10 +320,10 @@ export default function ComboDetailPage() {
                     {model && <code className="text-[10px] text-text-muted font-mono truncate block">{model}</code>}
                   </div>
                   <div className="flex items-center gap-0.5">
-                    <button onClick={() => handleMove(idx, -1)} disabled={idx === 0} className={`p-1 rounded ${idx === 0 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-black/5"}`} title="Move up">
+                    <button onClick={() => handleMove(idx, -1)} disabled={idx === 0} className={`p-1 rounded ${idx === 0 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-surface-2"}`} title="Move up">
                       <span className="material-symbols-outlined text-[16px]">arrow_upward</span>
                     </button>
-                    <button onClick={() => handleMove(idx, 1)} disabled={idx === providers.length - 1} className={`p-1 rounded ${idx === providers.length - 1 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-black/5"}`} title="Move down">
+                    <button onClick={() => handleMove(idx, 1)} disabled={idx === providers.length - 1} className={`p-1 rounded ${idx === providers.length - 1 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-surface-2"}`} title="Move down">
                       <span className="material-symbols-outlined text-[16px]">arrow_downward</span>
                     </button>
                     <button onClick={() => handleRemoveProvider(idx)} className="p-1 rounded text-text-muted hover:text-danger hover:bg-danger/10" title="Remove">

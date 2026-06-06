@@ -181,7 +181,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                         added
                           ? "bg-success/10 text-success cursor-default"
                           : expanded
-                          ? "bg-surface border border-border text-text-muted hover:bg-black/5"
+                          ? "bg-surface border border-border text-text-muted hover:bg-surface-2"
                           : "bg-primary/10 border border-primary/40 text-primary hover:bg-primary/20"
                       }`}
                     >
