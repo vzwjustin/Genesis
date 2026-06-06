@@ -120,7 +120,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
           ) : (
             <div className="space-y-6">
               {/* Instructions */}
-              <div className="bg-bg-subtle border border-border rounded-lg p-3 text-sm">
+              <div className="bg-bg-alt border border-border rounded-lg p-3 text-sm">
                 <p className="font-medium mb-1">Pricing Rates Format</p>
                 <p className="text-text-muted">
                   All rates are in <strong>dollars per million tokens</strong> ($/1M tokens).
@@ -133,12 +133,12 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                 const models = Object.keys(pricingData[provider]).sort();
                 return (
                   <div key={provider} className="border border-border rounded-lg overflow-hidden">
-                    <div className="bg-bg-subtle px-4 py-2 font-semibold text-sm">
+                    <div className="bg-bg-alt px-4 py-2 font-semibold text-sm">
                       {provider.toUpperCase()}
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-bg-hover text-text-muted uppercase text-xs">
+                        <thead className="bg-surface-2 text-text-muted uppercase text-xs">
                           <tr>
                             <th className="px-3 py-2 text-left">Model</th>
                             <th className="px-3 py-2 text-right">Input</th>
@@ -150,7 +150,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                         </thead>
                         <tbody className="divide-y divide-border">
                           {models.map(model => (
-                            <tr key={model} className="hover:bg-bg-subtle/50">
+                            <tr key={model} className="hover:bg-bg-alt/50">
                               <td className="px-3 py-2 font-medium">{model}</td>
                               {pricingFields.map(field => (
                                 <td key={field} className="px-3 py-2">
