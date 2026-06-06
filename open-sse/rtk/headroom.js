@@ -39,6 +39,26 @@ function invalidateProbe() {
   probeCache.ts = 0;
 }
 
+function shouldSkipHeadroomForMessages(messages) {
+  const cacheFloor = findCacheFloor(messages);
+  const tail = messages.slice(cacheFloor + 1);
+  if (tail.length === 0) return true;
+  if (tail.every((m) => m?.role === "system" || m?.role === "developer")) return true;
+  return false;
+}
+
+function shouldSkipHeadroomForInput(input) {
+  const cacheFloor = findCacheFloor(input);
+  const tail = input.slice(cacheFloor + 1);
+  if (tail.length === 0) return true;
+  const messageRoles = tail
+    .filter((item) => item?.type === "message")
+    .map((item) => item.role);
+  if (messageRoles.length === 0) return true;
+  if (messageRoles.every((role) => role === "system" || role === "developer")) return true;
+  return false;
+}
+
 // Returns the index of the last message/item carrying a cache_control marker.
 function findCacheFloor(arr) {
   for (let i = arr.length - 1; i >= 0; i--) {
@@ -162,6 +182,10 @@ export async function compressWithHeadroom(body, model) {
   const hasMessages = Array.isArray(body.messages) && body.messages.length >= 2;
   const hasInput = Array.isArray(body.input) && body.input.length >= 2;
   if (!hasMessages && !hasInput) return null;
+
+  // Hard skip before probing service (Req 8.3): empty tail or system-only tail
+  if (hasMessages && shouldSkipHeadroomForMessages(body.messages)) return null;
+  if (hasInput && shouldSkipHeadroomForInput(body.input)) return null;
 
   const compress = await loadCompress();
   if (!compress) return null;

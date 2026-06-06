@@ -1,5 +1,5 @@
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -146,6 +146,21 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_provider ON requestDetails(provider)",
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
+    ],
+  },
+  compressionStats: {
+    columns: {
+      id: "INTEGER PRIMARY KEY AUTOINCREMENT",
+      timestamp: "TEXT NOT NULL",
+      subsystem: "TEXT NOT NULL",
+      bytes_before: "INTEGER NOT NULL",
+      bytes_after: "INTEGER NOT NULL",
+      filter_hits: "TEXT",
+      level: "TEXT",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_cs_ts ON compressionStats(timestamp DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_cs_subsystem ON compressionStats(subsystem)",
     ],
   },
 };

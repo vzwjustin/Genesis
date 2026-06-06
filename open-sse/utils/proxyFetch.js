@@ -142,11 +142,28 @@ async function resolveRealIP(hostname) {
 /**
  * Check if request should bypass MITM DNS redirect
  */
+function hostnameMatchesMitmBypass(hostname, bypassHost) {
+  const host = hostname.toLowerCase();
+  const pattern = bypassHost.toLowerCase();
+  return host === pattern || host.endsWith(`.${pattern}`);
+}
+
 function shouldBypassMitmDns(url) {
   try {
     const hostname = new URL(url).hostname;
-    return MITM_BYPASS_HOSTS.some(host => hostname.includes(host));
+    return MITM_BYPASS_HOSTS.some((host) => hostnameMatchesMitmBypass(hostname, host));
   } catch { return false; }
+}
+
+function serializeBypassRequestBody(body) {
+  if (body == null) return undefined;
+  if (typeof body === "string") return body;
+  if (Buffer.isBuffer(body)) return body;
+  if (body instanceof Uint8Array) return Buffer.from(body);
+  if (typeof body === "object" && typeof body.pipe === "function") {
+    throw new Error("[ProxyFetch] Streaming request bodies are not supported on MITM bypass path");
+  }
+  return JSON.stringify(body);
 }
 
 function shouldBypassByNoProxy(targetUrl, noProxyValue) {
@@ -281,8 +298,8 @@ async function createBypassRequest(parsedUrl, realIP, options) {
       });
 
       req.on("error", reject);
-      if (options.body) {
-        req.write(typeof options.body === "string" ? options.body : JSON.stringify(options.body));
+      if (options.body != null) {
+        req.write(serializeBypassRequestBody(options.body));
       }
       req.end();
     });
@@ -312,6 +329,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
 
   // MITM DNS bypass: for known MITM-intercepted hosts, resolve real IP to avoid DNS spoof
   if (shouldBypassMitmDns(targetUrl)) {
+    const parsedUrl = new URL(targetUrl);
     if (proxyUrl) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
@@ -324,14 +342,12 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);
       }
     }
-    // No proxy — manually resolve real IP to bypass DNS spoof
-    try {
-      const parsedUrl = new URL(targetUrl);
-      const realIP = await resolveRealIP(parsedUrl.hostname);
-      if (realIP) return await createBypassRequest(parsedUrl, realIP, options);
-    } catch (error) {
-      console.warn(`[ProxyFetch] MITM bypass failed: ${error.message}`);
+    // No proxy (or proxy failed) — external DNS + direct socket; never fall back to system DNS
+    const realIP = await resolveRealIP(parsedUrl.hostname);
+    if (!realIP) {
+      throw new Error(`[ProxyFetch] External DNS resolution failed for MITM bypass host: ${parsedUrl.hostname}`);
     }
+    return await createBypassRequest(parsedUrl, realIP, options);
   }
 
   if (proxyUrl) {
@@ -366,3 +382,13 @@ if (globalThis.fetch !== patchedFetch) {
 }
 
 export default patchedFetch;
+
+export {
+  resolveConnectionProxyUrl,
+  getEnvProxyUrl,
+  shouldBypassMitmDns,
+  shouldBypassByNoProxy,
+  normalizeProxyUrl,
+  resolveRealIP,
+  MITM_BYPASS_HOSTS,
+};

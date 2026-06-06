@@ -1,4 +1,5 @@
 import { getMeta, setMeta } from "./db/helpers/metaStore.js";
+import { getAdapter } from "./db/driver.js";
 
 const META_KEY = "compressionStats";
 const TOOL_IDS = ["rtk", "caveman", "headroom"];
@@ -105,12 +106,92 @@ export async function recordCompressionStats(tool, event = {}) {
     return stats;
   });
 
-  writeQueue = nextWrite;
-  return nextWrite;
+  writeQueue = nextWrite.catch(() => {});
+  return nextWrite.catch(async (err) => {
+    try {
+      console.error("[compressionStats] Failed to record stats:", err.message);
+    } catch {
+      // Continue unconditionally if logging also fails (Req 14.4)
+    }
+    return getCompressionStats();
+  });
 }
 
 export async function resetCompressionStats() {
   const stats = emptyStats();
   await setMeta(META_KEY, JSON.stringify(stats));
   return stats;
+}
+
+
+/**
+ * Save an individual compression stats record to the SQLite compressionStats table.
+ * This writes a per-request row (as opposed to the aggregated JSON blob in _meta).
+ *
+ * @param {object} record
+ * @param {string} record.subsystem - 'rtk' | 'headroom' | 'caveman'
+ * @param {number} record.bytesBefore - bytes before compression
+ * @param {number} record.bytesAfter - bytes after compression
+ * @param {string} [record.filterHits] - JSON string of filter names (optional)
+ * @param {string} [record.level] - Caveman intensity level (optional)
+ * @param {string} [record.timestamp] - ISO8601 timestamp (defaults to now)
+ */
+export async function saveCompressionStats(record) {
+  try {
+    const db = await getAdapter();
+    const timestamp = record.timestamp || new Date().toISOString();
+    const subsystem = record.subsystem;
+    const bytesBefore = Number(record.bytesBefore) || 0;
+    const bytesAfter = Number(record.bytesAfter) || 0;
+    const filterHits = record.filterHits || null;
+    const level = record.level || null;
+
+    await db.run(
+      `INSERT INTO compressionStats(timestamp, subsystem, bytes_before, bytes_after, filter_hits, level) VALUES(?, ?, ?, ?, ?, ?)`,
+      [timestamp, subsystem, bytesBefore, bytesAfter, filterHits, level]
+    );
+  } catch (err) {
+    // Stats write failure must never interrupt the request (Req 14.3)
+    try {
+      console.error("[compressionStats] Failed to save stats record:", err.message);
+    } catch {
+      // If logging fails, still continue unconditionally (Req 14.4)
+    }
+  }
+}
+
+/**
+ * Retrieve compression stats records from the SQLite table.
+ * @param {object} [filter]
+ * @param {string} [filter.subsystem] - filter by subsystem
+ * @param {string} [filter.since] - ISO8601 timestamp lower bound
+ * @param {number} [filter.limit] - max rows to return (default 100)
+ * @returns {Promise<Array>}
+ */
+export async function getCompressionStatsHistory(filter = {}) {
+  try {
+    const db = await getAdapter();
+    const conds = [];
+    const params = [];
+
+    if (filter.subsystem) {
+      conds.push("subsystem = ?");
+      params.push(filter.subsystem);
+    }
+    if (filter.since) {
+      conds.push("timestamp >= ?");
+      params.push(filter.since);
+    }
+
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const limit = filter.limit || 100;
+    params.push(limit);
+
+    return db.all(
+      `SELECT id, timestamp, subsystem, bytes_before, bytes_after, filter_hits, level FROM compressionStats ${where} ORDER BY id DESC LIMIT ?`,
+      params
+    );
+  } catch {
+    return [];
+  }
 }

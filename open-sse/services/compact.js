@@ -3,10 +3,28 @@
  */
 
 /**
- * Get combo models from combos data
+ * Validate that a model string is an actionable provider/model target.
+ * A valid actionable target is a non-empty string that either:
+ *   - Contains a "/" (explicit provider/model format), OR
+ *   - Is a non-empty plain string (alias or model name that can be resolved downstream)
+ *
+ * @param {*} model - Value to validate
+ * @returns {boolean} True if the model is a valid actionable target
+ */
+export function isValidComboModelTarget(model) {
+  return typeof model === "string" && model.trim().length > 0;
+}
+
+/**
+ * Get combo models from combos data.
+ *
+ * A combo match succeeds only when it resolves to a valid actionable provider/model target.
+ * If the combo is found but has no valid actionable models, returns null (combo resolution failed).
+ * The caller must not treat the combo-name match alone as success.
+ *
  * @param {string} modelStr - Model string to check
  * @param {Array|Object} combosData - Array of combos or object with combos
- * @returns {string[]|null} Array of models or null if not a combo
+ * @returns {string[]|null} Array of valid models or null if not a combo / combo has no valid targets
  */
 export function getComboModelsFromData(modelStr, combosData) {
   // Don't check if it's in provider/model format
@@ -16,10 +34,14 @@ export function getComboModelsFromData(modelStr, combosData) {
   const combos = Array.isArray(combosData) ? combosData : (combosData?.combos || []);
   
   const combo = combos.find(c => c.name === modelStr);
-  if (combo && combo.models && combo.models.length > 0) {
-    return combo.models;
-  }
-  return null;
+  if (!combo || !combo.models || !Array.isArray(combo.models)) return null;
+
+  // Filter to only valid actionable targets — a combo match succeeds only when
+  // it resolves to at least one valid actionable provider/model target.
+  const validModels = combo.models.filter(isValidComboModelTarget);
+  if (validModels.length === 0) return null;
+
+  return validModels;
 }
 
 /**

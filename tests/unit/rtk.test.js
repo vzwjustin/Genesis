@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { compressMessages, formatRtkLog } from "../../open-sse/rtk/index.js";
+import { compressMessages, formatRtkLog, findLastCacheBoundary } from "../../open-sse/rtk/index.js";
 import { gitDiff } from "../../open-sse/rtk/filters/gitDiff.js";
 import { gitStatus } from "../../open-sse/rtk/filters/gitStatus.js";
 import { grep } from "../../open-sse/rtk/filters/grep.js";
@@ -341,6 +341,58 @@ describe("compressMessages (enabled)", () => {
     expect(stats).not.toBeNull();
     expect(stats.hits.length).toBeGreaterThan(0);
   });
+});
+
+describe("cache boundary preservation (Task 11.1)", () => {
+  it("findLastCacheBoundary returns index of last cache_control message", () => {
+    const messages = [
+      { role: "user", content: "a" },
+      { role: "assistant", content: [{ type: "text", text: "b", cache_control: { type: "ephemeral" } }] },
+      { role: "user", content: "c" },
+    ];
+    expect(findLastCacheBoundary(messages)).toBe(1);
+  });
+
+  it("findLastCacheBoundary returns -1 when no cache_control present", () => {
+    expect(findLastCacheBoundary([{ role: "user", content: "hi" }])).toBe(-1);
+  });
+
+  it("does not compress messages at or before cache_control boundary", () => {
+    const protectedTool = makeLongDiff();
+    const compressible = makeLongDiff();
+    const body = {
+      messages: [
+        { role: "user", content: "prefix" },
+        { role: "tool", tool_call_id: "protected", content: protectedTool },
+        { role: "assistant", content: "cached turn", cache_control: { type: "ephemeral" } },
+        { role: "tool", tool_call_id: "after", content: compressible },
+      ],
+    };
+    const beforeProtected = body.messages[1].content;
+    const stats = compressMessages(body, true);
+    expect(body.messages[1].content).toBe(beforeProtected);
+    expect(body.messages[2].content).toBe("cached turn");
+    expect(body.messages[3].content.length).toBeLessThan(compressible.length);
+    expect(stats.hits.length).toBeGreaterThan(0);
+  });
+});
+
+describe("RTK secondary fallback (Tasks 11.6–11.7)", () => {
+  it("uses smart-truncate when no named filter matches large unstructured blob", () => {
+    const input = Array.from({ length: 400 }, (_, i) => `unique unstructured line ${i} ${"z".repeat(40)}`).join("\n");
+    const body = { messages: [{ role: "tool", tool_call_id: "x", content: input }] };
+    const stats = compressMessages(body, true);
+    expect(stats.hits.some((h) => h.filter === "smart-truncate")).toBe(true);
+    expect(body.messages[0].content.length).toBeLessThan(input.length);
+  });
+
+  it("uses git-diff filter when detected and smaller than input", () => {
+    const input = makeLongDiff();
+    const body = { messages: [{ role: "tool", tool_call_id: "x", content: input }] };
+    const stats = compressMessages(body, true);
+    expect(stats.hits.some((h) => h.filter === "git-diff")).toBe(true);
+  });
+
 });
 
 describe("formatRtkLog", () => {

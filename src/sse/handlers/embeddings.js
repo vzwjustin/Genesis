@@ -2,10 +2,8 @@ import {
   getProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  isValidApiKey,
+  authenticateRequest,
 } from "../services/auth.js";
-import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -33,27 +31,9 @@ export async function handleEmbeddings(request) {
 
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  // Log API key (masked)
-  const apiKey = extractApiKey(request);
-  if (apiKey) {
-    log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
-  } else {
-    log.debug("AUTH", "No API key provided (local mode)");
-  }
-
-  // Enforce API key if enabled in settings
-  const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) {
-      log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
-      log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-    }
-  }
+  const auth = await authenticateRequest(request, log);
+  if (!auth.ok) return auth.response;
+  const { apiKey } = auth;
 
   if (!modelStr) {
     log.warn("EMBEDDINGS", "Missing model");
@@ -83,6 +63,7 @@ export async function handleEmbeddings(request) {
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let had5xx = false;
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
@@ -100,12 +81,24 @@ export async function handleEmbeddings(request) {
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
       }
       log.warn("EMBEDDINGS", "No more accounts available", { provider });
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503
+      const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
+      return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
     }
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+
+    // Requirement 3.6: If token refresh fails during pre-check, mark connection
+    // as unusable and proceed to Account_Fallback for the next available connection.
+    if (refreshedCredentials._tokenRefreshFailed) {
+      log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Token refresh failed";
+      lastStatus = 401;
+      continue;
+    }
 
     const result = await handleEmbeddingsCore({
       body: { ...body, model: `${provider}/${model}` },
@@ -134,6 +127,7 @@ export async function handleEmbeddings(request) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
+      if (result.status >= 500 && result.status < 600) had5xx = true;
       continue;
     }
 

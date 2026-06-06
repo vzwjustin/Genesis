@@ -35,9 +35,11 @@ export class KiroExecutor extends BaseExecutor {
   /**
    * Custom execute for Kiro - handles AWS EventStream binary response with retry support
    */
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
     const url = this.buildUrl(model, stream, 0);
-    const transformedBody = this.transformRequest(model, body, stream, credentials);
+    // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
+    // Only model name + auth header are swapped (Requirement 1.2).
+    const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
     
     // Merge default retry config with provider-specific config
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };

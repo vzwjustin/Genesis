@@ -17,6 +17,33 @@ export function hasValidContent(msg) {
   return false;
 }
 
+/**
+ * Clean Anthropic tool definitions for upstream compatibility.
+ * Client tools: strip model and type. Built-in tools: preserve properties but strip provider prefix from model.
+ */
+export function cleanAnthropicToolDefinitions(tools, provider) {
+  if (!tools || !Array.isArray(tools)) return tools;
+
+  let filtered = tools;
+  if (provider !== "claude") {
+    filtered = tools.filter((tool) => !tool.type || tool.type === "function");
+  }
+
+  return filtered.map((tool) => {
+    const { cache_control, ...rest } = tool;
+    if (!tool.type || tool.type === "function") {
+      const { model, type, ...clientRest } = rest;
+      return { ...clientRest };
+    }
+
+    const cleanedTool = { ...rest };
+    if (typeof cleanedTool.model === "string" && cleanedTool.model.includes("/")) {
+      cleanedTool.model = cleanedTool.model.slice(cleanedTool.model.indexOf("/") + 1);
+    }
+    return cleanedTool;
+  });
+}
+
 // Fix tool_use/tool_result ordering for Claude API
 // 1. Assistant message with tool_use: remove text AFTER tool_use (Claude doesn't allow)
 // 2. Merge consecutive same-role messages
@@ -188,29 +215,12 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
   // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
   if (body.tools && Array.isArray(body.tools)) {
-    // Strip built-in tools (e.g. web_search_20250305) for providers that don't support them
-    if (provider !== "claude") {
-      body.tools = body.tools.filter(tool => !tool.type || tool.type === "function");
-    }
-
+    body.tools = cleanAnthropicToolDefinitions(body.tools, provider);
     body.tools = body.tools.map((tool, i) => {
-      const { cache_control, ...rest } = tool;
-      let cleanedTool;
-      if (!tool.type || tool.type === "function") {
-        // Client tools — strip model and type
-        const { model, type, ...clientRest } = rest;
-        cleanedTool = { ...clientRest };
-      } else {
-        // Built-in tools — preserve all properties, but strip provider prefix from model
-        cleanedTool = { ...rest };
-        if (typeof cleanedTool.model === "string" && cleanedTool.model.includes("/")) {
-          cleanedTool.model = cleanedTool.model.slice(cleanedTool.model.indexOf("/") + 1);
-        }
-      }
       if (i === body.tools.length - 1) {
-        return { ...cleanedTool, cache_control: { type: "ephemeral", ttl: "1h" } };
+        return { ...tool, cache_control: { type: "ephemeral", ttl: "1h" } };
       }
-      return cleanedTool;
+      return tool;
     });
 
     // Remove tools array and tool_choice if empty after filtering

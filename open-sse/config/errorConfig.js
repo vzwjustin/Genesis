@@ -29,8 +29,9 @@ export const DEFAULT_ERROR_MESSAGES = {
 };
 
 // Exponential backoff config for rate limits
+// Starting at 1s, doubling per consecutive failure, capped at 5 minutes
 export const BACKOFF_CONFIG = {
-  base: 2000,
+  base: 1000,
   max: 5 * 60 * 1000,
   maxLevel: 15
 };
@@ -40,6 +41,11 @@ export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 
 // Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at can be 5-6h)
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
+
+// Minimum retry delay when all connections are in cooldown.
+// Never suggest an immediate retry when the provider is still unavailable.
+// Enforced even when all Cooldown reset times compute to 0 or negative.
+export const MIN_RETRY_DELAY_MS = 1000;
 
 // Cooldown durations (ms)
 const COOLDOWN = {
@@ -68,16 +74,17 @@ export const ERROR_RULES = [
   { text: "overloaded",               backoff: true },
 
   // --- Status-based rules (fallback when text doesn't match) ---
-  { status: 401, cooldownMs: COOLDOWN.long },
+  // 401/403: immediate fallback, no cooldown — token refresh already failed by this point (Req 4.3)
+  { status: 401, cooldownMs: 0 },
   { status: 402, cooldownMs: COOLDOWN.long },
-  { status: 403, cooldownMs: COOLDOWN.long },
+  { status: 403, cooldownMs: 0 },
   { status: 404, cooldownMs: COOLDOWN.long },
   { status: 429, backoff: true },
 ];
 
 // Backward compat: COOLDOWN_MS object (used by index.js re-export)
 export const COOLDOWN_MS = {
-  unauthorized: COOLDOWN.long,
+  unauthorized: 0,
   paymentRequired: COOLDOWN.long,
   notFound: COOLDOWN.long,
   transient: TRANSIENT_COOLDOWN_MS,

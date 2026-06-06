@@ -10,10 +10,31 @@ import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 
 /**
- * Translate non-streaming response body from provider format → OpenAI format.
+ * Translate non-streaming response body from provider format → client's source format.
+ * Two-step: targetFormat → OpenAI intermediate → sourceFormat
+ * Returns the response in the client's expected format.
  */
 export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat) {
-  if (targetFormat === sourceFormat || targetFormat === FORMATS.OPENAI) return responseBody;
+  if (targetFormat === sourceFormat) return responseBody;
+
+  // Step 1: target → OpenAI intermediate (if target is not already OpenAI)
+  let openaiResponse = responseBody;
+  if (targetFormat !== FORMATS.OPENAI) {
+    openaiResponse = translateTargetToOpenAI(responseBody, targetFormat);
+  }
+
+  // Step 2: OpenAI → source format (if source is not OpenAI)
+  if (sourceFormat !== FORMATS.OPENAI) {
+    return translateOpenAIToSource(openaiResponse, sourceFormat);
+  }
+
+  return openaiResponse;
+}
+
+/**
+ * Step 1: Translate provider (target) response body to OpenAI format.
+ */
+function translateTargetToOpenAI(responseBody, targetFormat) {
 
   // Gemini / Antigravity
   if (targetFormat === FORMATS.GEMINI || targetFormat === FORMATS.ANTIGRAVITY || targetFormat === FORMATS.GEMINI_CLI || targetFormat === FORMATS.VERTEX) {
@@ -126,9 +147,201 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 }
 
 /**
+ * Step 2: Translate OpenAI format response to client's source format.
+ * For non-streaming, this converts the complete OpenAI JSON into the source format.
+ */
+function translateOpenAIToSource(openaiResponse, sourceFormat) {
+  // Claude source format: convert to Claude Messages API response
+  if (sourceFormat === FORMATS.CLAUDE) {
+    const choice = openaiResponse.choices?.[0];
+    if (!choice) return openaiResponse;
+
+    const msg = choice.message || {};
+    const content = [];
+
+    // Add thinking/reasoning content
+    if (msg.reasoning_content) {
+      content.push({ type: "thinking", thinking: msg.reasoning_content });
+    }
+
+    // Add text content
+    if (msg.content) {
+      content.push({ type: "text", text: msg.content });
+    }
+
+    // Add tool_use blocks
+    if (msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        let input = {};
+        try { input = JSON.parse(tc.function?.arguments || "{}"); } catch { /* empty */ }
+        content.push({
+          type: "tool_use",
+          id: tc.id || `toolu_${Date.now()}`,
+          name: tc.function?.name || "",
+          input
+        });
+      }
+    }
+
+    // If no content blocks, add empty text
+    if (content.length === 0) {
+      content.push({ type: "text", text: "" });
+    }
+
+    // Map finish_reason to stop_reason
+    let stopReason = "end_turn";
+    if (choice.finish_reason === "tool_calls") stopReason = "tool_use";
+    else if (choice.finish_reason === "length") stopReason = "max_tokens";
+
+    const result = {
+      id: openaiResponse.id?.replace("chatcmpl-", "msg_") || `msg_${Date.now()}`,
+      type: "message",
+      role: "assistant",
+      model: openaiResponse.model || "unknown",
+      content,
+      stop_reason: stopReason,
+      stop_sequence: null
+    };
+
+    if (openaiResponse.usage) {
+      result.usage = {
+        input_tokens: openaiResponse.usage.prompt_tokens || 0,
+        output_tokens: openaiResponse.usage.completion_tokens || 0
+      };
+      if (openaiResponse.usage.prompt_tokens_details?.cached_tokens) {
+        result.usage.cache_read_input_tokens = openaiResponse.usage.prompt_tokens_details.cached_tokens;
+      }
+    }
+
+    return result;
+  }
+
+  // Gemini / Gemini CLI source format: convert to Gemini response
+  if (sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {
+    const choice = openaiResponse.choices?.[0];
+    if (!choice) return openaiResponse;
+
+    const msg = choice.message || {};
+    const parts = [];
+
+    // Add thinking/reasoning as thought parts
+    if (msg.reasoning_content) {
+      parts.push({ thought: true, text: msg.reasoning_content });
+    }
+
+    // Add text content
+    if (msg.content) {
+      parts.push({ text: msg.content });
+    }
+
+    // Add tool calls as functionCall parts
+    if (msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function?.arguments || "{}"); } catch { /* empty */ }
+        parts.push({
+          functionCall: {
+            name: tc.function?.name || "",
+            args
+          }
+        });
+      }
+    }
+
+    // Ensure at least one part
+    if (parts.length === 0) {
+      parts.push({ text: "" });
+    }
+
+    // Map finish_reason
+    let finishReason = "STOP";
+    if (choice.finish_reason === "length") finishReason = "MAX_TOKENS";
+    else if (choice.finish_reason === "content_filter") finishReason = "SAFETY";
+
+    const result = {
+      candidates: [{ content: { role: "model", parts }, finishReason }],
+      modelVersion: openaiResponse.model || "unknown",
+      responseId: openaiResponse.id || `resp_${Date.now()}`
+    };
+
+    if (openaiResponse.usage) {
+      result.usageMetadata = {
+        promptTokenCount: openaiResponse.usage.prompt_tokens || 0,
+        candidatesTokenCount: openaiResponse.usage.completion_tokens || 0,
+        totalTokenCount: openaiResponse.usage.total_tokens || 0
+      };
+      if (openaiResponse.usage.completion_tokens_details?.reasoning_tokens) {
+        result.usageMetadata.thoughtsTokenCount = openaiResponse.usage.completion_tokens_details.reasoning_tokens;
+      }
+      if (openaiResponse.usage.prompt_tokens_details?.cached_tokens) {
+        result.usageMetadata.cachedContentTokenCount = openaiResponse.usage.prompt_tokens_details.cached_tokens;
+      }
+    }
+
+    return result;
+  }
+
+  // Antigravity source format: wrap Gemini response in { response: ... }
+  if (sourceFormat === FORMATS.ANTIGRAVITY) {
+    const choice = openaiResponse.choices?.[0];
+    if (!choice) return openaiResponse;
+
+    const msg = choice.message || {};
+    const parts = [];
+
+    if (msg.reasoning_content) {
+      parts.push({ thought: true, text: msg.reasoning_content });
+    }
+    if (msg.content) {
+      parts.push({ text: msg.content });
+    }
+    if (msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function?.arguments || "{}"); } catch { /* empty */ }
+        parts.push({ functionCall: { name: tc.function?.name || "", args } });
+      }
+    }
+    if (parts.length === 0) {
+      parts.push({ text: "" });
+    }
+
+    let finishReason = "STOP";
+    if (choice.finish_reason === "length") finishReason = "MAX_TOKENS";
+    else if (choice.finish_reason === "content_filter") finishReason = "SAFETY";
+
+    const geminiBody = {
+      candidates: [{ content: { role: "model", parts }, finishReason }],
+      modelVersion: openaiResponse.model || "unknown",
+      responseId: openaiResponse.id || `resp_${Date.now()}`
+    };
+
+    if (openaiResponse.usage) {
+      geminiBody.usageMetadata = {
+        promptTokenCount: openaiResponse.usage.prompt_tokens || 0,
+        candidatesTokenCount: openaiResponse.usage.completion_tokens || 0,
+        totalTokenCount: openaiResponse.usage.total_tokens || 0
+      };
+      if (openaiResponse.usage.completion_tokens_details?.reasoning_tokens) {
+        geminiBody.usageMetadata.thoughtsTokenCount = openaiResponse.usage.completion_tokens_details.reasoning_tokens;
+      }
+    }
+
+    return { response: geminiBody };
+  }
+
+  // For other source formats (openai-responses, kiro, cursor, ollama, commandcode, etc.)
+  // that don't have a dedicated non-streaming reverse translator, return OpenAI format.
+  // These formats are either:
+  // - Always streaming (Kiro, Cursor, Ollama, CommandCode clients forced streaming)
+  // - Already handled by dedicated paths (OpenAI-Responses via sseToJsonHandler)
+  return openaiResponse;
+}
+
+/**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, passthrough }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
@@ -155,11 +368,44 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   if (onRequestSuccess) await onRequestSuccess();
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
+  // In passthrough mode, toolNameMap is null (no cloaking happened), so this is a no-op.
   responseBody = decloakToolNames(responseBody, toolNameMap);
 
   const usage = extractUsageFromResponse(responseBody);
   appendLog({ tokens: usage, status: "200 OK" });
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+
+  // PASSTHROUGH GUARD: In passthrough mode, preserve the upstream response shape as-is.
+  // Do NOT translate, normalize, strip fields, or inject OpenAI-required fields.
+  // Only model + auth were swapped on the request side; the response is relayed untouched.
+  if (passthrough) {
+    reqLogger.logConvertedResponse(responseBody);
+
+    const totalLatency = Date.now() - requestStartTime;
+    saveRequestDetail(buildRequestDetail({
+      provider, model, connectionId,
+      latency: { ttft: totalLatency, total: totalLatency },
+      tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
+      request: extractRequestConfig(body, stream),
+      providerRequest: finalBody || translatedBody || null,
+      providerResponse: responseBody || null,
+      response: {
+        content: responseBody?.choices?.[0]?.message?.content || responseBody?.content?.[0]?.text || null,
+        thinking: null,
+        finish_reason: responseBody?.choices?.[0]?.finish_reason || responseBody?.stop_reason || "unknown"
+      },
+      status: "success"
+    }, { endpoint: clientRawRequest?.endpoint || null })).catch(err => {
+      console.error("[RequestDetail] Failed to save:", err.message);
+    });
+
+    return {
+      success: true,
+      response: new Response(JSON.stringify(responseBody), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      })
+    };
+  }
 
   const translatedResponse = needsTranslation(targetFormat, sourceFormat)
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)

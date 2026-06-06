@@ -1,5 +1,5 @@
 import {
-  extractApiKey, isValidApiKey,
+  authenticateRequest,
   getProviderCredentials, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
@@ -32,13 +32,9 @@ export async function handleTts(request) {
   const language = body.language || ""; // Optional language hint (currently used by Gemini)
   log.request("POST", `${url.pathname} | ${modelStr} | format=${responseFormat}${language ? ` | lang=${language}` : ""}`);
 
-  const settings = await getSettings();
-  if (settings.requireApiKey) {
-    const apiKey = extractApiKey(request);
-    if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-  }
+  const auth = await authenticateRequest(request, log);
+  if (!auth.ok) return auth.response;
+  const { settings } = auth;
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
@@ -82,6 +78,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let had5xx = false;
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
@@ -93,7 +90,9 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
         return unavailableResponse(status, `[${provider}/${model}] ${msg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503
+      const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
+      return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
     }
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
@@ -107,6 +106,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
+      if (result.status >= 500 && result.status < 600) had5xx = true;
       continue;
     }
     return result.response || errorResponse(result.status, result.error);

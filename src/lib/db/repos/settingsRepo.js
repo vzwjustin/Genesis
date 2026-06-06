@@ -37,6 +37,7 @@ const DEFAULT_SETTINGS = {
   cavemanEnabled: false,
   cavemanLevel: "full",
   headroomEnabled: false,
+  passthroughCompression: false,
 };
 
 async function readRaw() {
