@@ -38,7 +38,7 @@ export default function Select({
             "focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40",
             "transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed",
             "text-[16px] sm:text-sm",
-            error && "ring-1 ring-red-500 focus:ring-2 focus:ring-red-500/40 border-danger/40",
+            error && "ring-1 ring-danger focus:ring-2 focus:ring-danger/40 border-danger/40",
             selectClassName
           )}
           {...props}

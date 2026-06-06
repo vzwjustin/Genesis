@@ -162,9 +162,9 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-medium text-xs">{s.title}</span>
                         {s.oauth ? (
-                          <span className="px-1 py-0.5 text-[9px] rounded bg-warning/10 text-amber-600">OAuth</span>
+                          <span className="px-1 py-0.5 text-[9px] rounded bg-warning/10 text-warning">OAuth</span>
                         ) : (
-                          <span className="px-1 py-0.5 text-[9px] rounded bg-green-500/10 text-green-600">Authless</span>
+                          <span className="px-1 py-0.5 text-[9px] rounded bg-success/10 text-success">Authless</span>
                         )}
                         {s.toolCount > 0 && (
                           <span className="text-[10px] text-text-muted">{s.toolCount} tools</span>
@@ -179,7 +179,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                       disabled={added}
                       className={`shrink-0 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
                         added
-                          ? "bg-green-500/10 text-green-600 cursor-default"
+                          ? "bg-success/10 text-success cursor-default"
                           : expanded
                           ? "bg-surface border border-border text-text-muted hover:bg-black/5"
                           : "bg-primary/10 border border-primary/40 text-primary hover:bg-primary/20"
@@ -197,7 +197,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                         </div>
                       )}
                       {!isLoadingTools && cache?.requiresAuth && (
-                        <p className="text-[10px] text-amber-600 bg-warning/10 px-2 py-1 rounded">
+                        <p className="text-[10px] text-warning bg-warning/10 px-2 py-1 rounded">
                           🔐 OAuth required. Add now and authenticate after Apply; tool list will be discovered after first connect.
                         </p>
                       )}

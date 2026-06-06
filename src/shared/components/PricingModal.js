@@ -186,7 +186,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
         <div className="p-4 border-t border-border flex items-center justify-between gap-2">
           <button
             onClick={handleReset}
-            className="px-4 py-2 text-sm text-danger hover:bg-danger/10 rounded border border-red-500/20 transition-colors"
+            className="px-4 py-2 text-sm text-danger hover:bg-danger/10 rounded border border-danger/20 transition-colors"
             disabled={saving}
           >
             Reset to Defaults

@@ -67,7 +67,7 @@ export default function FirstRunSecurityWizard() {
   };
 
   return (
-    <div className="mb-4 rounded-xl border border-amber-500/25 bg-warning/10 p-4">
+    <div className="mb-4 rounded-xl border border-warning/25 bg-warning/10 p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <h2 className="text-sm font-semibold text-text-main">Secure your dashboard</h2>
