@@ -150,6 +150,13 @@ export const CLI_TOOLS = {
     description: "Point Cursor at a routed model endpoint",
     configType: "guide",
     requiresExternalUrl: true,
+    defaultModels: [
+      { id: "composer-2.5-fast", name: "Composer 2.5 Fast", alias: "composer", defaultValue: "cu/composer-2.5-fast" },
+      { id: "composer-2.5", name: "Composer 2.5", alias: "composer-standard", defaultValue: "cu/composer-2.5" },
+      { id: "claude-opus-4-8-high", name: "Opus 4.8", alias: "opus", defaultValue: "cu/claude-opus-4-8-high" },
+      { id: "gpt-5.5-medium", name: "GPT 5.5", alias: "gpt55", defaultValue: "cu/gpt-5.5-medium" },
+      { id: "auto", name: "Auto", alias: "auto", defaultValue: "cu/auto" },
+    ],
     notes: [
       { type: "warning", text: "Requires Cursor Pro account to use this feature." },
       { type: "cloudCheck", text: "Cursor routes requests through its own server, so local endpoint is not supported. Please enable Tunnel or Cloud Endpoint in Settings." },

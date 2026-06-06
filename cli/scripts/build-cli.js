@@ -105,17 +105,50 @@ fs.mkdirSync(buildHomeDir, { recursive: true });
 fs.mkdirSync(path.join(buildHomeDir, "AppData", "Roaming"), { recursive: true });
 fs.mkdirSync(path.join(buildHomeDir, "AppData", "Local"), { recursive: true });
 
-// Step 0: Sync version from app/cli/package.json to app/package.json
-console.log("0️⃣  Syncing version to app/package.json...");
-const cliPkg = JSON.parse(fs.readFileSync(path.join(cliDir, "package.json"), "utf8"));
+// Step 0: Keep cli/package.json and app/package.json on the same version (never downgrade).
+function parseCoreVersion(version) {
+  const match = String(version || "").trim().replace(/^v/i, "").match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function compareCoreVersions(a, b) {
+  const pa = parseCoreVersion(a);
+  const pb = parseCoreVersion(b);
+  if (!pa || !pb) return 0;
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] > pb[i] ? 1 : -1;
+  }
+  return 0;
+}
+
+function writePackageVersion(pkgPath, pkg, version) {
+  if (pkg.version === version) return false;
+  pkg.version = version;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+  return true;
+}
+
+console.log("0️⃣  Syncing package versions...");
+const cliPkgPath = path.join(cliDir, "package.json");
 const appPkgPath = path.join(appDir, "package.json");
+const cliPkg = JSON.parse(fs.readFileSync(cliPkgPath, "utf8"));
 const appPkg = JSON.parse(fs.readFileSync(appPkgPath, "utf8"));
-if (appPkg.version !== cliPkg.version) {
-  appPkg.version = cliPkg.version;
-  fs.writeFileSync(appPkgPath, JSON.stringify(appPkg, null, 2) + "\n");
-  console.log(`✅ Version synced: ${cliPkg.version}\n`);
+const targetVersion = compareCoreVersions(appPkg.version, cliPkg.version) > 0
+  ? appPkg.version
+  : cliPkg.version;
+
+if (compareCoreVersions(appPkg.version, cliPkg.version) > 0) {
+  console.log(`⚠️  cli/package.json (${cliPkg.version}) is behind app/package.json (${appPkg.version})`);
+}
+
+const cliChanged = writePackageVersion(cliPkgPath, cliPkg, targetVersion);
+const appChanged = writePackageVersion(appPkgPath, appPkg, targetVersion);
+
+if (cliChanged || appChanged) {
+  console.log(`✅ Version synced to ${targetVersion}\n`);
 } else {
-  console.log(`✅ Version already synced: ${cliPkg.version}\n`);
+  console.log(`✅ Version already synced: ${targetVersion}\n`);
 }
 
 // Clear stale webpack cache after open-sse/ edits (see AGENTS.md).

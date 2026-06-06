@@ -43,7 +43,7 @@ describe("version releases API", () => {
       "https://api.github.com/repos/decolua/9router/releases?per_page=30",
       expect.objectContaining({ headers: expect.objectContaining({ "User-Agent": "9Router" }) }),
     );
-    expect(body.currentVersion).toBe("0.4.67");
+    expect(body.currentVersion).toBe("0.4.71");
     expect(body.releases.map((release) => release.version)).toEqual(["0.4.68", "0.4.65"]);
     expect(body.releases[0]).toMatchObject({ direction: "upgrade", installCommand: "npm i -g 9router@0.4.68 --prefer-online" });
     expect(body.releases[1]).toMatchObject({ direction: "downgrade", installCommand: "npm i -g 9router@0.4.65 --prefer-online" });

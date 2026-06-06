@@ -3,6 +3,8 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
+import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
 import { getRemoteExposureBlockReason, isRemoteExposureRequest } from "@/lib/security/exposureGate";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +40,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "outboundNoProxy",
   "outboundProxyEnabled",
   "outboundProxyUrl",
+  "passthroughCompression",
   "providerStrategies",
   "providerThinking",
   "requireApiKey",
@@ -82,6 +85,15 @@ export async function GET() {
 
 export async function PATCH(request) {
   try {
+    const settings0 = await getSettings();
+    if (settings0.requireLogin !== false) {
+      const cookieStore = await cookies();
+      const session = await getDashboardAuthSession(cookieStore.get("auth_token")?.value);
+      if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await request.json();
 
     if (isRemoteExposureRequest(body)) {
@@ -112,10 +124,9 @@ export async function PATCH(request) {
           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
       } else {
-        // First time setting password, no current password needed
-        // Allow empty currentPassword or default "123456"
-        if (body.currentPassword && body.currentPassword !== "123456") {
-           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
+        // First time setting password — no current password required
+        if (body.currentPassword) {
+          return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
       }
 

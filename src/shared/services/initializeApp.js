@@ -17,6 +17,7 @@ import {
 } from "@/lib/tunnel";
 import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync } from "@/mitm/manager";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
+import { autoStartHeadroomProxy, stopHeadroomProxy } from "@/shared/services/headroomManager.js";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
 (function bootstrapMitm() {
@@ -42,6 +43,7 @@ const g = global.__appSingleton ??= {
   lastWatchdogTick: Date.now(),
   lastOnline: null,
   mitmStartInProgress: false,
+  headroomAutoStarted: false,
   tunnelAutoResumed: false,
   tailscaleAutoResumed: false,
 };
@@ -65,15 +67,27 @@ export async function initializeApp() {
       safeRestartTailscale("startup").catch((e) => console.log("[InitApp] Tailscale resume failed:", e.message));
     }
 
+    if (!g.headroomAutoStarted) {
+      g.headroomAutoStarted = true;
+      autoStartHeadroomProxy().catch((e) => {
+        console.log("[InitApp] Headroom resume failed:", e.message);
+        g.headroomAutoStarted = false;
+      });
+    }
+
     if (!g.signalHandlersRegistered) {
       const cleanup = () => {
         try { removeAllDNSEntriesSync(); } catch { /* best effort */ }
+        stopHeadroomProxy();
         killCloudflared();
         process.exit();
       };
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
-      process.on("exit", () => { try { removeAllDNSEntriesSync(); } catch { /* ignore */ } });
+      process.on("exit", () => {
+        try { removeAllDNSEntriesSync(); } catch { /* ignore */ }
+        stopHeadroomProxy();
+      });
       g.signalHandlersRegistered = true;
     }
 

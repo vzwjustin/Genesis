@@ -80,6 +80,7 @@ export default function APIPageClient({ machineId }) {
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [headroomStatus, setHeadroomStatus] = useState(null);
+  const [passthroughCompression, setPassthroughCompression] = useState(false);
   const [compressionStats, setCompressionStats] = useState(null);
 
   // Cloudflare Tunnel state
@@ -258,8 +259,8 @@ export default function APIPageClient({ machineId }) {
         setCavemanEnabled(!!data.cavemanEnabled);
         setCavemanLevel(data.cavemanLevel || "full");
         setHeadroomEnabled(!!data.headroomEnabled);
-        fetchHeadroomStatus();
-        fetchCompressionStats();
+        setPassthroughCompression(!!data.passthroughCompression);
+        fetchHeadroomStatus(!!data.headroomEnabled);
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
@@ -280,6 +281,7 @@ export default function APIPageClient({ machineId }) {
       console.log("Error loading settings:", error);
     } finally {
       setTunnelChecking(false);
+      fetchCompressionStats();
     }
   };
 
@@ -355,21 +357,56 @@ export default function APIPageClient({ machineId }) {
     setHeadroomEnabled(value);
     patchSetting({ headroomEnabled: value });
     if (value) fetchHeadroomStatus();
+    fetchCompressionStats();
   };
 
-  const fetchHeadroomStatus = async () => {
+  const fetchHeadroomStatus = async (enabled = headroomEnabled) => {
     try {
       const res = await fetch("/api/headroom/status");
-      if (res.ok) setHeadroomStatus(await res.json());
+      if (!res.ok) return;
+      const status = await res.json();
+      setHeadroomStatus(status);
+      // Auto-enable when cloud API key or local proxy is reachable
+      if (status.reachable && !enabled) {
+        const patchRes = await fetch("/api/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ headroomEnabled: true }),
+        });
+        if (patchRes.ok) setHeadroomEnabled(true);
+      }
     } catch { /* ignore */ }
   };
 
-  const fetchCompressionStats = async () => {
+  const handlePassthroughCompression = async (value) => {
+    setPassthroughCompression(value);
+    patchSetting({ passthroughCompression: value });
+    fetchCompressionStats();
+  };
+
+  const fetchCompressionStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/compression/stats");
+      const res = await fetch("/api/compression/stats", { cache: "no-store" });
       if (res.ok) setCompressionStats(await res.json());
     } catch { /* ignore */ }
-  };
+  }, []);
+
+  // Refresh compression stats while features are enabled (dashboard does not live-update on chat traffic otherwise).
+  useEffect(() => {
+    const anyCompression = headroomEnabled || rtkEnabled || cavemanEnabled;
+    if (!anyCompression) return;
+    const timer = setInterval(() => {
+      if (!document.hidden) fetchCompressionStats();
+    }, 30000);
+    const onVisible = () => {
+      if (!document.hidden) fetchCompressionStats();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [headroomEnabled, rtkEnabled, cavemanEnabled, fetchCompressionStats]);
 
   const fetchData = async () => {
     try {
@@ -1167,7 +1204,7 @@ export default function APIPageClient({ machineId }) {
             />
           </div>
         </div>
-        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
+        <div className="flex items-center justify-between pt-4 pb-4 border-b border-border gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <p className="font-medium">
               Compress context history{" "}
@@ -1181,14 +1218,45 @@ export default function APIPageClient({ machineId }) {
               </a>
             </p>
             <p className="text-sm text-text-muted">
-              Headroom is coming soon. Context-history compression stays disabled until the proxy/cloud path is ready.
+              Compresses the post-cache tail (including single tool-result turns). Tool-heavy traffic also benefits from RTK below.
             </p>
-            <span className="mt-2 inline-flex rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">Coming soon</span>
+            {headroomStatus && (
+              <p className="mt-1 text-xs text-text-muted">
+                {headroomStatus.cloud
+                  ? `Headroom Cloud configured (${headroomStatus.proxyUrl})`
+                  : headroomStatus.reachable
+                    ? `Local proxy reachable at ${headroomStatus.proxyUrl}`
+                    : "Local: pipx install \"headroom-ai[proxy]\" (Python 3.10–3.13) — proxy auto-starts with 9router — or set HEADROOM_API_KEY for cloud"}
+              </p>
+            )}
+            <CompressionStatRow
+              stats={compressionStats?.tools?.headroom}
+              proxyStats={compressionStats?.headroomProxy}
+              kind="bytes"
+              dashboardUrl={compressionStats?.headroomProxy?.dashboardUrl || (headroomStatus?.reachable ? `${headroomStatus.proxyUrl}/dashboard` : null)}
+              emptyHint={
+                passthroughCompression
+                  ? "No Headroom savings yet — send a multi-turn chat through 9router"
+                  : "Enable passthrough compression below for Claude Code / Cursor traffic"
+              }
+            />
           </div>
           <Toggle
-            checked={false}
-            onChange={() => {}}
-            disabled
+            checked={headroomEnabled}
+            onChange={() => handleHeadroomEnabled(!headroomEnabled)}
+            disabled={!headroomStatus?.reachable}
+          />
+        </div>
+        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Compress passthrough requests</p>
+            <p className="text-sm text-text-muted">
+              Apply RTK, Caveman, and Headroom to native passthrough traffic (Claude Code, Cursor, etc.). Off by default to preserve provider-native request shape.
+            </p>
+          </div>
+          <Toggle
+            checked={passthroughCompression}
+            onChange={() => handlePassthroughCompression(!passthroughCompression)}
           />
         </div>
       </Card>
@@ -1550,22 +1618,75 @@ function formatBytes(value) {
   return `${bytes} B`;
 }
 
-function CompressionStatRow({ stats, kind }) {
-  if (!stats) return null;
-  const detail = stats.lastDetail ? ` · ${stats.lastDetail}` : "";
+const EMPTY_TOOL_STATS = {
+  requests: 0,
+  hits: 0,
+  bytesSaved: 0,
+  estimatedTokensSaved: 0,
+  tokenSavingsAvailable: false,
+  lastDetail: "",
+};
+
+function CompressionStatRow({ stats, proxyStats, kind, emptyHint, dashboardUrl }) {
+  const s = stats ?? EMPTY_TOOL_STATS;
+  const hasLocal = !!(s.hits || s.requests || s.bytesSaved);
+  const hasProxy = !!(proxyStats && (
+    proxyStats.mcpCompressions ||
+    proxyStats.tokensSaved ||
+    proxyStats.proxyCompressionSaved ||
+    proxyStats.requestsTotal ||
+    proxyStats.compressionRequests
+  ));
+  const isEmpty = !hasLocal && !hasProxy;
+  const detail = s.lastDetail ? ` · ${s.lastDetail}` : "";
   const savedLabel = kind === "injections"
-    ? `Prompt injections ${stats.hits || 0}`
-    : `Saved ${formatBytes(stats.bytesSaved)}`;
-  const tokenLabel = stats.tokenSavingsAvailable
-    ? `Est. tokens saved ${stats.estimatedTokensSaved || 0}`
-    : "Savings not measurable";
+    ? `Prompt injections ${s.hits || 0}`
+    : `Saved ${formatBytes(s.bytesSaved)}`;
+  const tokenLabel = kind === "injections"
+    ? null
+    : s.tokenSavingsAvailable
+      ? `Est. tokens saved ${s.estimatedTokensSaved || 0}`
+      : hasLocal
+        ? "Savings not measurable"
+        : null;
+  const proxyTokens = Number(proxyStats?.tokensSaved) || Number(proxyStats?.proxyCompressionSaved) || 0;
+  const proxyCompressions = Number(proxyStats?.mcpCompressions) || Number(proxyStats?.compressionRequests) || 0;
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
-      <span>{savedLabel}</span>
-      <span>{tokenLabel}</span>
-      <span>Hits {stats.hits || 0}</span>
-      <span>Requests {stats.requests || 0}{detail}</span>
+      {isEmpty && emptyHint ? (
+        <span>{emptyHint}</span>
+      ) : (
+        <>
+          {hasLocal && (
+            <>
+              <span>{savedLabel}</span>
+              {tokenLabel && <span>{tokenLabel}</span>}
+              <span>Hits {s.hits || 0}</span>
+              <span>Router requests {s.requests || 0}{detail}</span>
+            </>
+          )}
+          {hasProxy && (
+            <>
+              <span>Proxy tokens {proxyTokens.toLocaleString()}</span>
+              <span>Compressions {proxyCompressions.toLocaleString()}</span>
+              {proxyStats.requestsTotal > 0 && (
+                <span>Proxy API requests {proxyStats.requestsTotal.toLocaleString()}</span>
+              )}
+            </>
+          )}
+          {dashboardUrl && (
+            <a
+              href={dashboardUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary underline hover:opacity-80"
+            >
+              Headroom dashboard
+            </a>
+          )}
+        </>
+      )}
     </div>
   );
 }

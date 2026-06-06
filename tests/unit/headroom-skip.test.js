@@ -42,6 +42,29 @@ describe("compressWithHeadroom hard skip before probing", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  it("attempts compression for a single post-cache message (Claude Code tool tail)", async () => {
+    const compress = vi.fn(async (tail) => ({
+      messages: [{ role: "user", content: "smaller" }],
+    }));
+    vi.doMock("headroom-ai", () => ({ compress }));
+
+    globalThis.fetch = vi.fn(async () => ({ ok: true }));
+
+    const { compressWithHeadroom } = await import("../../open-sse/rtk/headroom.js");
+    const body = {
+      messages: [
+        { role: "user", content: "prefix" },
+        { role: "assistant", content: "cached", cache_control: { type: "ephemeral" } },
+        { role: "user", content: "x".repeat(2000) },
+      ],
+    };
+
+    const result = await compressWithHeadroom(body, "claude-sonnet-4");
+    expect(compress).toHaveBeenCalledOnce();
+    expect(result?.saved).toBeGreaterThan(0);
+    expect(body.messages).toHaveLength(3);
+  });
+
   it("does not include cache-boundary messages in compressible tail", async () => {
     const { compressWithHeadroom } = await import("../../open-sse/rtk/headroom.js");
     const body = {
