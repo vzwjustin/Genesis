@@ -1014,7 +1014,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tsStatus?.type === "error" ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-red-300 dark:border-red-800 bg-red-500/5 text-sm text-danger dark:text-danger">
+                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-danger/30 bg-danger/5 text-sm text-danger">
                   <span className="material-symbols-outlined text-sm">error</span>
                   {tsStatus.message}
                 </div>
@@ -1474,7 +1474,7 @@ export default function APIPageClient({ machineId }) {
           {/* Installed: show Connect button */}
           {tsInstalled === true && !tsInstalling && (
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+              <div className="flex items-center gap-2 text-sm text-success">
                 <span className="material-symbols-outlined text-[16px]">check_circle</span>
                 Tailscale installed
               </div>
@@ -1591,7 +1591,7 @@ function ExposureInlineAlert({ status, className = "", compact = false }) {
 
   if (status.type === "success") {
     return (
-      <div className={`p-2 rounded text-sm bg-green-500/10 text-green-600 dark:text-green-400 ${className}`}>
+      <div className={`p-2 rounded text-sm bg-success/10 text-success ${className}`}>
         {renderMessage(status.message)}
       </div>
     );

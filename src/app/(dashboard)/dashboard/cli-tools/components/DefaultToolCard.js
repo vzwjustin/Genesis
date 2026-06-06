@@ -87,7 +87,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
             </button>
             <button
               onClick={() => setModelValue("")}
-              className="p-2 text-text-muted hover:text-red-500 rounded transition-colors"
+              className="p-2 text-text-muted hover:text-danger rounded transition-colors"
               title="Clear"
             >
               <span className="material-symbols-outlined text-lg">close</span>

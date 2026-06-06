@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { cn } from "@/shared/utils/cn";
 
 export default function Input({
@@ -17,10 +18,11 @@ export default function Input({
   inputClassName,
   ...props
 }) {
+  const id = useId();
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       {label && (
-        <label className="text-sm font-medium text-text-main">
+        <label htmlFor={id} className="text-sm font-medium text-text-main">
           {label}
           {required && <span className="text-danger ml-1">*</span>}
         </label>
@@ -32,6 +34,7 @@ export default function Input({
           </div>
         )}
         <input
+          id={id}
           type={type}
           placeholder={placeholder}
           value={value}

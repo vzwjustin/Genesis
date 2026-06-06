@@ -355,7 +355,7 @@ export default function RequestDetailsTab() {
                 <span className="text-text-muted">Status:</span>{" "}
                 <span className={cn(
                   "font-medium",
-                  selectedDetail.status === "success" ? "text-green-600" : "text-red-600"
+                  selectedDetail.status === "success" ? "text-success" : "text-danger"
                 )}>
                   {selectedDetail.status}
                 </span>

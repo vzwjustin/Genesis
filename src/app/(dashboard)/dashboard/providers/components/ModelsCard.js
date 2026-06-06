@@ -42,7 +42,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
             {copied === `model-${model.id}` ? "Copied!" : "Copy"}
           </span>
         </div>
-        {isFree && <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>}
+        {isFree && <span className="text-[10px] font-bold text-success bg-success/10 px-1.5 py-0.5 rounded">FREE</span>}
         {isCustom && (
           <button onClick={onDeleteAlias} className="p-0.5 hover:bg-danger/10 rounded text-text-muted hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity ml-auto" title="Remove custom model">
             <span className="material-symbols-outlined text-sm">close</span>

@@ -45,26 +45,26 @@ function formatResetTimeDisplay(resetTime) {
 function getColorClasses(remainingPercentage) {
   if (remainingPercentage > 70) {
     return {
-      text: "text-green-600 dark:text-green-400",
-      bg: "bg-green-500",
-      bgLight: "bg-green-500/10",
+      text: "text-success",
+      bg: "bg-success",
+      bgLight: "bg-success/10",
       emoji: "🟢",
     };
   }
 
   if (remainingPercentage >= 30) {
     return {
-      text: "text-yellow-600 dark:text-yellow-400",
-      bg: "bg-yellow-500",
-      bgLight: "bg-yellow-500/10",
+      text: "text-warning",
+      bg: "bg-warning",
+      bgLight: "bg-warning/10",
       emoji: "🟡",
     };
   }
 
   return {
-    text: "text-red-600 dark:text-red-400",
-    bg: "bg-red-500",
-    bgLight: "bg-red-500/10",
+    text: "text-danger",
+    bg: "bg-danger",
+    bgLight: "bg-danger/10",
     emoji: "🔴",
   };
 }

@@ -3,12 +3,12 @@
 import { cn } from "@/shared/utils/cn";
 
 const STYLES = {
-  configured: "bg-green-500/10 text-green-600 dark:text-green-400",
-  connected: "bg-green-500/10 text-green-600 dark:text-green-400",
+  configured: "bg-success/10 text-success",
+  connected: "bg-success/10 text-success",
   not_configured: "bg-warning/10 text-warning",
-  other: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  not_installed: "bg-gray-500/10 text-gray-500",
-  unknown: "bg-gray-500/10 text-gray-500",
+  other: "bg-info/10 text-info",
+  not_installed: "bg-surface-3 text-text-muted",
+  unknown: "bg-surface-3 text-text-muted",
 };
 
 const LABELS = {

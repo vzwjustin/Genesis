@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { cn } from "@/shared/utils/cn";
 
 export default function Select({
@@ -16,16 +17,18 @@ export default function Select({
   selectClassName,
   ...props
 }) {
+  const id = useId();
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       {label && (
-        <label className="text-sm font-medium text-text-main">
+        <label htmlFor={id} className="text-sm font-medium text-text-main">
           {label}
           {required && <span className="text-danger ml-1">*</span>}
         </label>
       )}
       <div className="relative">
         <select
+          id={id}
           value={value}
           onChange={onChange}
           disabled={disabled}

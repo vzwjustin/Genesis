@@ -360,7 +360,7 @@ useEffect(() => {
                                   console.log("Error removing model:", error);
                                 }
                               }}
-                              className="ml-0.5 hover:text-red-500"
+                              className="ml-0.5 hover:text-danger"
                             >
                               <span className="material-symbols-outlined text-[12px]">close</span>
                             </button>
@@ -404,7 +404,7 @@ useEffect(() => {
                   {subagentModel && (
                     <button
                       onClick={() => setSubagentModel("")}
-                      className="p-1 text-text-muted hover:text-red-500 rounded transition-colors"
+                      className="p-1 text-text-muted hover:text-danger rounded transition-colors"
                       title="Clear (will use main model)"
                     >
                       <span className="material-symbols-outlined text-[14px]">close</span>
@@ -414,7 +414,7 @@ useEffect(() => {
               </div>
 
               {message && (
-                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
                   <span className="material-symbols-outlined text-[14px]">{message.type === "success" ? "check_circle" : "error"}</span>
                   <span>{message.text}</span>
                 </div>

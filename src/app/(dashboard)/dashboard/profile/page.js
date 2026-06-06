@@ -552,7 +552,7 @@ export default function ProfilePage() {
         <Card>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="size-10 sm:size-12 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center shrink-0">
+              <div className="size-10 sm:size-12 rounded-lg bg-success/10 text-success flex items-center justify-center shrink-0">
                 <span className="material-symbols-outlined text-xl sm:text-2xl">computer</span>
               </div>
               <div>
@@ -616,7 +616,7 @@ export default function ProfilePage() {
               />
             </div>
             {dbStatus.message && (
-              <p className={`text-sm ${dbStatus.type === "error" ? "text-danger" : "text-green-600 dark:text-green-400"}`}>
+              <p className={`text-sm ${dbStatus.type === "error" ? "text-danger" : "text-success"}`}>
                 {dbStatus.message}
               </p>
             )}
@@ -714,7 +714,7 @@ export default function ProfilePage() {
                 </div>
 
                 {passStatus.message && (
-                  <p className={`text-xs sm:text-sm ${passStatus.type === "error" ? "text-danger" : "text-green-500"}`}>
+                  <p className={`text-xs sm:text-sm ${passStatus.type === "error" ? "text-danger" : "text-success"}`}>
                     {passStatus.message}
                   </p>
                 )}

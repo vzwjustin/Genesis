@@ -328,7 +328,7 @@ useEffect(() => {
                         selectedModels.map((m) => (
                           <span key={m} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-black/5 dark:bg-white/5 text-text-muted border border-transparent hover:border-border">
                             {m}
-                            <button onClick={() => handleRemoveModel(m)} className="ml-0.5 hover:text-red-500">
+                            <button onClick={() => handleRemoveModel(m)} className="ml-0.5 hover:text-danger">
                               <span className="material-symbols-outlined text-[12px]">close</span>
                             </button>
                           </span>
@@ -356,7 +356,7 @@ useEffect(() => {
                             <span className="text-[9px] px-1 py-0.5 rounded bg-black/5 dark:bg-white/5 text-text-muted whitespace-nowrap">+{p.toolNames.length - 6}</span>
                           )}
                         </div>
-                        <button onClick={() => removePlugin(p.name)} className="shrink-0 hover:text-red-500 ml-auto">
+                        <button onClick={() => removePlugin(p.name)} className="shrink-0 hover:text-danger ml-auto">
                           <span className="material-symbols-outlined text-[12px]">close</span>
                         </button>
                       </div>
@@ -367,7 +367,7 @@ useEffect(() => {
                         <span className="text-xs font-medium min-w-0 truncate flex-shrink-0">{p.name}</span>
                         <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-500 shrink-0">custom</span>
                         <span className="flex-1 text-[9px] text-text-muted truncate">{p.url || p.command}</span>
-                        <button onClick={() => setCustomPlugins(customPlugins.filter((x) => x.name !== p.name))} className="shrink-0 hover:text-red-500 ml-auto">
+                        <button onClick={() => setCustomPlugins(customPlugins.filter((x) => x.name !== p.name))} className="shrink-0 hover:text-danger ml-auto">
                           <span className="material-symbols-outlined text-[12px]">close</span>
                         </button>
                       </div>
@@ -477,7 +477,7 @@ useEffect(() => {
               </div>
 
               {message && (
-                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
                   <span className="material-symbols-outlined text-[14px]">{message.type === "success" ? "check_circle" : "error"}</span>
                   <span>{message.text}</span>
                 </div>
