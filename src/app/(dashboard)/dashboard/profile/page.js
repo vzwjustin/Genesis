@@ -866,13 +866,13 @@ export default function ProfilePage() {
             </div>
 
             {oidcTestStatus.message && (
-              <p className={`text-xs sm:text-sm ${oidcTestStatus.type === "error" ? "text-danger" : "text-green-500"}`}>
+              <p className={`text-xs sm:text-sm ${oidcTestStatus.type === "error" ? "text-danger" : "text-success"}`}>
                 {oidcTestStatus.message}
               </p>
             )}
 
             {oidcStatus.message && (
-              <p className={`text-xs sm:text-sm ${oidcStatus.type === "error" ? "text-danger" : "text-green-500"}`}>
+              <p className={`text-xs sm:text-sm ${oidcStatus.type === "error" ? "text-danger" : "text-success"}`}>
                 {oidcStatus.message}
               </p>
             )}
@@ -895,7 +895,7 @@ export default function ProfilePage() {
         {/* Routing Preferences */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500 shrink-0">
+            <div className="p-2 rounded-lg bg-info/10 text-info shrink-0">
               <span className="material-symbols-outlined text-[20px]">route</span>
             </div>
             <h3 className="text-base sm:text-lg font-semibold">Routing Strategy</h3>
@@ -1048,7 +1048,7 @@ export default function ProfilePage() {
             )}
 
             {proxyStatus.message && (
-              <p className={`text-xs sm:text-sm ${proxyStatus.type === "error" ? "text-danger" : "text-green-500"} pt-2 border-t border-border/50`}>
+              <p className={`text-xs sm:text-sm ${proxyStatus.type === "error" ? "text-danger" : "text-success"} pt-2 border-t border-border/50`}>
                 {proxyStatus.message}
               </p>
             )}

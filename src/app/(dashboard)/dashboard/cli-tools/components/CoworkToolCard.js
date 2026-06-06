@@ -276,7 +276,7 @@ useEffect(() => {
                 title="Claude Desktop (Cowork mode) not detected"
                 message="Open Claude Desktop → Help → Troubleshooting → Enable Developer mode → Configure third-party inference, then return here."
               />
-              <Button variant="secondary" size="sm" onClick={() => setShowManualConfigModal(true)} className="w-fit !bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30">
+              <Button variant="warning" size="sm" onClick={() => setShowManualConfigModal(true)} className="w-fit">
                 <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                 Manual Config
               </Button>

@@ -19,10 +19,9 @@ export default function CliNotDetectedPanel({
       <InlineAlert variant="caution" title={`${cliName} not detected locally`} message={description} />
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          variant="secondary"
+          variant="warning"
           size="sm"
           onClick={onManualConfig}
-          className="!bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30"
         >
           <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
           Manual Config
