@@ -164,7 +164,7 @@ const getPageInfo = (pathname) => {
     return {
       title: "Console Log",
       description: "Live server console output",
-      icon: "monitor",
+      icon: "article",
       breadcrumbs: [],
     };
   if (pathname === "/dashboard")
