@@ -316,7 +316,7 @@ useEffect(() => {
                     {modelList.length > 0 && (
                       <div className="flex flex-col gap-0.5 mb-1">
                         {modelList.map((id) => (
-                          <div key={id} className="flex items-center gap-1.5 px-2 py-1 bg-bg-secondary rounded border border-border">
+                          <div key={id} className="flex items-center gap-1.5 px-2 py-1 bg-surface-2 rounded border border-border">
                             <span className="flex-1 text-xs font-mono truncate">{id}</span>
                             <button onClick={() => removeModel(id)} className="text-text-muted hover:text-danger transition-colors shrink-0" title="Remove">
                               <span className="material-symbols-outlined text-[12px]">close</span>
@@ -333,7 +333,7 @@ useEffect(() => {
                         onChange={(e) => setModelInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addModel(); } }}
                         placeholder="provider/model-id"
-                        className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
+                        className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 sm:py-1.5"
                       />
                       <button
                         onClick={() => setModalOpen(true)}

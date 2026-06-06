@@ -392,7 +392,7 @@ useEffect(() => {
                     value={subagentModel}
                     onChange={(e) => setSubagentModel(e.target.value)}
                     placeholder={selectedModel || "provider/model-id (defaults to main model)"}
-                    className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
+                    className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 sm:py-1.5"
                   />
                   <button
                     onClick={() => setSubagentModalOpen(true)}
