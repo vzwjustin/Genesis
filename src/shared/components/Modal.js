@@ -68,7 +68,7 @@ export default function Modal({
       >
         {/* Header */}
         {(title || showTrafficLights) && (
-          <div className="flex items-center justify-between p-2 border-b border-border-subtle">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-border-subtle">
             <div className="flex items-center">
               {/* Traffic lights — desktop only */}
               {showTrafficLights && (

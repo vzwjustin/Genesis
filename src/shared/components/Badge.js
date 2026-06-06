@@ -6,7 +6,7 @@ const variants = {
   default: "bg-surface-2 text-text-muted",
   primary: "bg-brand-500/10 text-brand-600 dark:text-brand-300",
   success: "bg-green-500/10 text-green-600 dark:text-green-400",
-  warning: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+  warning: "bg-yellow-500/10 text-yellow-700 dark:text-amber-300",
   error: "bg-danger/10 text-danger dark:text-danger",
   info: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
 };

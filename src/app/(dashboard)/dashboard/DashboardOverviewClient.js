@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { Card, Button, Skeleton } from "@/shared/components";
-import { useDashboardSecurity } from "@/shared/hooks/useDashboardSecurity";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { isCliToolConfigured } from "@/shared/components/ConfigStatusBadge";
 import { getRelativeTime } from "@/shared/utils";
@@ -55,8 +54,10 @@ function HealthPill({ icon, label, value, href, status }) {
     warning: "text-warning",
     muted: "text-text-muted",
   };
+  const base = "flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-surface/60 text-xs whitespace-nowrap transition-colors";
+  const hover = href ? "hover:border-primary/40 hover:bg-surface cursor-pointer" : "";
   const content = (
-    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-surface/60 text-xs whitespace-nowrap">
+    <div className={`${base} ${hover}`}>
       <span className={`material-symbols-outlined text-[14px] ${colorMap[status] || "text-text-muted"}`}>{icon}</span>
       <span className="text-text-muted">{label}</span>
       <span className={`font-semibold ${colorMap[status] || "text-text-main"}`}>{value}</span>
@@ -70,7 +71,6 @@ function SkeletonPill() {
 }
 
 export default function DashboardOverviewClient() {
-  const security = useDashboardSecurity();
   const [loading, setLoading] = useState(true);
   const [connections, setConnections] = useState([]);
   const [cliStats, setCli] = useState({ configured: 0, total: 0 });
@@ -111,10 +111,6 @@ export default function DashboardOverviewClient() {
 
   // Derived health values
   const activeConns = connections.filter(c => c.isActive !== false);
-  const okConns = activeConns.filter(c => {
-    const s = getConnectionStatus(c);
-    return s === "ok" || s === "unknown";
-  });
   const errorConns = activeConns.filter(c => getConnectionStatus(c) === "error");
   const providerStatus = errorConns.length > 0 ? "error" : activeConns.length > 0 ? "ok" : "muted";
 
@@ -140,7 +136,7 @@ export default function DashboardOverviewClient() {
             <HealthPill
               icon="dns"
               label="Providers"
-              value={activeConns.length === 0 ? "None" : errorConns.length > 0 ? `${errorConns.length} error` : `${okConns.length} OK`}
+              value={activeConns.length === 0 ? "None" : errorConns.length > 0 ? `${errorConns.length} error` : `${activeConns.length} connected`}
               status={providerStatus}
               href="/dashboard/providers"
             />
@@ -197,8 +193,8 @@ export default function DashboardOverviewClient() {
               {activeConns.slice(0, 8).map(conn => {
                 const status = getConnectionStatus(conn);
                 const label = getProviderLabel(conn);
-                const provInfo = AI_PROVIDERS[conn.provider] || APIKEY_PROVIDERS[conn.provider];
-                const provName = provInfo?.name || conn.provider?.toUpperCase() || "—";
+                const provInfo = AI_PROVIDERS[conn.provider];
+                const provBrand = provInfo?.name || conn.provider?.toUpperCase() || "—";
                 return (
                   <Link
                     key={conn.id}
@@ -208,7 +204,9 @@ export default function DashboardOverviewClient() {
                     <StatusDot status={status} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{label}</p>
-                      <p className="text-xs text-text-muted truncate">{provName}</p>
+                      {provBrand !== label && (
+                        <p className="text-xs text-text-muted truncate">{provBrand}</p>
+                      )}
                     </div>
                     {conn.lastErrorAt && status === "error" && (
                       <span className="text-xs text-text-subtle shrink-0">{getRelativeTime(conn.lastErrorAt)}</span>
