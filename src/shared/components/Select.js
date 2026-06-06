@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { cn } from "@/shared/utils/cn";
 
 export default function Select({
@@ -16,16 +17,18 @@ export default function Select({
   selectClassName,
   ...props
 }) {
+  const id = useId();
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       {label && (
-        <label className="text-sm font-medium text-text-main">
+        <label htmlFor={id} className="text-sm font-medium text-text-main">
           {label}
           {required && <span className="text-danger ml-1">*</span>}
         </label>
       )}
       <div className="relative">
         <select
+          id={id}
           value={value}
           onChange={onChange}
           disabled={disabled}
@@ -35,7 +38,7 @@ export default function Select({
             "focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40",
             "transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed",
             "text-[16px] sm:text-sm",
-            error && "ring-1 ring-red-500 focus:ring-2 focus:ring-red-500/40 border-danger/40",
+            error && "ring-1 ring-danger focus:ring-2 focus:ring-danger/40 border-danger/40",
             selectClassName
           )}
           {...props}

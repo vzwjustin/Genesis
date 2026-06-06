@@ -2,15 +2,15 @@ import PropTypes from "prop-types";
 
 export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable }) {
   const borderColor = testStatus === "ok"
-    ? "border-green-500/40"
+    ? "border-success/40"
     : testStatus === "error"
     ? "border-danger/40"
     : "border-border";
 
   const iconColor = testStatus === "ok"
-    ? "#22c55e"
+    ? "var(--color-success)"
     : testStatus === "error"
-    ? "#ef4444"
+    ? "var(--color-danger)"
     : undefined;
 
   return (

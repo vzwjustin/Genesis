@@ -164,7 +164,7 @@ const getPageInfo = (pathname) => {
     return {
       title: "Console Log",
       description: "Live server console output",
-      icon: "monitor",
+      icon: "article",
       breadcrumbs: [],
     };
   if (pathname === "/dashboard")
@@ -348,7 +348,7 @@ function HeaderSearch() {
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
         aria-label="Search current page"
-        className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+        className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 transition-colors"
       />
       {query && (
         <button

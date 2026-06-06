@@ -276,7 +276,7 @@ useEffect(() => {
                 title="Claude Desktop (Cowork mode) not detected"
                 message="Open Claude Desktop → Help → Troubleshooting → Enable Developer mode → Configure third-party inference, then return here."
               />
-              <Button variant="secondary" size="sm" onClick={() => setShowManualConfigModal(true)} className="w-fit !bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30">
+              <Button variant="warning" size="sm" onClick={() => setShowManualConfigModal(true)} className="w-fit">
                 <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                 Manual Config
               </Button>
@@ -328,7 +328,7 @@ useEffect(() => {
                         selectedModels.map((m) => (
                           <span key={m} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-black/5 dark:bg-white/5 text-text-muted border border-transparent hover:border-border">
                             {m}
-                            <button onClick={() => handleRemoveModel(m)} className="ml-0.5 hover:text-red-500">
+                            <button onClick={() => handleRemoveModel(m)} className="ml-0.5 hover:text-danger">
                               <span className="material-symbols-outlined text-[12px]">close</span>
                             </button>
                           </span>
@@ -347,7 +347,7 @@ useEffect(() => {
                     {plugins.filter((p) => p.name !== "exa").map((p) => (
                       <div key={p.name} className="flex items-center gap-2 px-2 py-1 bg-surface rounded border border-border">
                         <span className="text-xs font-medium min-w-0 truncate flex-shrink-0">{p.title || p.name}</span>
-                        {p.oauth && <span className="text-[8px] text-amber-600 shrink-0">OAuth</span>}
+                        {p.oauth && <span className="text-[8px] text-warning shrink-0">OAuth</span>}
                         <div className="flex-1 flex flex-wrap gap-1 overflow-hidden" style={{ maxHeight: "1.5rem" }}>
                           {Array.isArray(p.toolNames) && p.toolNames.slice(0, 6).map((t) => (
                             <span key={t} className="text-[9px] px-1 py-0.5 rounded bg-black/5 dark:bg-white/5 text-text-muted whitespace-nowrap">{t}</span>
@@ -356,7 +356,7 @@ useEffect(() => {
                             <span className="text-[9px] px-1 py-0.5 rounded bg-black/5 dark:bg-white/5 text-text-muted whitespace-nowrap">+{p.toolNames.length - 6}</span>
                           )}
                         </div>
-                        <button onClick={() => removePlugin(p.name)} className="shrink-0 hover:text-red-500 ml-auto">
+                        <button onClick={() => removePlugin(p.name)} className="shrink-0 hover:text-danger ml-auto">
                           <span className="material-symbols-outlined text-[12px]">close</span>
                         </button>
                       </div>
@@ -365,9 +365,9 @@ useEffect(() => {
                     {customPlugins.map((p) => (
                       <div key={p.name} className="flex items-center gap-2 px-2 py-1 bg-surface rounded border border-border">
                         <span className="text-xs font-medium min-w-0 truncate flex-shrink-0">{p.name}</span>
-                        <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-500 shrink-0">custom</span>
+                        <span className="text-[8px] px-1 py-0.5 rounded bg-info/10 text-info shrink-0">custom</span>
                         <span className="flex-1 text-[9px] text-text-muted truncate">{p.url || p.command}</span>
-                        <button onClick={() => setCustomPlugins(customPlugins.filter((x) => x.name !== p.name))} className="shrink-0 hover:text-red-500 ml-auto">
+                        <button onClick={() => setCustomPlugins(customPlugins.filter((x) => x.name !== p.name))} className="shrink-0 hover:text-danger ml-auto">
                           <span className="material-symbols-outlined text-[12px]">close</span>
                         </button>
                       </div>
@@ -457,7 +457,7 @@ useEffect(() => {
                               <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <span className="text-xs font-medium">{p.title}</span>
-                                  <span className="text-[8px] text-amber-600">stdio</span>
+                                  <span className="text-[8px] text-warning">stdio</span>
                                 </div>
                                 <p className="text-[10px] text-text-muted leading-snug">{p.description}</p>
                                 {p.extensionUrl && (
@@ -477,7 +477,7 @@ useEffect(() => {
               </div>
 
               {message && (
-                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
                   <span className="material-symbols-outlined text-[14px]">{message.type === "success" ? "check_circle" : "error"}</span>
                   <span>{message.text}</span>
                 </div>
@@ -565,7 +565,7 @@ useEffect(() => {
                   placeholder="my-mcp"
                   value={addMcpForm.name}
                   onChange={(e) => setAddMcpForm((f) => ({ ...f, name: e.target.value.replace(/\s+/g, "-").toLowerCase() }))}
-                  className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:border-primary"
+                  className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
                 />
               </div>
               {addMcpForm.type === "url" ? (
@@ -576,7 +576,7 @@ useEffect(() => {
                     placeholder="https://your-mcp-server.com/sse"
                     value={addMcpForm.url}
                     onChange={(e) => setAddMcpForm((f) => ({ ...f, url: e.target.value }))}
-                    className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:border-primary"
+                    className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
                   />
                 </div>
               ) : (
@@ -588,7 +588,7 @@ useEffect(() => {
                       placeholder="npx"
                       value={addMcpForm.command}
                       onChange={(e) => setAddMcpForm((f) => ({ ...f, command: e.target.value }))}
-                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:border-primary"
+                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -598,7 +598,7 @@ useEffect(() => {
                       placeholder="-y, @some/mcp-package"
                       value={addMcpForm.args}
                       onChange={(e) => setAddMcpForm((f) => ({ ...f, args: e.target.value }))}
-                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:border-primary"
+                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
                     />
                   </div>
                 </>
