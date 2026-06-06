@@ -565,7 +565,7 @@ useEffect(() => {
                   placeholder="my-mcp"
                   value={addMcpForm.name}
                   onChange={(e) => setAddMcpForm((f) => ({ ...f, name: e.target.value.replace(/\s+/g, "-").toLowerCase() }))}
-                  className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:border-primary"
+                  className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
                 />
               </div>
               {addMcpForm.type === "url" ? (
@@ -576,7 +576,7 @@ useEffect(() => {
                     placeholder="https://your-mcp-server.com/sse"
                     value={addMcpForm.url}
                     onChange={(e) => setAddMcpForm((f) => ({ ...f, url: e.target.value }))}
-                    className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:border-primary"
+                    className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
                   />
                 </div>
               ) : (
@@ -588,7 +588,7 @@ useEffect(() => {
                       placeholder="npx"
                       value={addMcpForm.command}
                       onChange={(e) => setAddMcpForm((f) => ({ ...f, command: e.target.value }))}
-                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:border-primary"
+                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -598,7 +598,7 @@ useEffect(() => {
                       placeholder="-y, @some/mcp-package"
                       value={addMcpForm.args}
                       onChange={(e) => setAddMcpForm((f) => ({ ...f, args: e.target.value }))}
-                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:border-primary"
+                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
                     />
                   </div>
                 </>

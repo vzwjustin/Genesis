@@ -119,7 +119,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
                 <div className="flex items-stretch">
                   <span className="inline-flex items-center px-2 rounded-l border border-r-0 border-border bg-bg-alt text-text-muted font-mono text-sm">{forcePrefix}</span>
                   <input value={name} onChange={handleNameChange} placeholder="my-combo"
-                    className="flex-1 min-w-0 rounded-r border border-border bg-white dark:bg-black/20 px-2 py-1.5 font-mono text-sm outline-none focus:border-primary" />
+                    className="flex-1 min-w-0 rounded-r border border-border bg-surface-2 px-2 py-1.5 font-mono text-sm outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40" />
                 </div>
                 {nameError && <p className="text-[11px] text-danger mt-0.5">{nameError}</p>}
               </>
