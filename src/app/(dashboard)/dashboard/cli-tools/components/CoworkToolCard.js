@@ -365,7 +365,7 @@ useEffect(() => {
                     {customPlugins.map((p) => (
                       <div key={p.name} className="flex items-center gap-2 px-2 py-1 bg-surface rounded border border-border">
                         <span className="text-xs font-medium min-w-0 truncate flex-shrink-0">{p.name}</span>
-                        <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-500 shrink-0">custom</span>
+                        <span className="text-[8px] px-1 py-0.5 rounded bg-info/10 text-info shrink-0">custom</span>
                         <span className="flex-1 text-[9px] text-text-muted truncate">{p.url || p.command}</span>
                         <button onClick={() => setCustomPlugins(customPlugins.filter((x) => x.name !== p.name))} className="shrink-0 hover:text-danger ml-auto">
                           <span className="material-symbols-outlined text-[12px]">close</span>

@@ -5,15 +5,15 @@ import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
-    ? "border-green-500/40"
+    ? "border-success/40"
     : testStatus === "error"
     ? "border-danger/40"
     : "border-border";
 
   const iconColor = testStatus === "ok"
-    ? "#22c55e"
+    ? "var(--color-success)"
     : testStatus === "error"
-    ? "#ef4444"
+    ? "var(--color-danger)"
     : undefined;
 
   return (

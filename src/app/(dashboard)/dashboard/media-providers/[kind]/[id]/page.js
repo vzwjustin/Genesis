@@ -694,10 +694,10 @@ function TtsExampleCard({ providerId }) {
                   >
                     {v.name}{v.gender ? ` · ${v.gender[0].toUpperCase()}` : ""}
                     {v.free_users_allowed === true && (
-                      <span className="ml-1.5 px-1 py-0.5 text-[9px] font-semibold rounded bg-green-500/15 text-green-600 border border-green-500/20">Free</span>
+                      <span className="ml-1.5 px-1 py-0.5 text-[9px] font-semibold rounded bg-success/15 text-success border border-success/20">Free</span>
                     )}
                     {v.free_users_allowed === false && (
-                      <span className="ml-1.5 px-1 py-0.5 text-[9px] font-semibold rounded bg-amber-500/15 text-amber-600 border border-amber-500/20">Paid</span>
+                      <span className="ml-1.5 px-1 py-0.5 text-[9px] font-semibold rounded bg-warning/15 text-warning border border-warning/20">Paid</span>
                     )}
                   </button>
                 ))}
@@ -1851,7 +1851,7 @@ export default function MediaProviderDetailPage() {
                 href={provider.notice.apiKeyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5"
+                className="inline-flex justify-center rounded bg-info px-2 py-1 text-xs font-medium text-white transition-colors hover:opacity-90 sm:py-0.5"
               >
                 Get API Key →
               </a>

@@ -274,11 +274,11 @@ useEffect(() => {
                     {isLoading ? (
                       <span className="material-symbols-outlined text-[14px] text-primary animate-spin">progress_activity</span>
                     ) : (
-                      <span className={`material-symbols-outlined text-[14px] ${ok ? "text-green-500" : "text-text-muted"}`}>
+                      <span className={`material-symbols-outlined text-[14px] ${ok ? "text-success" : "text-text-muted"}`}>
                         {ok ? "check_circle" : "radio_button_unchecked"}
                       </span>
                     )}
-                    <span className={`text-xs font-medium ${isLoading ? "text-primary" : ok ? "text-green-500" : "text-text-muted"}`}>
+                    <span className={`text-xs font-medium ${isLoading ? "text-primary" : ok ? "text-success" : "text-text-muted"}`}>
                       {label}
                     </span>
                   </div>

@@ -860,7 +860,7 @@ export default function ProxyPoolsPage() {
         onClose={closeCloudflareModal}
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-lg bg-orange-500/5 border border-orange-500/10 p-3 flex flex-col gap-1.5">
+          <div className="rounded-lg bg-info/5 border border-info/10 p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Cloudflare Relay?</p>
             <p className="text-xs text-text-muted">
               Deploys a Cloudflare Worker as a proxy relay. All AI provider requests will be forwarded through Cloudflare&apos;s global edge network.
@@ -870,7 +870,7 @@ export default function ProxyPoolsPage() {
               <li>Free tier: 100,000 requests per day</li>
               <li>Requires Cloudflare Account ID and a Workers API Token (Edit Workers permission)</li>
             </ul>
-            <div className="mt-2 pt-2 border-t border-orange-500/10 text-xs text-text-muted">
+            <div className="mt-2 pt-2 border-t border-info/10 text-xs text-text-muted">
               <p className="font-medium text-text-main mb-1">How to generate your API Token:</p>
               <ol className="list-decimal pl-4 space-y-0.5">
                 <li>Go to <b>My Profile</b> → <b>API Tokens</b> → <b>Create Token</b></li>

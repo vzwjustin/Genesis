@@ -308,8 +308,8 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 </div>
 
                 {/* Usage hint */}
-                <div className="flex flex-col gap-1 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-                  <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Usage:</p>
+                <div className="flex flex-col gap-1 p-3 bg-info/5 border border-info/20 rounded-lg">
+                  <p className="text-xs font-medium text-info">Usage:</p>
                   <code className="text-xs font-mono text-text-muted">jcode --provider-profile 9router</code>
                   <code className="text-xs font-mono text-text-muted">jcode --provider-profile 9router --model {selectedModel || "cc/claude-opus-4-7"}</code>
                 </div>
