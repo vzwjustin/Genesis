@@ -1231,7 +1231,7 @@ function ProviderTestResultsView({ results }) {
       {summary && (
         <div className="flex flex-wrap items-center gap-2 text-xs mb-1 sm:gap-3">
           <span className="text-text-muted">{modeLabel} Test</span>
-          <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-medium">
+          <span className="px-2 py-0.5 rounded bg-success/15 text-success font-medium">
             {summary.passed} passed
           </span>
           {summary.failed > 0 && (
@@ -1250,7 +1250,7 @@ function ProviderTestResultsView({ results }) {
           className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-bg-alt px-3 py-2 text-xs sm:flex-nowrap"
         >
           <span
-            className={`material-symbols-outlined text-[16px] ${r.valid ? "text-emerald-500" : "text-danger"}`}
+            className={`material-symbols-outlined text-[16px] ${r.valid ? "text-success" : "text-danger"}`}
           >
             {r.valid ? "check_circle" : "error"}
           </span>
@@ -1270,7 +1270,7 @@ function ProviderTestResultsView({ results }) {
           <span
             className={`shrink-0 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
               r.valid
-                ? "bg-emerald-500/15 text-emerald-400"
+                ? "bg-success/15 text-success"
                 : "bg-danger/10 text-danger"
             }`}
           >
