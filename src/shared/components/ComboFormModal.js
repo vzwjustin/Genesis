@@ -23,11 +23,11 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
     if (e.key === "Escape") { setDraft(model); setEditing(false); }
   };
   return (
-    <div className="group flex min-w-0 items-center gap-1.5 rounded-md bg-black/[0.02] px-2 py-1 transition-colors hover:bg-bg-alt dark:hover:bg-white/[0.04]">
+    <div className="group flex min-w-0 items-center gap-1.5 rounded-md bg-bg-alt/50 px-2 py-1 transition-colors hover:bg-bg-alt">
       <span className="text-[10px] font-medium text-text-muted w-3 text-center shrink-0">{index + 1}</span>
       {editing ? (
         <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={handleKeyDown}
-          className="min-w-0 flex-1 rounded border border-primary/40 bg-white px-1.5 py-0.5 font-mono text-xs text-text-main outline-none dark:bg-black/20" />
+          className="min-w-0 flex-1 rounded border border-primary/40 bg-surface px-1.5 py-0.5 font-mono text-xs text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40" />
       ) : (
         <div className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main hover:bg-surface-2"
           onClick={() => setEditing(true)} title="Click to edit">{model}</div>
