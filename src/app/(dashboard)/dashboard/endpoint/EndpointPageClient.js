@@ -1263,7 +1263,7 @@ export default function APIPageClient({ machineId }) {
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
                   {key.isActive === false && (
-                    <p className="text-xs text-orange-500 mt-1">Paused</p>
+                    <p className="text-xs text-warning mt-1">Paused</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
