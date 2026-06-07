@@ -10,6 +10,7 @@ import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { FORMATS } from "../translator/formats.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { stripRedactedToolCalls, extractRedactedToolCalls } from "../utils/composerRedactedTools.js";
 import zlib from "zlib";
 
 // Detect cloud environment
@@ -52,6 +53,43 @@ function visibleComposerContentFromThinking(thinking) {
   const endIdx = thinking.lastIndexOf(endTag);
   if (endIdx < 0) return "";
   return thinking.slice(endIdx + endTag.length).trimStart();
+}
+
+function emitRedactedToolCallChunks(chunks, responseId, created, model, sourceText, toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds) {
+  for (const tc of extractRedactedToolCalls(sourceText)) {
+    const id = `call_redacted_${Date.now()}_${toolCalls.length}`;
+    const toolCallIndex = toolCalls.length;
+    const entry = {
+      id,
+      type: "function",
+      index: toolCallIndex,
+      function: { name: tc.name, arguments: tc.arguments },
+    };
+    toolCalls.push(entry);
+    toolCallsMap.set(id, entry);
+    finalizedIds.add(id);
+    emittedToolCallIds.add(id);
+    chunks.push(
+      `data: ${JSON.stringify({
+        id: responseId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [{
+              index: toolCallIndex,
+              id,
+              type: "function",
+              function: { name: tc.name, arguments: tc.arguments },
+            }],
+          },
+          finish_reason: null,
+        }],
+      })}\n\n`
+    );
+  }
 }
 
 function decompressPayload(payload, flags) {
@@ -639,25 +677,32 @@ export class CursorExecutor extends BaseExecutor {
       }
 
       if (result.text) {
-        totalContent += result.text;
-        chunks.push(
-          `data: ${JSON.stringify({
-            id: responseId,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [
-              {
-                index: 0,
-                delta:
-                  chunks.length === 0 && toolCalls.length === 0
-                    ? { role: "assistant", content: result.text }
-                    : { content: result.text },
-                finish_reason: null
-              }
-            ]
-          })}\n\n`
+        emitRedactedToolCallChunks(
+          chunks, responseId, created, model, result.text,
+          toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
         );
+        const cleanText = stripRedactedToolCalls(result.text);
+        if (cleanText) {
+          totalContent += cleanText;
+          chunks.push(
+            `data: ${JSON.stringify({
+              id: responseId,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta:
+                    chunks.length === 0 && toolCalls.length === 0
+                      ? { role: "assistant", content: cleanText }
+                      : { content: cleanText },
+                  finish_reason: null
+                }
+              ]
+            })}\n\n`
+          );
+        }
       }
 
       if (isComposerModel(model) && result.thinking) {

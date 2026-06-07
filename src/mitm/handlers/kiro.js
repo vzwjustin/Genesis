@@ -1,6 +1,7 @@
 const { err } = require("../logger");
 const { IS_DEV } = require("../config");
 const { fetchRouter } = require("./base");
+const { RedactedToolContentProcessor } = require("./composerRedactedTools");
 const fs = require("fs");
 const path = require("path");
 
@@ -256,6 +257,17 @@ async function pipeOpenAIasEventStream(routerRes, res) {
 
   // Accumulated tool-call state keyed by index
   const toolCallAccum = {};
+  const contentProcessor = new RedactedToolContentProcessor();
+
+  const emitToolUseEvents = (toolCalls) => {
+    for (const tc of toolCalls) {
+      res.write(buildEventStreamFrame("toolUseEvent", {
+        toolUseId: contentProcessor.nextToolUseId(),
+        name: tc.name,
+        input: tc.input,
+      }));
+    }
+  };
 
   const sendStop = () => {
     if (!stopSent) {
@@ -291,9 +303,13 @@ async function pipeOpenAIasEventStream(routerRes, res) {
         const delta = chunk?.choices?.[0]?.delta;
         if (!delta) continue;
 
-        // ── Text content ───────────────────────────────────────────────────────
+        // ── Text content (strip Composer redacted tool-call tokens) ─────────────
         if (delta.content) {
-          res.write(buildEventStreamFrame("assistantResponseEvent", { content: delta.content }));
+          const { text, toolCalls } = contentProcessor.processChunk(delta.content);
+          if (text) {
+            res.write(buildEventStreamFrame("assistantResponseEvent", { content: text }));
+          }
+          emitToolUseEvents(toolCalls);
         }
 
         // ── Tool calls (streamed in pieces by OpenAI SSE) ──────────────────────
@@ -343,6 +359,11 @@ async function pipeOpenAIasEventStream(routerRes, res) {
       }
     }
   } finally {
+    const flushed = contentProcessor.flush();
+    if (flushed.text) {
+      res.write(buildEventStreamFrame("assistantResponseEvent", { content: flushed.text }));
+    }
+    emitToolUseEvents(flushed.toolCalls);
     sendStop();
     res.end();
   }
