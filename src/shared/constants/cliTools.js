@@ -43,8 +43,9 @@ export const MITM_TOOLS = {
     color: "#FF6B00",
     description: "Route Kiro IDE traffic through 9Router",
     configType: "mitm",
-    mitmDomain: "q.us-east-1.amazonaws.com",
+    mitmDomain: "runtime.us-east-1.kiro.dev",
     defaultModels: [
+      { id: "claude-sonnet-4.6", name: "Claude Sonnet 4.6", alias: "claude-sonnet-4.6" },
       { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5", alias: "claude-sonnet-4.5" },
       { id: "claude-sonnet-4", name: "Claude Sonnet 4", alias: "claude-sonnet-4" },
       { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },

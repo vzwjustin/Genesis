@@ -1,6 +1,7 @@
 // All intercepted domains + URL patterns per tool
 
 const fs = require("fs");
+const { TOOL_HOSTS, isKiroMitmHost } = require("../shared/constants/mitmToolHosts.js");
 
 const IS_DEV = process.env.NODE_ENV === "development";
 
@@ -13,13 +14,7 @@ const LSOF_BIN = (() => {
   return "lsof"; // last-resort fallback (depends on PATH)
 })();
 
-const TARGET_HOSTS = [
-  "daily-cloudcode-pa.googleapis.com",
-  "cloudcode-pa.googleapis.com",
-  "api.individual.githubcopilot.com",
-  "q.us-east-1.amazonaws.com",
-  "api2.cursor.sh",
-];
+const TARGET_HOSTS = Object.values(TOOL_HOSTS).flat();
 
 const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
@@ -30,6 +25,16 @@ const URL_PATTERNS = {
 
 // Synonym map: rawModel from request → canonical alias key in mitmAlias DB
 const MODEL_SYNONYMS = {
+  kiro: {
+    "claude-sonnet-4.6": "claude-sonnet-4.5",
+    "claude-sonnet-4-6": "claude-sonnet-4.5",
+    "claude-sonnet-4-5": "claude-sonnet-4.5",
+    "claude-haiku-4-5": "claude-haiku-4.5",
+    "CLAUDE_SONNET_4_20250514_V1_0": "claude-sonnet-4.5",
+    "qdev::CLAUDE_SONNET_4_20250514_V1_0": "claude-sonnet-4.5",
+    "auto": "claude-sonnet-4.5",
+    "qdev::auto": "claude-sonnet-4.5",
+  },
   antigravity: {
     "gemini-default": "gemini-3.5-flash-low",
     "gemini-3.1-pro-high": "gemini-pro-agent",
@@ -41,6 +46,13 @@ const MODEL_SYNONYMS = {
 // Pattern fallback: rawModel regex → canonical alias key (when exact + prefix match fail)
 // Order matters: more specific patterns first. Catches AG renamed variants (e.g. gemini-pro-agent)
 const MODEL_PATTERNS = {
+  kiro: [
+    { match: /CLAUDE_SONNET|claude-sonnet/i, alias: "claude-sonnet-4.5" },
+    { match: /CLAUDE_HAIKU|claude-haiku/i, alias: "claude-haiku-4.5" },
+    { match: /deepseek/i, alias: "deepseek-3.2" },
+    { match: /minimax/i, alias: "minimax-m2.1" },
+    { match: /qwen|simple.?task|coder.?next/i, alias: "simple-task" },
+  ],
   antigravity: [
     { match: /flash.*low|low.*flash|flash.*medium|medium.*flash/i, alias: "gemini-3.5-flash-low" },
     { match: /flash.*agent|agent.*flash|flash/i,                   alias: "gemini-3-flash-agent" },
@@ -65,7 +77,7 @@ function getToolForHost(host) {
   const h = (host || "").split(":")[0];
   if (h === "api.individual.githubcopilot.com") return "copilot";
   if (h === "daily-cloudcode-pa.googleapis.com" || h === "cloudcode-pa.googleapis.com") return "antigravity";
-  if (h === "q.us-east-1.amazonaws.com") return "kiro";
+  if (isKiroMitmHost(h)) return "kiro";
   if (h === "api2.cursor.sh") return "cursor";
   return null;
 }

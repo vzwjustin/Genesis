@@ -103,6 +103,7 @@ export default function MitmPageClient() {
             hasCachedPassword={mitmStatus.hasCachedPassword || false}
             needsSudoPassword={mitmStatus.needsSudoPassword !== false}
             isWin={mitmStatus.isWin === true}
+            isLinux={mitmStatus.isLinux === true}
             apiKeys={apiKeys}
             activeProviders={getActiveProviders()}
             hasActiveProviders={hasActiveProviders()}

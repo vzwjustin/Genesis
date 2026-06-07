@@ -674,6 +674,29 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
         else log(`[setx] NODE_EXTRA_CA_CERTS set for current user`);
       });
     }
+  } else {
+    // Linux: Electron apps (Kiro) validate TLS strictly — they need the MITM root CA at launch time.
+    const rootCAPath = path.join(MITM_DIR, "rootCA.crt");
+    if (fs.existsSync(rootCAPath)) {
+      const envFile = path.join(MITM_DIR, "electron-ca.env");
+      const launchScript = path.join(MITM_DIR, "launch-with-mitm-ca.sh");
+      try {
+        fs.writeFileSync(envFile, `export NODE_EXTRA_CA_CERTS="${rootCAPath}"\n`, "utf8");
+        fs.writeFileSync(
+          launchScript,
+          "#!/usr/bin/env bash\n" +
+          `# 9router MITM — trust local CA for Electron/Node apps (Kiro, etc.)\n` +
+          `export NODE_EXTRA_CA_CERTS="${rootCAPath}"\n` +
+          'exec "$@"\n',
+          { mode: 0o755 }
+        );
+        log(`[linux] Launch Kiro with: source ${envFile} && <kiro-command>`);
+        log(`[linux] Or wrap any app: ${launchScript} <kiro-command>`);
+      } catch (e) {
+        log(`[linux] Failed to write electron CA helper files: ${e.message}`);
+      }
+      exec(`systemctl --user set-environment NODE_EXTRA_CA_CERTS="${rootCAPath}" 2>/dev/null`, { windowsHide: true }, () => {});
+    }
   }
 
   let startError = null;
