@@ -4,7 +4,7 @@
 
 This implementation plan covers the AI Compression Routing Proxy — a local AI gateway that sits between developer clients (CLIs, IDEs, extensions) and upstream AI provider APIs. The proxy translates between formats (OpenAI, Claude, Gemini, Cursor, Kiro, etc.), compresses request payloads to reduce token usage and latency, and routes traffic across providers with fallback, retry, and per-account cooldown logic.
 
-The implementation is organized into 16 task groups covering: format translation, passthrough mode, model resolution, credential selection, account fallback, combo sequencing, streaming, Anthropic tool cleaning, RTK/Headroom/Caveman compression, outbound proxy, MITM DNS bypass, logging, authentication, statistics tracking, and build/runtime verification. Tasks are ordered so each builds on prior work, with checkpoints for incremental validation.
+The implementation is organized into 22 task groups covering: format translation, passthrough mode, model resolution, credential selection, account fallback, combo sequencing, streaming, Anthropic tool cleaning, RTK/Headroom/Caveman compression, outbound proxy, MITM DNS bypass, logging, authentication, statistics tracking, passthrough compression gating, passthrough field/response preservation, core reliability, correctness fail-closed, and build/runtime verification. Tasks are ordered so each builds on prior work, with checkpoints for incremental validation.
 
 Passthrough mode is a first-class behavior in this fork. It gets its own dedicated task group because the behavioral rules are extensive and distinct from normal translation.
 
@@ -25,11 +25,11 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
   - [x] 1.4 Return HTTP 400 for any pre-dispatch validation failure (format detection, translation, schema)
     - Descriptive error message for format detection failure, translation failure, model resolution failure, schema violation
     - Use error types: `translation_invalid_body`, `validation_failed`, `unsupported_request`, `missing_required_field`
-    - _Requirements: 1.4_
+    - _Requirements: 1.4, 18.3, 18.4, 18.7, 18.8_
   - [x] 1.5 Ensure translation does NOT run when passthrough mode is active
     - Translation rules do not automatically apply to passthrough mode
     - Guard all translation code paths against passthrough requests
-    - _Requirements: 1.2, 1.3_
+    - _Requirements: 1.2, 1.3, 17.8_
   - [ ]* 1.6 Write unit tests for format detection (OpenAI, Claude, Gemini, Antigravity, OpenAI-Responses)
     - Test each format with representative request bodies
     - _Requirements: 1.1_
@@ -38,7 +38,7 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - Valid translation with failed post-translation validation returns HTTP 400
     - Valid translation and validation proceeds upstream
     - Translation rules do not accidentally run during passthrough mode
-    - _Requirements: 1.3, 1.4_
+    - _Requirements: 1.3, 1.4, 18.3, 18.4_
   - [ ]* 1.8 Write property test for request format translation round-trip
     - **Property 1: Request Format Translation Round-Trip**
     - **Validates: Requirements 1.1, 1.3, 1.5**
@@ -47,36 +47,44 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
   - [x] 2.1 Implement passthrough detection (same ecosystem client/provider matching)
     - Claude CLI → Anthropic, OpenAI SDK → OpenAI, Cursor → Cursor
     - Use both spellings in comments/searches: `passthrough` and `passthru`
-    - _Requirements: 1.2_
+    - _Requirements: 1.2, 16.1_
   - [x] 2.2 Implement passthrough request forwarding: swap model name + auth header ONLY
     - Do NOT run normal translation
     - Do NOT normalize fields or rename provider-native fields
     - Do NOT drop unknown provider-native fields
     - Do NOT rewrite tool schemas unless a known compatibility rule requires it
-    - _Requirements: 1.2_
+    - _Requirements: 1.2, 16.1, 16.4, 16.7_
   - [x] 2.3 Implement passthrough compression guard: do NOT compress unless passthrough compression explicitly enabled
     - Do NOT alter provider-native message arrays unless configured
     - If compression is explicitly enabled and fails, continue with original unmodified content
-    - _Requirements: 1.2, 7.3_
+    - _Requirements: 1.2, 15.1, 15.2, 15.3, 15.4_
   - [x] 2.4 Implement passthrough response preservation
     - Preserve upstream response shape, error shape, streaming behavior, provider-specific fields
     - Do NOT convert to another provider schema unless the endpoint contract explicitly requires it
-    - _Requirements: 1.2, 1.5_
+    - _Requirements: 1.2, 1.5, 16.3_
   - [x] 2.5 Implement passthrough error handling: fail clearly, do NOT silently fall back to translated mode
     - If passthrough provider resolution fails: return error
     - Do NOT guess the intended provider
     - Do NOT mutate the request into a different provider format
-    - _Requirements: 1.2_
+    - _Requirements: 1.2, 17.5, 17.6_
   - [x] 2.6 Ensure passthrough still applies: auth enforcement, provider/model resolution, connection selection, outbound proxy, MITM bypass DNS, timeout, retry/cooldown, upstream auth header injection, logging, streaming adaptation when required
     - These are proxy responsibilities and apply regardless of passthrough
-    - _Requirements: 1.2, 10.1, 11.1, 13.1_
+    - _Requirements: 1.2, 10.1, 11.1, 13.1, 17.7_
   - [x] 2.7 Implement passthrough streaming rules
     - If client requested streaming, preserve streaming
     - If client requested non-streaming but upstream always streams, assemble SSE into JSON
     - If assembly fails, discard partial data and return error
     - Never return partial JSON as success
-    - _Requirements: 1.2, 6.3, 6.6_
-  - [x]* 2.8 Write unit tests for passthrough behavior
+    - _Requirements: 1.2, 6.3, 6.6, 16.2_
+  - [x] 2.8 Implement passthrough local-only proxy metadata removal
+    - Remove local-only proxy metadata fields not recognized by upstream provider
+    - Do NOT remove provider-native fields
+    - _Requirements: 16.6_
+  - [x] 2.9 Implement passthrough compatibility fixes (Anthropic tool model-prefix stripping)
+    - Apply known fixes that prevent upstream rejection
+    - Do NOT alter tool definitions beyond what is explicitly required
+    - _Requirements: 16.5, 16.7_
+  - [x]* 2.10 Write unit tests for passthrough behavior
     - Passthrough request does not run normal translation
     - Passthrough preserves unknown provider-native fields
     - Passthrough preserves client-requested streaming
@@ -85,10 +93,21 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - Passthrough still applies outbound proxy routing
     - Passthrough still applies MITM bypass DNS rules
     - Passthrough provider resolution failure returns an error (not silent fallback)
-    - _Requirements: 1.2_
-  - [ ]* 2.9 Write property test for passthrough skips translation
+    - Passthrough removes local-only proxy metadata
+    - Passthrough does not alter tool definitions unless Anthropic prefix rule applies
+    - _Requirements: 1.2, 16.1, 16.5, 16.6, 16.7_
+  - [ ]* 2.11 Write property test for passthrough skips translation
     - **Property 6: Passthrough Skips Translation**
     - **Validates: Requirements 1.2**
+  - [ ]* 2.12 Write property test for passthrough compression gating
+    - **Property 16: Passthrough Compression Gating**
+    - **Validates: Requirements 15.1, 15.2, 15.3**
+  - [ ]* 2.13 Write property test for passthrough field preservation
+    - **Property 17: Passthrough Field Preservation**
+    - **Validates: Requirements 16.1, 16.6, 16.7**
+  - [ ]* 2.14 Write property test for passthrough response preservation
+    - **Property 18: Passthrough Response Preservation**
+    - **Validates: Requirements 16.3**
 
 - [x] 3. Model and Alias Resolution
   - [x] 3.1 Implement model string parsing (`provider/model` vs plain alias vs combo name)
@@ -100,11 +119,11 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
   - [x] 3.3 Implement combo expansion into ordered provider/model list
     - Expand combo name into ordered list of provider/model strings
     - A combo match succeeds only when it resolves to a valid actionable provider/model target
-    - _Requirements: 2.3_
+    - _Requirements: 2.3, 18.9_
   - [x] 3.4 Return HTTP 400 when resolution fails (after all methods attempted)
     - Descriptive error message when model string cannot be resolved
     - Do NOT silently fall back or treat combo-name match alone as success
-    - _Requirements: 2.4_
+    - _Requirements: 2.4, 18.1, 18.9_
   - [x] 3.5 Log resolved routing path for every request
     - Log original Model_String → resolved provider/model
     - _Requirements: 2.5_
@@ -121,7 +140,7 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
   - [x] 4.3 Return HTTP 404 when no valid-credential connections exist (including zero configured)
     - Message: "No active credentials for provider: {provider}"
     - Zero connections = zero retries, no initial request attempted
-    - _Requirements: 3.3_
+    - _Requirements: 3.3, 4.8_
   - [x] 4.4 Implement cooldown wait with minimum 1-second retry delay
     - Wait until earliest cooldown reset time; enforce MIN_RETRY_DELAY_MS = 1000
     - Never return Retry-After: 0 for a no-capacity state
@@ -140,6 +159,9 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - Unavailable provider returns minimum Retry-After: 1 instead of 0
     - Retry limit matches configured connection count
     - _Requirements: 3.3, 3.4, 4.7, 4.8_
+  - [ ]* 4.9 Write property test for cooldown minimum retry delay
+    - **Property 11: Cooldown Minimum Retry Delay**
+    - **Validates: Requirements 3.4**
 
 - [x] 5. Checkpoint - Ensure core routing passes
   - Ensure all tests pass, ask the user if questions arise.
@@ -192,6 +214,7 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - _Requirements: 5.1_
     - Note: current behavior returns HTTP 404 from `handleSingleModel` without advancing (Req 5.3 4xx rule). Preflight skip-before-dispatch not yet implemented.
   - [x]* 7.8 Write unit tests for combo sequencing (`combo-sequencing.test.js`)
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
   - [ ]* 7.7 Write property test for combo advancement only on retriable errors
     - **Property 4: Combo Advancement Only On Retriable Errors**
     - **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5**
@@ -215,7 +238,7 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
   - [x] 8.6 Implement stream assembly failure handling: discard ALL partial data, return error
     - Partial JSON MUST NEVER be returned to non-streaming clients
     - Non-streaming clients must receive complete valid JSON or a clear error
-    - _Requirements: 6.6_
+    - _Requirements: 6.6, 18.5, 18.10_
   - [x]* 8.7 Write unit tests for streaming behavior
     - Always-streaming provider assembles full SSE into JSON for non-streaming client
     - Malformed SSE discards partial content
@@ -237,14 +260,14 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
   - [x] 9.3 Implement passthrough compatibility fix: apply Anthropic tool model-prefix stripping in passthrough mode
     - This is a known compatibility fix that prevents upstream rejection
     - Passthrough mode still applies this fix ONLY when required to prevent Anthropic rejection
-    - _Requirements: 1.2, 1.6_
+    - _Requirements: 1.2, 1.6, 16.5_
   - [x]* 9.4 Write unit tests for Anthropic tool cleaning
     - Client tools strip `model` and `type`
     - Built-in tools preserve properties
     - Built-in tool `model` strips provider prefixes like `cc/`
     - Prefixed built-in tool models do not reach Anthropic
     - Passthrough mode still applies this fix only when required to prevent Anthropic rejection
-    - _Requirements: 1.6_
+    - _Requirements: 1.6, 16.5_
 
 - [x] 10. Checkpoint - Ensure routing and streaming pass
   - Ensure all tests pass, ask the user if questions arise.
@@ -274,14 +297,14 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - Compression must never make the request less reliable than sending the original content
     - _Requirements: 7.11_
   - [x] 11.9 Record compression stats per request (bytes before/after, filter hits) — only when compression actually applied
-    - _Requirements: 7.12_
+    - _Requirements: 7.12, 14.1_
   - [x]* 11.10 Write unit tests for compression behavior
     - Detected git diff uses matching filter
     - Matching filter failure falls back to smart truncation
     - Compression internal error returns original content
     - Compression logging failure does not stop request
     - Passthrough requests are not compressed by default
-    - _Requirements: 7.7, 7.8, 7.9, 7.11_
+    - _Requirements: 7.7, 7.8, 7.9, 7.11, 15.1_
   - [ ]* 11.11 Write property test for cache boundary preservation
     - **Property 2: Cache Boundary Preservation (HARD CORRECTNESS INVARIANT)**
     - Verify messages at/before boundary are byte-for-byte unchanged after RTK compression
@@ -327,10 +350,10 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - _Requirements: 9.4_
   - [x] 13.4 Record stats only when injection actually occurs (skip when no eligible injection point)
     - No stats entry when Caveman is configured but injection does not happen
-    - _Requirements: 9.5_
+    - _Requirements: 9.5, 14.1_
   - [x] 13.5 Implement stats failure handling: log failure → proceed unconditionally (even if logging fails)
     - Caveman statistics must never interrupt the request path
-    - _Requirements: 9.6_
+    - _Requirements: 9.6, 14.3, 14.4_
   - [x]* 13.6 Write unit tests for Caveman statistics
     - Stats success does not stop request
     - Stats failure does not stop request
@@ -373,7 +396,7 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
   - [x] 15.4 Implement hard failure on external DNS failure: NEVER fall back to system DNS for bypass hosts
     - Bypass hosts must avoid MITM/system resolver interference, even if that means failing closed
     - Passthrough mode does NOT bypass MITM bypass DNS rules
-    - _Requirements: 11.4_
+    - _Requirements: 11.4, 18.6_
   - [x] 15.5 Implement guard: proxy DNS resolution requires an actual configured outbound proxy
     - If no outbound proxy configured, do not attempt proxy DNS resolution
     - _Requirements: 11.2_
@@ -406,22 +429,28 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - _Requirements: 12.4, 12.5_
   - [x] 17.5 Implement partial result logging: write what was captured when request fails after partial completion
     - Mark log entry as failed/incomplete; do not make partial logs look successful
-    - _Requirements: 12.5_
+    - _Requirements: 12.5, 12.10_
   - [x] 17.6 Implement passthrough logging: label as passthrough, preserve raw shape, redact secrets
     - Do not make passthrough logs look like translated requests
-    - _Requirements: 12.4_
+    - _Requirements: 12.4, 12.9_
   - [x] 17.7 Implement log writer flush/close after each request
     - _Requirements: 12.7_
   - [x] 17.8 Handle log writer errors gracefully (no request disruption)
     - Failed and partial requests are often the most important logs
-    - _Requirements: 12.8_
+    - _Requirements: 12.8, 17.2_
   - [x]* 17.9 Write unit tests for logging
     - Successful request is logged
     - Failed request is logged
     - Partially completed failed request is logged as failed/incomplete
     - Passthrough request is logged as passthrough
     - Logging failure does not break the request path
-    - _Requirements: 12.4, 12.5, 12.8_
+    - _Requirements: 12.4, 12.5, 12.8, 12.9, 12.10_
+  - [ ]* 17.10 Write property test for passthrough logs labeled separately
+    - **Property 23: Passthrough Logs Labeled Separately**
+    - **Validates: Requirements 12.9**
+  - [ ]* 17.11 Write property test for failed/partial logs clearly marked
+    - **Property 24: Failed/Partial Logs Clearly Marked**
+    - **Validates: Requirements 12.10**
 
 - [x] 18. API Key Authentication
   - [x] 18.1 Implement requireApiKey enforcement (reject missing auth with 401)
@@ -473,21 +502,65 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - **Property 8: Usage Tracking on Completion**
     - **Validates: Requirements 12.1**
 
-- [x] 20. Build and Runtime Verification
-  - [x] 20.1 Implement build verification: confirm compiled chunk contains expected critical fixes after rebuild
+- [x] 20. Core Reliability - Optional Subsystem Failure Isolation
+  - [x] 20.1 Implement fail-open for optional subsystems: stats, logs, telemetry never break request path
+    - If optional subsystem fails: log if possible, continue
+    - If logging the failure also fails: still continue
+    - _Requirements: 17.1, 17.2, 17.3_
+  - [x] 20.2 Implement passthrough mutation restrictions: only apply mutations required by security, routing, or compatibility rules
+    - Translation rules do NOT automatically apply to passthrough mode
+    - _Requirements: 17.4, 17.8_
+  - [x]* 20.3 Write unit tests for optional subsystem failure isolation
+    - Compression stats failure does not break request path
+    - Request log failure does not break request path
+    - Double failure (subsystem + logging) still continues
+    - _Requirements: 17.1, 17.2, 17.3_
+  - [ ]* 20.4 Write property test for optional subsystem failure isolation
+    - **Property 19: Optional Subsystem Failure Isolation**
+    - **Validates: Requirements 17.1, 17.2, 17.3**
+
+- [x] 21. Correctness - Fail Closed, No Guessing
+  - [x] 21.1 Implement fail-closed resolution: model/combo/passthrough resolution failure → error, never silent fallback
+    - A combo name match alone is NOT sufficient — must resolve to valid actionable target
+    - Do NOT silently fall back, guess provider, or mutate request format
+    - _Requirements: 18.1, 18.2, 18.9_
+  - [x] 21.2 Implement response validity guarantee: never return partial JSON, malformed JSON, or successful status for failed resolution
+    - _Requirements: 18.10, 18.11_
+  - [x]* 21.3 Write unit tests for fail-closed behavior
+    - Model resolution failure returns error, not silent fallback
+    - Combo name match alone does NOT count as success if inner resolution fails
+    - Passthrough resolution failure returns error, not silent fallback
+    - Invalid translation output returns HTTP 400
+    - Post-translation validation failure returns HTTP 400
+    - Partial JSON never returned as success
+    - Malformed JSON never returned with application/json Content-Type
+    - Successful HTTP status never returned for failed resolution
+    - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.9, 18.10, 18.11_
+  - [ ]* 21.4 Write property test for resolution failure is fail-closed
+    - **Property 20: Resolution Failure Is Fail-Closed**
+    - **Validates: Requirements 17.5, 17.6, 18.1, 18.2, 18.9**
+  - [ ]* 21.5 Write property test for translation/validation failure returns 400
+    - **Property 21: Translation/Validation Failure Returns 400**
+    - **Validates: Requirements 18.3, 18.4, 18.7**
+  - [ ]* 21.6 Write property test for response validity guarantee
+    - **Property 22: Response Validity Guarantee**
+    - **Validates: Requirements 18.10, 18.11**
+
+- [x] 22. Build and Runtime Verification
+  - [x] 22.1 Implement build verification: confirm compiled chunk contains expected critical fixes after rebuild
     - Verify Anthropic tool model-prefix fix in compiled output: `grep -R "model.slice.*indexOf.*+1" cli/app/.next-cli-build/server/chunks`
     - _Requirements: 1.6_
-  - [x] 20.2 Document cache clearing requirement for `open-sse/` edits in build scripts or README
+  - [x] 22.2 Document cache clearing requirement for `open-sse/` edits in build scripts or README
     - Clear `.next-cli-build/cache/webpack` (or entire `.next-cli-build`) before rebuilding
     - _Requirements: 1.6_
-  - [x]* 20.3 Write build verification tests
+  - [x]* 22.3 Write build verification tests
     - Cache clearing documented for `open-sse/` edits
     - Compiled chunk contains expected critical fix
     - Global install path is a symlink during development
     - Headless server launches directly through `app/server.js`
     - _Requirements: 1.6_
 
-- [x] 21. Final checkpoint - Ensure all tests pass
+- [x] 23. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
@@ -507,6 +580,10 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
 - Combo 4xx: Only apply 4xx combo behavior when model actually returns HTTP 4xx. Do NOT apply to 200, 5xx, network errors, or proxy-internal errors.
 - Retry-After minimum: Never return Retry-After: 0 for a no-capacity state. Use minimum of 1.
 - Passthrough: first-class behavior with explicit allowed/disallowed mutation lists; does NOT bypass proxy, DNS, auth, or logging
+- Passthrough field preservation (Req 16): preserve all provider-native fields without renaming/dropping; remove only local-only proxy metadata; do not alter tools unless Anthropic prefix rule
+- Passthrough compression gating (Req 15): no compression unless explicitly enabled; forward original body unmodified when disabled
+- Core reliability (Req 17): fail open for optional subsystems; fail closed for security/correctness; passthrough mutations only when required
+- Correctness fail-closed (Req 18): error instead of guessing; never return invalid responses as success; combo name match alone is not sufficient
 - Stats: record only when compression actually applied, not just when subsystem is enabled
 - Proxy precedence: per-connection > env vars > Vercel relay > direct (explicit order)
 - DNS bypass: only when no outbound proxy configured; never fall back to system DNS; passthrough does not bypass DNS rules
@@ -521,11 +598,11 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
   "waves": [
     { "id": 0, "tasks": ["1.1", "2.1", "3.1", "19.1"] },
     { "id": 1, "tasks": ["1.2", "1.4", "2.2", "2.3", "3.2", "3.3", "3.4", "3.5"] },
-    { "id": 2, "tasks": ["1.3", "1.5", "2.4", "2.5", "2.6", "2.7", "3.6", "4.1", "4.2"] },
-    { "id": 3, "tasks": ["1.6", "1.7", "1.8", "2.8", "2.9", "4.3", "4.4", "4.5", "4.6"] },
-    { "id": 4, "tasks": ["4.7", "4.8", "6.1", "6.2", "6.3", "6.4"] },
+    { "id": 2, "tasks": ["1.3", "1.5", "2.4", "2.5", "2.6", "2.7", "2.8", "2.9", "3.6", "4.1", "4.2"] },
+    { "id": 3, "tasks": ["1.6", "1.7", "1.8", "2.10", "2.11", "2.12", "2.13", "2.14", "4.3", "4.4", "4.5", "4.6"] },
+    { "id": 4, "tasks": ["4.7", "4.8", "4.9", "6.1", "6.2", "6.3", "6.4"] },
     { "id": 5, "tasks": ["6.5", "6.6", "6.7", "6.8", "6.9", "7.1", "7.2", "7.3"] },
-    { "id": 6, "tasks": ["7.4", "7.5", "7.6", "7.7", "8.1", "8.2", "8.3"] },
+    { "id": 6, "tasks": ["7.4", "7.5", "7.6", "7.7", "7.8", "8.1", "8.2", "8.3"] },
     { "id": 7, "tasks": ["8.4", "8.5", "8.6", "8.7", "8.8", "9.1", "9.2", "9.3"] },
     { "id": 8, "tasks": ["9.4", "11.1", "11.2", "11.3", "11.4"] },
     { "id": 9, "tasks": ["11.5", "11.6", "11.7", "11.8", "11.9", "12.1", "12.2", "12.3"] },
@@ -534,10 +611,13 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     { "id": 12, "tasks": ["14.1", "14.2", "14.3", "14.4", "14.5"] },
     { "id": 13, "tasks": ["14.6", "14.7", "15.1", "15.2", "15.3", "15.4", "15.5"] },
     { "id": 14, "tasks": ["15.6", "15.7", "17.1", "17.2", "17.3"] },
-    { "id": 15, "tasks": ["17.4", "17.5", "17.6", "17.7", "17.8", "17.9"] },
+    { "id": 15, "tasks": ["17.4", "17.5", "17.6", "17.7", "17.8", "17.9", "17.10", "17.11"] },
     { "id": 16, "tasks": ["18.1", "18.2", "18.3", "18.4", "18.5", "18.6"] },
     { "id": 17, "tasks": ["18.7", "18.8", "19.2", "19.3", "19.4"] },
-    { "id": 18, "tasks": ["19.5", "19.6", "19.7", "20.1", "20.2", "20.3"] }
+    { "id": 18, "tasks": ["19.5", "19.6", "19.7", "20.1", "20.2"] },
+    { "id": 19, "tasks": ["20.3", "20.4", "21.1", "21.2"] },
+    { "id": 20, "tasks": ["21.3", "21.4", "21.5", "21.6", "22.1", "22.2"] },
+    { "id": 21, "tasks": ["22.3"] }
   ]
 }
 ```

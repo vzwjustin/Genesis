@@ -218,6 +218,8 @@ The two core subsystems are:
 6. WHERE token usage metadata is absent from the upstream response, THE Proxy SHALL record zero token counts rather than omitting the usage entry.
 7. THE Proxy SHALL close and flush log writers after each completed request to ensure durability.
 8. THE Proxy SHALL handle log writer errors gracefully without disrupting request processing.
+9. WHERE `ENABLE_REQUEST_LOGS` is set to `true` AND the request is a passthrough request, THE Proxy SHALL label the log entry as passthrough, preserve enough raw request/response shape to debug provider compatibility, redact secrets, AND SHALL NOT make passthrough logs appear as translated requests.
+10. WHERE `ENABLE_REQUEST_LOGS` is set to `true` AND a request fails or partially completes, THE Proxy SHALL clearly mark the log entry as failed or incomplete; partial logs MUST NOT appear as successful requests.
 
 ---
 
@@ -248,3 +250,69 @@ The two core subsystems are:
 2. WHERE the compression stats store is SQLite, THE Proxy SHALL store records with the following schema: `id` (integer primary key), `timestamp` (ISO8601 text), `subsystem` (text: 'rtk', 'headroom', 'caveman'), `bytes_before` (integer), `bytes_after` (integer), `filter_hits` (JSON text, optional), `level` (text, optional for caveman).
 3. IF writing compression statistics fails, THEN THE Proxy SHALL log the failure AND continue request processing without interruption; THE Proxy SHALL always continue in both success and failure cases for stats writing.
 4. IF logging the compression statistics failure itself fails, THEN THE Proxy SHALL continue processing without further logging attempts.
+
+---
+
+### Requirement 15: Compression and Passthrough Mode
+
+**User Story:** As a client using passthrough mode, I want 9Router to preserve my provider-native request shape without compression unless I explicitly enable it, so that my client's intended request structure is maintained.
+
+#### Acceptance Criteria
+
+1. FOR passthrough mode requests, THE Proxy SHALL NOT apply compression (RTK, Headroom, or Caveman) unless passthrough compression is explicitly enabled in settings.
+2. WHERE passthrough compression is enabled AND compression is actually applied, THE Proxy SHALL proceed with compression; WHERE passthrough compression is disabled, THE Proxy SHALL skip all compression subsystems and forward the original request body unmodified.
+3. THE Proxy SHALL NOT alter provider-native message arrays in passthrough mode unless compression is explicitly enabled and configured.
+4. WHERE compression is explicitly enabled for passthrough mode AND compression fails, THE Proxy SHALL continue with the original unmodified content.
+
+---
+
+### Requirement 16: Passthrough Mode Preservation
+
+**User Story:** As a client developer using advanced provider-native features, I want 9Router to preserve my provider's native request structure in passthrough mode without silently removing or renaming fields, so that my client's full feature set remains available.
+
+#### Acceptance Criteria
+
+1. FOR passthrough mode requests, THE Proxy SHALL preserve all provider-native fields in the request body without renaming or dropping unknown fields.
+2. FOR passthrough mode requests, THE Proxy SHALL preserve client-requested streaming behavior (do not force non-streaming if client requested streaming, and vice versa except where required by always-streaming providers where SSE assembly is needed).
+3. FOR passthrough mode requests, THE Proxy SHALL preserve upstream response shape, upstream error shape where safe, and provider-specific response fields.
+4. FOR passthrough mode requests, THE Proxy SHALL NOT translate the request body into another provider schema unless explicitly required by the endpoint contract or configuration.
+5. FOR passthrough mode requests, THE Proxy SHALL still apply known compatibility fixes that prevent upstream rejection (such as stripping provider prefixes from Anthropic built-in tool `model` fields) because these are required to avoid provider-side 400 errors.
+6. FOR passthrough mode requests, THE Proxy SHALL still remove local-only proxy metadata fields that are not recognized by the upstream provider.
+7. FOR passthrough mode requests, THE Proxy SHALL NOT alter tool definitions unless a known provider compatibility rule explicitly requires it to prevent upstream rejection.
+
+---
+
+### Requirement 17: Core Reliability - Fail Closed, Fail Open
+
+**User Story:** As an operator, I want 9Router to continue processing requests even when optional subsystems (statistics, logging, telemetry) fail, so that the proxy remains reliable under messy real-world conditions.
+
+#### Acceptance Criteria
+
+1. THE Proxy SHALL continue the main request path unless continuing would violate security, authentication correctness, request validity, response validity, DNS/MITM bypass integrity, or model/provider resolution correctness.
+2. OPTIONAL subsystems MUST NOT break the request path. OPTIONAL subsystems include: compression statistics, Caveman statistics, request logs, debug logs, telemetry, and non-critical metadata recording.
+3. IF an optional subsystem fails, THE Proxy SHALL log the failure IF POSSIBLE AND continue; IF logging the failure ALSO fails, THE Proxy SHALL continue without further logging attempts.
+4. FOR passthrough mode, THE Proxy SHALL apply passthrough mutations ONLY when required by security, routing, or explicitly required compatibility rules; passthrough mode MUST NOT mutate provider-native request shapes unless one of these rules explicitly requires it.
+5. IF passthrough resolution fails to determine a valid provider/model target, THEN THE Proxy SHALL return an error AND SHALL NOT silently fall back to translated mode.
+6. IF passthrough resolution fails, THE Proxy SHALL NOT guess the intended provider or mutate the request into a different provider format; passthrough MUST be predictable — either forward the provider-compatible request safely or fail clearly.
+7. FOR passthrough mode, THE Proxy SHALL still enforce outbound proxy routing, MITM bypass DNS rules, and authentication; these are transport-layer and security concerns that apply regardless of passthrough status.
+8. FOR passthrough mode, translation rules SHALL NOT automatically apply; THE Proxy SHALL avoid translation unless explicitly required by the selected endpoint contract or configuration.
+
+---
+
+### Requirement 18: Correctness - Fail Closed, No Guessing
+
+**User Story:** As an operator, I want 9Router to return an error instead of guessing when the system cannot determine the correct behavior, so that invalid requests never produce false success responses.
+
+#### Acceptance Criteria
+
+1. IF model or combo resolution ultimately fails, THEN THE Proxy SHALL return an error AND SHALL NOT silently fall back to an alternative resolution path.
+2. IF passthrough provider resolution fails, THEN THE Proxy SHALL return an error AND SHALL NOT guess the intended provider.
+3. IF request translation cannot produce a valid upstream body, THEN THE Proxy SHALL return HTTP 400.
+4. IF post-translation validation fails, THEN THE Proxy SHALL return HTTP 400.
+5. IF SSE stream assembly fails for a non-streaming client, THEN THE Proxy SHALL discard all partially assembled data AND return an error response; partial JSON MUST NEVER be returned as success.
+6. IF MITM bypass DNS integrity cannot be guaranteed, THEN THE Proxy SHALL return an error AND SHALL NOT silently fall back to system DNS resolution for bypass hosts.
+7. THE Proxy SHALL return HTTP 400 for any request-shape failure that prevents successful request processing.
+8. PREFERRED error types: `translation_invalid_body`, `validation_failed`, `unsupported_request`, `missing_required_field`.
+9. A combo match succeeds only when it resolves to a valid actionable provider/model target; a Model_String matching a registered combo name is not enough to count as successful resolution if combo resolution ultimately fails.
+10. THE Proxy SHALL NEVER return: partial JSON as success, malformed JSON with `application/json` Content-Type, incomplete SSE assembly as a normal response, a translated-but-invalid upstream body, a successful HTTP status for failed combo/model resolution, or a successful HTTP status for failed passthrough provider resolution.
+11. IF the Proxy cannot guarantee response validity, THEN THE Proxy SHALL return an error rather than a potentially invalid response.
