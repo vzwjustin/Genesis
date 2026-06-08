@@ -83,4 +83,24 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.ok).toBe(false);
     expect(result.response?.status).toBe(401);
   });
+
+  it("rejects present-but-malformed Authorization header even when requireApiKey=false", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({ Authorization: "garbage" }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+  });
+
+  it("treats whitespace-only Authorization header as absent (bypass allowed)", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({ Authorization: "   " }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+  });
 });

@@ -36,12 +36,14 @@ function pickAssistantMessageForChatCompletion(output) {
  */
 export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   const chunks = [];
+  let sawTerminal = false; // [DONE] sentinel OR a finish_reason marks a complete stream
 
   for (const line of String(rawSSE || "").split("\n")) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) continue;
     const payload = trimmed.slice(5).trim();
-    if (!payload || payload === "[DONE]") continue;
+    if (!payload) continue;
+    if (payload === "[DONE]") { sawTerminal = true; continue; }
     try {
       chunks.push(JSON.parse(payload));
     } catch {
@@ -63,7 +65,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     const delta = choice?.delta || {};
     if (typeof delta.content === "string" && delta.content.length > 0) contentParts.push(delta.content);
     if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) reasoningParts.push(delta.reasoning_content);
-    if (choice?.finish_reason) finishReason = choice.finish_reason;
+    if (choice?.finish_reason) { finishReason = choice.finish_reason; sawTerminal = true; }
     if (chunk?.usage && typeof chunk.usage === "object") usage = chunk.usage;
 
     // Accumulate tool_calls from streaming deltas
@@ -79,6 +81,13 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
         if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
       }
     }
+  }
+
+  // Fail closed: content arrived but the stream never signalled completion
+  // (no finish_reason, no [DONE]) → truncated. Return null so the caller emits
+  // a BAD_GATEWAY error instead of partial JSON with a fabricated "stop".
+  if (!sawTerminal && (contentParts.length > 0 || reasoningParts.length > 0 || toolCallMap.size > 0)) {
+    return null;
   }
 
   const message = { role: "assistant", content: contentParts.join("") || (toolCallMap.size > 0 ? null : "") };
@@ -120,6 +129,13 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
   if (isCodexResponsesApi) {
     try {
       const jsonResponse = await convertResponsesStreamToJson(providerResponse.body);
+
+      // Fail closed: a stream that never reached "completed" is truncated or failed.
+      // Discard the partial assembly and return an error — never emit partial JSON as success.
+      if (jsonResponse.status !== "completed") {
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Incomplete streaming response");
+      }
+
       if (onRequestSuccess) await onRequestSuccess();
 
       const usage = jsonResponse.usage || {};

@@ -315,7 +315,10 @@ export async function authenticateRequest(request, log) {
   const settings = await getSettings();
   const authHeader = request.headers.get("Authorization");
   const xApiKeyHeader = request.headers.get("x-api-key");
-  const hasCredentialHeader = !!(authHeader?.startsWith("Bearer ") || xApiKeyHeader);
+  // Any present, non-empty credential header counts — a present-but-malformed
+  // Authorization header must fail closed (401), not bypass. Bypass is allowed
+  // only when NO credential header is present (whitespace-only treated as absent).
+  const hasCredentialHeader = !!(authHeader?.trim() || xApiKeyHeader?.trim());
   const apiKey = extractApiKey(request);
 
   if (hasCredentialHeader) {

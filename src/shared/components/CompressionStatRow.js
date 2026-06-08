@@ -97,9 +97,9 @@ export default function CompressionStatRow({ stats, proxyStats, kind, emptyHint,
   const tokenLabel = kind === "injections"
     ? null
     : saved > 0
-      ? `Est. ${(s.estimatedTokensSaved || estimateTokensFromBytes(saved)).toLocaleString()} tokens saved`
-      : (Number(s.bytesBefore) || 0) > 0 && hasLocal
-        ? `${formatBytes(s.bytesBefore)} scanned`
+      ? `Est. tokens saved ${(s.estimatedTokensSaved || estimateTokensFromBytes(saved)).toLocaleString()}`
+      : hasLocal
+        ? "Savings not measurable"
         : null;
   const proxyTokens = Number(proxyStats?.tokensSaved) || Number(proxyStats?.proxyCompressionSaved) || 0;
   const proxyCompressions = Number(proxyStats?.mcpCompressions) || Number(proxyStats?.compressionRequests) || 0;
