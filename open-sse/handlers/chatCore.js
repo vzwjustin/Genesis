@@ -102,7 +102,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
-  if (clientPrefersJson && !clientPrefersSSE && body.stream !== true) {
+  if (!passthrough && clientPrefersJson && !clientPrefersSSE && body.stream !== true) {
     stream = false;
   }
 

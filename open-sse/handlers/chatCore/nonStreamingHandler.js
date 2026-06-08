@@ -4,7 +4,7 @@ import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.j
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
-import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
+import { parseSSEToOpenAIResponse, parseSSEToNativeResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
@@ -352,13 +352,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
   if (contentType.includes("text/event-stream")) {
     const sseText = await providerResponse.text();
-    const parsed = parseSSEToOpenAIResponse(sseText, model);
+    const parsed = passthrough
+      ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
+      : parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
     }
     responseBody = parsed;
-    parsedFromSSE = true;
+    parsedFromSSE = !passthrough;
   } else {
     try {
       responseBody = await providerResponse.json();
