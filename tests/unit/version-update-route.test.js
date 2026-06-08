@@ -33,7 +33,7 @@ describe("version update API", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.killAppProcesses).toHaveBeenCalledOnce();
-    expect(mocks.spawnUpdaterAndExit).toHaveBeenCalledWith("9router@0.4.65");
+    expect(mocks.spawnUpdaterAndExit).toHaveBeenCalledWith("github:vzwjustin/9router#v0.4.65");
   });
 
   it("rejects malformed target versions", async () => {

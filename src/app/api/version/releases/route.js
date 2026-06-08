@@ -1,5 +1,5 @@
 import pkg from "../../../../../package.json" with { type: "json" };
-import { GITHUB_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
+import { GITHUB_CONFIG, formatInstallCommand } from "@/shared/constants/config";
 
 function compareVersions(a, b) {
   const parse = (value) => {
@@ -70,7 +70,7 @@ export async function GET() {
           prerelease: release.prerelease === true,
           direction,
           isCurrent: direction === "current",
-          installCommand: `${UPDATER_CONFIG.installCmd}@${version} --prefer-online`,
+          installCommand: formatInstallCommand(version),
         };
       })
       .filter(Boolean);
