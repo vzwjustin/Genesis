@@ -153,6 +153,7 @@ export const TABLES = {
       id: "INTEGER PRIMARY KEY AUTOINCREMENT",
       timestamp: "TEXT NOT NULL",
       subsystem: "TEXT NOT NULL",
+      provider: "TEXT",
       bytes_before: "INTEGER NOT NULL",
       bytes_after: "INTEGER NOT NULL",
       filter_hits: "TEXT",
@@ -161,6 +162,7 @@ export const TABLES = {
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_cs_ts ON compressionStats(timestamp DESC)",
       "CREATE INDEX IF NOT EXISTS idx_cs_subsystem ON compressionStats(subsystem)",
+      "CREATE INDEX IF NOT EXISTS idx_cs_provider ON compressionStats(provider)",
     ],
   },
 };

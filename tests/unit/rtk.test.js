@@ -396,6 +396,52 @@ describe("RTK secondary fallback (Tasks 11.6–11.7)", () => {
 
 });
 
+describe("RTK Gemini contents", () => {
+  it("compresses functionResponse tool output in body.contents", () => {
+    const input = makeLongDiff();
+    const body = {
+      contents: [{
+        role: "user",
+        parts: [{
+          functionResponse: {
+            id: "call_1",
+            name: "read_file",
+            response: { result: input },
+          },
+        }],
+      }],
+    };
+    const stats = compressMessages(body, true);
+    expect(stats).not.toBeNull();
+    expect(stats.bytesBefore).toBeGreaterThan(0);
+    expect(stats.hits.length).toBeGreaterThan(0);
+    const result = body.contents[0].parts[0].functionResponse.response.result;
+    const resultText = typeof result === "string" ? result : JSON.stringify(result);
+    expect(resultText.length).toBeLessThan(input.length);
+  });
+
+  it("compresses functionResponse in antigravity body.request.contents", () => {
+    const input = makeGrepOutput();
+    const body = {
+      request: {
+        contents: [{
+          role: "user",
+          parts: [{
+            functionResponse: {
+              id: "call_2",
+              name: "grep",
+              response: { result: input },
+            },
+          }],
+        }],
+      },
+    };
+    const stats = compressMessages(body, true);
+    expect(stats).not.toBeNull();
+    expect(stats.hits.some((h) => h.filter === "grep")).toBe(true);
+  });
+});
+
 describe("formatRtkLog", () => {
   it("returns null when no hits", () => {
     expect(formatRtkLog({ bytesBefore: 0, bytesAfter: 0, hits: [] })).toBeNull();

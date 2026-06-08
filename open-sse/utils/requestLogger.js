@@ -237,6 +237,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
 // Legacy functions for backward compatibility
 export function logRequest() {}
 export function logResponse() {}
+
 export async function listRequestLogSessions(limit = 50) {
   await ensureNodeModules();
   if (!fs || !LOGS_DIR) return { enabled: LOGGING_ENABLED, sessions: [] };

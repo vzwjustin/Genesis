@@ -45,8 +45,9 @@ describe("compression stats persistence gating (Task 19.2)", () => {
       const [sql, params] = mocks.dbRun.mock.calls[0];
       expect(sql).toContain("INSERT INTO compressionStats");
       expect(params[1]).toBe("rtk");
-      expect(params[2]).toBe(1000);
-      expect(params[3]).toBe(400);
+      expect(params[2]).toBe(null);
+      expect(params[3]).toBe(1000);
+      expect(params[4]).toBe(400);
     });
 
     it("writes a Caveman record with level", async () => {
@@ -62,7 +63,7 @@ describe("compression stats persistence gating (Task 19.2)", () => {
       expect(mocks.dbRun).toHaveBeenCalledOnce();
       const [, params] = mocks.dbRun.mock.calls[0];
       expect(params[1]).toBe("caveman");
-      expect(params[5]).toBe("full");
+      expect(params[6]).toBe("full");
     });
 
     it("does not throw when db write fails (Req 14.3)", async () => {
@@ -113,31 +114,24 @@ describe("compression stats persistence gating (Task 19.2)", () => {
     // This test validates the logic that chatCore.js uses to decide whether
     // to call recordCompressionStats and saveCompressionStats.
     // The gating conditions are:
-    //   Headroom: hrStats.saved > 0
-    //   RTK: rtkStats.hits.length > 0 || (bytesBefore > 0 && bytesAfter < bytesBefore)
+    //   Headroom: hrStats && hrStats.before > 0
+    //   RTK: rtkStats.bytesBefore > 0 (tool output scanned)
     //   Caveman: always writes when injection runs (injectCaveman is called)
 
-    it("RTK: no record when enabled but no compression occurred", () => {
-      // Simulates the condition check in chatCore.js
+    it("RTK: records when tool output was scanned even if no savings", () => {
       const rtkStats = { bytesBefore: 500, bytesAfter: 500, hits: [] };
       const rtkEnabled = true;
 
-      const shouldWrite = rtkEnabled && (
-        rtkStats?.hits?.length > 0 ||
-        (rtkStats?.bytesBefore > 0 && rtkStats?.bytesAfter < rtkStats?.bytesBefore)
-      );
+      const shouldWrite = rtkEnabled && (rtkStats?.bytesBefore || 0) > 0;
 
-      expect(shouldWrite).toBe(false);
+      expect(shouldWrite).toBe(true);
     });
 
     it("RTK: writes record when hits present", () => {
       const rtkStats = { bytesBefore: 1000, bytesAfter: 600, hits: [{ filter: "git-diff" }] };
       const rtkEnabled = true;
 
-      const shouldWrite = rtkEnabled && (
-        rtkStats?.hits?.length > 0 ||
-        (rtkStats?.bytesBefore > 0 && rtkStats?.bytesAfter < rtkStats?.bytesBefore)
-      );
+      const shouldWrite = rtkEnabled && (rtkStats?.bytesBefore || 0) > 0;
 
       expect(shouldWrite).toBe(true);
     });
@@ -146,36 +140,39 @@ describe("compression stats persistence gating (Task 19.2)", () => {
       const rtkStats = { bytesBefore: 1000, bytesAfter: 800, hits: [] };
       const rtkEnabled = true;
 
-      const shouldWrite = rtkEnabled && (
-        rtkStats?.hits?.length > 0 ||
-        (rtkStats?.bytesBefore > 0 && rtkStats?.bytesAfter < rtkStats?.bytesBefore)
-      );
+      const shouldWrite = rtkEnabled && (rtkStats?.bytesBefore || 0) > 0;
 
       expect(shouldWrite).toBe(true);
+    });
+
+    it("RTK: no record when no tool output scanned", () => {
+      const rtkStats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
+      const rtkEnabled = true;
+
+      const shouldWrite = rtkEnabled && (rtkStats?.bytesBefore || 0) > 0;
+
+      expect(shouldWrite).toBe(false);
     });
 
     it("RTK: no record when RTK disabled even if bytesSaved", () => {
       const rtkStats = { bytesBefore: 1000, bytesAfter: 600, hits: [{ filter: "smart" }] };
       const rtkEnabled = false;
 
-      const shouldWrite = rtkEnabled && (
-        rtkStats?.hits?.length > 0 ||
-        (rtkStats?.bytesBefore > 0 && rtkStats?.bytesAfter < rtkStats?.bytesBefore)
-      );
+      const shouldWrite = rtkEnabled && (rtkStats?.bytesBefore || 0) > 0;
 
       expect(shouldWrite).toBe(false);
     });
 
-    it("Headroom: no record when enabled but saved is 0", () => {
+    it("Headroom: records when compression ran but saved is 0", () => {
       const hrStats = { saved: 0, before: 5000, after: 5000 };
-      const shouldWrite = hrStats && hrStats.saved > 0;
+      const shouldWrite = hrStats && (hrStats.before || 0) > 0;
 
-      expect(shouldWrite).toBe(false);
+      expect(shouldWrite).toBe(true);
     });
 
     it("Headroom: writes record when saved > 0", () => {
       const hrStats = { saved: 2000, before: 5000, after: 3000 };
-      const shouldWrite = hrStats && hrStats.saved > 0;
+      const shouldWrite = hrStats && (hrStats.before || 0) > 0;
 
       expect(shouldWrite).toBe(true);
     });

@@ -14,7 +14,10 @@ export async function GET(request, { params }) {
   if (file) {
     const data = await readRequestLogSessionFile(name, file);
     if (data.error) {
-      return NextResponse.json(data, { status: data.error === "Session not found" || data.error === "File not found" ? 404 : 400 });
+      return NextResponse.json(
+        data,
+        { status: data.error === "Session not found" || data.error === "File not found" ? 404 : 400 }
+      );
     }
     return NextResponse.json(data);
   }

@@ -17,6 +17,7 @@ export async function GET(request) {
       id: row.id,
       timestamp: row.timestamp,
       subsystem: row.subsystem,
+      provider: row.provider || null,
       bytesBefore: row.bytes_before,
       bytesAfter: row.bytes_after,
       bytesSaved: Math.max(0, (row.bytes_before || 0) - (row.bytes_after || 0)),

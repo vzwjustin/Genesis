@@ -68,7 +68,7 @@ export default function RequestLogSessionModal({ sessionName, onClose }) {
     <Modal
       isOpen={!!sessionName}
       onClose={onClose}
-      title={sessionName ? `Log session` : ""}
+      title={sessionName ? "Log session" : ""}
       size="xl"
     >
       {loading ? (

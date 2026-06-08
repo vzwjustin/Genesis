@@ -227,10 +227,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       userAgent,
       apiKey,
       ccFilterNaming: !!chatSettings.ccFilterNaming,
-      rtkEnabled: !!chatSettings.rtkEnabled,
-      cavemanEnabled: !!chatSettings.cavemanEnabled,
+      rtkEnabled: chatSettings.rtkEnabled !== false,
+      cavemanEnabled: chatSettings.cavemanEnabled === true,
       cavemanLevel: chatSettings.cavemanLevel || "full",
-      headroomEnabled: !!chatSettings.headroomEnabled,
+      headroomEnabled: chatSettings.headroomEnabled === true,
       passthroughCompression: !!chatSettings.passthroughCompression,
       providerThinking,
       // Detect source format by endpoint + body
