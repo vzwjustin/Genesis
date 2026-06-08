@@ -7,6 +7,8 @@ export default function RequestLogger() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const fetchLogs = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -39,11 +41,44 @@ export default function RequestLogger() {
     return () => clearInterval(interval);
   }, [autoRefresh, fetchLogs]);
 
+  const filteredLogs = logs.filter((log) => {
+    const parts = log.split(" | ");
+    if (parts.length < 7) return false;
+    const status = parts[6] || "";
+    if (statusFilter === "failed" && !status.includes("FAILED")) return false;
+    if (statusFilter === "ok" && !status.includes("OK")) return false;
+    if (statusFilter === "pending" && !status.includes("PENDING")) return false;
+    if (search.trim()) {
+      const hay = log.toLowerCase();
+      if (!hay.includes(search.trim().toLowerCase())) return false;
+    }
+    return true;
+  });
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Request Logs</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search model, provider, account…"
+            className="px-3 py-1.5 text-xs rounded-lg border border-border bg-surface min-w-[200px]"
+            aria-label="Search request logs"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-2 py-1.5 text-xs rounded-lg border border-border bg-surface"
+            aria-label="Filter by status"
+          >
+            <option value="all">All status</option>
+            <option value="ok">OK</option>
+            <option value="failed">Failed</option>
+            <option value="pending">Pending</option>
+          </select>
           <label className="text-sm font-medium text-text-muted flex items-center gap-2 cursor-pointer">
             <span>Auto Refresh (3s)</span>
             <div
@@ -64,8 +99,10 @@ export default function RequestLogger() {
         <div className="p-0 overflow-x-auto max-h-[600px] overflow-y-auto font-mono text-xs">
           {loading && logs.length === 0 ? (
             <div className="p-8 text-center text-text-muted">Loading logs...</div>
-          ) : logs.length === 0 ? (
-            <div className="p-8 text-center text-text-muted">No logs recorded yet.</div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="p-8 text-center text-text-muted">
+              {logs.length === 0 ? "No logs recorded yet." : "No logs match the current filter."}
+            </div>
           ) : (
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead className="sticky top-0 bg-bg-alt border-b border-border z-10">
@@ -80,7 +117,7 @@ export default function RequestLogger() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {logs.map((log, i) => {
+                {filteredLogs.map((log, i) => {
                   const parts = log.split(" | ");
                   if (parts.length < 7) return null;
 
