@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 import { Badge, Toggle } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null }) {
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect, oneByOneStatus = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -121,6 +121,10 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     if (oneByOneStatus.state === "testing") return "primary";
     return "default";
   };
+
+  const needsReconnect = isOAuthConnection
+    && connection.isActive !== false
+    && (effectiveStatus === "error" || effectiveStatus === "expired");
 
   const getOneByOneLabel = () => {
     if (!oneByOneStatus) return null;
@@ -239,6 +243,17 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               )}
             </div>
           )}
+          {needsReconnect && onReconnect && (
+            <button
+              onClick={onReconnect}
+              className="flex flex-col items-center rounded px-2 py-1 text-warning hover:bg-warning/10"
+              title="Reconnect OAuth"
+              aria-label="Reconnect OAuth"
+            >
+              <span className="material-symbols-outlined text-[18px]">sync</span>
+              <span className="text-[10px] leading-tight">Reconnect</span>
+            </button>
+          )}
           <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-surface-2 hover:text-primary">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
@@ -288,6 +303,7 @@ ConnectionRow.propTypes = {
   onUpdateProxy: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
+  onReconnect: PropTypes.func,
   oneByOneStatus: PropTypes.shape({
     state: PropTypes.string,
     error: PropTypes.string,

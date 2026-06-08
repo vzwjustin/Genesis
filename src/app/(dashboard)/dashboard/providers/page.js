@@ -396,24 +396,19 @@ export default function ProvidersPage() {
           </h2>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <ModelAvailabilityBadge />
-            <button
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={testingMode === "oauth" ? undefined : "play_arrow"}
+              loading={testingMode === "oauth"}
               onClick={() => handleBatchTest("oauth")}
               disabled={!!testingMode}
-              className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
-                testingMode === "oauth"
-                  ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
-                  : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
-              }`}
               title="Test all OAuth connections"
               aria-label="Test all OAuth connections"
+              className="w-full sm:w-auto"
             >
-              <span
-                className={`material-symbols-outlined text-[14px]${testingMode === "oauth" ? " animate-spin" : ""}`}
-              >
-                play_arrow
-              </span>
               {testingMode === "oauth" ? "Testing..." : "Test All"}
-            </button>
+            </Button>
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
@@ -438,24 +433,19 @@ export default function ProvidersPage() {
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
             Free Tier Providers
           </h2>
-          <button
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={testingMode === "free" ? undefined : "play_arrow"}
+            loading={testingMode === "free"}
             onClick={() => handleBatchTest("free")}
             disabled={!!testingMode}
-            className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
-              testingMode === "free"
-                ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
-                : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
-            }`}
             title="Test all Free connections"
             aria-label="Test all Free provider connections"
+            className="w-full sm:w-auto"
           >
-            <span
-              className={`material-symbols-outlined text-[14px]${testingMode === "free" ? " animate-spin" : ""}`}
-            >
-              play_arrow
-            </span>
             {testingMode === "free" ? "Testing..." : "Test All"}
-          </button>
+          </Button>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {freeEntries.map(([key, info]) => (
@@ -489,24 +479,19 @@ export default function ProvidersPage() {
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
             API Key Providers{" "}
           </h2>
-          <button
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={testingMode === "apikey" ? undefined : "play_arrow"}
+            loading={testingMode === "apikey"}
             onClick={() => handleBatchTest("apikey")}
             disabled={!!testingMode}
-            className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
-              testingMode === "apikey"
-                ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
-                : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
-            }`}
             title="Test all API Key connections"
             aria-label="Test all API Key connections"
+            className="w-full sm:w-auto"
           >
-            <span
-              className={`material-symbols-outlined text-[14px]${testingMode === "apikey" ? " animate-spin" : ""}`}
-            >
-              play_arrow
-            </span>
             {testingMode === "apikey" ? "Testing..." : "Test All"}
-          </button>
+          </Button>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {visibleApikeyEntries.map(([key, info]) => (
@@ -616,7 +601,9 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
             <div
               className="size-8 shrink-0 rounded-lg flex items-center justify-center"
               style={{
-                backgroundColor: `${provider.color?.length > 7 ? provider.color : provider.color + "15"}`,
+                backgroundColor: provider.color
+                  ? (provider.color.length > 7 ? provider.color : `${provider.color}15`)
+                  : "transparent",
               }}
             >
               <ProviderIcon
@@ -731,7 +718,9 @@ function ApiKeyProviderCard({
             <div
               className="size-8 shrink-0 rounded-lg flex items-center justify-center"
               style={{
-                backgroundColor: `${provider.color?.length > 7 ? provider.color : provider.color + "15"}`,
+                backgroundColor: provider.color
+                  ? (provider.color.length > 7 ? provider.color : `${provider.color}15`)
+                  : "transparent",
               }}
             >
               <ProviderIcon

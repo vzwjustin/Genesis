@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS = {
   outboundProxyUrl: "",
   outboundNoProxy: "",
   mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
+  mitmAutoSetupOnImport: true,
   dnsToolEnabled: {},
   rtkEnabled: true,
   cavemanEnabled: false,

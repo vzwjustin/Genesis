@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 
@@ -8,7 +8,7 @@ import { Modal, Button, Input } from "@/shared/components";
  * Kiro Auth Method Selection Modal
  * Auto-detects token from AWS SSO cache or allows manual import
  */
-export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
+export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existingConnectionId }) {
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [idcStartUrl, setIdcStartUrl] = useState("");
   const [idcRegion, setIdcRegion] = useState("us-east-1");
@@ -17,10 +17,79 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
   const [importing, setImporting] = useState(false);
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [autoDetected, setAutoDetected] = useState(false);
+  const [autoImporting, setAutoImporting] = useState(false);
 
-  // Auto-detect token when import method is selected
+  const importToken = useCallback(async (token) => {
+    const res = await fetch("/api/oauth/kiro/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        refreshToken: token.trim(),
+        ...(existingConnectionId ? { existingConnectionId } : {}),
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Import failed");
+    }
+    return data;
+  }, [existingConnectionId]);
+
+  // Reset state when modal closes
   useEffect(() => {
-    if (selectedMethod !== "import" || !isOpen) return;
+    if (isOpen) return;
+    setSelectedMethod(null);
+    setError(null);
+    setRefreshToken("");
+    setAutoDetected(false);
+    setAutoDetecting(false);
+    setAutoImporting(false);
+    setImporting(false);
+  }, [isOpen]);
+
+  // Try silent auto-import when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+
+    const tryAutoImport = async () => {
+      setAutoImporting(true);
+      setError(null);
+
+      try {
+        const res = await fetch("/api/oauth/kiro/auto-import");
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.found) {
+          setRefreshToken(data.refreshToken);
+          setAutoDetected(true);
+          setAutoImporting(true);
+          const importData = await importToken(data.refreshToken);
+          if (cancelled) return;
+          onMethodSelect("import", { mitm: importData?.mitm });
+          return;
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || "Auto-import failed");
+        }
+      } finally {
+        if (!cancelled) {
+          setAutoImporting(false);
+        }
+      }
+    };
+
+    tryAutoImport();
+    return () => { cancelled = true; };
+  }, [isOpen, importToken, onMethodSelect]);
+
+  // Auto-detect token when import method is selected manually
+  useEffect(() => {
+    if (selectedMethod !== "import" || !isOpen || autoImporting) return;
 
     const autoDetect = async () => {
       setAutoDetecting(true);
@@ -37,7 +106,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
         } else {
           setError(data.error || "Could not auto-detect token");
         }
-      } catch (err) {
+      } catch {
         setError("Failed to auto-detect token");
       } finally {
         setAutoDetecting(false);
@@ -45,7 +114,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
     };
 
     autoDetect();
-  }, [selectedMethod, isOpen]);
+  }, [selectedMethod, isOpen, autoImporting]);
 
   const handleMethodSelect = (method) => {
     setSelectedMethod(method);
@@ -67,20 +136,8 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
     setError(null);
 
     try {
-      const res = await fetch("/api/oauth/kiro/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: refreshToken.trim() }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Import failed");
-      }
-
-      // Success - notify parent to refresh connections
-      onMethodSelect("import");
+      const importData = await importToken(refreshToken);
+      onMethodSelect("import", { mitm: importData?.mitm });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -101,10 +158,29 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
   };
 
   return (
-    <Modal isOpen={isOpen} title="Connect Kiro" onClose={onClose} size="lg">
+    <Modal
+      isOpen={isOpen}
+      title={existingConnectionId ? "Reconnect Kiro" : "Connect Kiro"}
+      onClose={onClose}
+      size="lg"
+    >
       <div className="flex flex-col gap-4">
+        {autoImporting && !selectedMethod && (
+          <div className="text-center py-6">
+            <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-primary animate-spin">
+                progress_activity
+              </span>
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Importing from Kiro IDE...</h3>
+            <p className="text-sm text-text-muted">
+              Reading AWS SSO cache and validating your connection
+            </p>
+          </div>
+        )}
+
         {/* Method Selection */}
-        {!selectedMethod && (
+        {!selectedMethod && !autoImporting && (
           <div className="space-y-3">
             <p className="text-sm text-text-muted mb-4">
               Choose your authentication method:
@@ -361,7 +437,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
                 <div className="flex gap-2">
                   <Button onClick={handleImportToken} fullWidth disabled={importing || !refreshToken.trim()}>
-                    {importing ? "Importing..." : "Import Token"}
+                    {importing ? "Importing..." : existingConnectionId ? "Reconnect" : "Import Token"}
                   </Button>
                   <Button onClick={handleBack} variant="ghost" fullWidth>
                     Back
@@ -380,4 +456,5 @@ KiroAuthModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onMethodSelect: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
+  existingConnectionId: PropTypes.string,
 };
