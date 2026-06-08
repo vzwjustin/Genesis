@@ -228,6 +228,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       apiKey,
       ccFilterNaming: !!chatSettings.ccFilterNaming,
       rtkEnabled: chatSettings.rtkEnabled !== false,
+      rtkFilterConfig: chatSettings.rtkFilterConfig || null,
       cavemanEnabled: chatSettings.cavemanEnabled === true,
       cavemanLevel: chatSettings.cavemanLevel || "full",
       headroomEnabled: chatSettings.headroomEnabled === true,

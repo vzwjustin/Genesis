@@ -140,6 +140,7 @@ export default function CachingPageClient() {
   const [resetting, setResetting] = useState(false);
 
   const [rtkEnabled, setRtkEnabled] = useState(true);
+  const [rtkFilterConfig, setRtkFilterConfig] = useState({});
   const [cavemanEnabled, setCavemanEnabled] = useState(false);
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
@@ -189,6 +190,7 @@ export default function CachingPageClient() {
       if (!res.ok) return;
       const data = await res.json();
       setRtkEnabled(data.rtkEnabled !== false);
+      setRtkFilterConfig(data.rtkFilterConfig || {});
       setCavemanEnabled(data.cavemanEnabled === true);
       setCavemanLevel(data.cavemanLevel || "full");
       setHeadroomEnabled(data.headroomEnabled === true);
@@ -436,6 +438,43 @@ export default function CachingPageClient() {
                   onChange={(v) => { setRtkEnabled(v); patchSetting({ rtkEnabled: v }); fetchCompressionStats(); }}
                 />
               </div>
+              {rtkEnabled && (
+                <div className="py-3 flex flex-wrap gap-2">
+                  {[
+                    { key: "git-diff", label: "git-diff" },
+                    { key: "git-status", label: "git-status" },
+                    { key: "build-output", label: "build-output" },
+                    { key: "grep", label: "grep" },
+                    { key: "find", label: "find" },
+                    { key: "tree", label: "tree" },
+                    { key: "ls", label: "ls" },
+                    { key: "search-list", label: "search-list" },
+                    { key: "read-numbered", label: "read-numbered" },
+                    { key: "dedup-log", label: "dedup-log" },
+                    { key: "smart-truncate", label: "smart-truncate" },
+                  ].map(({ key, label }) => {
+                    const enabled = rtkFilterConfig[key] !== false;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          const next = { ...rtkFilterConfig, [key]: !enabled };
+                          setRtkFilterConfig(next);
+                          patchSetting({ rtkFilterConfig: next });
+                        }}
+                        className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                          enabled
+                            ? "bg-primary text-white border-primary"
+                            : "bg-transparent border-border text-text-muted hover:bg-surface-2"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <div className="flex items-center justify-between py-4 gap-4 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">Caveman output compression</p>

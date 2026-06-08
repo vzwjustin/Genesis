@@ -48,6 +48,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "requireApiKey",
   "requireLogin",
   "rtkEnabled",
+  "rtkFilterConfig",
   "stickyRoundRobinLimit",
   "tailscaleEnabled",
   "tailscaleUrl",

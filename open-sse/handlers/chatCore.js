@@ -31,7 +31,7 @@ import { recordCompressionStats, saveCompressionStats } from "@/lib/compressionS
  * @param {boolean} options.passthroughCompression - Whether to allow compression in passthrough mode
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, headroomEnabled, passthroughCompression, sourceFormatOverride, providerThinking }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, rtkFilterConfig, cavemanEnabled, cavemanLevel, headroomEnabled, passthroughCompression, sourceFormatOverride, providerThinking }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -179,7 +179,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   try {
     // Stage 1 — RTK: sync tool-output compression (cheap, no network)
     if (compressionAllowed && rtkEnabled) {
-      const rtkStats = compressMessages(translatedBody, rtkEnabled);
+      const rtkStats = compressMessages(translatedBody, rtkEnabled, rtkFilterConfig);
       const rtkLine = formatRtkLog(rtkStats);
       if (rtkLine) console.log(rtkLine);
       const rtkScanned = (rtkStats?.bytesBefore || 0) > 0;
