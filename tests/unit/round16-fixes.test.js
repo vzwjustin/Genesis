@@ -102,7 +102,7 @@ describe("test-models no longer treats HTTP 400 as success", () => {
       "utf8"
     );
     expect(src).not.toContain("res.status === 400");
-    expect(src).toContain("body.choices");
+    expect(src).toContain("parsed?.choices");
   });
 });
 
@@ -121,14 +121,15 @@ describe("v1beta streaming terminal validation", () => {
 });
 
 describe("v1/audio/voices internal origin", () => {
-  it("uses loopback origin instead of request origin for internal fetch", () => {
+  it("uses internalApiGet with path-based provider map (no request origin SSRF)", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../../src/app/api/v1/audio/voices/route.js"),
       "utf8"
     );
-    expect(src).toContain("internalOrigin");
-    expect(src).toContain("127.0.0.1");
+    expect(src).toContain("internalApiGet");
+    expect(src).toContain('elevenlabs: "/api/media-providers/tts/elevenlabs/voices"');
     expect(src).not.toMatch(/PROVIDER_API\[provider\]\(origin\)/);
+    expect(src).not.toMatch(/\bfetch\s*\(/);
   });
 });
 

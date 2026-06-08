@@ -43,14 +43,14 @@ export async function GET() {
   const currentVersion = pkg.version;
   const result = await fetchGitHubReleases();
 
-  if (!result.ok) {
+  if (!result.ok && !result.stale) {
     return Response.json(
       { currentVersion, releases: [], error: result.error || "Failed to fetch GitHub releases" },
       { status: 502 }
     );
   }
 
-  const releases = result.releases
+  const releases = (result.releases || [])
     .filter((release) => !release?.draft)
     .map((release) => {
       const version = normalizeVersion(release.tag_name);
@@ -70,5 +70,9 @@ export async function GET() {
     })
     .filter(Boolean);
 
-  return Response.json({ currentVersion, releases });
+  return Response.json({
+    currentVersion,
+    releases,
+    ...(result.stale ? { stale: true, warning: result.error } : {}),
+  });
 }

@@ -6,18 +6,6 @@ function normalizeVersion(tagName) {
   return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) ? version : null;
 }
 
-async function fetchLatestReleaseVersion() {
-  const result = await fetchGitHubReleases({ timeoutMs: 4000 });
-  if (!result.ok) return null;
-
-  for (const release of result.releases) {
-    if (release?.draft) continue;
-    const version = normalizeVersion(release.tag_name);
-    if (version) return version;
-  }
-  return null;
-}
-
 function compareVersions(a, b) {
   // Split into numeric core segments and an optional pre-release tag
   // (e.g. "0.4.66-beta.1" -> { parts: [0,4,66], pre: "beta.1" }). Missing or
@@ -56,9 +44,25 @@ function compareVersions(a, b) {
 }
 
 export async function GET() {
-  const latestVersion = await fetchLatestReleaseVersion();
+  const result = await fetchGitHubReleases({ timeoutMs: 4000 });
+  let latestVersion = null;
+  if (result.ok || result.stale) {
+    for (const release of result.releases || []) {
+      if (release?.draft) continue;
+      const version = normalizeVersion(release.tag_name);
+      if (version) {
+        latestVersion = version;
+        break;
+      }
+    }
+  }
   const currentVersion = pkg.version;
   const hasUpdate = latestVersion ? compareVersions(latestVersion, currentVersion) > 0 : false;
 
-  return Response.json({ currentVersion, latestVersion, hasUpdate });
+  return Response.json({
+    currentVersion,
+    latestVersion,
+    hasUpdate,
+    ...(result.stale ? { stale: true, warning: result.error } : {}),
+  });
 }
