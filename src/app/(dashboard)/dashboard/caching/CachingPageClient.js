@@ -12,6 +12,8 @@ import {
 } from "@/shared/components";
 import CompressionStatRow, { formatBytes } from "@/shared/components/CompressionStatRow";
 import InlineAlert from "@/shared/components/InlineAlert";
+import RequestLogSessionModal from "@/shared/components/RequestLogSessionModal";
+import { useHeaderSearchStore } from "@/store/headerSearchStore";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -100,6 +102,11 @@ export default function CachingPageClient() {
   const [fileLogSessions, setFileLogSessions] = useState([]);
   const [enableRequestLogs, setEnableRequestLogs] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [logsFailedOnly, setLogsFailedOnly] = useState(false);
+  const [selectedLogSession, setSelectedLogSession] = useState(null);
+  const searchQuery = useHeaderSearchStore((s) => s.query);
+  const registerSearch = useHeaderSearchStore((s) => s.register);
+  const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
 
   const patchSetting = async (patch) => {
     try {
@@ -157,6 +164,23 @@ export default function CachingPageClient() {
       }
     } catch { /* ignore */ }
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "logs") {
+      registerSearch("Filter log sessions…");
+    } else {
+      unregisterSearch();
+    }
+    return () => unregisterSearch();
+  }, [activeTab, registerSearch, unregisterSearch]);
+
+  const visibleFileLogSessions = fileLogSessions.filter((s) => {
+    if (logsFailedOnly && !s.hasError) return false;
+    if (searchQuery.trim()) {
+      return s.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+    }
+    return true;
+  });
 
   const fetchFileLogSessions = useCallback(async () => {
     try {
@@ -410,9 +434,11 @@ export default function CachingPageClient() {
             </div>
           </Card>
 
-          {filterLeaderboard.length > 0 && (
-            <Card>
-              <h2 className="text-lg font-semibold mb-3">RTK filter leaderboard</h2>
+          <Card>
+            <h2 className="text-lg font-semibold mb-3">RTK filter leaderboard</h2>
+            {filterLeaderboard.length === 0 ? (
+              <p className="text-sm text-text-muted">No RTK filter hits yet — compression stats appear after chat traffic.</p>
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -433,8 +459,8 @@ export default function CachingPageClient() {
                   </tbody>
                 </table>
               </div>
-            </Card>
-          )}
+            )}
+          </Card>
 
           <InlineAlert
             variant="info"
@@ -666,10 +692,18 @@ export default function CachingPageClient() {
                   {enableRequestLogs ? " (enabled)" : " (disabled — set env var and restart)"}
                 </p>
               </div>
-              <Button size="sm" variant="ghost" icon="refresh" onClick={fetchFileLogSessions}>Refresh</Button>
+              <div className="flex items-center gap-2">
+                <Toggle checked={logsFailedOnly} onChange={setLogsFailedOnly} />
+                <span className="text-xs text-text-muted whitespace-nowrap">Failed only</span>
+                <Button size="sm" variant="ghost" icon="refresh" onClick={fetchFileLogSessions}>Refresh</Button>
+              </div>
             </div>
-            {fileLogSessions.length === 0 ? (
-              <p className="text-sm text-text-muted">No file log sessions found under ./logs</p>
+            {visibleFileLogSessions.length === 0 ? (
+              <p className="text-sm text-text-muted">
+                {fileLogSessions.length === 0
+                  ? "No file log sessions found under ./logs"
+                  : "No sessions match the current filter"}
+              </p>
             ) : (
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
@@ -681,8 +715,12 @@ export default function CachingPageClient() {
                     </tr>
                   </thead>
                   <tbody>
-                    {fileLogSessions.map((s) => (
-                      <tr key={s.name} className="border-b border-border/50">
+                    {visibleFileLogSessions.map((s) => (
+                      <tr
+                        key={s.name}
+                        className="border-b border-border/50 hover:bg-surface-2 cursor-pointer"
+                        onClick={() => setSelectedLogSession(s.name)}
+                      >
                         <td className="px-3 py-2 font-mono text-xs truncate max-w-md">{s.name}</td>
                         <td className="px-3 py-2 text-xs whitespace-nowrap">
                           {s.mtime ? new Date(s.mtime).toLocaleString() : "—"}
@@ -699,6 +737,11 @@ export default function CachingPageClient() {
               </div>
             )}
           </Card>
+
+          <RequestLogSessionModal
+            sessionName={selectedLogSession}
+            onClose={() => setSelectedLogSession(null)}
+          />
         </div>
       )}
     </div>

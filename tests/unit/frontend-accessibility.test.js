@@ -144,6 +144,26 @@ describe("frontend accessibility regressions", () => {
     expect(config).not.toContain('return "cursor"');
   });
 
+  it("registers Cmd+K command palette in dashboard layout", () => {
+    const layout = read("src/shared/components/layouts/DashboardLayout.js");
+    const palette = read("src/shared/components/CommandPalette.js");
+
+    expect(layout).toContain("CommandPalette");
+    expect(palette).toContain('e.key.toLowerCase() === "k"');
+    expect(palette).toContain("DASHBOARD_NAV_ITEMS");
+  });
+
+  it("supports request log session viewer on caching debug logs tab", () => {
+    const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
+    const modal = read("src/shared/components/RequestLogSessionModal.js");
+
+    expect(caching).toContain("RequestLogSessionModal");
+    expect(caching).toContain("setSelectedLogSession");
+    expect(caching).toContain("logsFailedOnly");
+    expect(read("src/app/api/request-logs/sessions/[name]/route.js")).toContain("readRequestLogSessionFile");
+    expect(modal).toContain("/api/request-logs/sessions/");
+  });
+
   it("shows setup checklist on dashboard overview", () => {
     const overview = read("src/app/(dashboard)/dashboard/DashboardOverviewClient.js");
 

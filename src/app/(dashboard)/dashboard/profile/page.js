@@ -41,6 +41,15 @@ export default function ProfilePage() {
   const [proxyStatus, setProxyStatus] = useState({ type: "", message: "" });
   const [proxyLoading, setProxyLoading] = useState(false);
   const [proxyTestLoading, setProxyTestLoading] = useState(false);
+  const [obsAdvancedOpen, setObsAdvancedOpen] = useState(false);
+  const [obsAdvancedForm, setObsAdvancedForm] = useState({
+    observabilityBatchSize: 20,
+    observabilityFlushIntervalMs: 5000,
+    observabilityMaxJsonSize: 5,
+    observabilityMaxRecords: 1000,
+  });
+  const [obsAdvancedStatus, setObsAdvancedStatus] = useState({ type: "", message: "" });
+  const [obsAdvancedLoading, setObsAdvancedLoading] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -60,6 +69,12 @@ export default function ProfilePage() {
           outboundProxyEnabled: data?.outboundProxyEnabled === true,
           outboundProxyUrl: data?.outboundProxyUrl || "",
           outboundNoProxy: data?.outboundNoProxy || "",
+        });
+        setObsAdvancedForm({
+          observabilityBatchSize: data?.observabilityBatchSize ?? 20,
+          observabilityFlushIntervalMs: data?.observabilityFlushIntervalMs ?? 5000,
+          observabilityMaxJsonSize: data?.observabilityMaxJsonSize ?? 5,
+          observabilityMaxRecords: data?.observabilityMaxRecords ?? 1000,
         });
         setLoading(false);
       })
@@ -550,6 +565,33 @@ export default function ProfilePage() {
   };
 
   const observabilityEnabled = settings.enableObservability === true;
+
+  const saveObservabilityAdvanced = async (e) => {
+    e.preventDefault();
+    setObsAdvancedLoading(true);
+    setObsAdvancedStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(obsAdvancedForm),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSettings((prev) => ({ ...prev, ...data }));
+        setObsAdvancedStatus({ type: "success", message: "Observability settings saved" });
+        notify.success("Observability settings saved");
+      } else {
+        setObsAdvancedStatus({ type: "error", message: data.error || "Failed to save" });
+        notify.error(data.error || "Failed to save observability settings");
+      }
+    } catch (err) {
+      setObsAdvancedStatus({ type: "error", message: err.message || "Failed to save" });
+      notify.error(err.message || "Failed to save observability settings");
+    } finally {
+      setObsAdvancedLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-0">
@@ -1082,6 +1124,66 @@ export default function ProfilePage() {
               disabled={loading}
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setObsAdvancedOpen((v) => !v)}
+            className="mt-4 flex w-full items-center justify-between text-sm text-text-muted hover:text-text-main"
+          >
+            <span>Advanced observability tuning</span>
+            <span className="material-symbols-outlined text-[18px]">{obsAdvancedOpen ? "expand_less" : "expand_more"}</span>
+          </button>
+          {obsAdvancedOpen && (
+            <form onSubmit={saveObservabilityAdvanced} className="mt-3 pt-3 border-t border-border flex flex-col gap-3">
+              <p className="text-xs text-text-muted">
+                Control batching and retention for Usage → Details. File dumps live on Caching → Debug Logs.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-xs flex flex-col gap-1">
+                  Batch size
+                  <Input
+                    type="number"
+                    min={1}
+                    value={obsAdvancedForm.observabilityBatchSize}
+                    onChange={(e) => setObsAdvancedForm((f) => ({ ...f, observabilityBatchSize: Number(e.target.value) }))}
+                  />
+                </label>
+                <label className="text-xs flex flex-col gap-1">
+                  Flush interval (ms)
+                  <Input
+                    type="number"
+                    min={500}
+                    step={500}
+                    value={obsAdvancedForm.observabilityFlushIntervalMs}
+                    onChange={(e) => setObsAdvancedForm((f) => ({ ...f, observabilityFlushIntervalMs: Number(e.target.value) }))}
+                  />
+                </label>
+                <label className="text-xs flex flex-col gap-1">
+                  Max JSON size (MB)
+                  <Input
+                    type="number"
+                    min={1}
+                    value={obsAdvancedForm.observabilityMaxJsonSize}
+                    onChange={(e) => setObsAdvancedForm((f) => ({ ...f, observabilityMaxJsonSize: Number(e.target.value) }))}
+                  />
+                </label>
+                <label className="text-xs flex flex-col gap-1">
+                  Max records
+                  <Input
+                    type="number"
+                    min={100}
+                    value={obsAdvancedForm.observabilityMaxRecords}
+                    onChange={(e) => setObsAdvancedForm((f) => ({ ...f, observabilityMaxRecords: Number(e.target.value) }))}
+                  />
+                </label>
+              </div>
+              {obsAdvancedStatus.message && (
+                <p className={`text-xs ${obsAdvancedStatus.type === "error" ? "text-danger" : "text-success"}`}>
+                  {obsAdvancedStatus.message}
+                </p>
+              )}
+              <Button type="submit" size="sm" loading={obsAdvancedLoading}>Save advanced settings</Button>
+            </form>
+          )}
         </Card>
 
         {/* App Info */}

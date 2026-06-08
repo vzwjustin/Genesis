@@ -1,0 +1,19 @@
+/** Shared dashboard navigation entries for Sidebar and command palette. */
+export const DASHBOARD_NAV_ITEMS = [
+  { href: "/dashboard", label: "Overview", icon: "home", keywords: "home start" },
+  { href: "/dashboard/endpoint", label: "Endpoint", icon: "api", keywords: "api url tunnel cloud keys" },
+  { href: "/dashboard/providers", label: "Providers", icon: "dns", keywords: "connections oauth models" },
+  { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat", keywords: "chat test" },
+  { href: "/dashboard/caching", label: "Caching", icon: "cached", keywords: "rtk compression token saver logs" },
+  { href: "/dashboard/combos", label: "Combos", icon: "layers", keywords: "failover chains" },
+  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart", keywords: "stats tokens spend" },
+  { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage", keywords: "limits quota" },
+  { href: "/dashboard/mitm", label: "MITM Proxy", icon: "security", keywords: "antigravity copilot kiro intercept" },
+  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", keywords: "claude codex cursor setup" },
+  { href: "/dashboard/console-log", label: "Console Log", icon: "article", keywords: "debug logs" },
+  { href: "/dashboard/translator", label: "Translator", icon: "translate", keywords: "debug translation" },
+  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan", keywords: "proxy relay" },
+  { href: "/dashboard/pricing", label: "Pricing", icon: "payments", keywords: "cost rates" },
+  { href: "/dashboard/skills", label: "Skills", icon: "extension", keywords: "agent capabilities" },
+  { href: "/dashboard/profile", label: "Profile & Settings", icon: "person", keywords: "password oidc proxy observability" },
+];
