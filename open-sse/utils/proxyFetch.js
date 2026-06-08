@@ -1,6 +1,10 @@
 import { Readable } from "stream";
+import { createRequire } from "module";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
+
+const require = createRequire(import.meta.url);
+const { isKiroMitmHost } = require("../../src/shared/constants/mitmToolHosts.js");
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
@@ -151,6 +155,7 @@ function hostnameMatchesMitmBypass(hostname, bypassHost) {
 function shouldBypassMitmDns(url) {
   try {
     const hostname = new URL(url).hostname;
+    if (isKiroMitmHost(hostname)) return true;
     return MITM_BYPASS_HOSTS.some((host) => hostnameMatchesMitmBypass(hostname, host));
   } catch { return false; }
 }

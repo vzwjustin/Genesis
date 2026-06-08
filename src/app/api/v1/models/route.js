@@ -1,3 +1,4 @@
+import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import {
   AI_PROVIDERS,
@@ -430,7 +431,10 @@ export async function OPTIONS() {
  * GET /v1/models - OpenAI compatible models list (LLM/chat models only by default).
  * For other capabilities use /v1/models/{kind} (image, tts, stt, embedding, image-to-text, web).
  */
-export async function GET() {
+export async function GET(request) {
+  const routeAuth = await requireRouteAuth(request);
+  if (!routeAuth.ok) return routeAuth.response;
+
   try {
     const data = await buildModelsList([LLM_KIND]);
     return Response.json({ object: "list", data }, {

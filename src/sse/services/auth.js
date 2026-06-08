@@ -5,7 +5,8 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
-import { parseApiKey } from "@/shared/utils/apiKey.js";
+import { parseApiKey, verifyApiKeyCrc } from "@/shared/utils/apiKey.js";
+import { hasValidCliToken } from "@/shared/auth/cliToken.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -315,6 +316,12 @@ export async function clearAccountError(connectionId, currentConnection, model =
  */
 export async function authenticateRequest(request, log) {
   const settings = await getSettings();
+
+  if (await hasValidCliToken(request)) {
+    log?.debug?.("AUTH", "Authenticated via CLI token");
+    return { ok: true, apiKey: null, settings, cliToken: true };
+  }
+
   const authHeader = request.headers.get("Authorization");
   const xApiKeyHeader = request.headers.get("x-api-key");
   // Any present, non-empty credential header counts — a present-but-malformed
@@ -373,5 +380,6 @@ export function extractApiKey(request) {
  */
 export async function isValidApiKey(apiKey) {
   if (!apiKey) return false;
+  if (!verifyApiKeyCrc(apiKey)) return false;
   return await validateApiKey(apiKey);
 }

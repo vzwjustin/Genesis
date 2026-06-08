@@ -7,11 +7,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   validateApiKey: vi.fn(),
+  hasValidCliToken: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   validateApiKey: mocks.validateApiKey,
+}));
+
+vi.mock("@/shared/auth/cliToken.js", () => ({
+  hasValidCliToken: mocks.hasValidCliToken,
 }));
 
 const log = {
@@ -32,13 +37,14 @@ describe("authenticateRequest (Task 18)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
-    mocks.validateApiKey.mockImplementation(async (key) => key === "valid-key");
+    mocks.validateApiKey.mockImplementation(async (key) => key === "sk-validkey");
+    mocks.hasValidCliToken.mockResolvedValue(false);
   });
 
   it("rejects invalid Bearer even when requireApiKey=false (Requirement 13.7)", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeRequest({ Authorization: "Bearer bad-key" }),
+      makeRequest({ Authorization: "Bearer sk-badkeyyy" }),
       log
     );
     expect(result.ok).toBe(false);
@@ -67,17 +73,17 @@ describe("authenticateRequest (Task 18)", () => {
   it("accepts valid Bearer token", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeRequest({ Authorization: "Bearer valid-key" }),
+      makeRequest({ Authorization: "Bearer sk-validkey" }),
       log
     );
     expect(result.ok).toBe(true);
-    expect(result.apiKey).toBe("valid-key");
+    expect(result.apiKey).toBe("sk-validkey");
   });
 
   it("rejects invalid x-api-key header", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeRequest({ "x-api-key": "bad-key" }),
+      makeRequest({ "x-api-key": "sk-badkeyyy" }),
       log
     );
     expect(result.ok).toBe(false);
@@ -102,5 +108,28 @@ describe("authenticateRequest (Task 18)", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.bypassed).toBe(true);
+  });
+
+  it("accepts valid CLI token without API key", async () => {
+    mocks.hasValidCliToken.mockResolvedValue(true);
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({ "x-9r-cli-token": "cli-token" }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.cliToken).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed new-format API key before DB lookup", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({ Authorization: "Bearer sk-deadbeef-test01-00000000" }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 });

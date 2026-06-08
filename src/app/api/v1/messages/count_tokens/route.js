@@ -1,3 +1,5 @@
+import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -15,6 +17,9 @@ export async function OPTIONS() {
  * POST /v1/messages/count_tokens - Mock token count response
  */
 export async function POST(request) {
+  const routeAuth = await requireRouteAuth(request);
+  if (!routeAuth.ok) return routeAuth.response;
+
   let body;
   try {
     body = await request.json();

@@ -141,6 +141,27 @@ describe("dashboard guard public LLM API access", () => {
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
   });
+
+  it("allows remote public LLM API without credentials when requireApiKey=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", { host: "router.example.com" }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed API key CRC even when requireApiKey=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "router.example.com",
+      authorization: "Bearer sk-deadbeef-test01-00000000",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
 });
 
 describe("dashboard guard management API access", () => {

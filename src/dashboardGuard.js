@@ -1,32 +1,9 @@
-import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { normalizeHostHeaderHostname } from "@/shared/utils/host";
-
-const CLI_TOKEN_HEADER = "x-9r-cli-token";
-const CLI_TOKEN_SALT = "9r-cli-auth";
-
-let cachedCliToken = null;
-async function getCliToken() {
-  if (!cachedCliToken) cachedCliToken = await getConsistentMachineId(CLI_TOKEN_SALT);
-  return cachedCliToken;
-}
-
-async function hasValidCliToken(request) {
-  const token = request.headers.get(CLI_TOKEN_HEADER);
-  if (!token) return false;
-  const expected = await getCliToken();
-  try {
-    const a = Buffer.from(token);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
+import { hasValidCliToken } from "@/shared/auth/cliToken";
+import { verifyApiKeyCrc } from "@/shared/utils/apiKey";
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
 const PUBLIC_API_PATHS = [
@@ -138,12 +115,25 @@ function extractApiKey(request) {
 async function hasValidApiKey(request) {
   const apiKey = extractApiKey(request);
   if (!apiKey) return false;
+  if (!verifyApiKeyCrc(apiKey)) return false;
   return await validateApiKey(apiKey);
 }
 
 async function canAccessPublicLlmApi(request) {
   if (await hasValidCliToken(request)) return true;
-  return await hasValidApiKey(request);
+
+  const authHeader = request.headers.get("Authorization");
+  const xApiKeyHeader = request.headers.get("x-api-key");
+  const hasCredentialHeader = !!(authHeader?.trim() || xApiKeyHeader?.trim());
+
+  if (hasCredentialHeader) {
+    return await hasValidApiKey(request);
+  }
+
+  const settings = await loadSettings();
+  if (settings && settings.requireApiKey === false) return true;
+
+  return false;
 }
 
 async function canAccessLocalOnlyRoute(request) {

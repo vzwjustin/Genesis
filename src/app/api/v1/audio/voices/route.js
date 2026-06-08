@@ -1,3 +1,4 @@
+import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 // Provider → internal voices API. Edge/local-device share the generic endpoint.
@@ -18,6 +19,9 @@ export async function OPTIONS() {
 // GET /v1/audio/voices?provider={p}[&lang=xx]
 // Returns OpenAI-style list with each voice's full model id ready for /v1/audio/speech
 export async function GET(request) {
+  const routeAuth = await requireRouteAuth(request);
+  if (!routeAuth.ok) return routeAuth.response;
+
   try {
     const { searchParams, origin } = new URL(request.url);
     const provider = searchParams.get("provider");
