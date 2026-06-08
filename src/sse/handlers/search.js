@@ -12,6 +12,11 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import {
+  resolveProviderRetryLimits,
+  noActiveCredentialsResponse,
+  exhaustedAccountsResponse,
+} from "../utils/providerCredentialRetry.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -124,13 +129,25 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
     return result.response;
   }
 
-  // Credential + fallback loop
+  const { isNoAuthProvider, maxRetries } = await resolveProviderRetryLimits(providerId);
+  if (!isNoAuthProvider && maxRetries === 0) {
+    log.warn("AUTH", `No active credentials for provider: ${providerId}`);
+    return noActiveCredentialsResponse(providerId);
+  }
+
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
   let had5xx = false;
+  let retryCount = 0;
 
   while (true) {
+    if (retryCount >= maxRetries) {
+      log.warn("SEARCH", `Max retries (${maxRetries}) exhausted for ${providerId}`);
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
+    }
+    retryCount++;
+
     const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
 
     if (!credentials || credentials.allRateLimited) {
@@ -142,12 +159,10 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
       }
       if (excludeConnectionIds.size === 0) {
         log.error("AUTH", `No credentials for provider: ${providerId}`);
-        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${providerId}`);
+        return noActiveCredentialsResponse(providerId);
       }
       log.warn("SEARCH", "No more accounts available", { provider: providerId });
-      // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503
-      const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
-      return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
 
     log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);

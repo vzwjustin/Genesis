@@ -185,10 +185,12 @@ export class KiroService {
     if (clientId && clientSecret) {
       const endpoint = `https://oidc.${region || "us-east-1"}.amazonaws.com/token`;
 
-      const response = await fetch(endpoint, {
+      const response = await proxyAwareFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
+          ...buildKiroFingerprintHeaders({ refreshToken, providerSpecificData }),
         },
         body: JSON.stringify({
           clientId,

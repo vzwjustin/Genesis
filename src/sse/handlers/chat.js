@@ -7,7 +7,7 @@ import {
   authenticateRequest,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
-import { getSettings, getProviderConnections } from "@/lib/localDb";
+import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse, validationErrorResponse, VALIDATION_ERROR_TYPES } from "open-sse/utils/error.js";
@@ -18,7 +18,11 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
-import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import {
+  resolveProviderRetryLimits,
+  noActiveCredentialsResponse,
+  exhaustedAccountsResponse,
+} from "../utils/providerCredentialRetry.js";
 
 /**
  * Handle chat completion request
@@ -145,18 +149,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastStatus = null;
   let had5xx = false;
 
-  // Requirement 4.7: Retry at most N times, where N = number of configured connections for the provider.
-  // Get total configured connections to enforce the retry limit.
-  const providerId = resolveProviderId(provider);
-  const isNoAuthProvider = !!FREE_PROVIDERS[providerId]?.noAuth;
-  const allConnections = await getProviderConnections({ provider: providerId, isActive: true });
-  const maxRetries = isNoAuthProvider ? 1 : allConnections.length;
+  const { isNoAuthProvider, maxRetries } = await resolveProviderRetryLimits(provider);
 
-  // Requirement 4.8: zero configured connections → immediate HTTP 404, no dispatch, no retries
-  // noAuth free providers inject a virtual credential and have no stored connections.
   if (!isNoAuthProvider && maxRetries === 0) {
     log.warn("AUTH", `No active credentials for provider: ${provider}`);
-    return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+    return noActiveCredentialsResponse(provider);
   }
 
   let retryCount = 0;
@@ -165,8 +162,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Enforce max retry limit (Requirement 4.7)
     if (retryCount >= maxRetries) {
       log.warn("CHAT", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
-      const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
-      return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
     retryCount++;
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
@@ -181,12 +177,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       if (excludeConnectionIds.size === 0) {
         log.warn("AUTH", `No active credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+        return noActiveCredentialsResponse(provider);
       }
       log.warn("CHAT", "No more accounts available", { provider });
-      // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503
-      const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
-      return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
 
     // Log account selection

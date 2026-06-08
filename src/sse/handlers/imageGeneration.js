@@ -11,6 +11,11 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
+import {
+  resolveProviderRetryLimits,
+  noActiveCredentialsResponse,
+  exhaustedAccountsResponse,
+} from "../utils/providerCredentialRetry.js";
 import * as log from "../utils/logger.js";
 
 // Providers that don't require credentials (noAuth)
@@ -80,13 +85,24 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
   }
 
-  // Credentialed providers — fallback loop
+  const { isNoAuthProvider, maxRetries } = await resolveProviderRetryLimits(provider);
+  if (!isNoAuthProvider && maxRetries === 0) {
+    return noActiveCredentialsResponse(provider);
+  }
+
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
   let had5xx = false;
+  let retryCount = 0;
 
   while (true) {
+    if (retryCount >= maxRetries) {
+      log.warn("IMAGE", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
+    }
+    retryCount++;
+
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
 
     if (!credentials || credentials.allRateLimited) {
@@ -96,9 +112,9 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) {
-        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+        return noActiveCredentialsResponse(provider);
       }
-      return errorResponse(had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE), lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
