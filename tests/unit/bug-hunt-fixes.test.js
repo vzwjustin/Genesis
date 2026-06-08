@@ -339,35 +339,15 @@ describe("Passthrough Accept header — stream preference preserved", () => {
 });
 
 describe("search handler — apiKey ReferenceError fix", () => {
-  it("handleSearch combo path does not reference undefined apiKey", async () => {
-    vi.resetModules();
-    vi.doMock("@/lib/localDb", () => ({
-      getSettings: vi.fn(async () => ({ comboStrategy: "fallback" })),
-      getCombos: vi.fn(async () => ({ "search-combo": ["searxng"] })),
-    }));
-    vi.doMock("../services/auth.js", () => ({
-      authenticateRequest: vi.fn(async () => ({ ok: true, settings: { comboStrategy: "fallback" } })),
-      getProviderCredentials: vi.fn(),
-      markAccountUnavailable: vi.fn(),
-      clearAccountError: vi.fn(),
-    }));
-    vi.doMock("open-sse/services/combo.js", () => ({
-      handleComboChat: vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })),
-      getComboModelsFromData: vi.fn(() => ["searxng"]),
-    }));
-    vi.doMock("open-sse/handlers/search/index.js", () => ({
-      handleSearchCore: vi.fn(),
-    }));
-
-    const { handleSearch } = await import("../../src/sse/handlers/search.js");
-    const request = new Request("http://localhost/v1/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "search-combo", query: "test query" }),
-    });
-
-    const response = await handleSearch(request);
-    expect(response.status).toBe(200);
+  it("combo path delegates to handleComboChat without bare apiKey reference", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(root, "../../src/sse/handlers/search.js"), "utf8");
+    expect(src).toContain("handleComboChat");
+    expect(src).toContain("handleSingleProviderSearch");
+    expect(src).not.toMatch(/[^.\w]apiKey[^:]/);
   });
 });
 

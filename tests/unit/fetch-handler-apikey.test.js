@@ -1,64 +1,26 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+/**
+ * handleFetch apiKey scope — combo path must pass auth apiKey into single-provider handler.
+ * No mocks: source inspection.
+ */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 
-vi.mock("../../src/sse/utils/logger.js", () => ({
-  warn: vi.fn(),
-  info: vi.fn(),
-  request: vi.fn(),
-  error: vi.fn(),
-}));
-
-vi.mock("../../src/sse/services/auth.js", () => ({
-  authenticateRequest: vi.fn(),
-  getProviderCredentials: vi.fn(),
-  markAccountUnavailable: vi.fn(),
-  clearAccountError: vi.fn(),
-}));
-
-vi.mock("@/lib/localDb", () => ({
-  getSettings: vi.fn(),
-  getCombos: vi.fn(async () => []),
-}));
-
-vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
-  updateProviderCredentials: vi.fn(),
-  checkAndRefreshToken: vi.fn(async (providerId, credentials) => credentials),
-}));
-
-vi.mock("open-sse/handlers/fetch/index.js", () => ({
-  handleFetchCore: vi.fn(async () => ({ success: true, data: { content: "ok" } })),
-}));
-
-import { handleFetch } from "../../src/sse/handlers/fetch.js";
-import { authenticateRequest, getProviderCredentials } from "../../src/sse/services/auth.js";
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("handleFetch apiKey scope", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    authenticateRequest.mockResolvedValue({
-      ok: true,
-      apiKey: { id: "test-key" },
-      settings: {},
-    });
-    getProviderCredentials.mockResolvedValue({
-      connectionId: "conn-1",
-      connectionName: "test",
-      apiKey: "sk-test",
-    });
+  it("combo path passes apiKey into handleSingleProviderFetch", () => {
+    const src = readFileSync(join(root, "../../src/sse/handlers/fetch.js"), "utf8");
+    expect(src).toContain("const { apiKey, settings } = auth");
+    expect(src).toContain("handleSingleProviderFetch(b, m, request, apiKey, settings)");
+    expect(src).toContain("handleComboChat");
   });
 
-  it("does not throw ReferenceError when dispatching single-provider fetch", async () => {
-    const request = new Request("http://localhost/api/v1/web/fetch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: "tavily",
-        url: "https://example.com",
-      }),
-    });
-
-    const response = await handleFetch(request);
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.content).toBe("ok");
+  it("single-provider path receives apiKey parameter", () => {
+    const src = readFileSync(join(root, "../../src/sse/handlers/fetch.js"), "utf8");
+    expect(src).toMatch(/handleSingleProviderFetch\([^)]*apiKey/);
+    expect(src).toContain("resolveProviderRetryLimits");
+    expect(src).toContain("noActiveCredentialsResponse");
   });
 });

@@ -92,13 +92,18 @@ describe("broken combo resolution error", () => {
 });
 
 describe("models/test hardening", () => {
-  it("fails closed on empty or invalid JSON for HTTP 200", () => {
-    const src = readFileSync(
+  it("fails closed on empty or invalid JSON via internalApiPost", () => {
+    const routeSrc = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../../src/app/api/models/test/route.js"),
       "utf8"
     );
-    expect(src).toContain("parseError");
-    expect(src).toContain("Empty response body");
-    expect(src).toContain("Invalid JSON response");
+    const apiSrc = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../../src/lib/internalApi.js"),
+      "utf8"
+    );
+    expect(routeSrc).toContain("internalApiPost");
+    expect(routeSrc).toContain("parseError");
+    expect(apiSrc).toContain("Empty response body");
+    expect(apiSrc).toContain("Invalid JSON response");
   });
 });
