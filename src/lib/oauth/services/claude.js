@@ -2,6 +2,7 @@ import { OAuthService } from "./oauth.js";
 import { CLAUDE_CONFIG } from "../constants/oauth.js";
 import { getServerCredentials } from "../config/index.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * Claude OAuth Service
@@ -53,7 +54,7 @@ export class ClaudeService extends OAuthService {
       code_verifier: codeVerifier,
     };
 
-    const response = await fetch(CLAUDE_CONFIG.tokenUrl, {
+    const response = await oauthFetch(CLAUDE_CONFIG.tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -77,7 +78,7 @@ export class ClaudeService extends OAuthService {
     const { server, token, userId } = getServerCredentials();
 
     // Server will auto-generate displayName based on existing account count
-    const response = await fetch(`${server}/api/cli/providers/claude`, {
+    const response = await oauthFetch(`${server}/api/cli/providers/claude`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

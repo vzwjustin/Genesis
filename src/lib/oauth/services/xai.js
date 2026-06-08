@@ -5,6 +5,7 @@ import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "../constants/xai.js";
 import { startLocalServer } from "../utils/server.js";
 import { generateCodeVerifier, generateCodeChallenge, generateState } from "../utils/pkce.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * xAI (Grok) OAuth Service
@@ -53,7 +54,7 @@ export async function discoverEndpoints() {
   if (cachedDiscovery) return cachedDiscovery;
 
   try {
-    const res = await fetch(XAI_CONFIG.discoveryUrl, {
+    const res = await oauthFetch(XAI_CONFIG.discoveryUrl, {
       headers: { Accept: "application/json" },
     });
     if (res.ok) {
@@ -127,7 +128,7 @@ export class XaiService extends OAuthService {
    * xAI is a public PKCE client — no client_secret.
    */
   async exchangeXaiCode({ tokenUrl, code, redirectUri, codeVerifier }) {
-    const res = await fetch(tokenUrl, {
+    const res = await oauthFetch(tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -154,7 +155,7 @@ export class XaiService extends OAuthService {
    */
   async refreshAccessToken(refreshToken) {
     const { tokenUrl } = await discoverEndpoints();
-    const res = await fetch(tokenUrl, {
+    const res = await oauthFetch(tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",

@@ -3,6 +3,7 @@ import { QWEN_CONFIG } from "../constants/oauth.js";
 import { getServerCredentials } from "../config/index.js";
 import { generatePKCE } from "../utils/pkce.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * Qwen OAuth Service
@@ -17,7 +18,7 @@ export class QwenService {
    * Request device code
    */
   async requestDeviceCode(codeChallenge) {
-    const response = await fetch(this.config.deviceCodeUrl, {
+    const response = await oauthFetch(this.config.deviceCodeUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -49,7 +50,7 @@ export class QwenService {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await new Promise((r) => setTimeout(r, pollInterval));
 
-      const response = await fetch(this.config.tokenUrl, {
+      const response = await oauthFetch(this.config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -92,7 +93,7 @@ export class QwenService {
   async saveTokens(tokens) {
     const { server, token, userId } = getServerCredentials();
 
-    const response = await fetch(`${server}/api/cli/providers/qwen`, {
+    const response = await oauthFetch(`${server}/api/cli/providers/qwen`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

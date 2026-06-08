@@ -4,6 +4,7 @@ import { IFLOW_CONFIG } from "../constants/oauth.js";
 import { getServerCredentials } from "../config/index.js";
 import { startLocalServer } from "../utils/server.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * iFlow OAuth Service
@@ -38,7 +39,7 @@ export class IFlowService {
       `${this.config.clientId}:${this.config.clientSecret}`
     ).toString("base64");
 
-    const response = await fetch(this.config.tokenUrl, {
+    const response = await oauthFetch(this.config.tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -66,7 +67,7 @@ export class IFlowService {
    * Get user info from iFlow
    */
   async getUserInfo(accessToken) {
-    const response = await fetch(
+    const response = await oauthFetch(
       `${this.config.userInfoUrl}?accessToken=${encodeURIComponent(accessToken)}`,
       {
         headers: {
@@ -95,7 +96,7 @@ export class IFlowService {
   async saveTokens(tokens, userInfo) {
     const { server, token, userId } = getServerCredentials();
 
-    const response = await fetch(`${server}/api/cli/providers/iflow`, {
+    const response = await oauthFetch(`${server}/api/cli/providers/iflow`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

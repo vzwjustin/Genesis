@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const oauthFetch = vi.hoisted(() => vi.fn());
+
+vi.mock("../../src/lib/oauth/utils/oauthFetch.js", () => ({
+  oauthFetch: (...args) => oauthFetch(...args),
+  oauthFetchWithTimeout: (...args) => oauthFetch(...args),
+}));
+
 describe("xai/oauth service", () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.restoreAllMocks();
-    vi.stubGlobal("fetch", vi.fn());
+    oauthFetch.mockReset();
   });
 
   it("validates discovered endpoints are https x.ai URLs", async () => {
@@ -22,7 +28,7 @@ describe("xai/oauth service", () => {
   });
 
   it("discovers endpoints without custom user-agent headers", async () => {
-    fetch.mockResolvedValueOnce({
+    oauthFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         authorization_endpoint: "https://auth.x.ai/oauth2/authorize",
@@ -35,7 +41,7 @@ describe("xai/oauth service", () => {
       authorizeUrl: "https://auth.x.ai/oauth2/authorize",
       tokenUrl: "https://auth.x.ai/oauth2/token",
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(oauthFetch).toHaveBeenCalledWith(
       "https://auth.x.ai/.well-known/openid-configuration",
       expect.objectContaining({ headers: { Accept: "application/json" } })
     );
@@ -64,7 +70,7 @@ describe("xai/oauth service", () => {
   });
 
   it("generates dashboard auth data with CLIProxyAPI PKCE size and discovered endpoints", async () => {
-    fetch.mockResolvedValueOnce({
+    oauthFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         authorization_endpoint: "https://auth.x.ai/oauth2/authorize-from-discovery",
@@ -85,8 +91,7 @@ describe("xai/oauth service", () => {
   });
 
   it("exchanges dashboard codes against the discovered xAI token endpoint", async () => {
-    const fetchMock = fetch;
-    fetchMock
+    oauthFetch
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -112,10 +117,10 @@ describe("xai/oauth service", () => {
       "state-1"
     );
 
-    expect(fetchMock.mock.calls[1][0]).toBe("https://auth.x.ai/oauth2/token-from-discovery");
-    expect(fetchMock.mock.calls[1][1].body.get("grant_type")).toBe("authorization_code");
-    expect(fetchMock.mock.calls[1][1].body.get("code")).toBe("auth-code");
-    expect(fetchMock.mock.calls[1][1].body.get("code_verifier")).toBe("verifier-1");
+    expect(oauthFetch.mock.calls[1][0]).toBe("https://auth.x.ai/oauth2/token-from-discovery");
+    expect(oauthFetch.mock.calls[1][1].body.get("grant_type")).toBe("authorization_code");
+    expect(oauthFetch.mock.calls[1][1].body.get("code")).toBe("auth-code");
+    expect(oauthFetch.mock.calls[1][1].body.get("code_verifier")).toBe("verifier-1");
     expect(tokens).toMatchObject({
       accessToken: "access-token",
       refreshToken: "refresh-token",

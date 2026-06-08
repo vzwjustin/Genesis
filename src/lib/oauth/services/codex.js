@@ -4,6 +4,7 @@ import { CODEX_CONFIG } from "../constants/oauth.js";
 import { getServerCredentials } from "../config/index.js";
 import { startLocalServer } from "../utils/server.js";
 import { generatePKCE } from "../utils/pkce.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 import { spinner as createSpinner } from "../utils/ui.js";
 
 /**
@@ -43,7 +44,7 @@ export class CodexService extends OAuthService {
   async saveTokens(tokens) {
     const { server, token, userId } = getServerCredentials();
 
-    const response = await fetch(`${server}/api/cli/providers/codex`, {
+    const response = await oauthFetch(`${server}/api/cli/providers/codex`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
