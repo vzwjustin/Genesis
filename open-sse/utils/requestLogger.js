@@ -83,8 +83,10 @@ function maskSensitiveHeaders(headers) {
     const lowerKey = key.toLowerCase();
     if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
       const value = masked[key];
-      if (value && value.length > 20) {
-        masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
+      if (value) {
+        masked[key] = value.length > 20
+          ? value.slice(0, 4) + "..." + value.slice(-4)
+          : "[redacted]";
       }
     }
   }

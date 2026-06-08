@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
@@ -16,7 +17,15 @@ async function getCliToken() {
 async function hasValidCliToken(request) {
   const token = request.headers.get(CLI_TOKEN_HEADER);
   if (!token) return false;
-  return token === await getCliToken();
+  const expected = await getCliToken();
+  try {
+    const a = Buffer.from(token);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
@@ -139,8 +148,10 @@ async function canAccessPublicLlmApi(request) {
 
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + dashboard session
-  if (isLocalRequest(request) && await isDashboardAccessAllowed(request)) return true;
+  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + valid JWT only.
+  // Intentionally does NOT use isDashboardAccessAllowed because that shortcuts
+  // when requireLogin=false — spawn-capable routes must require real auth.
+  if (isLocalRequest(request) && await hasValidToken(request)) return true;
   return false;
 }
 

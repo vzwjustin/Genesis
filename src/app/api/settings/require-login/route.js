@@ -6,9 +6,9 @@ export async function GET() {
     const settings = await getSettings();
     const requireLogin = settings.requireLogin !== false;
     const tunnelDashboardAccess = settings.tunnelDashboardAccess !== false;
-    const tunnelUrl = settings.tunnelUrl || "";
-    const tailscaleUrl = settings.tailscaleUrl || "";
-    return NextResponse.json({ requireLogin, tunnelDashboardAccess, tunnelUrl, tailscaleUrl });
+    // tunnelUrl and tailscaleUrl are intentionally omitted — they are internal
+    // hostnames that must not be exposed to unauthenticated callers.
+    return NextResponse.json({ requireLogin, tunnelDashboardAccess });
   } catch (error) {
     return NextResponse.json({ requireLogin: true }, { status: 200 });
   }
