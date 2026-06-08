@@ -1,48 +1,5 @@
 import { NextResponse } from "next/server";
-import { getApiKeys } from "@/lib/localDb";
-import { UPDATER_CONFIG } from "@/shared/constants/config";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
-
-const CLI_TOKEN_SALT = "9r-cli-auth";
-const REQUEST_TIMEOUT_MS = 15000;
-
-async function buildInternalHeaders() {
-  const headers = { "Content-Type": "application/json" };
-  try {
-    const keys = await getApiKeys();
-    const apiKey = keys.find((k) => k.isActive !== false)?.key || null;
-    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-  } catch {}
-  headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
-  return headers;
-}
-
-function getInternalBaseUrl() {
-  return `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
-}
-
-async function internalPost(path, body) {
-  const headers = await buildInternalHeaders();
-  const res = await fetch(`${getInternalBaseUrl()}${path}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  const rawText = await res.text().catch(() => "");
-  let parsed = null;
-  let parseError = null;
-  if (rawText) {
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      parseError = "Invalid JSON response";
-    }
-  } else if (res.ok) {
-    parseError = "Empty response body";
-  }
-  return { res, rawText, parsed, parseError };
-}
+import { internalApiPost } from "@/lib/internalApi.js";
 
 function failurePayload({ latencyMs, res, rawText, parsed, parseError, defaultError }) {
   if (!res.ok) {
@@ -69,7 +26,7 @@ export async function POST(request) {
     const start = Date.now();
 
     if (kind === "embedding") {
-      const { res, rawText, parsed, parseError } = await internalPost("/api/v1/embeddings", {
+      const { res, rawText, parsed, parseError } = await internalApiPost("/api/v1/embeddings", {
         model,
         input: "test",
       });
@@ -103,7 +60,7 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
     }
 
-    const { res, rawText, parsed, parseError } = await internalPost("/api/v1/chat/completions", {
+    const { res, rawText, parsed, parseError } = await internalApiPost("/api/v1/chat/completions", {
       model,
       max_tokens: 1,
       stream: false,

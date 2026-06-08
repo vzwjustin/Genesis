@@ -1,56 +1,36 @@
 import { NextResponse } from "next/server";
-import { getProviderConnectionById, getApiKeys } from "@/lib/localDb";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
-import { UPDATER_CONFIG } from "@/shared/constants/config";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
-
-const CLI_TOKEN_SALT = "9r-cli-auth";
-
-/**
- * Get an active API key to pass through auth when requireApiKey is enabled.
- */
-async function getInternalApiKey() {
-  const keys = await getApiKeys();
-  return keys.find((k) => k.isActive !== false)?.key || null;
-}
+import { internalApiGet, internalApiPost } from "@/lib/internalApi.js";
 
 /**
  * Ping a single model via internal completions endpoint (OpenAI format).
  * open-sse handles all provider translation automatically.
  */
-async function pingModel(modelId, baseUrl, apiKey, cliToken) {
+async function pingModel(modelId) {
   const start = Date.now();
   try {
-    const headers = { "Content-Type": "application/json" };
-    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-    if (cliToken) headers["x-9r-cli-token"] = cliToken;
-    const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: modelId,
-        max_tokens: 1,
-        stream: false,
-        messages: [{ role: "user", content: "hi" }],
-      }),
-      signal: AbortSignal.timeout(15000),
+    const { res, parsed, parseError } = await internalApiPost("/api/v1/chat/completions", {
+      model: modelId,
+      max_tokens: 1,
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
     });
     const latencyMs = Date.now() - start;
     let ok = res.status === 200;
     let error = null;
     if (ok) {
-      try {
-        const body = await res.json();
-        ok = Array.isArray(body?.choices) && body.choices.length > 0;
-        if (!ok) error = "HTTP 200 but response missing choices";
-      } catch {
+      if (parseError) {
         ok = false;
-        error = "HTTP 200 but invalid JSON response";
+        error = parseError;
+      } else {
+        ok = Array.isArray(parsed?.choices) && parsed.choices.length > 0;
+        if (!ok) error = "HTTP 200 but response missing choices";
       }
     } else {
-      const text = await res.text().catch(() => "");
-      error = `HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`;
+      const detail = parsed?.error?.message || parsed?.error || "";
+      error = `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 120)}` : ""}`;
     }
     return { ok, latencyMs, error };
   } catch (err) {
@@ -77,12 +57,10 @@ export async function POST(request, { params }) {
 
     let models = getProviderModels(alias);
 
-    const baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
-
     // Compatible providers: fetch live model list
     if (isCompatible && models.length === 0) {
       try {
-        const modelsRes = await fetch(`${baseUrl}/api/providers/${id}/models`);
+        const modelsRes = await internalApiGet(`/api/providers/${id}/models`);
         if (modelsRes.ok) {
           const data = await modelsRes.json();
           models = (data.models || []).map((m) => ({ id: m.id || m.name, name: m.name || m.id }));
@@ -94,20 +72,15 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "No models configured for this provider" }, { status: 400 });
     }
 
-    const apiKey = await getInternalApiKey();
-    // Bypass dashboardGuard for internal self-call via CLI token (machineId-based)
-    const cliToken = await getConsistentMachineId(CLI_TOKEN_SALT);
-
     // Warm up with first model to trigger token refresh (if needed) before parallel calls.
-    // This prevents race condition where multiple requests concurrently refresh the same token.
     const [first, ...rest] = models;
-    const firstResult = await pingModel(`${alias}/${first.id}`, baseUrl, apiKey, cliToken);
+    const firstResult = await pingModel(`${alias}/${first.id}`);
     const results = [{ modelId: first.id, name: first.name || first.id, ...firstResult }];
 
     if (rest.length > 0) {
       const restResults = await Promise.all(
         rest.map(async (model) => {
-          const result = await pingModel(`${alias}/${model.id}`, baseUrl, apiKey, cliToken);
+          const result = await pingModel(`${alias}/${model.id}`);
           return { modelId: model.id, name: model.name || model.id, ...result };
         })
       );

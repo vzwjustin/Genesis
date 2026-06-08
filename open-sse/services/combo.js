@@ -184,7 +184,33 @@ export async function isModelResolutionFailureResponse(response) {
   try {
     const body = await response.clone().json();
     const message = body?.error?.message || "";
-    return message.startsWith("Failed to resolve model:") || message === "Invalid model format";
+    return (
+      message.startsWith("Failed to resolve model:") ||
+      message === "Invalid model format" ||
+      message.includes("has no valid model targets configured")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detect proxy-side provider account exhaustion (all connections failed / unavailable).
+ * Distinguished from upstream semantic 401/403 by Retry-After or known proxy messages.
+ * Combo should advance — this is provider-level unavailability, not a client auth error.
+ */
+export async function isProviderAccountsExhaustedResponse(response) {
+  if (response.status !== 401 && response.status !== 403) return false;
+  if (response.headers.get("Retry-After")) return true;
+  try {
+    const body = await response.clone().json();
+    const message = body?.error?.message || "";
+    return (
+      message.includes("All accounts unavailable") ||
+      message.includes("No more accounts available") ||
+      message.includes("Token refresh failed") ||
+      message.startsWith("No active credentials for provider:")
+    );
   } catch {
     return false;
   }
@@ -245,13 +271,16 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // The combo should advance past providers with no configured connections.
         const zeroConns = await isZeroConnectionsResponse(result);
         const resolutionFailed = await isModelResolutionFailureResponse(result);
-        if (!zeroConns && !resolutionFailed) {
+        const accountsExhausted = await isProviderAccountsExhaustedResponse(result);
+        if (!zeroConns && !resolutionFailed && !accountsExhausted) {
           // 4xx (non-429): Return response directly to client, do NOT advance (Req 5.3)
           log.info("COMBO", `Model ${modelStr} returned ${result.status} (client error), returning to client without advancing`);
           return result;
         }
         if (resolutionFailed) {
           log.info("COMBO", `Model ${modelStr} failed to resolve, advancing to next model`);
+        } else if (accountsExhausted) {
+          log.info("COMBO", `Model ${modelStr} provider accounts exhausted, advancing to next model`);
         } else {
           // Zero connections detected — treat like unavailability, advance to next model
           log.info("COMBO", `Model ${modelStr} has zero connections, advancing to next model`);
