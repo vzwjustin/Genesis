@@ -58,13 +58,13 @@ function restoreItems(items, snapshot) {
 }
 
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
-export function compressMessages(body, enabled = rtkEnabled) {
+export function compressMessages(body, enabled = rtkEnabled, filterConfig = null) {
   if (!enabled) return null;
   if (!body) return null;
 
   // Kiro format: conversationState.history + conversationState.currentMessage
   if (body.conversationState) {
-    return compressKiroFormat(body, enabled);
+    return compressKiroFormat(body, enabled, filterConfig);
   }
 
   // Gemini / Antigravity: tool results live in contents[].parts[].functionResponse
@@ -72,7 +72,7 @@ export function compressMessages(body, enabled = rtkEnabled) {
     : Array.isArray(body.request?.contents) ? body.request.contents
     : null;
   if (geminiContents) {
-    return compressGeminiContents(geminiContents);
+    return compressGeminiContents(geminiContents, filterConfig);
   }
 
   // Support both OpenAI/Claude "messages" and OpenAI Responses "input"
@@ -99,12 +99,12 @@ export function compressMessages(body, enabled = rtkEnabled) {
       // Shape 4: OpenAI Responses — top-level { type:"function_call_output", output: string | [{type:"input_text", text}] }
       if (msg.type === "function_call_output") {
         if (typeof msg.output === "string") {
-          msg.output = compressText(msg.output, stats, "openai-responses-string");
+          msg.output = compressText(msg.output, stats, "openai-responses-string", filterConfig);
         } else if (Array.isArray(msg.output)) {
           for (let k = 0; k < msg.output.length; k++) {
             const part = msg.output[k];
             if (part && part.type === "input_text" && typeof part.text === "string") {
-              part.text = compressText(part.text, stats, "openai-responses-array");
+              part.text = compressText(part.text, stats, "openai-responses-array", filterConfig);
             }
           }
         }
@@ -113,7 +113,7 @@ export function compressMessages(body, enabled = rtkEnabled) {
 
       // Shape 1: OpenAI tool message — { role:"tool", content: "string" }
       if (msg.role === "tool" && typeof msg.content === "string") {
-        msg.content = compressText(msg.content, stats, "openai-tool");
+        msg.content = compressText(msg.content, stats, "openai-tool", filterConfig);
         continue;
       }
 
@@ -124,7 +124,7 @@ export function compressMessages(body, enabled = rtkEnabled) {
         for (let k = 0; k < msg.content.length; k++) {
           const part = msg.content[k];
           if (part && part.type === "text" && typeof part.text === "string") {
-            part.text = compressText(part.text, stats, "openai-tool-array");
+            part.text = compressText(part.text, stats, "openai-tool-array", filterConfig);
           }
         }
         continue;
@@ -138,13 +138,13 @@ export function compressMessages(body, enabled = rtkEnabled) {
 
         if (typeof block.content === "string") {
           // Shape 2: claude string form
-          block.content = compressText(block.content, stats, "claude-string");
+          block.content = compressText(block.content, stats, "claude-string", filterConfig);
         } else if (Array.isArray(block.content)) {
           // Shape 3: claude array form — compress each text part
           for (let k = 0; k < block.content.length; k++) {
             const part = block.content[k];
             if (part && part.type === "text" && typeof part.text === "string") {
-              part.text = compressText(part.text, stats, "claude-array");
+              part.text = compressText(part.text, stats, "claude-array", filterConfig);
             }
           }
         }
@@ -206,21 +206,21 @@ function writeFunctionResponseText(fr, text) {
   }
 }
 
-function compressFunctionResponse(fr, stats) {
+function compressFunctionResponse(fr, stats, filterConfig) {
   const text = functionResponseText(fr?.response);
   if (typeof text !== "string" || !text) return;
-  const compressed = compressText(text, stats, "gemini-function-response");
+  const compressed = compressText(text, stats, "gemini-function-response", filterConfig);
   if (compressed !== text) writeFunctionResponseText(fr, compressed);
 }
 
-function compressGeminiContents(contents) {
+function compressGeminiContents(contents, filterConfig) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
   try {
     for (const content of contents) {
       if (!Array.isArray(content?.parts)) continue;
       for (const part of content.parts) {
         if (part?.functionResponse) {
-          compressFunctionResponse(part.functionResponse, stats);
+          compressFunctionResponse(part.functionResponse, stats, filterConfig);
         }
       }
     }
@@ -235,7 +235,7 @@ function compressGeminiContents(contents) {
 // History messages are already part of the provider's cached prefix — compressing
 // them changes the content hash and invalidates the upstream KV cache. Only the
 // currentMessage (which has not yet been cached) is safe to compress.
-function compressKiroFormat(body, enabled) {
+function compressKiroFormat(body, enabled, filterConfig) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
   try {
     const state = body.conversationState;
@@ -252,7 +252,7 @@ function compressKiroFormat(body, enabled) {
 
         for (const part of tr.content) {
           if (part && typeof part.text === "string") {
-            part.text = compressText(part.text, stats, "kiro-tool-result");
+            part.text = compressText(part.text, stats, "kiro-tool-result", filterConfig);
           }
         }
       }
@@ -264,7 +264,13 @@ function compressKiroFormat(body, enabled) {
   return stats;
 }
 
-function compressText(text, stats, shape) {
+function isFilterEnabled(filterName, filterConfig) {
+  if (!filterConfig || typeof filterConfig !== "object") return true;
+  const val = filterConfig[filterName];
+  return val !== false;
+}
+
+function compressText(text, stats, shape, filterConfig) {
   const bytesIn = text.length;
   stats.bytesBefore += bytesIn;
 
@@ -277,14 +283,17 @@ function compressText(text, stats, shape) {
   const candidates = [];
 
   if (namedFilter && namedFilter.filterName !== "smart-truncate") {
-    const namedOut = safeApply(namedFilter, text);
-    if (namedOut && namedOut.length > 0 && namedOut.length < bytesIn) {
-      candidates.push({ out: namedOut, filter: namedFilter.filterName || namedFilter.name || "named" });
+    const name = namedFilter.filterName || namedFilter.name || "named";
+    if (isFilterEnabled(name, filterConfig)) {
+      const namedOut = safeApply(namedFilter, text);
+      if (namedOut && namedOut.length > 0 && namedOut.length < bytesIn) {
+        candidates.push({ out: namedOut, filter: name });
+      }
     }
   }
 
   // Fallback only when named filter failed or grew the input (Req 7.8–7.10)
-  if (candidates.length === 0) {
+  if (candidates.length === 0 && isFilterEnabled("smart-truncate", filterConfig)) {
     const truncOut = safeApply(smartTruncate, text);
     if (truncOut && truncOut.length > 0 && truncOut.length < bytesIn) {
       candidates.push({ out: truncOut, filter: "smart-truncate" });
