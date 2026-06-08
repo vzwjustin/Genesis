@@ -240,4 +240,24 @@ describe("handleComboChat — advancement on 429/5xx only (Req 5.1, 5.4, 5.5)", 
     const body = await result.json();
     expect(body.error.message).toContain("server down");
   });
+
+  it("propagates Retry-After header from exhausted combo models", async () => {
+    const handleSingleModel = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({ error: { message: "rate limited" } }),
+        { status: 429, headers: { "Retry-After": "30" } }
+      );
+    });
+
+    const result = await handleComboChat({
+      body: { model: "combo1", messages: [] },
+      models: ["cc/claude-opus", "openai/gpt-4o"],
+      handleSingleModel,
+      log: mockLog,
+    });
+
+    expect(result.status).toBe(503);
+    const retryAfter = parseInt(result.headers.get("Retry-After"), 10);
+    expect(retryAfter).toBeGreaterThanOrEqual(1);
+  });
 });

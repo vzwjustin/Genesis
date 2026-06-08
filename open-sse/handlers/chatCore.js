@@ -133,12 +133,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     try {
       translatedBody = translateRequest(sourceFormat, targetFormat, model, body, stream, credentials, provider, reqLogger, stripList, connectionId, clientTool);
     } catch (translationError) {
-      trackPendingRequest(model, provider, connectionId, false, true);
       const errMsg = translationError?.message || "Translation threw an unexpected error";
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request from ${sourceFormat} to ${targetFormat}: ${errMsg}`, undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
     }
     if (!translatedBody) {
-      trackPendingRequest(model, provider, connectionId, false, true);
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request from ${sourceFormat} to ${targetFormat}`, undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
     }
     toolNameMap = translatedBody._toolNameMap;
@@ -428,12 +426,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
-    try {
-      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, trackDone, appendLog });
-      if (result) return result;
-    } finally {
+    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, trackDone, appendLog });
+    if (result) {
       streamController.handleComplete();
+      return result;
     }
+    // Provider returned non-SSE; fall through to streaming with controller still connected
   }
 
   // True non-streaming response
