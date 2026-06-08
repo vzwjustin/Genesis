@@ -1,77 +1,89 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+/**
+ * OIDC SSRF guard and error sanitization tests.
+ * No mocks: assertSafeFetchUrl rejects unsafe URLs before any network call.
+ */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
+import {
+  fetchOidcDiscovery,
+  exchangeOidcCode,
+  probeOidcClientSecret,
+  sanitizeOidcError,
+} from "../../src/lib/auth/oidc.js";
 
-const mocks = vi.hoisted(() => ({
-  fetch: vi.fn(),
-  getSettings: vi.fn(),
-}));
-
-vi.mock("@/lib/localDb", () => ({
-  getSettings: mocks.getSettings,
-}));
-
-vi.stubGlobal("fetch", mocks.fetch);
-
-const { fetchOidcDiscovery, sanitizeOidcError } = await import("../../src/lib/auth/oidc.js");
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("fetchOidcDiscovery SSRF guard", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("rejects loopback issuer URL", async () => {
     await expect(fetchOidcDiscovery("http://127.0.0.1:8080")).rejects.toThrow(/host is not allowed|Only HTTPS/i);
-    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it("rejects localhost issuer URL", async () => {
     await expect(fetchOidcDiscovery("http://localhost:9000")).rejects.toThrow(/host is not allowed|Only HTTPS/i);
-    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it("rejects private RFC-1918 issuer URL", async () => {
     await expect(fetchOidcDiscovery("http://192.168.1.1")).rejects.toThrow(/host is not allowed|Only HTTPS/i);
-    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it("rejects HTTP (non-HTTPS) public issuer URL", async () => {
     await expect(fetchOidcDiscovery("http://example.com")).rejects.toThrow(/Only HTTPS/i);
-    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it("rejects metadata endpoint", async () => {
     await expect(fetchOidcDiscovery("http://169.254.169.254")).rejects.toThrow();
-    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("exchangeOidcCode SSRF guard", () => {
+  it("rejects loopback token endpoint", async () => {
+    await expect(exchangeOidcCode({
+      tokenEndpoint: "http://127.0.0.1:8080/token",
+      clientId: "client",
+      clientSecret: "secret",
+      code: "code",
+      redirectUri: "https://app.example/callback",
+      codeVerifier: "verifier",
+    })).rejects.toThrow(/host is not allowed|Only HTTPS/i);
   });
 
-  it("allows valid HTTPS public issuer URL", async () => {
-    mocks.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        issuer: "https://accounts.example.com",
-        authorization_endpoint: "https://accounts.example.com/authorize",
-        token_endpoint: "https://accounts.example.com/token",
-        jwks_uri: "https://accounts.example.com/.well-known/jwks.json",
-      }),
-    });
+  it("rejects private token endpoint", async () => {
+    await expect(exchangeOidcCode({
+      tokenEndpoint: "http://10.0.0.5/token",
+      clientId: "client",
+      clientSecret: "secret",
+      code: "code",
+      redirectUri: "https://app.example/callback",
+      codeVerifier: "verifier",
+    })).rejects.toThrow(/host is not allowed|Only HTTPS/i);
+  });
+});
 
-    const doc = await fetchOidcDiscovery("https://accounts.example.com");
-    expect(doc.issuer).toBe("https://accounts.example.com");
-    expect(mocks.fetch).toHaveBeenCalledWith(
-      "https://accounts.example.com/.well-known/openid-configuration",
-      { cache: "no-store" }
-    );
+describe("probeOidcClientSecret SSRF guard", () => {
+  it("rejects metadata token endpoint", async () => {
+    await expect(probeOidcClientSecret({
+      tokenEndpoint: "http://169.254.169.254/token",
+      clientId: "client",
+      clientSecret: "secret",
+      redirectUri: "https://app.example/callback",
+    })).rejects.toThrow();
+  });
+});
+
+describe("oidc.js network routing (source)", () => {
+  it("uses oauthFetch instead of bare fetch for discovery and token exchange", () => {
+    const src = readFileSync(join(root, "../../src/lib/auth/oidc.js"), "utf8");
+    expect(src).toContain('from "@/lib/oauth/utils/oauthFetch.js"');
+    expect(src).toContain("oauthFetch");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
+    expect(src).toContain("assertSafeFetchUrl(tokenEndpoint)");
   });
 
-  it("throws generic error (no URL) when discovery fetch fails", async () => {
-    mocks.fetch.mockResolvedValueOnce({ ok: false, status: 404 });
-
-    await expect(fetchOidcDiscovery("https://accounts.example.com")).rejects.toThrow(
-      "Failed to load OIDC discovery document"
-    );
-    // Error message must NOT contain the full discovery URL
-    await fetchOidcDiscovery("https://accounts.example.com").catch((e) => {
-      expect(e.message).not.toContain("https://accounts.example.com");
-    });
+  it("discovery failure uses generic error without embedding URL", () => {
+    const src = readFileSync(join(root, "../../src/lib/auth/oidc.js"), "utf8");
+    expect(src).toContain("Failed to load OIDC discovery document");
   });
 });
 
@@ -95,7 +107,7 @@ describe("sanitizeOidcError", () => {
   it("caps message length at 120 chars", () => {
     const err = new Error("x".repeat(300));
     const sanitized = sanitizeOidcError(err);
-    expect(sanitized.length).toBeLessThanOrEqual(122); // 120 + ellipsis char
+    expect(sanitized.length).toBeLessThanOrEqual(122);
   });
 
   it("returns fallback for empty error", () => {

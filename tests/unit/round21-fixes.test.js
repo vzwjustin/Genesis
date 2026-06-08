@@ -11,15 +11,14 @@ import { handleComboChat } from "../../open-sse/services/combo.js";
 const noopLog = { info() {}, warn() {}, error() {} };
 const root = dirname(fileURLToPath(import.meta.url));
 
-describe("compact.js re-export shim", () => {
-  it("re-exports canonical handleComboChat from combo.js (no stale duplicate)", async () => {
-    const src = readFileSync(join(root, "../../open-sse/services/compact.js"), "utf8");
-    expect(src).toContain('from "./combo.js"');
-    expect(src).not.toContain("result.ok || result.status < 500");
+describe("combo.js is canonical (no stale compact duplicate)", () => {
+  it("handleComboChat lives only in combo.js without stale advancement shim", async () => {
+    const comboSrc = readFileSync(join(root, "../../open-sse/services/combo.js"), "utf8");
+    expect(comboSrc).toContain("export async function handleComboChat");
+    expect(comboSrc).not.toContain("result.ok || result.status < 500");
 
-    const compact = await import("../../open-sse/services/compact.js");
     const combo = await import("../../open-sse/services/combo.js");
-    expect(compact.handleComboChat).toBe(combo.handleComboChat);
+    expect(typeof combo.handleComboChat).toBe("function");
   });
 });
 
