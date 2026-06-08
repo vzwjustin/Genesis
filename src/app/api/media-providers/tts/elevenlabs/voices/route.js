@@ -16,12 +16,13 @@ export async function GET(request) {
 
     // Direct DB read - bypass auth mutex used for TTS inference
     const connections = await getProviderConnections({ provider: "elevenlabs", isActive: true });
-    const apiKey = connections[0]?.apiKey;
+    const connection = connections[0];
+    const apiKey = connection?.apiKey;
     if (!apiKey) {
       return NextResponse.json({ error: "No ElevenLabs connection found" }, { status: 400 });
     }
 
-    const voices = await fetchElevenLabsVoices(apiKey);
+    const voices = await fetchElevenLabsVoices(apiKey, connection);
 
     // Group by all supported languages (verified_languages + labels.language)
     const byLang = {};

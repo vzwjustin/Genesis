@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
+import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
 
 const langNames = new Intl.DisplayNames(["en"], { type: "language" });
 
@@ -13,12 +14,14 @@ export async function GET(request) {
     const langFilter = searchParams.get("lang");
 
     const connections = await getProviderConnections({ provider: "inworld", isActive: true });
-    const apiKey = connections[0]?.apiKey;
+    const connection = connections[0];
+    const apiKey = connection?.apiKey;
     if (!apiKey) return NextResponse.json({ error: "No Inworld connection found" }, { status: 400 });
 
-    const res = await fetch("https://api.inworld.ai/tts/v1/voices", {
+    const proxyOptions = buildProxyOptionsFromCredentials(connection);
+    const res = await proxyAwareFetch("https://api.inworld.ai/tts/v1/voices", {
       headers: { "Authorization": `Basic ${apiKey}` },
-    });
+    }, proxyOptions);
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       return NextResponse.json({ error: `Inworld API ${res.status}: ${text || "Failed"}` }, { status: 502 });

@@ -4,6 +4,61 @@ import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
+const REQUEST_TIMEOUT_MS = 15000;
+
+async function buildInternalHeaders() {
+  const headers = { "Content-Type": "application/json" };
+  try {
+    const keys = await getApiKeys();
+    const apiKey = keys.find((k) => k.isActive !== false)?.key || null;
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+  } catch {}
+  headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
+  return headers;
+}
+
+function getInternalBaseUrl() {
+  return `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
+}
+
+async function internalPost(path, body) {
+  const headers = await buildInternalHeaders();
+  const res = await fetch(`${getInternalBaseUrl()}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const rawText = await res.text().catch(() => "");
+  let parsed = null;
+  let parseError = null;
+  if (rawText) {
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      parseError = "Invalid JSON response";
+    }
+  } else if (res.ok) {
+    parseError = "Empty response body";
+  }
+  return { res, rawText, parsed, parseError };
+}
+
+function failurePayload({ latencyMs, res, rawText, parsed, parseError, defaultError }) {
+  if (!res.ok) {
+    const detail = parsed?.error?.message || parsed?.error || parsed?.msg || parsed?.message || rawText;
+    return {
+      ok: false,
+      latencyMs,
+      status: res.status,
+      error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`,
+    };
+  }
+  if (parseError) {
+    return { ok: false, latencyMs, status: res.status, error: parseError };
+  }
+  return { ok: false, latencyMs, status: res.status, error: defaultError };
+}
 
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
@@ -11,79 +66,71 @@ export async function POST(request) {
     const { model, kind } = await request.json();
     if (!model) return NextResponse.json({ error: "Model required" }, { status: 400 });
 
-    const baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
-
-    // Get an active internal API key for auth (if requireApiKey is enabled)
-    let apiKey = null;
-    try {
-      const keys = await getApiKeys();
-      apiKey = keys.find((k) => k.isActive !== false)?.key || null;
-    } catch {}
-
-    const headers = { "Content-Type": "application/json" };
-    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-    // Bypass dashboardGuard for internal self-call via CLI token (machineId-based)
-    headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
-
     const start = Date.now();
 
-    // Route to appropriate endpoint based on kind
     if (kind === "embedding") {
-      const res = await fetch(`${baseUrl}/api/v1/embeddings`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ model, input: "test" }),
-        signal: AbortSignal.timeout(15000),
+      const { res, rawText, parsed, parseError } = await internalPost("/api/v1/embeddings", {
+        model,
+        input: "test",
       });
       const latencyMs = Date.now() - start;
-      const rawText = await res.text().catch(() => "");
-      let parsed = null;
-      try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
 
-      if (!res.ok) {
-        const detail = parsed?.error?.message || parsed?.error || rawText;
-        return NextResponse.json({ ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status });
+      if (!res.ok || parseError) {
+        return NextResponse.json(
+          failurePayload({
+            latencyMs,
+            res,
+            rawText,
+            parsed,
+            parseError,
+            defaultError: "Provider returned no embedding data",
+          })
+        );
       }
-      const hasEmbedding = Array.isArray(parsed?.data) && parsed.data.length > 0 && Array.isArray(parsed.data[0]?.embedding);
+
+      const hasEmbedding =
+        Array.isArray(parsed?.data) &&
+        parsed.data.length > 0 &&
+        Array.isArray(parsed.data[0]?.embedding);
       if (!hasEmbedding) {
-        return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no embedding data" });
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          status: res.status,
+          error: "Provider returned no embedding data",
+        });
       }
       return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
     }
 
-    // Default: chat completions
-    const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model,
-        max_tokens: 1,
-        stream: false,
-        messages: [{ role: "user", content: "hi" }],
-      }),
-      signal: AbortSignal.timeout(15000),
+    const { res, rawText, parsed, parseError } = await internalPost("/api/v1/chat/completions", {
+      model,
+      max_tokens: 1,
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
     });
     const latencyMs = Date.now() - start;
 
-    const rawText = await res.text().catch(() => "");
-    let parsed = null;
-    try {
-      parsed = rawText ? JSON.parse(rawText) : null;
-    } catch {}
-
-    if (!res.ok) {
-      const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
-      const error = `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`;
-      return NextResponse.json({ ok: false, latencyMs, error, status: res.status });
+    if (!res.ok || parseError) {
+      return NextResponse.json(
+        failurePayload({
+          latencyMs,
+          res,
+          rawText,
+          parsed,
+          parseError,
+          defaultError: "Provider returned no completion choices for this model",
+        })
+      );
     }
 
-    // Some providers may return HTTP 200 but not a real completion for invalid models.
     const providerStatus = parsed?.status;
     const providerMsg = parsed?.msg || parsed?.message;
-    const hasProviderErrorStatus = providerStatus !== undefined
-      && providerStatus !== null
-      && String(providerStatus) !== "200"
-      && String(providerStatus) !== "0";
+    const hasProviderErrorStatus =
+      providerStatus !== undefined &&
+      providerStatus !== null &&
+      String(providerStatus) !== "200" &&
+      String(providerStatus) !== "0";
     if (hasProviderErrorStatus && providerMsg) {
       return NextResponse.json({
         ok: false,

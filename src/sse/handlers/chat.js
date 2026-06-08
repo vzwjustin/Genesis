@@ -8,7 +8,7 @@ import {
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse, validationErrorResponse, VALIDATION_ERROR_TYPES } from "open-sse/utils/error.js";
 import { handleComboChat } from "open-sse/services/combo.js";
@@ -75,6 +75,12 @@ export async function handleChat(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   // Check if model is a combo (has multiple models with fallback)
+  const brokenComboError = await getBrokenComboError(modelStr);
+  if (brokenComboError) {
+    log.warn("CHAT", `Combo resolution failed: ${brokenComboError}`);
+    return validationErrorResponse(VALIDATION_ERROR_TYPES.VALIDATION_FAILED, brokenComboError);
+  }
+
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global
@@ -107,6 +113,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // If provider is null, this might be a combo name - check and handle
   if (!modelInfo.provider) {
+    const brokenComboError = await getBrokenComboError(modelStr);
+    if (brokenComboError) {
+      log.warn("CHAT", `Combo resolution failed: ${brokenComboError}`);
+      return validationErrorResponse(VALIDATION_ERROR_TYPES.VALIDATION_FAILED, brokenComboError);
+    }
+
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
       const chatSettings = await getSettings();

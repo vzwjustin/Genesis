@@ -1,4 +1,6 @@
 // OpenRouter TTS — via chat completions + audio modality (SSE stream)
+import { ttsFetch } from "./_base.js";
+
 export default {
   async synthesize(text, model, credentials) {
     if (!credentials?.apiKey) throw new Error("No OpenRouter API key configured");
@@ -20,7 +22,7 @@ export default {
       voice = model;
     }
 
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const res = await ttsFetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -35,7 +37,7 @@ export default {
         stream: true,
         messages: [{ role: "user", content: text }],
       }),
-    });
+    }, credentials);
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
