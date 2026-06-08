@@ -109,8 +109,10 @@ vi.mock("open-sse/rtk/headroom.js", () => ({
 }));
 
 const mockRecordCompressionStats = vi.fn(() => Promise.resolve());
+const mockSaveCompressionStats = vi.fn(() => Promise.resolve());
 vi.mock("@/lib/compressionStats.js", () => ({
   recordCompressionStats: (...args) => mockRecordCompressionStats(...args),
+  saveCompressionStats: (...args) => mockSaveCompressionStats(...args),
 }));
 
 // Mock clientDetector — we control passthrough detection
@@ -212,6 +214,26 @@ describe("Passthrough compression guard", () => {
     expect(result.success).toBe(true);
     // Body messages should be restored to original
     expect(body.messages).toEqual(originalMessages);
+  });
+
+  it("runs compression chain in order RTK → Headroom → Caveman", async () => {
+    mockIsNativePassthrough.mockReturnValue(false);
+    const order = [];
+    mockCompressMessages.mockImplementation(() => {
+      order.push("rtk");
+      return { bytesBefore: 100, bytesAfter: 50, hits: [{ filter: "grep" }] };
+    });
+    mockCompressWithHeadroom.mockImplementation(async () => {
+      order.push("headroom");
+      return { before: 100, after: 60, saved: 40 };
+    });
+    mockInjectCaveman.mockImplementation(() => {
+      order.push("caveman");
+      return true;
+    });
+
+    await handleChatCore(makeOptions({ headroomEnabled: true }));
+    expect(order).toEqual(["rtk", "headroom", "caveman"]);
   });
 
   it("passthroughCompression defaults to falsy when not provided (guard active)", async () => {

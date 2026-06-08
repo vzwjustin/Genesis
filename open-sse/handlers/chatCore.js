@@ -174,36 +174,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     ? JSON.stringify(translatedBody)
     : null;
 
-  try {
-    // Headroom: ML compression of full message history (prose, RAG, long conversations)
-    if (compressionAllowed && headroomEnabled) {
-      const hrStats = await compressWithHeadroom(translatedBody, model);
-      if (hrStats && hrStats.saved > 0) {
-        const pct = Math.round((hrStats.saved / hrStats.before) * 100);
-        console.log(`[HEADROOM] saved ${hrStats.saved}B / ${hrStats.before}B (${pct}%)`);
-        // Only persist stats when compression actually produced output (Req 14.1)
-        recordCompressionStats("headroom", {
-          bytesBefore: hrStats.before || 0,
-          bytesAfter: hrStats.after || 0,
-          hits: 1,
-          detail: model,
-        }).catch(() => {});
-        saveCompressionStats({
-          subsystem: "headroom",
-          bytesBefore: hrStats.before || 0,
-          bytesAfter: hrStats.after || 0,
-        }).catch(() => {});
-      }
-    }
+  const chainStages = [];
 
-    // RTK: compress tool_result content
-    if (compressionAllowed) {
+  try {
+    // Stage 1 — RTK: sync tool-output compression (cheap, no network)
+    if (compressionAllowed && rtkEnabled) {
       const rtkStats = compressMessages(translatedBody, rtkEnabled);
       const rtkLine = formatRtkLog(rtkStats);
       if (rtkLine) console.log(rtkLine);
-      // Only persist stats when RTK actually compressed something (Req 14.1)
-      if (rtkEnabled && (rtkStats?.hits?.length > 0 || (rtkStats?.bytesBefore > 0 && rtkStats?.bytesAfter < rtkStats?.bytesBefore))) {
+      if (rtkStats?.hits?.length > 0 || (rtkStats?.bytesBefore > 0 && rtkStats?.bytesAfter < rtkStats?.bytesBefore)) {
         const filters = Array.from(new Set((rtkStats?.hits || []).map((hit) => hit.filter))).join(",");
+        const saved = (rtkStats?.bytesBefore || 0) - (rtkStats?.bytesAfter || 0);
+        chainStages.push(`rtk:${saved}B`);
         recordCompressionStats("rtk", {
           bytesBefore: rtkStats?.bytesBefore || 0,
           bytesAfter: rtkStats?.bytesAfter || 0,
@@ -219,11 +201,35 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       }
     }
 
-    // Caveman: inject terse-style system prompt
+    // Stage 2 — Headroom: ML history compression (runs after RTK sees shrunk tool blobs)
+    if (compressionAllowed && headroomEnabled) {
+      const hrStats = await compressWithHeadroom(translatedBody, model);
+      if (hrStats && hrStats.saved > 0) {
+        const pct = Math.round((hrStats.saved / hrStats.before) * 100);
+        console.log(`[HEADROOM] saved ${hrStats.saved}B / ${hrStats.before}B (${pct}%)`);
+        chainStages.push(`headroom:${hrStats.saved}B`);
+        recordCompressionStats("headroom", {
+          bytesBefore: hrStats.before || 0,
+          bytesAfter: hrStats.after || 0,
+          hits: 1,
+          detail: model,
+        }).catch(() => {});
+        saveCompressionStats({
+          subsystem: "headroom",
+          bytesBefore: hrStats.before || 0,
+          bytesAfter: hrStats.after || 0,
+        }).catch(() => {});
+      } else {
+        log?.debug?.("HEADROOM", "skipped (unavailable, empty tail, or no savings)");
+      }
+    }
+
+    // Stage 3 — Caveman: output-style system prompt injection (always last)
     if (compressionAllowed && cavemanEnabled && cavemanLevel) {
       const cavemanInjected = injectCaveman(translatedBody, finalFormat, cavemanLevel);
       if (cavemanInjected) {
         log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
+        chainStages.push(`caveman:${cavemanLevel}`);
         recordCompressionStats("caveman", {
           hits: 1,
           detail: `level=${cavemanLevel}`,
@@ -235,6 +241,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           level: cavemanLevel,
         }).catch(() => {});
       }
+    }
+
+    if (chainStages.length > 0) {
+      console.log(`[COMPRESSION] chain: ${chainStages.join(" → ")}`);
     }
   } catch (compressionError) {
     // Compression failure must never send partially compressed content (Req 7.11)

@@ -205,10 +205,12 @@ function compressText(text, stats, shape) {
     }
   }
 
-  // Fallback (Req 7.8) and secondary fallback when named filter fails or grows (Req 7.9, 7.10)
-  const truncOut = safeApply(smartTruncate, text);
-  if (truncOut && truncOut.length > 0 && truncOut.length < bytesIn) {
-    candidates.push({ out: truncOut, filter: "smart-truncate" });
+  // Fallback only when named filter failed or grew the input (Req 7.8–7.10)
+  if (candidates.length === 0) {
+    const truncOut = safeApply(smartTruncate, text);
+    if (truncOut && truncOut.length > 0 && truncOut.length < bytesIn) {
+      candidates.push({ out: truncOut, filter: "smart-truncate" });
+    }
   }
 
   if (candidates.length === 0) {

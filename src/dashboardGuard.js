@@ -47,6 +47,7 @@ const ALWAYS_PROTECTED = [
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [
+  "/api/dashboard",
   "/api/settings",
   "/api/keys",
   "/api/providers",

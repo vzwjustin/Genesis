@@ -391,6 +391,7 @@ describe("RTK secondary fallback (Tasks 11.6–11.7)", () => {
     const body = { messages: [{ role: "tool", tool_call_id: "x", content: input }] };
     const stats = compressMessages(body, true);
     expect(stats.hits.some((h) => h.filter === "git-diff")).toBe(true);
+    expect(stats.hits.some((h) => h.filter === "smart-truncate")).toBe(false);
   });
 
 });
