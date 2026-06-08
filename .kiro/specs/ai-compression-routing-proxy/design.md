@@ -9,8 +9,16 @@ The system architecture follows a layered pipeline pattern with clear separation
 1. **Format Layer**: Request format detection and translation between provider ecosystems
 2. **Model Layer**: Alias resolution and combo expansion for stable routing identifiers
 3. **Routing Layer**: Credential selection, account fallback, and combo sequencing
-4. **Compression Layer**: RTK tool-result compression, Headroom ML summarization, and Caveman prompt injection
+4. **Compression Layer**: RTK tool-result compression, Headroom ML summarization, and Caveman prompt injection (gated by passthrough mode — disabled unless explicitly enabled)
 5. **Execution Layer**: Provider-specific HTTP execution with streaming relay
+6. **Reliability Layer**: Fail-closed for correctness/security, fail-open for optional side effects
+
+**Core Design Principles:**
+
+- **Fail closed for correctness and security**: Return an error instead of guessing when the system cannot determine correct behavior. Never return partial/malformed responses as success.
+- **Fail open for optional side effects**: Statistics, logging, telemetry failures never break the request path.
+- **Passthrough means passthrough**: Do not mutate provider-native requests unless a security, routing, or explicitly required compatibility rule says so.
+- **Cache boundary is a hard correctness invariant**: Content at or before the cache boundary is immutable — violation silently corrupts the provider's KV prompt cache.
 
 ## Architecture
 
@@ -71,14 +79,16 @@ flowchart TB
     HTTP --> Auth
     Auth --> FormatDetect
     FormatDetect --> Passthrough
-    Passthrough --> CredSelector
+    Passthrough --> ModelResolver
     FormatDetect --> Translator
     Translator --> ModelResolver
     ModelResolver --> CredSelector
-    CredSelector --> RTK
+    CredSelector --> CompressionGate{Compression Gated}
+    CompressionGate -->|Enabled| RTK
     RTK --> Headroom
     Headroom --> Caveman
     Caveman --> Executor
+    CompressionGate -->|Passthrough Default| Executor
     Executor --> StreamHandler
     StreamHandler --> UsageTracker
     StreamHandler --> RequestLogger
@@ -176,7 +186,7 @@ function detectFormat(body) {
 
 ### Passthrough Mode
 
-Passthrough mode skips format translation when the client tool and target provider belong to the same ecosystem. This preserves original request structure while only swapping model names and auth headers.
+Passthrough mode skips format translation when the client tool and target provider belong to the same ecosystem. This preserves the original request structure — the proxy only swaps model names, injects auth headers, and applies transport-layer concerns. Passthrough is a first-class behavior and the proxy MUST NOT mutate provider-native request shapes unless a security, routing, or explicitly required compatibility rule demands it.
 
 ```javascript
 // Passthrough conditions (from handlers/chatCore.js)
@@ -191,6 +201,44 @@ function isNativePassthrough(clientTool, provider) {
   if (clientTool === "cursor" && provider === "cursor") return true;
   
   return false;
+}
+```
+
+**Passthrough Preservation Rules (Req 16):**
+
+- Preserve all provider-native fields in the request body without renaming or dropping unknown fields
+- Preserve client-requested streaming behavior (do not force non-streaming if client requested streaming, and vice versa except where always-streaming providers require SSE assembly)
+- Preserve upstream response shape, upstream error shape where safe, and provider-specific response fields
+- Do NOT translate the request body into another provider schema unless explicitly required by the endpoint contract
+- Do NOT alter tool definitions unless a known provider compatibility rule explicitly requires it to prevent upstream rejection
+
+**Allowed Passthrough Mutations (always applied regardless of passthrough):**
+
+- Authentication enforcement (API key validation)
+- Provider/model resolution and model name substitution
+- Connection selection and upstream auth header injection
+- Outbound proxy routing and MITM bypass DNS rules
+- Removal of local-only proxy metadata fields not recognized by the upstream provider
+- Known compatibility fixes that prevent upstream rejection (e.g., stripping provider prefixes from Anthropic built-in tool `model` fields)
+- Request/response logging if enabled (labeled as passthrough — see Logging section)
+
+**Passthrough Compression Gating (Req 15):**
+
+- Compression (RTK, Headroom, Caveman) is NOT applied to passthrough requests by default
+- Compression is only applied when `passthroughCompression` is explicitly enabled in settings
+- If passthrough compression is enabled and compression fails, continue with original unmodified content
+
+**Passthrough Error Behavior (Reqs 17, 18):**
+
+- If passthrough resolution fails, return an error — do NOT silently fall back to translated mode
+- Do NOT guess the intended provider or mutate the request into a different provider format
+- Passthrough must be predictable: either forward safely or fail clearly
+
+```javascript
+// Passthrough compression gating
+function shouldCompressPassthrough(settings, isPassthrough) {
+  if (!isPassthrough) return true; // Non-passthrough always eligible
+  return settings.passthroughCompression === true; // Passthrough requires explicit opt-in
 }
 ```
 
@@ -381,6 +429,12 @@ function determineStreamMode(config) {
 }
 ```
 
+**Passthrough Streaming Preservation (Req 16.2):**
+- In passthrough mode, preserve the client's requested streaming behavior
+- Do NOT force non-streaming if the client requested streaming
+- Do NOT force streaming if the client requested non-streaming, except for always-streaming providers where SSE assembly is needed to fulfill the client contract
+- If assembly fails, discard all partial data and return an error — never return partial JSON as success
+
 ## Data Models
 
 ### ProxyRequest
@@ -422,6 +476,10 @@ interface ProxyRequest {
   cavemanEnabled: boolean;
   cavemanLevel?: number;
   headroomEnabled: boolean;
+  passthroughCompression: boolean; // Explicit opt-in for compression in passthrough mode
+  
+  // Passthrough state
+  isPassthrough: boolean;
   
   // Logging
   requestLogger?: RequestLogger;
@@ -658,11 +716,14 @@ flowchart TD
     M -->|Yes| O{Token Expiring Soon?}
     O -->|Yes| P[Refresh OAuth Token]
     P --> Q
-    O -->|No| Q[Apply RTK Compression]
-    Q --> R{RTK Enabled?}
-    R -->|Yes| S[Compress Tool Results]
+    O -->|No| Q{Passthrough?}
+    Q -->|Yes| QA{Passthrough Compression Enabled?}
+    QA -->|No| AB2[Skip Compression - Forward Original]
+    QA -->|Yes| R2{RTK Enabled?}
+    Q -->|No| R2
+    R2 -->|Yes| S[Compress Tool Results]
     S --> T
-    R -->|No| T{Headroom Enabled?}
+    R2 -->|No| T{Headroom Enabled?}
     T -->|Yes| U[Probe Headroom Health]
     U --> V{Headroom Reachable?}
     V -->|Yes| W[ML Summarize Tail]
@@ -678,6 +739,8 @@ flowchart TD
     AC -->|No| AE[Translate Request Body]
     AD --> AF
     AE --> AF[Execute Request]
+    AB2 --> AD2[Apply Passthrough Mutations Only]
+    AD2 --> AF
     AF --> AG{Provider Response OK?}
     AG -->|No| AH{Should Fallback?}
     AH -->|Yes| AI[Apply Cooldown]
@@ -720,14 +783,23 @@ flowchart TD
 - Check token expiry, refresh if needed
 
 **5. Compression Pipeline:**
+- **Passthrough Gating (Req 15)**: If the request is passthrough AND `passthroughCompression` is NOT explicitly enabled in settings, skip the entire compression pipeline — forward the original request body unmodified. Do NOT alter provider-native message arrays in passthrough mode unless compression is explicitly enabled and configured. If passthrough compression IS enabled and compression fails, continue with the original unmodified content.
 - **RTK**: Compress tool results, skip cache boundary content (**hard correctness invariant** — cache boundary content is immutable; verify boundary integrity post-compression); record stats only when compression actually occurred. When a named filter produces output equal to or larger than the input, attempt smart truncation as a secondary fallback. Additionally, when a named filter is selected but smart truncation would produce smaller output, use smart truncation instead of the named filter. If smart truncation also produces output ≥ input, retain original unmodified content.
 - **Headroom**: Probe health (with hard skip conditions: skip when tail is empty OR consists entirely of system messages — do NOT probe the Headroom service in either case), summarize conversation tail via ML (**cache boundary content MUST NOT be included in any summarization payload**); record stats only when summarization was applied
 - **Caveman**: Inject terse prompt at appropriate position; record stats only when injection actually occurred — do NOT record when Caveman is enabled but the request body had no eligible injection point. Proceed unconditionally even if stats recording fails. If logging the stats failure itself fails, still proceed unconditionally.
+
+**5a. Reliability Principle (Req 17):**
+- The main request path continues unless continuing would violate: security, authentication correctness, request validity, response validity, DNS/MITM bypass integrity, or model/provider resolution correctness.
+- Optional subsystems (compression statistics, Caveman statistics, request logs, debug logs, telemetry, non-critical metadata recording) MUST NOT break the request path.
+- If an optional subsystem fails: log the failure if possible and continue. If logging the failure also fails: continue without further logging attempts.
+- Translation rules do NOT automatically apply to passthrough mode — passthrough avoids translation unless explicitly required by the selected endpoint contract or configuration.
 
 **6. Translation:**
 - Check passthrough conditions (same ecosystem)
 - Translate request body if needed
 - Handle tool name mapping (e.g., Claude cloaking)
+- **Passthrough preservation (Req 16)**: In passthrough mode, preserve all provider-native fields without renaming or dropping. Only remove local-only proxy metadata fields. Apply known compatibility fixes (e.g. Anthropic built-in tool model prefix stripping) that prevent upstream rejection. Do NOT alter tool definitions unless a known provider compatibility rule explicitly requires it.
+- **Correctness (Req 18)**: If translation cannot produce a valid upstream body, return HTTP 400. If post-translation validation fails, return HTTP 400. Use preferred error types: `translation_invalid_body`, `validation_failed`, `unsupported_request`, `missing_required_field`.
 
 **7. Execution:**
 - Send request via provider executor
@@ -735,11 +807,14 @@ flowchart TD
 - Manage upstream connection lifecycle
 
 **8. Response Handling:**
-- Translate response back to source format
+- Translate response back to source format (skip for passthrough — preserve upstream response shape, error shape, and provider-specific fields)
 - Relay or assemble based on streaming mode
 - When assembling SSE into a full response (provider always streams but client did not request streaming), explicitly set `Content-Type: application/json` on the assembled response
 - If assembly fails (malformed/incomplete SSE data), discard all partial data and return error; partial JSON is NEVER returned to non-streaming clients
+- **Response Validity Guarantee (Req 18)**: NEVER return partial JSON as success, malformed JSON with `application/json`, incomplete SSE assembly as a normal response, a translated-but-invalid upstream body, a successful HTTP status for failed combo/model resolution, or a successful HTTP status for failed passthrough provider resolution. If the proxy cannot guarantee response validity, return an error.
 - Log usage and request details
+- **Passthrough logging (Req 12.9)**: Label passthrough log entries as passthrough, preserve enough raw request/response shape to debug provider compatibility, redact secrets, and do NOT make passthrough logs appear as translated requests
+- **Failed/partial logging (Req 12.10)**: Clearly mark failed or incomplete log entries as such; partial logs MUST NOT appear as successful requests
 
 ## Integration Points
 
@@ -1082,6 +1157,60 @@ sequenceDiagram
 
 **Validates: Requirements 10.1**
 
+### Property 16: Passthrough Compression Gating
+
+*For any* passthrough mode request, the proxy SHALL NOT invoke any compression subsystem (RTK, Headroom, or Caveman) unless `passthroughCompression` is explicitly enabled in settings. When passthrough compression is disabled, the original request body SHALL be forwarded unmodified — provider-native message arrays MUST NOT be altered.
+
+**Validates: Requirements 15.1, 15.2, 15.3**
+
+### Property 17: Passthrough Field Preservation
+
+*For any* passthrough mode request body containing arbitrary provider-native fields, the proxy SHALL preserve all fields without renaming or dropping unknown fields, SHALL remove only local-only proxy metadata fields not recognized by the upstream provider, and SHALL NOT alter tool definitions unless a known provider compatibility rule explicitly requires it to prevent upstream rejection.
+
+**Validates: Requirements 16.1, 16.6, 16.7**
+
+### Property 18: Passthrough Response Preservation
+
+*For any* passthrough mode response from the upstream provider, the proxy SHALL preserve the upstream response shape, upstream error shape (where safe), and provider-specific response fields without translation into another provider schema unless the endpoint contract explicitly requires it.
+
+**Validates: Requirements 16.3**
+
+### Property 19: Optional Subsystem Failure Isolation
+
+*For any* request where an optional subsystem (compression statistics, Caveman statistics, request logs, debug logs, telemetry, non-critical metadata recording) fails during processing, the main request path SHALL continue to completion. If logging the optional subsystem failure also fails, the request SHALL still continue without further logging attempts.
+
+**Validates: Requirements 17.1, 17.2, 17.3**
+
+### Property 20: Resolution Failure Is Fail-Closed
+
+*For any* request where model resolution, combo resolution, or passthrough provider resolution ultimately fails, the proxy SHALL return an error AND SHALL NOT silently fall back to an alternative resolution path, guess the intended provider, or mutate the request into a different provider format. A combo name match alone is NOT sufficient — resolution succeeds only when it resolves to a valid actionable provider/model target.
+
+**Validates: Requirements 17.5, 17.6, 18.1, 18.2, 18.9**
+
+### Property 21: Translation/Validation Failure Returns 400
+
+*For any* request where format translation cannot produce a valid upstream body OR post-translation validation fails, the proxy SHALL return HTTP 400 with a descriptive error. This applies to all request-shape failures that prevent successful processing.
+
+**Validates: Requirements 18.3, 18.4, 18.7**
+
+### Property 22: Response Validity Guarantee
+
+*For any* response the proxy returns to a client, the proxy SHALL NEVER return: partial JSON as success, malformed JSON with `application/json` Content-Type, incomplete SSE assembly as a normal response, a translated-but-invalid upstream body, a successful HTTP status for failed combo/model resolution, or a successful HTTP status for failed passthrough provider resolution. If the proxy cannot guarantee response validity, it SHALL return an error rather than a potentially invalid response.
+
+**Validates: Requirements 18.10, 18.11**
+
+### Property 23: Passthrough Logs Labeled Separately
+
+*For any* passthrough request that is logged (when `ENABLE_REQUEST_LOGS` is enabled), the log entry SHALL be labeled as passthrough, SHALL preserve enough raw request/response shape to debug provider compatibility, SHALL redact secrets, and SHALL NOT appear as a translated request log entry.
+
+**Validates: Requirements 12.9**
+
+### Property 24: Failed/Partial Logs Clearly Marked
+
+*For any* request that fails or partially completes while logging is enabled, the log entry SHALL be clearly marked as failed or incomplete; partial logs MUST NOT appear as successful requests.
+
+**Validates: Requirements 12.10**
+
 ## Error Handling
 
 ### Error Classification
@@ -1138,6 +1267,55 @@ Retry-After: 30
 Content-Type: application/json
 ```
 
+### Correctness Fail-Closed Rules (Req 18)
+
+The proxy returns an error instead of guessing in these scenarios:
+
+| Failure Condition | Response | Error Type |
+|-------------------|----------|------------|
+| Model/combo resolution ultimately fails | HTTP 400 | `invalid_request_error` |
+| Passthrough provider resolution fails | HTTP 400 | `invalid_request_error` |
+| Translation cannot produce valid body | HTTP 400 | `translation_invalid_body` |
+| Post-translation validation fails | HTTP 400 | `validation_failed` |
+| SSE assembly fails (non-streaming client) | HTTP 500 | `server_error` |
+| MITM bypass DNS integrity unguaranteed | HTTP 502 | `dns_bypass_failed` |
+| Any request-shape failure | HTTP 400 | `invalid_request_error` |
+
+**Exhaustive "never return" list** — the proxy SHALL NEVER return:
+- Partial JSON as success
+- Malformed JSON with `application/json` Content-Type
+- Incomplete SSE assembly as a normal response
+- Translated-but-invalid upstream body
+- Successful HTTP status for failed combo/model resolution
+- Successful HTTP status for failed passthrough provider resolution
+
+If validity cannot be guaranteed, the proxy returns an error.
+
+### Reliability Rules (Req 17)
+
+**Fail closed for:**
+- Security and authentication correctness
+- Request validity and response validity
+- DNS/MITM bypass integrity
+- Model/provider resolution correctness
+
+**Fail open for (optional subsystems):**
+- Compression statistics recording
+- Caveman statistics recording
+- Request logs and debug logs
+- Telemetry and non-critical metadata recording
+
+If an optional subsystem fails → log if possible → continue. If logging also fails → still continue.
+
+### Passthrough Error Rules (Reqs 17, 18)
+
+| Passthrough Failure | Behavior |
+|---------------------|----------|
+| Provider resolution fails | Return error, do NOT fall back to translated mode |
+| Provider cannot be determined | Return error, do NOT guess |
+| Compression enabled + fails | Continue with original unmodified content |
+| Request body invalid | Return HTTP 400 |
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -1174,6 +1352,31 @@ Unit tests verify specific examples and edge cases:
 - Cooldown wait: minimum 1-second retry delay enforced even when all reset times are 0
 - Request logging: partial results written when request fails after partial completion
 - Stats recording: only when compression actually applied, not just when subsystem is enabled
+- **Passthrough compression gating (Req 15)**: passthrough requests NOT compressed when `passthroughCompression` is disabled
+- **Passthrough compression gating (Req 15)**: passthrough requests ARE compressed when `passthroughCompression` is explicitly enabled
+- **Passthrough compression failure (Req 15)**: passthrough with compression enabled + compression fails → continues with original unmodified content
+- **Passthrough field preservation (Req 16)**: unknown provider-native fields preserved in passthrough mode
+- **Passthrough field preservation (Req 16)**: local-only proxy metadata fields removed in passthrough mode
+- **Passthrough tool preservation (Req 16)**: tool definitions not altered in passthrough unless Anthropic prefix rule applies
+- **Passthrough compatibility fix (Req 16)**: Anthropic built-in tool `model` prefix stripping still applied in passthrough
+- **Passthrough streaming preservation (Req 16)**: client streaming preference preserved in passthrough mode
+- **Passthrough response preservation (Req 16)**: upstream response shape, error shape, and provider-specific fields preserved
+- **Passthrough no-translation (Req 16)**: request body NOT translated into another schema in passthrough mode
+- **Fail-closed resolution (Req 17/18)**: passthrough resolution failure returns error, not silent fallback to translated mode
+- **Fail-closed resolution (Req 18)**: model resolution failure returns error, not silent fallback
+- **Fail-closed resolution (Req 18)**: combo name match alone does NOT count as successful resolution if inner resolution fails
+- **Fail-closed translation (Req 18)**: invalid translation output returns HTTP 400
+- **Fail-closed translation (Req 18)**: post-translation validation failure returns HTTP 400
+- **Response validity (Req 18)**: partial JSON never returned as success
+- **Response validity (Req 18)**: malformed JSON never returned with `application/json` Content-Type
+- **Response validity (Req 18)**: successful HTTP status never returned for failed resolution
+- **Optional subsystem isolation (Req 17)**: compression stats failure does not break request path
+- **Optional subsystem isolation (Req 17)**: request log failure does not break request path
+- **Optional subsystem isolation (Req 17)**: double failure (subsystem + logging) still continues
+- **Passthrough logging (Req 12.9)**: passthrough log entries labeled as passthrough, not as translated
+- **Passthrough logging (Req 12.9)**: passthrough logs preserve raw request/response shape with secrets redacted
+- **Failed/partial logging (Req 12.10)**: failed request log clearly marked as failed
+- **Failed/partial logging (Req 12.10)**: partially completed request log marked as incomplete, not successful
 
 ### Property-Based Tests
 
@@ -1288,6 +1491,69 @@ For any request targeting a host in the MITM bypass list where no outbound proxy
 
 For any connection configuration with multiple proxy sources available (per-connection proxy, env vars, Vercel relay), the proxy SHALL use the highest-precedence source. Generate: various combinations of proxy configurations. Verify the correct proxy source is used in each case.
 
+---
+
+**Property 16: Passthrough Compression Gating**
+*Feature: ai-compression-routing-proxy, Property 16: passthrough requests not compressed unless explicitly enabled*
+
+For any passthrough mode request, the proxy SHALL NOT invoke any compression subsystem (RTK, Headroom, or Caveman) unless `passthroughCompression` is explicitly enabled in settings. When disabled, the original request body SHALL be forwarded unmodified. Generate: random passthrough request bodies with various compression settings (enabled/disabled). Verify no compression subsystem is invoked when disabled, and that message arrays remain byte-for-byte unchanged.
+
+---
+
+**Property 17: Passthrough Field Preservation**
+*Feature: ai-compression-routing-proxy, Property 17: passthrough preserves all provider-native fields, removes only proxy metadata, does not alter tools*
+
+For any passthrough mode request body containing arbitrary provider-native fields, the proxy SHALL preserve all fields without renaming or dropping unknown fields, SHALL remove only local-only proxy metadata fields, and SHALL NOT alter tool definitions unless a known provider compatibility rule explicitly requires it. Generate: request bodies with random extra fields, various tool definitions, and proxy metadata fields. Verify field preservation, metadata removal, and tool immutability.
+
+---
+
+**Property 18: Passthrough Response Preservation**
+*Feature: ai-compression-routing-proxy, Property 18: passthrough preserves upstream response shape and provider-specific fields*
+
+For any passthrough mode response from the upstream provider, the proxy SHALL preserve the upstream response shape, upstream error shape (where safe), and provider-specific response fields without translation. Generate: random upstream response bodies with provider-specific fields, error shapes, and streaming formats. Verify responses pass through unchanged.
+
+---
+
+**Property 19: Optional Subsystem Failure Isolation**
+*Feature: ai-compression-routing-proxy, Property 19: optional subsystem failures never break the request path*
+
+For any request where an optional subsystem (compression statistics, Caveman statistics, request logs, debug logs, telemetry, non-critical metadata recording) fails during processing, the main request path SHALL continue to completion. If logging the failure also fails, the request SHALL still continue. Generate: requests with injected failures in each optional subsystem (single failure and double failure: subsystem + logging). Verify request always completes successfully.
+
+---
+
+**Property 20: Resolution Failure Is Fail-Closed**
+*Feature: ai-compression-routing-proxy, Property 20: resolution failure returns error, never silent fallback or guessing*
+
+For any request where model resolution, combo resolution, or passthrough provider resolution ultimately fails, the proxy SHALL return an error AND SHALL NOT silently fall back to an alternative resolution path or guess the intended provider. A combo name match alone is NOT sufficient if inner resolution fails. Generate: invalid model strings, broken combo configurations, unresolvable passthrough targets. Verify error response in all cases (never a 200 or silent fallback).
+
+---
+
+**Property 21: Translation/Validation Failure Returns 400**
+*Feature: ai-compression-routing-proxy, Property 21: invalid translation or validation → HTTP 400*
+
+For any request where format translation cannot produce a valid upstream body OR post-translation validation fails, the proxy SHALL return HTTP 400. Generate: malformed request bodies, incompatible format combinations, bodies that pass translation but fail validation. Verify HTTP 400 in all cases.
+
+---
+
+**Property 22: Response Validity Guarantee**
+*Feature: ai-compression-routing-proxy, Property 22: proxy never returns partial/malformed data as success*
+
+For any response the proxy returns, it SHALL NEVER return: partial JSON as success, malformed JSON with `application/json` Content-Type, incomplete SSE assembly as a normal response, a translated-but-invalid upstream body, a successful HTTP status for failed resolution. Generate: various failure scenarios at different pipeline stages (mid-stream failure, assembly failure, translation failure, resolution failure). Verify none of the forbidden response patterns are ever produced.
+
+---
+
+**Property 23: Passthrough Logs Labeled Separately**
+*Feature: ai-compression-routing-proxy, Property 23: passthrough log entries labeled as passthrough, not as translated*
+
+For any passthrough request that is logged (when `ENABLE_REQUEST_LOGS` is enabled), the log entry SHALL be labeled as passthrough, SHALL preserve enough raw request/response shape for debugging, SHALL redact secrets, and SHALL NOT appear as a translated request log entry. Generate: passthrough requests with various body shapes and secret positions. Verify log labels, raw shape preservation, and secret redaction.
+
+---
+
+**Property 24: Failed/Partial Logs Clearly Marked**
+*Feature: ai-compression-routing-proxy, Property 24: failed/partial request logs clearly marked, never appear as successful*
+
+For any request that fails or partially completes while logging is enabled, the log entry SHALL be clearly marked as failed or incomplete; partial logs MUST NOT appear as successful requests. Generate: requests that fail at various pipeline stages (pre-dispatch, mid-stream, post-partial-response). Verify log entries are marked as failed/incomplete and cannot be confused with successful logs.
+
 ### Integration Tests
 
 Integration tests verify external service wiring with 1–3 representative executions each:
@@ -1299,6 +1565,8 @@ Integration tests verify external service wiring with 1–3 representative execu
 - Combo fallback with two providers: first returns 429, second returns 200 — verify client receives 200
 - Zero-connections HTTP 404 — verify response before any dispatch attempt
 - Cooldown wait with minimum 1-second delay — verify timing when all connections have near-zero reset times
+- Passthrough request with logging enabled — verify log entry is labeled passthrough with raw shape preserved
+- Passthrough request with unknown provider-native fields — verify fields survive round-trip through proxy
 
 ### Smoke Tests
 
@@ -1314,19 +1582,21 @@ Smoke tests verify one-time setup and configuration:
 **Property-based tests:**
 - Minimum **100 iterations** per property test
 - Each test tagged with: `Feature: ai-compression-routing-proxy, Property {N}: {property_text}`
-- One property-based test per design correctness property (15 properties total)
-- Generators cover edge cases: empty arrays, single-element arrays, max-length strings, boundary values
+- One property-based test per design correctness property (24 properties total)
+- Generators cover edge cases: empty arrays, single-element arrays, max-length strings, boundary values, passthrough/translated mode pairs
 
 **Unit tests:**
 - One test per distinct behavior / error path
 - Specific concrete inputs demonstrating each format detection case, each error handling path, each compression filter type
 - Mock all external services (provider APIs, Headroom proxy, SQLite)
+- Include passthrough-specific cases: field preservation, compression gating, response preservation, labeled logging
 
 **Integration tests:**
 - 1–2 provider API calls per integration scenario
 - 1 Headroom proxy health check call
 - 1 database write/read cycle per persistence scenario
 - Use real SQLite in a temp directory; mock network calls to actual providers where rate limits are a concern
+- Include passthrough logging and field preservation integration scenarios
 
 ## Security Considerations
 
@@ -1364,3 +1634,12 @@ Smoke tests verify one-time setup and configuration:
 - Per-connection proxy configuration (explicit precedence: per-connection > env vars > Vercel relay)
 - NO_PROXY pattern matching
 - Strict mode for critical environments
+
+### Passthrough Security Enforcement (Req 17.7)
+
+Passthrough mode does NOT bypass any transport-layer or security concern:
+- Authentication enforcement (API key validation) — always applied
+- Outbound proxy routing — always applied per connection configuration
+- MITM bypass DNS rules — always enforced for bypass hosts
+- These are transport-layer and security concerns that apply regardless of passthrough status
+- Translation rules do NOT automatically apply to passthrough mode, but security/routing rules always do
