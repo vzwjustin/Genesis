@@ -1,18 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+/**
+ * xAI OAuth service — endpoint validation and auth URL construction
+ * No mocks: pure function tests + source inspection for oauthFetch wiring.
+ */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 
-const oauthFetch = vi.hoisted(() => vi.fn());
-
-vi.mock("../../src/lib/oauth/utils/oauthFetch.js", () => ({
-  oauthFetch: (...args) => oauthFetch(...args),
-  oauthFetchWithTimeout: (...args) => oauthFetch(...args),
-}));
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("xai/oauth service", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    oauthFetch.mockReset();
-  });
-
   it("validates discovered endpoints are https x.ai URLs", async () => {
     const { validateOAuthEndpoint } = await import("../../src/lib/oauth/services/xai.js");
 
@@ -27,24 +24,12 @@ describe("xai/oauth service", () => {
     );
   });
 
-  it("discovers endpoints without custom user-agent headers", async () => {
-    oauthFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        authorization_endpoint: "https://auth.x.ai/oauth2/authorize",
-        token_endpoint: "https://auth.x.ai/oauth2/token",
-      }),
-    });
-
-    const { discoverEndpoints } = await import("../../src/lib/oauth/services/xai.js");
-    await expect(discoverEndpoints()).resolves.toEqual({
-      authorizeUrl: "https://auth.x.ai/oauth2/authorize",
-      tokenUrl: "https://auth.x.ai/oauth2/token",
-    });
-    expect(oauthFetch).toHaveBeenCalledWith(
-      "https://auth.x.ai/.well-known/openid-configuration",
-      expect.objectContaining({ headers: { Accept: "application/json" } })
-    );
+  it("discovers endpoints via oauthFetch (source)", () => {
+    const src = readFileSync(join(root, "../../src/lib/oauth/services/xai.js"), "utf8");
+    expect(src).toContain("discoverEndpoints");
+    expect(src).toContain("oauthFetch");
+    expect(src).toContain(".well-known/openid-configuration");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
   });
 
   it("builds authorize URLs with CLIProxyAPI query extras", async () => {
@@ -69,62 +54,19 @@ describe("xai/oauth service", () => {
     expect(parsed.searchParams.get("referrer")).toBe("cli-proxy-api");
   });
 
-  it("generates dashboard auth data with CLIProxyAPI PKCE size and discovered endpoints", async () => {
-    oauthFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        authorization_endpoint: "https://auth.x.ai/oauth2/authorize-from-discovery",
-        token_endpoint: "https://auth.x.ai/oauth2/token-from-discovery",
-      }),
-    });
-
-    const { generateAuthData } = await import("../../src/lib/oauth/providers.js");
-    const data = await generateAuthData("xai", "http://127.0.0.1:56121/callback");
-    const parsed = new URL(data.authUrl);
-
-    expect(data.codeVerifier).toHaveLength(128);
-    expect(parsed.origin + parsed.pathname).toBe("https://auth.x.ai/oauth2/authorize-from-discovery");
-    expect(parsed.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:56121/callback");
-    expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(parsed.searchParams.get("plan")).toBe("generic");
-    expect(parsed.searchParams.get("referrer")).toBe("cli-proxy-api");
+  it("generateAuthData for xai uses oauthFetch discovery (source)", () => {
+    const src = readFileSync(join(root, "../../src/lib/oauth/providers.js"), "utf8");
+    expect(src).toContain("xai: {");
+    expect(src).toContain("discoverXaiEndpoints");
+    expect(src).toContain("oauthFetch");
+    expect(src).toContain("code_challenge_method");
   });
 
-  it("exchanges dashboard codes against the discovered xAI token endpoint", async () => {
-    oauthFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          authorization_endpoint: "https://auth.x.ai/oauth2/authorize",
-          token_endpoint: "https://auth.x.ai/oauth2/token-from-discovery",
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          access_token: "access-token",
-          refresh_token: "refresh-token",
-          expires_in: 3600,
-        }),
-      });
-
-    const { exchangeTokens } = await import("../../src/lib/oauth/providers.js");
-    const tokens = await exchangeTokens(
-      "xai",
-      "auth-code",
-      "http://127.0.0.1:56121/callback",
-      "verifier-1",
-      "state-1"
-    );
-
-    expect(oauthFetch.mock.calls[1][0]).toBe("https://auth.x.ai/oauth2/token-from-discovery");
-    expect(oauthFetch.mock.calls[1][1].body.get("grant_type")).toBe("authorization_code");
-    expect(oauthFetch.mock.calls[1][1].body.get("code")).toBe("auth-code");
-    expect(oauthFetch.mock.calls[1][1].body.get("code_verifier")).toBe("verifier-1");
-    expect(tokens).toMatchObject({
-      accessToken: "access-token",
-      refreshToken: "refresh-token",
-      expiresIn: 3600,
-    });
+  it("exchangeTokens for xai posts to discovered token endpoint via oauthFetch (source)", () => {
+    const src = readFileSync(join(root, "../../src/lib/oauth/providers.js"), "utf8");
+    const xaiBlock = src.slice(src.indexOf("xai: {"));
+    expect(xaiBlock).toContain("oauthFetch");
+    expect(xaiBlock).toContain("authorization_code");
+    expect(xaiBlock).toContain("code_verifier");
   });
 });

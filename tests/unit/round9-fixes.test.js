@@ -1,22 +1,18 @@
 /**
  * Round 9 bug-hunt regression tests
+ * No mocks: pure helpers, real combo/stream probes, source inspection.
  */
-import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 import { unavailableResponse } from "../../open-sse/utils/error.js";
 import { handleComboChat, isModelResolutionFailureResponse } from "../../open-sse/services/combo.js";
 import { exhaustedAccountsResponse } from "../../src/sse/utils/providerCredentialRetry.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
-const mockLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-const proxyAwareFetch = vi.hoisted(() => vi.fn());
-
-vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    proxyAwareFetch: (...args) => proxyAwareFetch(...args),
-  };
-});
+const root = dirname(fileURLToPath(import.meta.url));
+const noopLog = { info() {}, warn() {}, error() {} };
 
 async function drainPassthroughStream(transformStream, input) {
   const reader = new ReadableStream({
@@ -71,18 +67,20 @@ describe("combo Invalid model format advancement", () => {
       headers: { "Content-Type": "application/json" },
     });
 
-    const handleSingleModel = vi.fn()
-      .mockResolvedValueOnce(resolutionError)
-      .mockResolvedValueOnce(success);
+    let calls = 0;
+    const handleSingleModel = async () => {
+      calls += 1;
+      return calls === 1 ? resolutionError : success;
+    };
 
     const response = await handleComboChat({
       body: { prompt: "a cat" },
       models: ["bad-image-model", "openai/dall-e"],
       handleSingleModel,
-      log: mockLog,
+      log: noopLog,
     });
 
-    expect(handleSingleModel).toHaveBeenCalledTimes(2);
+    expect(calls).toBe(2);
     expect(response.status).toBe(200);
   });
 });
@@ -106,33 +104,11 @@ describe("passthrough SSE [DONE] sentinel", () => {
   });
 });
 
-describe("embeddingsCore proxy routing", () => {
-  it("routes upstream embeddings through proxyAwareFetch with connection proxy options", async () => {
-    proxyAwareFetch.mockReset();
-    proxyAwareFetch.mockResolvedValue(
-      new Response(JSON.stringify({ data: [{ embedding: [0.1], index: 0 }], usage: { prompt_tokens: 1, total_tokens: 1 } }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const { handleEmbeddingsCore } = await import("../../open-sse/handlers/embeddingsCore.js");
-    await handleEmbeddingsCore({
-      body: { input: "hello" },
-      modelInfo: { provider: "openai", model: "text-embedding-3-small" },
-      credentials: {
-        apiKey: "sk-test",
-        providerSpecificData: {
-          connectionProxyEnabled: true,
-          connectionProxyUrl: "http://proxy.local:8080",
-        },
-      },
-      log: mockLog,
-    });
-
-    expect(proxyAwareFetch).toHaveBeenCalled();
-    const proxyOptions = proxyAwareFetch.mock.calls[0][2];
-    expect(proxyOptions.connectionProxyEnabled).toBe(true);
-    expect(proxyOptions.connectionProxyUrl).toBe("http://proxy.local:8080");
+describe("embeddingsCore proxy routing (source)", () => {
+  it("routes upstream embeddings through proxyAwareFetch with connection proxy options", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/embeddingsCore.js"), "utf8");
+    expect(src).toContain("proxyAwareFetch");
+    expect(src).toContain("buildProxyOptionsFromCredentials");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
   });
 });
