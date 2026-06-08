@@ -135,6 +135,7 @@ export async function handleImageGenerationCore({
         requestBody,
         model,
         body,
+        proxyOptions,
       });
       // Codex streaming case: returns an SSE Response directly
       if (parsed?.sseResponse) {
@@ -160,7 +161,7 @@ export async function handleImageGenerationCore({
     const first = finalBody.data?.[0];
     let b64 = first?.b64_json;
     if (!b64 && first?.url) {
-      try { b64 = await urlToBase64(first.url); } catch {}
+      try { b64 = await urlToBase64(first.url, proxyOptions); } catch {}
     }
     if (b64) {
       const buf = Buffer.from(b64, "base64");

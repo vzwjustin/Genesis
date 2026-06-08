@@ -79,6 +79,11 @@ export class KiroExecutor extends BaseExecutor {
         return { response, url, headers, transformedBody };
       }
 
+      // Passthrough: preserve native AWS EventStream bytes (no OpenAI SSE conversion).
+      if (passthrough) {
+        return { response, url, headers, transformedBody };
+      }
+
       // For non-streaming clients, collect the full EventStream and assemble a JSON response.
       if (stream === false) {
         const jsonResponse = await this.assembleEventStreamToJSON(response, model);
