@@ -9,7 +9,7 @@ import {
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { FORMATS } from "../translator/formats.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, shouldBypassMitmDns } from "../utils/proxyFetch.js";
 import { stripRedactedToolCalls, extractRedactedToolCalls } from "../utils/composerRedactedTools.js";
 import zlib from "zlib";
 
@@ -277,21 +277,37 @@ export class CursorExecutor extends BaseExecutor {
     }
 
     try {
-      const shouldForceFetch = proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true || !!proxyOptions?.vercelRelayUrl;
+      const shouldForceFetch = proxyOptions?.enabled === true
+        || proxyOptions?.connectionProxyEnabled === true
+        || !!proxyOptions?.vercelRelayUrl
+        || shouldBypassMitmDns(url);
       const response = (http2 && !shouldForceFetch)
         ? await this.makeHttp2Request(url, headers, transformedBody, signal)
         : await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
+      const status = Number(response.status);
 
-      if (response.status !== 200) {
+      if (status !== 200) {
+        if (passthrough) {
+          const contentType = response.headers?.["content-type"]
+            || response.headers?.get?.("content-type")
+            || "application/octet-stream";
+          return {
+            response: new Response(response.body, { status, headers: { "Content-Type": contentType } }),
+            url,
+            headers,
+            transformedBody: body,
+          };
+        }
+
         const errorText = response.body?.toString() || "Unknown error";
         const errorResponse = new Response(JSON.stringify({
           error: {
-            message: `[${response.status}]: ${errorText}`,
+            message: `[${status}]: ${errorText}`,
             type: "invalid_request_error",
             code: ""
           }
         }), {
-          status: response.status,
+          status,
           headers: { "Content-Type": "application/json" }
         });
         return { response: errorResponse, url, headers, transformedBody: body };

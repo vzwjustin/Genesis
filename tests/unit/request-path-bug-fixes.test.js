@@ -438,7 +438,76 @@ describe("CursorExecutor — bug fixes", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 3c. transformedBody in execute() return is JSON body, not protobuf bytes
+  // 3c. HTTP/2 :status is a string — must coerce before comparing to 200
+  // -------------------------------------------------------------------------
+  describe("execute() — HTTP/2 status coercion", () => {
+    it("treats string :status 200 as success (not misclassified as error)", async () => {
+      const credentials = {
+        accessToken: "tok",
+        providerSpecificData: { machineId: "machine-abc" },
+      };
+      const inputBody = { messages: [{ role: "user", content: "hello" }] };
+
+      vi.spyOn(executor, "buildHeaders").mockReturnValue({
+        "Content-Type": "application/x-protobuf",
+        Authorization: "Bearer tok",
+      });
+      const successResponse = {
+        status: "200",
+        headers: { "content-type": "application/octet-stream" },
+        body: Buffer.from([0x01, 0x02]),
+      };
+      vi.spyOn(executor, "makeHttp2Request").mockResolvedValue(successResponse);
+      vi.spyOn(executor, "makeFetchRequest").mockResolvedValue(successResponse);
+      const jsonSpy = vi.spyOn(executor, "transformProtobufToJSON").mockReturnValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 })
+      );
+
+      const result = await executor.execute({
+        model: "claude-3-5-sonnet",
+        body: inputBody,
+        stream: false,
+        credentials,
+        signal: new AbortController().signal,
+        log: null,
+        proxyOptions: null,
+        passthrough: false,
+      });
+
+      expect(result.response.status).toBe(200);
+      expect(jsonSpy).toHaveBeenCalled();
+    });
+
+    it("passthrough preserves raw upstream error body on non-200", async () => {
+      const rawError = Buffer.from("upstream-binary-error");
+      vi.spyOn(executor, "buildHeaders").mockReturnValue({ Authorization: "Bearer tok" });
+      const errorResponse = {
+        status: "403",
+        headers: { "content-type": "application/octet-stream" },
+        body: rawError,
+      };
+      vi.spyOn(executor, "makeHttp2Request").mockResolvedValue(errorResponse);
+      vi.spyOn(executor, "makeFetchRequest").mockResolvedValue(errorResponse);
+
+      const result = await executor.execute({
+        model: "claude-3-5-sonnet",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: true,
+        credentials: { accessToken: "tok", providerSpecificData: { machineId: "m" } },
+        signal: new AbortController().signal,
+        log: null,
+        proxyOptions: null,
+        passthrough: true,
+      });
+
+      expect(result.response.status).toBe(403);
+      const body = Buffer.from(await result.response.arrayBuffer());
+      expect(body.equals(rawError)).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 3d. transformedBody in execute() return is JSON body, not protobuf bytes
   // -------------------------------------------------------------------------
   describe("execute() — transformedBody return is JSON body for logging", () => {
     it("returns transformedBody equal to the input JSON body (not binary protobuf)", async () => {
