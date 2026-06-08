@@ -36,6 +36,21 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => ({
+    get: () => ({ value: "session-token" }),
+  })),
+}));
+
+vi.mock("@/lib/auth/dashboardSession", () => ({
+  getDashboardAuthSession: vi.fn(async () => ({ sub: "user" })),
+}));
+
+vi.mock("@/lib/security/exposureGate", () => ({
+  isRemoteExposureRequest: () => false,
+  getRemoteExposureBlockReason: () => null,
+}));
+
 const { PATCH } = await import("../../src/app/api/settings/route.js");
 
 function request(body) {
