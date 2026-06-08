@@ -6,7 +6,8 @@ import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, Securit
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { SECURITY_COPY } from "@/shared/constants/securityCopy";
 import InlineAlert from "@/shared/components/InlineAlert";
-import CompressionStatRow from "@/shared/components/CompressionStatRow";
+import CompressionSummaryCard from "@/shared/components/CompressionSummaryCard";
+import { useNotificationStore } from "@/store/notificationStore";
 import { revealApiKey } from "@/shared/utils/revealApiKey";
 import { maskApiKeyForDisplay } from "@/shared/utils/apiKey";
 import { getExposureErrorAction } from "@/shared/utils/exposureErrorAction";
@@ -59,12 +60,8 @@ async function clientPingAny(...urls) {
   });
 }
 
-const CAVEMAN_LEVELS = [
-  { id: "lite", label: "Lite", desc: "Drop filler, keep grammar" },
-  { id: "full", label: "Full", desc: "Drop articles, fragments OK" },
-  { id: "ultra", label: "Ultra", desc: "Telegraphic, max compression" },
-];
 export default function APIPageClient({ machineId }) {
+  const notify = useNotificationStore();
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -279,7 +276,7 @@ export default function APIPageClient({ machineId }) {
         updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
       }
     } catch (error) {
-      console.log("Error loading settings:", error);
+      notify.error(error.message || "Failed to load endpoint settings");
     } finally {
       setTunnelChecking(false);
       fetchCompressionStats();
@@ -314,8 +311,12 @@ export default function APIPageClient({ machineId }) {
         body: JSON.stringify({ requireApiKey: value }),
       });
       if (res.ok) setRequireApiKey(value);
+      else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to update API key requirement");
+      }
     } catch (error) {
-      console.log("Error updating requireApiKey:", error);
+      notify.error(error.message || "Failed to update API key requirement");
     }
   };
 
@@ -327,8 +328,9 @@ export default function APIPageClient({ machineId }) {
         body: JSON.stringify({ rtkEnabled: value }),
       });
       if (res.ok) setRtkEnabledState(value);
+      else notify.error("Failed to update RTK setting");
     } catch (error) {
-      console.log("Error updating rtkEnabled:", error);
+      notify.error(error.message || "Failed to update RTK setting");
     }
   };
 
@@ -340,7 +342,7 @@ export default function APIPageClient({ machineId }) {
         body: JSON.stringify(patch),
       });
     } catch (error) {
-      console.log("Error updating setting:", error);
+      notify.error(error.message || "Failed to update setting");
     }
   };
 
@@ -417,7 +419,7 @@ export default function APIPageClient({ machineId }) {
         setKeys(keysData.keys || []);
       }
     } catch (error) {
-      console.log("Error fetching data:", error);
+      notify.error(error.message || "Failed to load API keys");
     } finally {
       setLoading(false);
     }
@@ -779,9 +781,12 @@ export default function APIPageClient({ machineId }) {
         await fetchData();
         setNewKeyName("");
         setShowAddModal(false);
+        notify.success("API key created");
+      } else {
+        notify.error(data.error || "Failed to create API key");
       }
     } catch (error) {
-      console.log("Error creating key:", error);
+      notify.error(error.message || "Failed to create API key");
     }
   };
 
@@ -800,9 +805,13 @@ export default function APIPageClient({ machineId }) {
               next.delete(id);
               return next;
             });
+            notify.success("API key deleted");
+          } else {
+            const data = await res.json().catch(() => ({}));
+            notify.error(data.error || "Failed to delete API key");
           }
         } catch (error) {
-          console.log("Error deleting key:", error);
+          notify.error(error.message || "Failed to delete API key");
         }
       }
     });
@@ -817,9 +826,12 @@ export default function APIPageClient({ machineId }) {
       });
       if (res.ok) {
         setKeys(prev => prev.map(k => k.id === id ? { ...k, isActive } : k));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to update API key");
       }
     } catch (error) {
-      console.log("Error toggling key:", error);
+      notify.error(error.message || "Failed to update API key");
     }
   };
 
@@ -1131,136 +1143,14 @@ export default function APIPageClient({ machineId }) {
         )}
       </Card>
 
-      {/* Token Saver (RTK + Caveman) */}
-      <Card id="rtk">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">bolt</span>
-            Token Saver
-          </h2>
-        </div>
-        <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Compress tool output{" "}
-              <a
-                href="https://github.com/rtk-ai/rtk"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (RTK)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              git/grep/ls/tree/logs → 60-90% fewer input tokens
-            </p>
-            <CompressionStatRow stats={compressionStats?.tools?.rtk} kind="bytes" />
-          </div>
-          <Toggle
-            checked={rtkEnabled}
-            onChange={() => handleRtkEnabled(!rtkEnabled)}
-          />
-        </div>
-        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Compress LLM output{" "}
-              <a
-                href="https://github.com/JuliusBrussee/caveman"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (Caveman)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              Terse-style system prompt → ~65% fewer output tokens (up to 87%)
-            </p>
-            <CompressionStatRow stats={compressionStats?.tools?.caveman} kind="injections" />
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {cavemanEnabled && (
-              <div className="flex items-center gap-1.5">
-                {CAVEMAN_LEVELS.map((lvl) => (
-                  <button
-                    key={lvl.id}
-                    onClick={() => handleCavemanLevel(lvl.id)}
-                    className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                      cavemanLevel === lvl.id
-                        ? "bg-primary text-white border-primary"
-                        : "bg-transparent border-border text-text-muted hover:bg-surface-2"
-                    }`}
-                    title={lvl.desc}
-                  >
-                    {lvl.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            <Toggle
-              checked={cavemanEnabled}
-              onChange={() => handleCavemanEnabled(!cavemanEnabled)}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-4 pb-4 border-b border-border gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Compress context history{" "}
-              <a
-                href="https://github.com/chopratejas/headroom"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (Headroom)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              Compresses the post-cache tail (including single tool-result turns). Tool-heavy traffic also benefits from RTK below.
-            </p>
-            {headroomStatus && (
-              <p className="mt-1 text-xs text-text-muted">
-                {headroomStatus.cloud
-                  ? `Headroom Cloud configured (${headroomStatus.proxyUrl})`
-                  : headroomStatus.reachable
-                    ? `Local proxy reachable at ${headroomStatus.proxyUrl}`
-                    : "Local: pipx install \"headroom-ai[proxy]\" (Python 3.10–3.13) — proxy auto-starts with 9router — or set HEADROOM_API_KEY for cloud"}
-              </p>
-            )}
-            <CompressionStatRow
-              stats={compressionStats?.tools?.headroom}
-              proxyStats={compressionStats?.headroomProxy}
-              kind="bytes"
-              dashboardUrl={compressionStats?.headroomProxy?.dashboardUrl || (headroomStatus?.reachable ? `${headroomStatus.proxyUrl}/dashboard` : null)}
-              emptyHint={
-                passthroughCompression
-                  ? "No Headroom savings yet — send a multi-turn chat through 9router"
-                  : "Enable passthrough compression below for Claude Code / Cursor traffic"
-              }
-            />
-          </div>
-          <Toggle
-            checked={headroomEnabled}
-            onChange={() => handleHeadroomEnabled(!headroomEnabled)}
-            disabled={!headroomStatus?.reachable}
-          />
-        </div>
-        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Compress passthrough requests</p>
-            <p className="text-sm text-text-muted">
-              Apply RTK, Caveman, and Headroom to native passthrough traffic (Claude Code, Cursor, etc.). Off by default to preserve provider-native request shape.
-            </p>
-          </div>
-          <Toggle
-            checked={passthroughCompression}
-            onChange={() => handlePassthroughCompression(!passthroughCompression)}
-          />
-        </div>
-      </Card>
+      <CompressionSummaryCard
+        compressionStats={compressionStats}
+        headroomStatus={headroomStatus}
+        rtkEnabled={rtkEnabled}
+        cavemanEnabled={cavemanEnabled}
+        headroomEnabled={headroomEnabled}
+        passthroughCompression={passthroughCompression}
+      />
 
       {/* API Keys */}
       <Card id="require-api-key">

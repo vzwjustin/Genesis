@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
+import InlineAlert from "@/shared/components/InlineAlert";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { isTrustedOAuthMessageOrigin } from "@/shared/utils/oauthOrigin";
 
@@ -532,6 +533,12 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   return (
     <Modal isOpen={isOpen} title={modalTitle} onClose={handleClose} size="lg">
       <div className="flex flex-col gap-4">
+        {!isLocalhost && (step === "waiting" || step === "input") && (
+          <InlineAlert
+            variant="info"
+            message="Remote dashboard detected — popup OAuth may be blocked. Use the manual callback URL flow below (copy auth URL, authorize, paste callback)."
+          />
+        )}
         {/* Waiting + Manual Input combined (non-device-code) */}
         {(step === "waiting" || step === "input") && !isDeviceCode && (
           <>
