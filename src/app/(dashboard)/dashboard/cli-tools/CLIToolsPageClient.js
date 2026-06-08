@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { CardSkeleton, SegmentedControl, EmptyState } from "@/shared/components";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Button, CardSkeleton, SegmentedControl, EmptyState } from "@/shared/components";
 import { CLI_TOOLS, MITM_TOOLS } from "@/shared/constants/cliTools";
 import { isCliToolConfigured } from "@/shared/components/ConfigStatusBadge";
+import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import { MitmLinkCard } from "./components";
 import ToolSummaryCard from "./components/ToolSummaryCard";
 
 const ALL_STATUSES_URL = "/api/cli-tools/all-statuses";
+const MITM_STATUS_URL = "/api/cli-tools/antigravity-mitm";
 
 const FILTER_OPTIONS = [
   { value: "all", label: "All" },
@@ -16,32 +19,53 @@ const FILTER_OPTIONS = [
 ];
 
 export default function CLIToolsPageClient({ machineId }) {
+  const notify = useNotificationStore();
+  const searchQuery = useHeaderSearchStore((s) => s.query);
+  const registerSearch = useHeaderSearchStore((s) => s.register);
+  const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
+
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [toolStatuses, setToolStatuses] = useState({});
+  const [mitmStatus, setMitmStatus] = useState(null);
   const [filter, setFilter] = useState("all");
 
+  const fetchStatuses = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    else setRefreshing(true);
+    try {
+      const [statusRes, mitmRes] = await Promise.all([
+        fetch(ALL_STATUSES_URL, { cache: "no-store" }),
+        fetch(MITM_STATUS_URL, { cache: "no-store" }),
+      ]);
+      if (statusRes.ok) setToolStatuses(await statusRes.json());
+      if (mitmRes.ok) setMitmStatus(await mitmRes.json());
+    } catch (error) {
+      notify.error(error?.message || "Failed to refresh tool statuses");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [notify]);
+
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await fetch(ALL_STATUSES_URL);
-        if (res.ok && mounted) setToolStatuses(await res.json());
-      } catch (error) {
-        console.log("Error fetching tool statuses:", error);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
+    registerSearch("Search CLI tools…");
+    fetchStatuses(true);
+    return () => unregisterSearch();
+  }, [registerSearch, unregisterSearch, fetchStatuses]);
 
   const regularTools = useMemo(() => {
-    return Object.entries(CLI_TOOLS).filter(([toolId]) => {
+    const q = searchQuery.trim().toLowerCase();
+    return Object.entries(CLI_TOOLS).filter(([toolId, tool]) => {
+      if (q) {
+        const hay = `${tool.name} ${tool.description} ${toolId}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       if (filter === "all") return true;
       if (filter === "configured") return isCliToolConfigured(toolStatuses[toolId]);
       return !isCliToolConfigured(toolStatuses[toolId]);
     });
-  }, [filter, toolStatuses]);
+  }, [filter, toolStatuses, searchQuery]);
 
   if (loading) {
     return (
@@ -65,14 +89,22 @@ export default function CLIToolsPageClient({ machineId }) {
       <div className="flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-text-muted">
           <span className="font-medium text-text-main">{configuredCount}/{toolIds.length}</span> CLI tools configured
+          {mitmStatus?.running && (
+            <span className="ml-2 text-success text-xs">· MITM server running</span>
+          )}
         </p>
-        <SegmentedControl
-          options={FILTER_OPTIONS}
-          value={filter}
-          onChange={setFilter}
-          size="sm"
-          className="w-full sm:w-auto"
-        />
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <Button size="sm" variant="ghost" icon="refresh" loading={refreshing} onClick={() => fetchStatuses(false)}>
+            Refresh
+          </Button>
+          <SegmentedControl
+            options={FILTER_OPTIONS}
+            value={filter}
+            onChange={setFilter}
+            size="sm"
+            className="w-full sm:w-auto"
+          />
+        </div>
       </div>
 
       {regularTools.length === 0 ? (
@@ -99,7 +131,12 @@ export default function CLIToolsPageClient({ machineId }) {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {mitmTools.map(([toolId, tool]) => (
-            <MitmLinkCard key={toolId} tool={tool} />
+            <MitmLinkCard
+              key={toolId}
+              tool={tool}
+              dnsEnabled={!!mitmStatus?.dnsStatus?.[toolId]}
+              serverRunning={!!mitmStatus?.running}
+            />
           ))}
         </div>
       </div>

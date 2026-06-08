@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
 
 /**
  * POST /api/oauth/kiro/social-exchange
@@ -52,6 +53,8 @@ export async function POST(request) {
       testStatus: "active",
     });
 
+    const mitm = await autoSetupMitmForProvider("kiro");
+
     return NextResponse.json({
       success: true,
       connection: {
@@ -59,6 +62,7 @@ export async function POST(request) {
         provider: connection.provider,
         email: connection.email,
       },
+      mitm,
     });
   } catch (error) {
     console.log("Kiro social exchange error:", error);

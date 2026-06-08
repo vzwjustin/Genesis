@@ -15,8 +15,27 @@ export default function ManualConfigModal({ isOpen, onClose, title = "Manual Con
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
+  const copyAll = () => {
+    const bundle = configs
+      .map((c) => `--- ${c.filename} ---\n${c.content}`)
+      .join("\n\n");
+    copy(bundle, "manualconfig-all");
+    setCopiedIndex(-1);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="xl">
+      {configs.length > 1 && (
+        <div className="flex justify-end mb-3 -mt-1">
+          <Button variant="secondary" size="sm" onClick={copyAll}>
+            <span className="material-symbols-outlined text-[14px] mr-1">
+              {copiedIndex === -1 ? "check" : "content_copy"}
+            </span>
+            {copiedIndex === -1 ? "Copied all!" : "Copy all"}
+          </Button>
+        </div>
+      )}
       <div className="flex flex-col gap-4">
         {configs.map((config, index) => (
           <div key={index} className="flex flex-col gap-2">

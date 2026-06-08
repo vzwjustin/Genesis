@@ -355,23 +355,46 @@ amp --model "{{model}}"
       { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro", alias: "gemini", defaultValue: "gemini/gemini-3.1-pro" },
     ],
   },
-  // HIDDEN: gemini-cli
-  // "gemini-cli": {
-  //   id: "gemini-cli",
-  //   name: "Gemini CLI",
-  //   icon: "terminal",
-  //   color: "#4285F4",
-  //   description: "Google Gemini CLI",
-  //   configType: "env",
-  //   envVars: {
-  //     baseUrl: "GEMINI_API_BASE_URL",
-  //     model: "GEMINI_MODEL",
-  //   },
-  //   defaultModels: [
-  //     { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", alias: "pro" },
-  //     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", alias: "flash" },
-  //   ],
-  // },
+  "gemini-cli": {
+    id: "gemini-cli",
+    name: "Gemini CLI",
+    image: "/providers/gemini.png",
+    color: "#4285F4",
+    description: "Route Google Gemini CLI through 9Router",
+    configType: "env",
+    envVars: {
+      baseUrl: "GEMINI_API_BASE_URL",
+      model: "GEMINI_MODEL",
+    },
+    defaultModels: [
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", alias: "pro", defaultValue: "gc/gemini-2.5-pro" },
+      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", alias: "flash", defaultValue: "gc/gemini-2.5-flash" },
+    ],
+    notes: [
+      { type: "info", text: "Gemini CLI uses OAuth or API key. Connect a gemini-cli provider, then point GEMINI_API_BASE_URL at your 9router endpoint." },
+    ],
+    guideSteps: [
+      { step: 1, title: "Connect provider", desc: "Add a gemini-cli OAuth connection under Providers" },
+      { step: 2, title: "Base URL", value: "{{baseUrl}}", copyable: true },
+      { step: 3, title: "Set environment", desc: "export GEMINI_API_BASE_URL to the base URL above (without /v1)" },
+      { step: 4, title: "Model (optional)", type: "modelSelector" },
+    ],
+  },
+  copilot: {
+    id: "copilot",
+    name: "GitHub Copilot CLI",
+    image: "/providers/copilot.png",
+    color: "#1F6FEB",
+    description: "Configure Copilot CLI custom models via 9Router",
+    configType: "custom",
+    defaultModels: [
+      { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },
+      { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
+    ],
+    notes: [
+      { type: "info", text: "For IDE traffic interception, use MITM Proxy → GitHub Copilot instead of this CLI card." },
+    ],
+  },
 };
 
 // Get all provider models for mapping dropdown

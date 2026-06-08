@@ -502,6 +502,12 @@ button {
 
 /* Basic Chat — intentional dark chat canvas in light and dark app themes */
 .basic-chat-panel {
-  background: #1a1a1a;
-  color: #ededed;
+  --basic-chat-bg: #1a1a1a;
+  --basic-chat-fg: #ededed;
+  --basic-chat-surface: #262626;
+  --basic-chat-bubble: #2f2f2f;
+  --basic-chat-border: rgba(255, 255, 255, 0.1);
+  --basic-chat-muted: rgba(255, 255, 255, 0.9);
+  background: var(--basic-chat-bg);
+  color: var(--basic-chat-fg);
 }

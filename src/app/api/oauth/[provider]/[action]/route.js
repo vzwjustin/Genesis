@@ -7,6 +7,7 @@ import {
   pollForToken 
 } from "@/lib/oauth/providers";
 import { createProviderConnection } from "@/models";
+import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
 import {
   startCodexProxy,
   stopCodexProxy,
@@ -241,6 +242,8 @@ export async function POST(request, { params }) {
           testStatus: "active",
         });
 
+        const mitm = await autoSetupMitmForProvider(provider);
+
         return NextResponse.json({
           success: true,
           connection: {
@@ -248,7 +251,8 @@ export async function POST(request, { params }) {
             provider: connection.provider,
             email: connection.email,
             displayName: connection.displayName,
-          }
+          },
+          mitm,
         });
       }
 
@@ -285,6 +289,8 @@ export async function POST(request, { params }) {
         testStatus: "active",
       });
 
+      const mitm = await autoSetupMitmForProvider(provider);
+
       return NextResponse.json({ 
         success: true, 
         connection: {
@@ -292,7 +298,8 @@ export async function POST(request, { params }) {
           provider: connection.provider,
           email: connection.email,
           displayName: connection.displayName,
-        }
+        },
+        mitm,
       });
     }
 
@@ -339,12 +346,15 @@ export async function POST(request, { params }) {
           testStatus: "active",
         });
 
+        const mitm = await autoSetupMitmForProvider(provider);
+
         return NextResponse.json({ 
           success: true, 
           connection: {
             id: connection.id,
             provider: connection.provider,
-          }
+          },
+          mitm,
         });
       }
 

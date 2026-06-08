@@ -72,25 +72,103 @@ describe("frontend accessibility regressions", () => {
 
   it("shows compression stats in the token saver card", () => {
     const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+    const summary = read("src/shared/components/CompressionSummaryCard.js");
+    const statRow = read("src/shared/components/CompressionStatRow.js");
+    const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
 
     expect(endpoint).toContain('fetch("/api/compression/stats"');
-    expect(endpoint).toContain("CompressionStatRow");
-    expect(endpoint).toContain("Saved");
-    expect(endpoint).toContain("Est. tokens saved");
-    expect(endpoint).toContain("Savings not measurable");
-    expect(endpoint).toContain("Hits");
-    expect(endpoint).toContain("Prompt injections");
-    expect(endpoint).toContain("headroomProxy");
-    expect(endpoint).toContain("Proxy tokens");
-    expect(endpoint).toContain("Headroom dashboard");
+    expect(endpoint).toContain("CompressionSummaryCard");
+    expect(summary).toContain("CompressionStatRow");
+    expect(summary).toContain("/dashboard/caching");
+    expect(statRow).toContain("Saved");
+    expect(statRow).toContain("Est. tokens saved");
+    expect(statRow).toContain("Savings not measurable");
+    expect(statRow).toContain("Hits");
+    expect(statRow).toContain("Prompt injections");
+    expect(statRow).toContain("Proxy tokens");
+    expect(statRow).toContain("Headroom dashboard");
+    expect(caching).toContain("/api/compression/history");
+    expect(caching).toContain("/api/compression/provider-cache");
+    expect(caching).toContain("mitmAutoSetupOnImport");
+    expect(read("src/shared/components/Sidebar.js")).toContain('href: "/dashboard/caching"');
+    expect(read("src/shared/components/Sidebar.js")).toContain('href: "/dashboard/pricing"');
   });
 
   it("exposes Headroom controls tied to live proxy reachability", () => {
     const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+    const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
 
     expect(endpoint).toContain("fetch(\"/api/headroom/status\")");
     expect(endpoint).toContain("headroomEnabled");
-    expect(endpoint).toContain("disabled={!headroomStatus?.reachable}");
+    expect(caching).toContain("disabled={!headroomStatus?.reachable}");
+  });
+
+  it("uses toast notifications instead of blocking alerts in key dashboard flows", () => {
+    const dashboardFiles = [
+      "src/app/(dashboard)/dashboard/translator/page.js",
+      "src/shared/components/PricingModal.js",
+      "src/app/(dashboard)/dashboard/providers/[id]/PassthroughModelsSection.js",
+      "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js",
+      "src/shared/components/layouts/DashboardLayout.js",
+      "src/store/notificationStore.js",
+    ].map(read).join("\n");
+
+    expect(dashboardFiles).toContain("useNotificationStore");
+    expect(dashboardFiles).toContain("Dismiss all");
+    expect(dashboardFiles).not.toMatch(/\balert\s*\(/);
+  });
+
+  it("surfaces connection error hints on provider connection rows", () => {
+    const row = read("src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js");
+    const utils = read("src/shared/utils/connectionErrorUtils.js");
+
+    expect(row).toContain("getConnectionErrorTag");
+    expect(row).toContain("getConnectionErrorHint");
+    expect(utils).toContain("getConnectionErrorLabel");
+  });
+
+  it("exposes cloud endpoint controls on the endpoint page", () => {
+    const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+
+    expect(endpoint).toContain("Cloud endpoint");
+    expect(endpoint).toContain("cloudEnabled");
+    expect(endpoint).toContain("cloudUrl");
+    expect(endpoint).toContain("handleSaveCloudUrl");
+  });
+
+  it("does not register cursor in MITM host routing until implemented", () => {
+    const hosts = read("src/shared/constants/mitmToolHosts.js");
+    const config = read("src/mitm/config.js");
+
+    expect(hosts).not.toContain('cursor: ["api2.cursor.sh"]');
+    expect(config).not.toContain('return "cursor"');
+  });
+
+  it("registers Cmd+K command palette in dashboard layout", () => {
+    const layout = read("src/shared/components/layouts/DashboardLayout.js");
+    const palette = read("src/shared/components/CommandPalette.js");
+
+    expect(layout).toContain("CommandPalette");
+    expect(palette).toContain('e.key.toLowerCase() === "k"');
+    expect(palette).toContain("DASHBOARD_NAV_ITEMS");
+  });
+
+  it("supports request log session viewer on caching debug logs tab", () => {
+    const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
+    const modal = read("src/shared/components/RequestLogSessionModal.js");
+
+    expect(caching).toContain("RequestLogSessionModal");
+    expect(caching).toContain("setSelectedLogSession");
+    expect(caching).toContain("logsFailedOnly");
+    expect(read("src/app/api/request-logs/sessions/[name]/route.js")).toContain("readRequestLogSessionFile");
+    expect(modal).toContain("/api/request-logs/sessions/");
+  });
+
+  it("shows setup checklist on dashboard overview", () => {
+    const overview = read("src/app/(dashboard)/dashboard/DashboardOverviewClient.js");
+
+    expect(overview).toContain("Setup checklist");
+    expect(overview).toContain("/dashboard/caching");
   });
 
   it("keeps primary dashboard copy direct and task-oriented", () => {

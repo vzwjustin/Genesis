@@ -8,6 +8,7 @@ import Header from "../Header";
 import ConfirmDialogHost from "../ConfirmDialogHost";
 import DashboardSecurityBanner from "../DashboardSecurityBanner";
 import FirstRunSecurityWizard from "../FirstRunSecurityWizard";
+import CommandPalette from "../CommandPalette";
 
 function getToastStyle(type) {
   if (type === "success") {
@@ -39,11 +40,22 @@ export default function DashboardLayout({ children }) {
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
+  const clearAll = useNotificationStore((state) => state.clearAll);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">
       <ConfirmDialogHost />
-      <div className="fixed top-4 right-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2">
+      <CommandPalette />
+      <div className="fixed bottom-4 right-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2 sm:top-4 sm:bottom-auto">
+        {notifications.length > 1 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="self-end rounded-md border border-border bg-surface/95 px-2 py-1 text-[11px] text-text-muted hover:text-text-main"
+          >
+            Dismiss all
+          </button>
+        )}
         {notifications.map((n) => {
           const style = getToastStyle(n.type);
           return (
@@ -56,6 +68,18 @@ export default function DashboardLayout({ children }) {
                 <div className="min-w-0 flex-1">
                   {n.title ? <p className="text-xs font-semibold mb-0.5">{n.title}</p> : null}
                   <p className="text-xs whitespace-pre-wrap break-words">{n.message}</p>
+                  {n.action?.label ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        n.action.onClick?.();
+                        removeNotification(n.id);
+                      }}
+                      className="mt-2 text-xs font-semibold underline hover:opacity-80"
+                    >
+                      {n.action.label}
+                    </button>
+                  ) : null}
                 </div>
                 {n.dismissible ? (
                   <button
@@ -98,10 +122,10 @@ export default function DashboardLayout({ children }) {
       <main className="flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate">
         {/* Faint grid background */}
         <div className="landing-grid absolute inset-0 pointer-events-none -z-10" aria-hidden="true" />
-        <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />
-        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname === "/dashboard/basic-chat" ? "" : "p-6 lg:p-10"} ${pathname === "/dashboard/basic-chat" ? "flex flex-col overflow-hidden" : ""}`}>
-          <div className={`${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>
-            {pathname !== "/dashboard/basic-chat" ? (
+        <Header onMenuClick={() => setSidebarOpen(true)} />
+        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname.startsWith("/dashboard/basic-chat") ? "" : "p-6 lg:p-10"} ${pathname.startsWith("/dashboard/basic-chat") ? "flex flex-col overflow-hidden" : ""}`}>
+          <div className={`${pathname.startsWith("/dashboard/basic-chat") ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>
+            {!pathname.startsWith("/dashboard/basic-chat") ? (
               <>
                 <FirstRunSecurityWizard />
                 <DashboardSecurityBanner />

@@ -13,6 +13,7 @@ const POLL_INTERVAL_MS = 15000;
 const QUICK_LINKS = [
   { href: "/dashboard/endpoint", label: "Endpoint", icon: "api", desc: "URLs, tunnel, API keys" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns", desc: "Connect AI accounts" },
+  { href: "/dashboard/caching", label: "Caching", icon: "cached", desc: "Compression & cache analytics" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", desc: "Point local tools here" },
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat", desc: "Chat with connected models" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart", desc: "Tokens, costs, request logs" },
@@ -76,14 +77,16 @@ export default function DashboardOverviewClient() {
   const [cliStats, setCli] = useState({ configured: 0, total: 0 });
   const [usageStats, setUsageStats] = useState(null);
   const [tunnelStatus, setTunnelStatus] = useState(null);
+  const [requireApiKey, setRequireApiKey] = useState(false);
 
   const refresh = useCallback(async (cancelled) => {
     try {
-      const [providersRes, cliRes, usageRes, tunnelRes] = await Promise.all([
+      const [providersRes, cliRes, usageRes, tunnelRes, settingsRes] = await Promise.all([
         fetch("/api/providers"),
         fetch("/api/cli-tools/all-statuses"),
         fetch("/api/usage/stats?period=today"),
         fetch("/api/tunnel/status", { cache: "no-store" }),
+        fetch("/api/settings", { cache: "no-store" }),
       ]);
       if (cancelled?.()) return;
       if (providersRes.ok) setConnections((await providersRes.json()).connections || []);
@@ -96,6 +99,10 @@ export default function DashboardOverviewClient() {
       }
       if (usageRes.ok) setUsageStats(await usageRes.json());
       if (tunnelRes.ok) setTunnelStatus(await tunnelRes.json());
+      if (settingsRes.ok) {
+        const s = await settingsRes.json();
+        setRequireApiKey(s.requireApiKey === true);
+      }
     } catch { /* ignore */ }
     finally { if (!cancelled?.()) setLoading(false); }
   }, []);
@@ -122,8 +129,41 @@ export default function DashboardOverviewClient() {
   const requestsToday = usageStats?.totalRequests ?? null;
   const recentRequests = (usageStats?.recentRequests || []).slice(0, 8);
 
+  const setupSteps = [
+    { done: activeConns.length > 0, label: "Connect a provider", href: "/dashboard/providers" },
+    { done: requireApiKey, label: "Enable API key requirement (recommended)", href: "/dashboard/endpoint#require-api-key" },
+    { done: cliStats.configured > 0, label: "Configure a CLI tool", href: "/dashboard/cli-tools" },
+    { done: remoteOn, label: "Optional: enable tunnel for remote access", href: "/dashboard/endpoint" },
+  ];
+  const setupComplete = setupSteps.filter((s) => s.done).length;
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+
+      {!loading && setupComplete < setupSteps.length && (
+        <Card padding="sm" className="border-primary/20 bg-primary/5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold">Setup checklist ({setupComplete}/{setupSteps.length})</p>
+              <ul className="mt-2 space-y-1.5">
+                {setupSteps.map((step) => (
+                  <li key={step.label} className="flex items-center gap-2 text-xs">
+                    <span className={`material-symbols-outlined text-[16px] ${step.done ? "text-success" : "text-text-muted"}`}>
+                      {step.done ? "check_circle" : "radio_button_unchecked"}
+                    </span>
+                    <Link href={step.href} className={step.done ? "text-text-muted line-through" : "text-primary hover:underline"}>
+                      {step.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <Link href="/dashboard/endpoint">
+              <Button size="sm" variant="primary">Finish setup</Button>
+            </Link>
+          </div>
+        </Card>
+      )}
 
       {/* Health pill strip */}
       <div className="flex flex-wrap gap-2">

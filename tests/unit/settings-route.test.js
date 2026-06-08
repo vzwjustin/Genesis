@@ -83,6 +83,13 @@ describe("settings API patch validation", () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
+  it("accepts fallbackStrategy updates", async () => {
+    const response = await PATCH(request({ fallbackStrategy: "round-robin" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ fallbackStrategy: "round-robin" });
+  });
+
   it("hashes password changes through the newPassword path", async () => {
     const response = await PATCH(request({ currentPassword: "old", newPassword: "new" }));
 

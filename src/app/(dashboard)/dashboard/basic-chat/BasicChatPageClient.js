@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Button } from "@/shared/components";
+import { Badge, Button, Spinner } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 
@@ -48,11 +48,22 @@ function humanize(value = "") {
     .trim() || "Unknown";
 }
 
+function sessionPreviewText(message) {
+  if (!message) return "Empty chat";
+  const text = textValue(message.content).trim();
+  if (text) return text;
+  const attachmentCount = Array.isArray(message.attachments) ? message.attachments.length : 0;
+  if (attachmentCount === 1) return "[Image]";
+  if (attachmentCount > 1) return `[${attachmentCount} images]`;
+  return "Empty chat";
+}
+
 function formatRelativeTime(value) {
   if (!value) return "Now";
   const time = new Date(value).getTime();
   if (Number.isNaN(time)) return "Now";
-  const diffMinutes = Math.max(1, Math.round((Date.now() - time) / 60000));
+  const diffMinutes = Math.round((Date.now() - time) / 60000);
+  if (diffMinutes < 1) return "Now";
   if (diffMinutes < 60) return `${diffMinutes}m`;
   const diffHours = Math.round(diffMinutes / 60);
   if (diffHours < 24) return `${diffHours}h`;
@@ -205,6 +216,8 @@ export default function BasicChatPageClient() {
   const initializedRef = useRef(false);
   const modelMenuRef = useRef(null);
   const historyMenuRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -363,6 +376,20 @@ export default function BasicChatPageClient() {
   const currentMessages = currentSession?.messages || [];
   const sessionItems = useMemo(() => [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [sessions]);
   const canSend = !isSending && !!activeModel && (draft.trim().length > 0 || attachments.length > 0);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [currentMessages, streamingText, streamingMessageId]);
+
+  useEffect(() => {
+    if (!textareaRef.current) return;
+    if (!draft) {
+      textareaRef.current.style.height = "auto";
+      return;
+    }
+    textareaRef.current.style.height = "auto";
+    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, globalThis.innerHeight * 0.25)}px`;
+  }, [draft]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -573,6 +600,7 @@ export default function BasicChatPageClient() {
   };
 
   const sendMessage = async () => {
+    setLoadError("");
     const model = activeModel || activeProviderGroup?.models?.[0] || null;
     if (!model) return;
 
@@ -747,6 +775,9 @@ export default function BasicChatPageClient() {
           <div ref={modelMenuRef} className="relative">
             <button
               type="button"
+              aria-label="Select model"
+              aria-haspopup="listbox"
+              aria-expanded={modelMenuOpen}
               onClick={() => setModelMenuOpen((value) => !value)}
               className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/8"
             >
@@ -760,7 +791,7 @@ export default function BasicChatPageClient() {
             </button>
 
             {modelMenuOpen ? (
-              <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#262626] shadow-2xl shadow-black/50">
+              <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-[20px] border border-[var(--basic-chat-border)] bg-[var(--basic-chat-surface)] shadow-2xl shadow-black/50">
                 <div className="border-b border-white/10 px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.22em] text-white/45">Models</p>
                   <p className="text-sm text-white/75">Only from connected providers</p>
@@ -801,8 +832,21 @@ export default function BasicChatPageClient() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="add"
+              onClick={handleNewChat}
+              disabled={!activeModel}
+              aria-label="New chat"
+            >
+              New
+            </Button>
             <button
               type="button"
+              aria-label="Chat history"
+              aria-haspopup="menu"
+              aria-expanded={historyOpen}
               onClick={() => setHistoryOpen((value) => !value)}
               className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 transition hover:bg-white/8"
             >
@@ -815,7 +859,7 @@ export default function BasicChatPageClient() {
         </div>
 
         {historyOpen ? (
-          <div ref={historyMenuRef} className="absolute right-4 top-[72px] z-20 w-[min(360px,calc(100vw-2rem))] rounded-[20px] border border-white/10 bg-[#262626] p-2 shadow-2xl shadow-black/50 lg:right-6">
+          <div ref={historyMenuRef} className="absolute right-4 top-[72px] z-20 w-[min(360px,calc(100vw-2rem))] rounded-[20px] border border-[var(--basic-chat-border)] bg-[var(--basic-chat-surface)] p-2 shadow-2xl shadow-black/50 lg:right-6">
             <div className="px-3 py-2">
               <p className="text-xs uppercase tracking-[0.22em] text-white/45">Recent chats</p>
             </div>
@@ -837,7 +881,7 @@ export default function BasicChatPageClient() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-white">{session.title}</p>
-                        <p className="mt-1 truncate text-xs text-white/50">{textValue(latestMessage?.content) || "Empty chat"}</p>
+                        <p className="mt-1 truncate text-xs text-white/50">{sessionPreviewText(latestMessage)}</p>
                       </div>
                       <span className="text-[10px] text-white/40 shrink-0">{formatRelativeTime(session.updatedAt)}</span>
                     </div>
@@ -849,17 +893,31 @@ export default function BasicChatPageClient() {
         ) : null}
 
         {loadError ? (
-          <div className="mt-4 rounded-[18px] border border-danger/20 bg-danger/10 px-4 py-3 text-text-main">
+          <div className="mx-4 mt-2 rounded-[18px] border border-danger/30 bg-danger/15 px-4 py-3 text-danger lg:mx-6">
             <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-[20px]">error</span>
-              <p className="text-sm leading-6">{loadError}</p>
+              <span className="material-symbols-outlined text-[20px] shrink-0">error</span>
+              <p className="flex-1 text-sm leading-6">{loadError}</p>
+              <button
+                type="button"
+                onClick={() => setLoadError("")}
+                className="shrink-0 text-danger/70 transition hover:text-danger"
+                aria-label="Dismiss error"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
             </div>
           </div>
         ) : null}
 
         <div className="flex flex-1 flex-col min-h-0">
           <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
-            {currentMessages.length === 0 ? (
+            {loadingData && currentMessages.length === 0 ? (
+              <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 text-center">
+                <Spinner size="lg" className="text-white/70" />
+                <p className="text-sm text-white/55">Loading connected models…</p>
+              </div>
+            ) : null}
+            {!loadingData && currentMessages.length === 0 ? (
               <div className="flex min-h-[50vh] items-center justify-center px-4 text-center">
                 <div className="max-w-xl space-y-4">
                   <div className="mx-auto flex size-16 items-center justify-center rounded-[20px] border border-white/10 bg-white/5 text-white/80">
@@ -884,7 +942,7 @@ export default function BasicChatPageClient() {
 
                 return (
                   <div key={message.id} className={`flex w-full ${isUser ? "justify-end" : "justify-start"} mb-6`}>
-                    <div className={`max-w-[min(88%,42rem)] ${isUser ? "rounded-3xl bg-[#2f2f2f] px-5 py-3.5 text-white" : "text-white/90"}`}>
+                    <div className={`max-w-[min(88%,42rem)] ${isUser ? "rounded-3xl bg-[var(--basic-chat-bubble)] px-5 py-3.5 text-[var(--basic-chat-fg)]" : "text-[var(--basic-chat-muted)]"}`}>
                       <div className="mb-1 flex items-center justify-between gap-3">
                         <span className="text-xs font-semibold">{isUser ? "You" : activeModel?.name || "Assistant"}</span>
                       </div>
@@ -901,12 +959,13 @@ export default function BasicChatPageClient() {
 
                       <div className="whitespace-pre-wrap break-words text-[15px] leading-7">
                         {content}
-                        {isAssistant && isStreaming && !streamingText ? <span className="inline-block animate-pulse">▋</span> : null}
+                        {isAssistant && isStreaming ? <span className="inline-block animate-pulse">▋</span> : null}
                       </div>
                     </div>
                   </div>
                 );
               })}
+              <div ref={messagesEndRef} aria-hidden="true" />
             </div>
           </div>
 
@@ -925,13 +984,15 @@ export default function BasicChatPageClient() {
             ) : null}
 
             <div className="mx-auto w-full max-w-3xl px-4 pb-2">
-              <div className="rounded-[26px] bg-[#2f2f2f] px-3 pt-3 pb-2 shadow-[0_0_15px_rgba(0,0,0,0.10)] ring-1 ring-white/5">
+              <div className="rounded-[26px] bg-[var(--basic-chat-bubble)] px-3 pt-3 pb-2 shadow-[0_0_15px_rgba(0,0,0,0.10)] ring-1 ring-[var(--basic-chat-border)]">
                 <textarea
+                  ref={textareaRef}
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Message AI"
                   rows={1}
+                  aria-label="Message"
                   className="w-full resize-none bg-transparent px-2 text-[15px] leading-6 text-white outline-none placeholder:text-white/40 custom-scrollbar max-h-[25vh] overflow-y-auto"
                 />
 
@@ -946,11 +1007,11 @@ export default function BasicChatPageClient() {
 
                   <div className="flex items-center gap-2">
                     {isSending ? (
-                      <button type="button" onClick={handleStop} className="p-2 text-white bg-white/10 hover:bg-white/20 transition rounded-full h-8 w-8 flex items-center justify-center">
+                      <button type="button" aria-label="Stop generating" onClick={handleStop} className="p-2 text-white bg-white/10 hover:bg-white/20 transition rounded-full h-8 w-8 flex items-center justify-center">
                         <span className="material-symbols-outlined text-[16px]">stop</span>
                       </button>
                     ) : null}
-                    <button onClick={sendMessage} disabled={!canSend} className={`h-8 w-8 rounded-full flex items-center justify-center transition ${canSend ? 'bg-white text-black hover:opacity-90' : 'bg-white/10 text-white/30 cursor-not-allowed'}`}>
+                    <button type="button" aria-label="Send message" onClick={sendMessage} disabled={!canSend} className={`h-8 w-8 rounded-full flex items-center justify-center transition ${canSend ? 'bg-white text-black hover:opacity-90' : 'bg-white/10 text-white/30 cursor-not-allowed'}`}>
                       <span className="material-symbols-outlined text-[16px]">arrow_upward</span>
                     </button>
                   </div>

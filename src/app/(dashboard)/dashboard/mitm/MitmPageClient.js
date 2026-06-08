@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { MITM_TOOLS } from "@/shared/constants/cliTools";
+import { EmptyState } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { MitmServerCard, MitmToolCard } from "@/app/(dashboard)/dashboard/cli-tools/components";
 import InlineAlert from "@/shared/components/InlineAlert";
 
 export default function MitmPageClient() {
+  const searchParams = useSearchParams();
   const [connections, setConnections] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [modelAliases, setModelAliases] = useState({});
@@ -56,6 +59,14 @@ export default function MitmPageClient() {
   };
 
   useEffect(() => {
+    const tool = searchParams.get("tool");
+    if (tool && MITM_TOOLS[tool]) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setExpandedTool(tool);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchConnections();
     fetchApiKeys();
@@ -82,6 +93,16 @@ export default function MitmPageClient() {
         variant="caution"
         message="MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via a local CA to redirect requests to your providers. May violate provider ToS and lead to account bans. Use at your own risk."
       />
+
+      {!hasActiveProviders() && (
+        <EmptyState
+          borderless
+          icon="dns"
+          title="Connect a provider first"
+          description="MITM model mappings need at least one active provider with models."
+          action={{ label: "Add provider", href: "/dashboard/providers" }}
+        />
+      )}
 
       {/* MITM Server Card */}
       <MitmServerCard
