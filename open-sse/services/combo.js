@@ -4,6 +4,7 @@
 
 import { formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
+import { MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
 
 /**
  * Track rotation state per combo (for round-robin strategy)
@@ -302,9 +303,8 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
     return unavailableResponse(finalStatus, msg, earliestRetryAfter, retryHuman);
   }
 
-  log.warn("COMBO", `All models exhausted | ${msg}`);
-  return new Response(
-    JSON.stringify({ error: { message: msg } }),
-    { status: finalStatus, headers: { "Content-Type": "application/json" } }
-  );
+  const minRetryAt = new Date(Date.now() + MIN_RETRY_DELAY_MS).toISOString();
+  const retryHuman = formatRetryAfter(minRetryAt);
+  log.warn("COMBO", `All models exhausted | ${msg} (${retryHuman})`);
+  return unavailableResponse(finalStatus, msg, minRetryAt, retryHuman);
 }

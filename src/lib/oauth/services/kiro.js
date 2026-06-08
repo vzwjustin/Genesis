@@ -26,7 +26,7 @@ export class KiroService {
   async registerClient(region = "us-east-1") {
     const endpoint = `https://oidc.${region}.amazonaws.com/client/register`;
 
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -59,7 +59,7 @@ export class KiroService {
   async startDeviceAuthorization(clientId, clientSecret, startUrl, region = "us-east-1") {
     const endpoint = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -93,7 +93,7 @@ export class KiroService {
   async pollDeviceToken(clientId, clientSecret, deviceCode, region = "us-east-1") {
     const endpoint = `https://oidc.${region}.amazonaws.com/token`;
 
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -149,10 +149,12 @@ export class KiroService {
     // Must match the redirect_uri used in buildSocialLoginUrl
     const redirectUri = "kiro://kiro.kiroAgent/authenticate-success";
 
-    const response = await fetch(`${KIRO_AUTH_SERVICE}/oauth/token`, {
+    const response = await proxyAwareFetch(`${KIRO_AUTH_SERVICE}/oauth/token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
+        ...buildKiroFingerprintHeaders({ providerSpecificData: {} }),
       },
       body: JSON.stringify({
         code,
