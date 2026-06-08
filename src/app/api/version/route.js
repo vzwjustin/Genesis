@@ -1,5 +1,5 @@
 import pkg from "../../../../package.json" with { type: "json" };
-import { GITHUB_CONFIG } from "@/shared/constants/config";
+import { fetchGitHubReleases } from "@/lib/githubReleases.js";
 
 function normalizeVersion(tagName) {
   const version = String(tagName || "").trim().replace(/^v/i, "");
@@ -7,27 +7,15 @@ function normalizeVersion(tagName) {
 }
 
 async function fetchLatestReleaseVersion() {
-  try {
-    const response = await fetch(GITHUB_CONFIG.releasesApiUrl, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "9Router",
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!response.ok) return null;
+  const result = await fetchGitHubReleases({ timeoutMs: 4000 });
+  if (!result.ok) return null;
 
-    const releases = await response.json();
-    for (const release of releases) {
-      if (release?.draft) continue;
-      const version = normalizeVersion(release.tag_name);
-      if (version) return version;
-    }
-    return null;
-  } catch {
-    return null;
+  for (const release of result.releases) {
+    if (release?.draft) continue;
+    const version = normalizeVersion(release.tag_name);
+    if (version) return version;
   }
+  return null;
 }
 
 function compareVersions(a, b) {

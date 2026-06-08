@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 // Relay worker source code deployed to Cloudflare
 const RELAY_WORKER_CODE = `
@@ -70,7 +71,7 @@ export async function POST(request) {
       observability: { enabled: true }
     })], { type: "application/json" }), "metadata.json");
 
-    const uploadRes = await fetch(workerScriptUrl, {
+    const uploadRes = await proxyAwareFetch(workerScriptUrl, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${apiToken}`,
@@ -88,7 +89,7 @@ export async function POST(request) {
     }
 
     // 2. Enable workers.dev subdomain for the script
-    const enableSubdomainRes = await fetch(`${workerScriptUrl}/subdomain`, {
+    const enableSubdomainRes = await proxyAwareFetch(`${workerScriptUrl}/subdomain`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiToken}`,
@@ -105,7 +106,7 @@ export async function POST(request) {
 
     // 3. Get the workers.dev subdomain for the account to construct the final URL
     let deployUrl = "";
-    const subdomainRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`, {
+    const subdomainRes = await proxyAwareFetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${apiToken}`,

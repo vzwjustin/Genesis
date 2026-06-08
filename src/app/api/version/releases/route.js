@@ -1,5 +1,6 @@
 import pkg from "../../../../../package.json" with { type: "json" };
-import { GITHUB_CONFIG, formatInstallCommand } from "@/shared/constants/config";
+import { formatInstallCommand } from "@/shared/constants/config";
+import { fetchGitHubReleases } from "@/lib/githubReleases.js";
 
 function compareVersions(a, b) {
   const parse = (value) => {
@@ -40,43 +41,34 @@ function directionFor(version, currentVersion) {
 
 export async function GET() {
   const currentVersion = pkg.version;
+  const result = await fetchGitHubReleases();
 
-  try {
-    const response = await fetch(GITHUB_CONFIG.releasesApiUrl, {
-      headers: {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "9Router",
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      return Response.json({ currentVersion, releases: [], error: "Failed to fetch GitHub releases" }, { status: 502 });
-    }
-
-    const rawReleases = await response.json();
-    const releases = rawReleases
-      .filter((release) => !release?.draft)
-      .map((release) => {
-        const version = normalizeVersion(release.tag_name);
-        if (!version) return null;
-        const direction = directionFor(version, currentVersion);
-        return {
-          version,
-          tagName: release.tag_name,
-          name: release.name || release.tag_name,
-          url: release.html_url,
-          publishedAt: release.published_at,
-          prerelease: release.prerelease === true,
-          direction,
-          isCurrent: direction === "current",
-          installCommand: formatInstallCommand(version),
-        };
-      })
-      .filter(Boolean);
-
-    return Response.json({ currentVersion, releases });
-  } catch {
-    return Response.json({ currentVersion, releases: [], error: "Failed to fetch GitHub releases" }, { status: 502 });
+  if (!result.ok) {
+    return Response.json(
+      { currentVersion, releases: [], error: result.error || "Failed to fetch GitHub releases" },
+      { status: 502 }
+    );
   }
+
+  const releases = result.releases
+    .filter((release) => !release?.draft)
+    .map((release) => {
+      const version = normalizeVersion(release.tag_name);
+      if (!version) return null;
+      const direction = directionFor(version, currentVersion);
+      return {
+        version,
+        tagName: release.tag_name,
+        name: release.name || release.tag_name,
+        url: release.html_url,
+        publishedAt: release.published_at,
+        prerelease: release.prerelease === true,
+        direction,
+        isCurrent: direction === "current",
+        installCommand: formatInstallCommand(version),
+      };
+    })
+    .filter(Boolean);
+
+  return Response.json({ currentVersion, releases });
 }

@@ -11,7 +11,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { handleComboChat, getComboModelsFromData, getBrokenComboErrorFromData } from "open-sse/services/combo.js";
 import {
   resolveProviderRetryLimits,
   noActiveCredentialsResponse,
@@ -67,6 +67,11 @@ export async function handleFetch(request) {
 
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
   const combos = await getCombos();
+  const brokenComboError = getBrokenComboErrorFromData(providerInput, combos);
+  if (brokenComboError) {
+    log.warn("FETCH", `Combo resolution failed: ${brokenComboError}`);
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+  }
   const comboModels = getComboModelsFromData(providerInput, combos);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};

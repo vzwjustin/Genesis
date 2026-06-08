@@ -3,7 +3,7 @@ import {
   getProviderCredentials, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleSttCore } from "open-sse/handlers/sttCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -40,6 +40,11 @@ export async function handleStt(request) {
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!formData.get("file")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
+  const brokenComboError = await getBrokenComboError(modelStr);
+  if (brokenComboError) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+  }
+
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
@@ -63,6 +68,10 @@ export async function handleStt(request) {
 async function handleSingleModelStt(formData, modelStr) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
+    const brokenComboError = await getBrokenComboError(modelStr);
+    if (brokenComboError) {
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+    }
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
       const settings = await getSettings();

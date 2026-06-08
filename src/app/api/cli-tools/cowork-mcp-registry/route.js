@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const REGISTRY_URL = "https://api.anthropic.com/mcp-registry/v0/servers";
 const VISIBILITY = "commercial,gsuite,gsuite-google";
@@ -26,9 +27,17 @@ async function fetchAll() {
   let cursor = "";
   for (let i = 0; i < 20; i++) {
     const url = `${REGISTRY_URL}?limit=500&visibility=${VISIBILITY}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-    const r = await fetch(url, { headers: { accept: "application/json" } });
+    const r = await proxyAwareFetch(url, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
     if (!r.ok) break;
-    const j = await r.json();
+    let j;
+    try {
+      j = await r.json();
+    } catch {
+      break;
+    }
     for (const item of j.servers || []) {
       const s = item.server || {};
       const meta = item._meta?.["com.anthropic.api/mcp-registry"] || {};

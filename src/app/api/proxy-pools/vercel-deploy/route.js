@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const VERCEL_API = "https://api.vercel.com";
 
@@ -42,8 +43,9 @@ export default async function handler(req) {
 async function pollDeployment(deploymentId, token, maxMs = 120000) {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
-    const res = await fetch(`${VERCEL_API}/v13/deployments/${deploymentId}`, {
+    const res = await proxyAwareFetch(`${VERCEL_API}/v13/deployments/${deploymentId}`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();
     if (data.readyState === "READY") return data;
@@ -67,7 +69,7 @@ export async function POST(request) {
     }
 
     // Deploy relay function to Vercel
-    const deployRes = await fetch(`${VERCEL_API}/v13/deployments`, {
+    const deployRes = await proxyAwareFetch(`${VERCEL_API}/v13/deployments`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${vercelToken}`,
@@ -111,7 +113,7 @@ export async function POST(request) {
 
     // Disable deployment protection (Vercel Authentication)
     const projectId = deployment.projectId || projectName;
-    await fetch(`${VERCEL_API}/v9/projects/${projectId}`, {
+    await proxyAwareFetch(`${VERCEL_API}/v9/projects/${projectId}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${vercelToken}`,

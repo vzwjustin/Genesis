@@ -117,6 +117,22 @@ export function getComboModelsFromData(modelStr, combosData) {
 }
 
 /**
+ * Return a descriptive error when a combo name exists in data but has no valid targets.
+ * @param {string} modelStr
+ * @param {Array|Object} combosData
+ * @returns {string|null}
+ */
+export function getBrokenComboErrorFromData(modelStr, combosData) {
+  if (modelStr.includes("/")) return null;
+  const combos = Array.isArray(combosData) ? combosData : (combosData?.combos || []);
+  const combo = combos.find((c) => c.name === modelStr);
+  if (!combo) return null;
+  const models = getComboModelsFromData(modelStr, combosData);
+  if (models) return null;
+  return `Combo "${modelStr}" has no valid model targets configured.`;
+}
+
+/**
  * Determine whether a combo should advance to the next model based on status code.
  *
  * Combo Sequencing Rules (Requirements 5.1–5.5):

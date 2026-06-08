@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const DENO_V2_API = "https://api.deno.com/v2";
 
@@ -64,7 +65,7 @@ export async function POST(request) {
       "Content-Type": "application/json",
     };
 
-    const createAppRes = await fetch(`${DENO_V2_API}/apps`, {
+    const createAppRes = await proxyAwareFetch(`${DENO_V2_API}/apps`, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -96,7 +97,7 @@ export async function POST(request) {
 
     const app = await createAppRes.json();
 
-    const deployRes = await fetch(`${DENO_V2_API}/apps/${app.id}/deploy`, {
+    const deployRes = await proxyAwareFetch(`${DENO_V2_API}/apps/${app.id}/deploy`, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -113,7 +114,7 @@ export async function POST(request) {
     if (!deployRes.ok) {
       const text = await deployRes.text().catch(() => "");
       console.error("Deno Deploy error:", deployRes.status, text);
-      await fetch(`${DENO_V2_API}/apps/${app.id}`, {
+      await proxyAwareFetch(`${DENO_V2_API}/apps/${app.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${denoToken}` },
       }).catch(() => {});
@@ -134,8 +135,9 @@ export async function POST(request) {
         throw new Error("Deploy timed out after 60 seconds");
       }
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      const statusRes = await fetch(`${DENO_V2_API}/revisions/${revisionId}`, {
+      const statusRes = await proxyAwareFetch(`${DENO_V2_API}/revisions/${revisionId}`, {
         headers: { Authorization: `Bearer ${denoToken}` },
+        signal: AbortSignal.timeout(15000),
       });
       if (!statusRes.ok) break;
       const statusData = await statusRes.json();
@@ -144,7 +146,7 @@ export async function POST(request) {
     }
 
     if (status !== "succeeded") {
-      await fetch(`${DENO_V2_API}/apps/${app.id}`, {
+      await proxyAwareFetch(`${DENO_V2_API}/apps/${app.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${denoToken}` },
       }).catch(() => {});

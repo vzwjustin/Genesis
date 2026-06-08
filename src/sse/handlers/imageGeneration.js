@@ -5,7 +5,7 @@ import {
   authenticateRequest,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -47,6 +47,11 @@ export async function handleImageGeneration(request) {
   if (!body.prompt) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
 
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
+  const brokenComboError = await getBrokenComboError(modelStr);
+  if (brokenComboError) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+  }
+
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
@@ -69,7 +74,16 @@ export async function handleImageGeneration(request) {
 
 async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId } = {}) {
   const modelInfo = await getModelInfo(modelStr);
-  if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
+  if (!modelInfo.provider) {
+    const brokenComboError = await getBrokenComboError(modelStr);
+    if (brokenComboError) {
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+    }
+    return errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Failed to resolve model: "${modelStr}". Not a registered alias, combo name, or valid provider/model format.`
+    );
+  }
 
   const { provider, model } = modelInfo;
 
