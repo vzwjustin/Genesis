@@ -81,6 +81,11 @@ export default function APIPageClient({ machineId }) {
   const [passthroughCompression, setPassthroughCompression] = useState(false);
   const [compressionStats, setCompressionStats] = useState(null);
 
+  // Cloud endpoint (public URL for remote CLI tools)
+  const [cloudEnabled, setCloudEnabled] = useState(false);
+  const [cloudUrl, setCloudUrl] = useState("");
+  const [cloudUrlDraft, setCloudUrlDraft] = useState("");
+
   // Cloudflare Tunnel state
   const [tunnelChecking, setTunnelChecking] = useState(true);
   const [tunnelEnabled, setTunnelEnabled] = useState(false);
@@ -258,6 +263,9 @@ export default function APIPageClient({ machineId }) {
         setCavemanLevel(data.cavemanLevel || "full");
         setHeadroomEnabled(!!data.headroomEnabled);
         setPassthroughCompression(!!data.passthroughCompression);
+        setCloudEnabled(!!data.cloudEnabled);
+        setCloudUrl(data.cloudUrl || "");
+        setCloudUrlDraft(data.cloudUrl || "");
         fetchHeadroomStatus(!!data.headroomEnabled);
       }
       if (statusRes.ok) {
@@ -300,6 +308,45 @@ export default function APIPageClient({ machineId }) {
       }
     } catch (error) {
       setSettingsStatus(exposureStatus("error", error.message));
+    }
+  };
+
+  const handleCloudEnabled = async (value) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cloudEnabled: value }),
+      });
+      if (res.ok) {
+        setCloudEnabled(value);
+        notify.success(value ? "Cloud endpoint enabled" : "Cloud endpoint disabled");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to update cloud endpoint");
+      }
+    } catch (error) {
+      notify.error(error.message || "Failed to update cloud endpoint");
+    }
+  };
+
+  const handleSaveCloudUrl = async () => {
+    const trimmed = cloudUrlDraft.trim();
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cloudUrl: trimmed }),
+      });
+      if (res.ok) {
+        setCloudUrl(trimmed);
+        notify.success("Cloud URL saved");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to save cloud URL");
+      }
+    } catch (error) {
+      notify.error(error.message || "Failed to save cloud URL");
     }
   };
 
@@ -912,6 +959,47 @@ export default function APIPageClient({ machineId }) {
             copied={copied}
             onCopy={copy}
           />
+          {/* Cloud endpoint — static public URL for remote CLI tools */}
+          <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Cloud endpoint</p>
+                <p className="text-xs text-text-muted">Use a stable public URL for Cursor and other remote-only CLI tools.</p>
+              </div>
+              <Toggle checked={cloudEnabled} onChange={handleCloudEnabled} />
+            </div>
+            {cloudEnabled && (
+              <>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    value={cloudUrlDraft}
+                    onChange={(e) => setCloudUrlDraft(e.target.value)}
+                    placeholder="https://your-public-host.example.com"
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleSaveCloudUrl}
+                    disabled={cloudUrlDraft.trim() === cloudUrl}
+                  >
+                    Save URL
+                  </Button>
+                </div>
+                {cloudUrl ? (
+                  <EndpointRow
+                    label="Cloud"
+                    url={`${cloudUrl.replace(/\/$/, "")}/v1`}
+                    copyId="cloud_url"
+                    copied={copied}
+                    onCopy={copy}
+                  />
+                ) : (
+                  <p className="text-xs text-warning">Set and save a cloud URL so CLI tools can use it as base URL.</p>
+                )}
+              </>
+            )}
+          </div>
           {/* Cloudflare Tunnel */}
           <div className="flex items-center gap-2">
             <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${

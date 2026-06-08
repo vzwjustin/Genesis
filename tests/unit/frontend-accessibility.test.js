@@ -127,6 +127,23 @@ describe("frontend accessibility regressions", () => {
     expect(utils).toContain("getConnectionErrorLabel");
   });
 
+  it("exposes cloud endpoint controls on the endpoint page", () => {
+    const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+
+    expect(endpoint).toContain("Cloud endpoint");
+    expect(endpoint).toContain("cloudEnabled");
+    expect(endpoint).toContain("cloudUrl");
+    expect(endpoint).toContain("handleSaveCloudUrl");
+  });
+
+  it("does not register cursor in MITM host routing until implemented", () => {
+    const hosts = read("src/shared/constants/mitmToolHosts.js");
+    const config = read("src/mitm/config.js");
+
+    expect(hosts).not.toContain('cursor: ["api2.cursor.sh"]');
+    expect(config).not.toContain('return "cursor"');
+  });
+
   it("shows setup checklist on dashboard overview", () => {
     const overview = read("src/app/(dashboard)/dashboard/DashboardOverviewClient.js");
 

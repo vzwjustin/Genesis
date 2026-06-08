@@ -25,6 +25,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function actionError(notify, message, error) {
+  notify.error(error?.message || message);
+}
+
 export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -158,7 +162,7 @@ export default function ProviderDetailPage() {
       const data = await res.json();
       if (res.ok) setDisabledModelIds(data.ids || []);
     } catch (error) {
-      console.log("Error fetching disabled models:", error);
+      actionError(notify, "Failed to fetch disabled models", error);
     }
   }, [providerStorageAlias]);
 
@@ -171,7 +175,7 @@ export default function ProviderDetailPage() {
       });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
-      console.log("Error disabling model:", error);
+      actionError(notify, "Failed to disable model", error);
     }
   };
 
@@ -180,7 +184,7 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(modelId)}`, { method: "DELETE" });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
-      console.log("Error enabling model:", error);
+      actionError(notify, "Failed to enable model", error);
     }
   };
 
@@ -199,7 +203,7 @@ export default function ProviderDetailPage() {
           });
           if (res.ok) await fetchDisabledModels();
         } catch (error) {
-          console.log("Error disabling all models:", error);
+          actionError(notify, "Failed to disable all models", error);
         }
       }
     });
@@ -210,7 +214,7 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { method: "DELETE" });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
-      console.log("Error enabling all models:", error);
+      actionError(notify, "Failed to enable all models", error);
     }
   };
 
@@ -223,7 +227,7 @@ export default function ProviderDetailPage() {
         setModelAliases(data.aliases || {});
       }
     } catch (error) {
-      console.log("Error fetching aliases:", error);
+      actionError(notify, "Failed to fetch aliases", error);
     }
   }, []);
 
@@ -281,7 +285,7 @@ export default function ProviderDetailPage() {
         setProviderNode(node);
       }
     } catch (error) {
-      console.log("Error fetching connections:", error);
+      actionError(notify, "Failed to fetch connections", error);
     } finally {
       setLoading(false);
     }
@@ -301,7 +305,7 @@ export default function ProviderDetailPage() {
         setShowEditNodeModal(false);
       }
     } catch (error) {
-      console.log("Error updating provider node:", error);
+      actionError(notify, "Failed to update provider node", error);
     }
   };
 
@@ -331,7 +335,7 @@ export default function ProviderDetailPage() {
         body: JSON.stringify({ providerStrategies: updated }),
       });
     } catch (error) {
-      console.log("Error saving provider strategy:", error);
+      actionError(notify, "Failed to save provider strategy", error);
     }
   };
 
@@ -365,7 +369,7 @@ export default function ProviderDetailPage() {
         body: JSON.stringify({ providerThinking: updated }),
       });
     } catch (error) {
-      console.log("Error saving thinking config:", error);
+      actionError(notify, "Failed to save thinking config", error);
     }
   };
 
@@ -403,7 +407,7 @@ export default function ProviderDetailPage() {
         notify.error(data.error || "Failed to set alias");
       }
     } catch (error) {
-      console.log("Error setting alias:", error);
+      actionError(notify, "Failed to set alias", error);
     }
   };
 
@@ -416,7 +420,7 @@ export default function ProviderDetailPage() {
         await fetchAliases();
       }
     } catch (error) {
-      console.log("Error deleting alias:", error);
+      actionError(notify, "Failed to delete alias", error);
     }
   };
 
@@ -524,7 +528,7 @@ export default function ProviderDetailPage() {
             setConnections(connections.filter(c => c.id !== id));
           }
         } catch (error) {
-          console.log("Error deleting connection:", error);
+          actionError(notify, "Failed to delete connection", error);
         }
       }
     });
@@ -584,7 +588,7 @@ export default function ProviderDetailPage() {
 
       setAddConnectionError(data?.error || "Failed to save connection");
     } catch (error) {
-      console.log("Error saving connection:", error);
+      actionError(notify, "Failed to save connection", error);
       setAddConnectionError("Failed to save connection");
     }
   };
@@ -601,7 +605,7 @@ export default function ProviderDetailPage() {
         setShowEditModal(false);
       }
     } catch (error) {
-      console.log("Error updating connection:", error);
+      actionError(notify, "Failed to update connection", error);
     }
   };
 
@@ -616,7 +620,7 @@ export default function ProviderDetailPage() {
         setConnections(prev => prev.map(c => c.id === id ? { ...c, isActive } : c));
       }
     } catch (error) {
-      console.log("Error updating connection status:", error);
+      actionError(notify, "Failed to update connection status", error);
     }
   };
 
@@ -640,7 +644,7 @@ export default function ProviderDetailPage() {
         }),
       ]);
     } catch (error) {
-      console.log("Error swapping priority:", error);
+      actionError(notify, "Failed to swap priority", error);
       await fetchConnections();
     }
   };
@@ -711,7 +715,7 @@ export default function ProviderDetailPage() {
           });
           if (!res.ok) failed += 1;
         } catch (e) {
-          console.log("Error applying proxy for", connectionId, e);
+          actionError(notify, `Failed to apply proxy for ${connectionId}`, e);
           failed += 1;
         }
       }
@@ -774,7 +778,7 @@ export default function ProviderDetailPage() {
                       ));
                     }
                   } catch (error) {
-                    console.log("Error updating proxy:", error);
+                    actionError(notify, "Failed to update proxy", error);
                   }
                 }}
                 onEdit={() => {
@@ -1171,7 +1175,7 @@ export default function ProviderDetailPage() {
                           router.push("/dashboard/providers");
                         }
                       } catch (error) {
-                        console.log("Error deleting provider node:", error);
+                        actionError(notify, "Failed to delete provider node", error);
                       }
                     }
                   });
