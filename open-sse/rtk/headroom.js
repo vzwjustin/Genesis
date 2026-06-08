@@ -1,3 +1,5 @@
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+
 const DEFAULT_PROXY_URL = "http://localhost:8787";
 const DEFAULT_CLOUD_URL = "https://api.headroom.ai";
 const PROBE_TTL_MS = 30_000;
@@ -43,10 +45,10 @@ async function probeProxy(baseUrl = resolveHeadroomBaseUrl()) {
   if (cached && now - cached.ts < PROBE_TTL_MS) return cached.reachable;
   let reachable = false;
   try {
-    const res = await fetch(`${baseUrl}/health`, {
+    const res = await proxyAwareFetch(`${baseUrl}/health`, {
       signal: AbortSignal.timeout(1500),
       cache: "no-store",
-    });
+    }, null);
     reachable = res.ok;
   } catch {
     reachable = false;
@@ -305,10 +307,10 @@ export async function getHeadroomProxyStats(baseUrl = resolveHeadroomBaseUrl()) 
   if (!cloud && !(await probeProxy(baseUrl))) return null;
 
   try {
-    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/stats?cached=1`, {
+    const res = await proxyAwareFetch(`${baseUrl.replace(/\/+$/, "")}/stats?cached=1`, {
       signal: AbortSignal.timeout(2000),
       cache: "no-store",
-    });
+    }, null);
     if (!res.ok) return null;
     const data = await res.json();
     return normalizeHeadroomProxyStats(data, baseUrl);

@@ -7,25 +7,18 @@
  * - Falls back to old refresh_token when server doesn't return new one
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
-const originalFetch = global.fetch;
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 describe("Codex Refresh Token", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
-    const { __clearRefreshDedupCacheForTests } = await import("../../open-sse/services/tokenRefresh.js");
-    __clearRefreshDedupCacheForTests();
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
   });
 
   describe("refreshCodexToken", () => {
     it("should return new refresh_token when server provides one (token rotation)", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
+      const proxyFetchModule = await import("../../open-sse/utils/proxyFetch.js");
+      vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
           access_token: "new-access",
@@ -34,7 +27,8 @@ describe("Codex Refresh Token", () => {
         }),
       });
 
-      const { refreshCodexToken } = await import("../../open-sse/services/tokenRefresh.js");
+      const { refreshCodexToken, __clearRefreshDedupCacheForTests } = await import("../../open-sse/services/tokenRefresh.js");
+      __clearRefreshDedupCacheForTests();
       const result = await refreshCodexToken("old-refresh-token", null);
 
       expect(result.refreshToken).toBe("rotated-refresh-token");
@@ -42,7 +36,8 @@ describe("Codex Refresh Token", () => {
     });
 
     it("should keep old refresh_token when server does not return new one", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
+      const proxyFetchModule = await import("../../open-sse/utils/proxyFetch.js");
+      vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
           access_token: "new-access",
@@ -50,7 +45,8 @@ describe("Codex Refresh Token", () => {
         }),
       });
 
-      const { refreshCodexToken } = await import("../../open-sse/services/tokenRefresh.js");
+      const { refreshCodexToken, __clearRefreshDedupCacheForTests } = await import("../../open-sse/services/tokenRefresh.js");
+      __clearRefreshDedupCacheForTests();
       const result = await refreshCodexToken("old-refresh-token", null);
 
       expect(result.refreshToken).toBe("old-refresh-token");

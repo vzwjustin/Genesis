@@ -1,4 +1,5 @@
 import { isSafeFetchUrl } from "../../utils/ssrfGuard.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
 /**
  * Fetch a remote image URL and return it as a base64 data URI.
@@ -11,7 +12,7 @@ import { isSafeFetchUrl } from "../../utils/ssrfGuard.js";
  * @returns {Promise<{url: string, mimeType: string}|null>}
  */
 export async function fetchImageAsBase64(imageUrl, options = {}) {
-  const { signal, timeoutMs = 10000 } = options;
+  const { signal, timeoutMs = 10000, proxyOptions = null } = options;
   if (!imageUrl || (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://"))) {
     return null;
   }
@@ -24,7 +25,7 @@ export async function fetchImageAsBase64(imageUrl, options = {}) {
   const fetchSignal = signal || controller.signal;
 
   try {
-    const response = await fetch(imageUrl, { signal: fetchSignal });
+    const response = await proxyAwareFetch(imageUrl, { signal: fetchSignal }, proxyOptions);
     if (!response.ok) return null;
 
     const mimeType = response.headers.get("Content-Type") || "image/jpeg";

@@ -31,19 +31,13 @@ function mockImageFetch(sizeBytes, mimeType = "image/jpeg") {
 }
 
 describe("CodexExecutor image handling", () => {
-  let originalFetch;
-
-  beforeEach(() => {
-    originalFetch = global.fetch;
-  });
-
   afterEach(() => {
-    global.fetch = originalFetch;
     vi.restoreAllMocks();
   });
 
   it("fetches 1MB remote image and inlines it as base64 data URI", async () => {
-    global.fetch = vi.fn(async () => mockImageFetch(IMAGE_1MB_BYTES));
+    const fetchSpy = vi.spyOn(proxyFetchModule, "proxyAwareFetch")
+      .mockImplementation(async () => mockImageFetch(IMAGE_1MB_BYTES));
 
     const executor = new CodexExecutor();
     const body = {
@@ -68,11 +62,11 @@ describe("CodexExecutor image handling", () => {
     const base64Payload = imgBlock.image_url.split(",")[1];
     const decodedLen = Buffer.from(base64Payload, "base64").length;
     expect(decodedLen).toBe(IMAGE_1MB_BYTES);
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("passes through existing data URIs without calling fetch", async () => {
-    global.fetch = vi.fn();
+    const fetchSpy = vi.spyOn(proxyFetchModule, "proxyAwareFetch");
 
     const executor = new CodexExecutor();
     const body = {
@@ -88,11 +82,12 @@ describe("CodexExecutor image handling", () => {
 
     const imgBlock = body.input[0].content.find((c) => c.type === "input_image");
     expect(imgBlock.image_url).toBe(DATA_URI);
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("falls back to original URL when remote fetch fails", async () => {
-    global.fetch = vi.fn(async () => { throw new Error("network down"); });
+    vi.spyOn(proxyFetchModule, "proxyAwareFetch")
+      .mockImplementation(async () => { throw new Error("network down"); });
 
     const executor = new CodexExecutor();
     const body = {
@@ -111,10 +106,11 @@ describe("CodexExecutor image handling", () => {
   });
 
   it("execute() prefetches images before sending to upstream", async () => {
-    global.fetch = vi.fn(async () => mockImageFetch(IMAGE_1MB_BYTES));
-
     let capturedBodyString = null;
     vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockImplementation(async (url, init) => {
+      if (String(url).includes("example.com")) {
+        return mockImageFetch(IMAGE_1MB_BYTES);
+      }
       capturedBodyString = init.body;
       return { ok: true, status: 200, headers: new Map() };
     });

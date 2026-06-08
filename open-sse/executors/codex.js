@@ -219,7 +219,7 @@ export class CodexExecutor extends BaseExecutor {
    * Runs before execute() because Codex backend cannot fetch remote images.
    * Mutates body.input in place.
    */
-  async prefetchImages(body) {
+  async prefetchImages(body, proxyOptions = null) {
     if (!Array.isArray(body?.input)) return;
     for (const item of body.input) {
       if (!Array.isArray(item.content)) continue;
@@ -229,7 +229,7 @@ export class CodexExecutor extends BaseExecutor {
         const detail = c.image_url?.detail || "auto";
         if (!url) return c;
         if (url.startsWith("data:")) return { type: "input_image", image_url: url, detail };
-        const fetched = await fetchImageAsBase64(url, { timeoutMs: 15000 });
+        const fetched = await fetchImageAsBase64(url, { timeoutMs: 15000, proxyOptions });
         return { type: "input_image", image_url: fetched?.url || url, detail };
       });
       item.content = await Promise.all(pending);
@@ -270,10 +270,10 @@ export class CodexExecutor extends BaseExecutor {
     if (!args.passthrough) {
       if (imgCount > 0) {
         const t0 = Date.now();
-        await this.prefetchImages(args.body);
+        await this.prefetchImages(args.body, args.proxyOptions);
         dbg("CODEX", `prefetchImages done | ${Date.now() - t0}ms`);
       } else {
-        await this.prefetchImages(args.body);
+        await this.prefetchImages(args.body, args.proxyOptions);
       }
     }
 
