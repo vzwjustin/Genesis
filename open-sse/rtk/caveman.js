@@ -85,7 +85,11 @@ function mightBeOpenAICached(msg) {
 // Caveman is small (~100 tokens) so not caching it is negligible.
 function injectClaudeSystem(body, prompt) {
   if (typeof body.system === "string" && body.system.length > 0) {
-    body.system = `${body.system}${SEP}${prompt}`;
+    // Do not mutate cached string system — append as a separate block.
+    body.system = [
+      { type: "text", text: body.system },
+      { type: "text", text: prompt },
+    ];
     return;
   }
   if (Array.isArray(body.system)) {
