@@ -1,6 +1,7 @@
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT, REFRESH_LEAD_MS } from "../config/appConstants.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { buildKiroSocialAuthRefreshUrl, resolveKiroRegion } from "./kiroHeaders.js";
 
 // xAI refresh — wraps the class method from src/lib/oauth/services/xai.js so
 // the token-refresh switches below can stay flat (one function per provider).
@@ -416,8 +417,11 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
     };
   }
 
-  // Social Auth (Google/GitHub) - use Kiro's refresh endpoint
-  const response = await proxyAwareFetch(PROVIDERS.kiro.tokenUrl, {
+  // Social Auth (Google/GitHub) - use regional Kiro refresh endpoint
+  const socialRefreshUrl = buildKiroSocialAuthRefreshUrl(
+    resolveKiroRegion({ providerSpecificData })
+  );
+  const response = await proxyAwareFetch(socialRefreshUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -664,7 +668,7 @@ async function _getAccessTokenInternal(provider, credentials, log) {
 /**
  * Refresh token by provider type (helper for handlers)
  */
-export async function refreshTokenByProvider(provider, credentials, log) {
+export async function refreshTokenByProvider(provider, credentials, log, proxyOptions = null) {
   if (!credentials.refreshToken) return null;
 
   switch (provider) {
@@ -690,7 +694,8 @@ export async function refreshTokenByProvider(provider, credentials, log) {
       return refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
-        log
+        log,
+        proxyOptions
       );
     case "xai":
       return refreshXaiToken(credentials.refreshToken, log);

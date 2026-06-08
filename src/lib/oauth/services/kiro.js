@@ -1,4 +1,11 @@
 import { KIRO_CONFIG } from "../constants/oauth.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import {
+  buildKiroFingerprintHeaders,
+  buildKiroSocialAuthRefreshUrl,
+  regionFromProfileArn,
+  resolveKiroRegion,
+} from "open-sse/services/kiroHeaders.js";
 
 /**
  * Kiro OAuth Service
@@ -205,10 +212,13 @@ export class KiroService {
     }
 
     // Social auth refresh (Google/GitHub)
-    const response = await fetch(`${KIRO_AUTH_SERVICE}/refreshToken`, {
+    const refreshUrl = buildKiroSocialAuthRefreshUrl(resolveKiroRegion(providerSpecificData));
+    const response = await proxyAwareFetch(refreshUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
+        ...buildKiroFingerprintHeaders({ refreshToken, providerSpecificData }),
       },
       body: JSON.stringify({
         refreshToken,
@@ -257,16 +267,20 @@ export class KiroService {
    * List available models from CodeWhisperer API
    */
   async listAvailableModels(accessToken, profileArn) {
-    const endpoint = "https://codewhisperer.us-east-1.amazonaws.com";
+    const region = regionFromProfileArn(profileArn);
+    const endpoint = `https://codewhisperer.${region}.amazonaws.com`;
     const target = "AmazonCodeWhispererService.ListAvailableModels";
 
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": target,
+        ...buildKiroFingerprintHeaders(
+          { accessToken, providerSpecificData: { profileArn } },
+          { accept: "application/json" }
+        ),
         "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
       },
       body: JSON.stringify({
         origin: "AI_EDITOR",
