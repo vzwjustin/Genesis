@@ -35,6 +35,7 @@ export { default as EditConnectionModal } from "./EditConnectionModal";
 export { default as AddCustomEmbeddingModal } from "./AddCustomEmbeddingModal";
 export { default as NoAuthProxyCard } from "./NoAuthProxyCard";
 export { default as SegmentedControl } from "./SegmentedControl";
+export { default as CompressionStatRow, formatBytes } from "./CompressionStatRow";
 export { default as Tooltip } from "./Tooltip";
 export { default as SecurityWarning } from "./SecurityWarning";
 export { default as DashboardSecurityBanner } from "./DashboardSecurityBanner";
