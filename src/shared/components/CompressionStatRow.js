@@ -9,6 +9,61 @@ export function formatBytes(value) {
   return `${bytes} B`;
 }
 
+/** ~4 chars per token — matches compressionStats.js estimate */
+export function estimateTokensFromBytes(bytes) {
+  const n = Number(bytes) || 0;
+  return n > 0 ? Math.round(n / 4) : 0;
+}
+
+export function resolvedBytesSaved(stats = {}) {
+  const explicit = Number(stats.bytesSaved);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const before = Number(stats.bytesBefore) || 0;
+  const after = Number(stats.bytesAfter) || 0;
+  return before > after ? before - after : 0;
+}
+
+/** Headline + subline for RTK / Headroom stat cards */
+export function formatCompressionDisplay(stats = {}, kind = "bytes") {
+  if (kind === "injections") {
+    return {
+      headline: `${stats.hits || 0} injections`,
+      subline: null,
+    };
+  }
+
+  const saved = resolvedBytesSaved(stats);
+  const processed = Number(stats.bytesBefore) || 0;
+  const tokensSaved = stats.tokenSavingsAvailable
+    ? (Number(stats.estimatedTokensSaved) || estimateTokensFromBytes(saved))
+    : estimateTokensFromBytes(saved);
+  const requests = Number(stats.requests) || 0;
+  const hits = Number(stats.hits) || 0;
+
+  if (saved > 0) {
+    return {
+      headline: `~${tokensSaved.toLocaleString()} tokens`,
+      subline: `${formatBytes(saved)} saved`,
+    };
+  }
+
+  if (processed > 0 && (requests > 0 || hits > 0)) {
+    return {
+      headline: `~${estimateTokensFromBytes(processed).toLocaleString()} tokens`,
+      subline: "Processed · no savings yet",
+    };
+  }
+
+  if (requests > 0 || hits > 0) {
+    return {
+      headline: `${hits || requests} ${hits ? "filter hits" : "passes"}`,
+      subline: "No measurable savings yet",
+    };
+  }
+
+  return { headline: formatBytes(0), subline: null };
+}
+
 const EMPTY_TOOL_STATS = {
   requests: 0,
   hits: 0,
@@ -20,7 +75,8 @@ const EMPTY_TOOL_STATS = {
 
 export default function CompressionStatRow({ stats, proxyStats, kind, emptyHint, dashboardUrl }) {
   const s = stats ?? EMPTY_TOOL_STATS;
-  const hasLocal = !!(s.hits || s.requests || s.bytesSaved);
+  const saved = resolvedBytesSaved(s);
+  const hasLocal = !!(s.hits || s.requests || saved || s.bytesBefore);
   const hasProxy = !!(proxyStats && (
     proxyStats.mcpCompressions ||
     proxyStats.tokensSaved ||
@@ -32,13 +88,17 @@ export default function CompressionStatRow({ stats, proxyStats, kind, emptyHint,
   const detail = s.lastDetail ? ` · ${s.lastDetail}` : "";
   const savedLabel = kind === "injections"
     ? `Prompt injections ${s.hits || 0}`
-    : `Saved ${formatBytes(s.bytesSaved)}`;
+    : saved > 0
+      ? `Saved ${formatBytes(saved)} (~${estimateTokensFromBytes(saved).toLocaleString()} tokens)`
+      : (Number(s.bytesBefore) || 0) > 0
+        ? `Processed ~${estimateTokensFromBytes(s.bytesBefore).toLocaleString()} tokens`
+        : `Saved ${formatBytes(0)}`;
   const tokenLabel = kind === "injections"
     ? null
-    : s.tokenSavingsAvailable
-      ? `Est. tokens saved ${s.estimatedTokensSaved || 0}`
-      : hasLocal
-        ? "Savings not measurable"
+    : saved > 0
+      ? `Est. ${(s.estimatedTokensSaved || estimateTokensFromBytes(saved)).toLocaleString()} tokens saved`
+      : (Number(s.bytesBefore) || 0) > 0 && hasLocal
+        ? `${formatBytes(s.bytesBefore)} scanned`
         : null;
   const proxyTokens = Number(proxyStats?.tokensSaved) || Number(proxyStats?.proxyCompressionSaved) || 0;
   const proxyCompressions = Number(proxyStats?.mcpCompressions) || Number(proxyStats?.compressionRequests) || 0;

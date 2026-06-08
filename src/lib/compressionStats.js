@@ -62,15 +62,20 @@ function normalizeStats(value) {
   base.updatedAt = parsed.updatedAt || null;
   for (const tool of TOOL_IDS) {
     const input = parsed.tools?.[tool] || {};
-    const bytesSaved = toNumber(input.bytesSaved);
+    const bytesBefore = toNumber(input.bytesBefore);
+    const bytesAfter = toNumber(input.bytesAfter);
+    let bytesSaved = toNumber(input.bytesSaved);
+    if (!bytesSaved && bytesBefore > bytesAfter) {
+      bytesSaved = bytesBefore - bytesAfter;
+    }
     const tokenSavingsAvailable = typeof input.tokenSavingsAvailable === "boolean"
       ? input.tokenSavingsAvailable
       : canEstimateTokenSavings(tool, bytesSaved);
     base.tools[tool] = {
       requests: toNumber(input.requests),
       hits: toNumber(input.hits),
-      bytesBefore: toNumber(input.bytesBefore),
-      bytesAfter: toNumber(input.bytesAfter),
+      bytesBefore,
+      bytesAfter,
       bytesSaved,
       estimatedTokensSaved: tokenSavingsAvailable ? estimateTokensSaved(bytesSaved) : 0,
       tokenSavingsAvailable,
