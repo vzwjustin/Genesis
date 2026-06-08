@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
+import { oauthFetch } from "@/lib/oauth/utils/oauthFetch.js";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";
 
@@ -30,7 +31,7 @@ export async function POST(request) {
     }
 
     // Verify token by fetching current user
-    const userRes = await fetch(`${base}/api/v4/user`, {
+    const userRes = await oauthFetch(`${base}/api/v4/user`, {
       headers: { "Private-Token": token.trim(), Accept: "application/json" },
     });
 

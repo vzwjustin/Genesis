@@ -4,8 +4,8 @@ import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
  * OAuth HTTP helper — routes through proxyAwareFetch (env proxy, MITM bypass DNS).
  * OAuth setup has no per-connection proxy context; pass null proxyOptions.
  */
-export async function oauthFetch(url, init = {}) {
-  return proxyAwareFetch(url, init, null);
+export async function oauthFetch(url, init = {}, proxyOptions = null) {
+  return proxyAwareFetch(url, init, proxyOptions);
 }
 
 /**

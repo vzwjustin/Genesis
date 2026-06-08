@@ -153,7 +153,7 @@ export class XaiService extends OAuthService {
   /**
    * Refresh an access token using a refresh_token.
    */
-  async refreshAccessToken(refreshToken) {
+  async refreshAccessToken(refreshToken, proxyOptions = null) {
     const { tokenUrl } = await discoverEndpoints();
     const res = await oauthFetch(tokenUrl, {
       method: "POST",
@@ -166,7 +166,7 @@ export class XaiService extends OAuthService {
         client_id: XAI_CONFIG.clientId,
         refresh_token: refreshToken,
       }),
-    });
+    }, proxyOptions);
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`xAI token refresh failed: ${err}`);

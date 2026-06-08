@@ -11,20 +11,25 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+
+async function buildProxyOptionsFromConnection(conn) {
+  const proxyConfig = await resolveConnectionProxyConfig(conn?.providerSpecificData || {});
+  return {
+    connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
+    connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
+    connectionNoProxy: proxyConfig.connectionNoProxy || "",
+    vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
+    strictProxy: proxyConfig.strictProxy === true,
+  };
+}
 
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
 // Adding a provider here makes /v1/models prefer the live catalog for it.
 const LIVE_MODEL_RESOLVERS = {
   kiro: async (conn) => {
-    const proxyConfig = await resolveConnectionProxyConfig(conn.providerSpecificData || {});
-    const proxyOptions = {
-      connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
-      connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
-      connectionNoProxy: proxyConfig.connectionNoProxy || "",
-      vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
-      strictProxy: proxyConfig.strictProxy === true,
-    };
+    const proxyOptions = await buildProxyOptionsFromConnection(conn);
     const result = await resolveKiroModels({
       accessToken: conn.accessToken,
       refreshToken: conn.refreshToken,
@@ -33,13 +38,14 @@ const LIVE_MODEL_RESOLVERS = {
     return result?.models?.length ? { models: result.models } : null;
   },
   qoder: async (conn) => {
+    const proxyOptions = await buildProxyOptionsFromConnection(conn);
     const result = await resolveQoderModels({
       accessToken: conn.accessToken,
       refreshToken: conn.refreshToken,
       email: conn.email,
       displayName: conn.displayName,
       providerSpecificData: conn.providerSpecificData || {}
-    });
+    }, { log: console, proxyOptions });
     if (!result?.models?.length) return null;
     return {
       models: result.models.map((m) => ({ id: m.id, name: m.name })),
@@ -83,7 +89,7 @@ function inferKindFromUnknownModelId(modelId) {
   return LLM_KIND;
 }
 
-async function fetchCompatibleModelIds(connection) {
+async function fetchCompatibleModelIds(connection, proxyOptions = null) {
   if (!connection?.apiKey) return [];
 
   const baseUrl = typeof connection?.providerSpecificData?.baseUrl === "string"
@@ -115,12 +121,12 @@ async function fetchCompatibleModelIds(connection) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(url, {
+    const response = await proxyAwareFetch(url, {
       method: "GET",
       headers,
       cache: "no-store",
       signal: controller.signal,
-    });
+    }, proxyOptions);
     clearTimeout(timeoutId);
 
     if (!response.ok) return [];
@@ -290,7 +296,8 @@ export async function buildModelsList(kindFilter) {
         : providerModels.map((model) => model.id);
 
       if (isCompatibleProvider && rawModelIds.length === 0 && !UPSTREAM_CONNECTION_RE.test(providerId)) {
-        rawModelIds = await fetchCompatibleModelIds(conn);
+        const proxyOptions = await buildProxyOptionsFromConnection(conn);
+        rawModelIds = await fetchCompatibleModelIds(conn, proxyOptions);
       }
 
       // Config-driven live catalog override (e.g. Kiro returns dynamic

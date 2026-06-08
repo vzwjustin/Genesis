@@ -267,14 +267,11 @@ export class CodexExecutor extends BaseExecutor {
     const imgCount = Array.isArray(args.body?.input) ? args.body.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter(c => c.type === "image_url").length : 0), 0) : 0;
     const inputLen = Array.isArray(args.body?.input) ? args.body.input.length : 0;
     dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount} | sessionId=${this._currentSessionId || "pending"}`);
-    if (!args.passthrough) {
-      if (imgCount > 0) {
-        const t0 = Date.now();
-        await this.prefetchImages(args.body, args.proxyOptions);
-        dbg("CODEX", `prefetchImages done | ${Date.now() - t0}ms`);
-      } else {
-        await this.prefetchImages(args.body, args.proxyOptions);
-      }
+    // Remote image inlining is required even in passthrough — Codex upstream cannot fetch URLs.
+    if (!args.passthrough || imgCount > 0) {
+      const t0 = imgCount > 0 ? Date.now() : null;
+      await this.prefetchImages(args.body, args.proxyOptions);
+      if (t0 != null) dbg("CODEX", `prefetchImages done | ${Date.now() - t0}ms`);
     }
 
     // Retry loop for SSE-level overloaded errors (200 OK body contains event: error)

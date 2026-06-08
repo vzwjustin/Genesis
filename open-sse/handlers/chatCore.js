@@ -281,6 +281,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         );
       }
       console.warn(`[COMPRESSION] Compression failed, continuing with original content: ${compressionError.message}`);
+    } else if (compressionAllowed) {
+      console.error(`[COMPRESSION] Error during compression with no body snapshot: ${compressionError.message}`);
+      trackPendingRequest(model, provider, connectionId, false, true);
+      return createErrorResult(
+        HTTP_STATUS.BAD_REQUEST,
+        "Request compression failed",
+        undefined,
+        { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED }
+      );
     } else {
       console.warn(`[COMPRESSION] Error during compression, continuing: ${compressionError.message}`);
     }
@@ -379,7 +388,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         }
         try {
           const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, passthrough });
-          if (retryResult.response.ok) { providerResponse = retryResult.response; providerUrl = retryResult.url; providerHeaders = retryResult.headers; }
+          providerResponse = retryResult.response;
+          providerUrl = retryResult.url;
+          providerHeaders = retryResult.headers;
+          finalBody = retryResult.transformedBody;
         } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
       } else {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);

@@ -10,7 +10,7 @@ import { buildKiroSocialAuthRefreshUrl, resolveKiroRegion } from "./kiroHeaders.
 // xAI refresh — wraps the class method from src/lib/oauth/services/xai.js so
 // the token-refresh switches below can stay flat (one function per provider).
 let _xaiServiceSingleton = null;
-async function refreshXaiToken(refreshToken, log) {
+async function refreshXaiToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("xai", refreshToken, async () => {
     try {
@@ -18,7 +18,7 @@ async function refreshXaiToken(refreshToken, log) {
         const mod = await import("../../src/lib/oauth/services/xai.js");
         _xaiServiceSingleton = new mod.XaiService();
       }
-      const tokens = await _xaiServiceSingleton.refreshAccessToken(refreshToken);
+      const tokens = await _xaiServiceSingleton.refreshAccessToken(refreshToken, proxyOptions);
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || refreshToken,
@@ -660,7 +660,7 @@ async function _getAccessTokenInternal(provider, credentials, log) {
       );
 
     case "xai":
-      return await refreshXaiToken(credentials.refreshToken, log);
+      return await refreshXaiToken(credentials.refreshToken, log, proxyOptions);
 
     case "vertex":
     case "vertex-partner": {
@@ -711,7 +711,7 @@ export async function refreshTokenByProvider(provider, credentials, log, proxyOp
         resolvedProxy
       );
     case "xai":
-      return refreshXaiToken(credentials.refreshToken, log);
+      return refreshXaiToken(credentials.refreshToken, log, resolvedProxy);
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);

@@ -213,6 +213,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     }
 
+    if (provider === "antigravity" && !refreshedCredentials.projectId) {
+      log.warn("AUTH", `Antigravity missing projectId for ${credentials.connectionName}, trying next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Antigravity requires projectId (Cloud Code Assist fetch failed)";
+      lastStatus = 400;
+      continue;
+    }
+
     // Use shared chatCore
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;

@@ -139,7 +139,7 @@ describe("CodexExecutor image handling", () => {
     expect(imgBlock.image_url.startsWith("data:image/jpeg;base64,")).toBe(true);
   });
 
-  it("skips prefetchImages in passthrough mode", async () => {
+  it("prefetches images in passthrough mode when remote image_url is present", async () => {
     const executor = new CodexExecutor();
     const prefetchSpy = vi.spyOn(executor, "prefetchImages").mockResolvedValue();
     vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockResolvedValue({
@@ -156,6 +156,26 @@ describe("CodexExecutor image handling", () => {
           content: [{ type: "image_url", image_url: REMOTE_URL }],
         }],
       },
+      stream: true,
+      credentials: { accessToken: "test" },
+      passthrough: true,
+    });
+
+    expect(prefetchSpy).toHaveBeenCalled();
+  });
+
+  it("skips prefetchImages in passthrough mode when no images", async () => {
+    const executor = new CodexExecutor();
+    const prefetchSpy = vi.spyOn(executor, "prefetchImages").mockResolvedValue();
+    vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Map(),
+    });
+
+    await executor.execute({
+      model: "gpt-5.3-codex",
+      body: { input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }] },
       stream: true,
       credentials: { accessToken: "test" },
       passthrough: true,
