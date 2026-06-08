@@ -165,7 +165,8 @@ async function compressMessagesBody(body, model, compress) {
     if (!r) return null;
     body.messages = [...head, ...r.compressed];
     return { before: r.before, after: r.after, saved: r.saved };
-  } catch {
+  } catch (err) {
+    console.warn("[HEADROOM] compressMessagesBody failed:", err?.message || err);
     invalidateProbe();
     return null;
   }
@@ -231,7 +232,8 @@ async function compressInputBody(body, model, compress) {
 
     body.input = [...headItems, ...newTail];
     return { before: r.before, after: r.after, saved: r.saved };
-  } catch {
+  } catch (err) {
+    console.warn("[HEADROOM] compressInputBody failed:", err?.message || err);
     invalidateProbe();
     return null;
   }

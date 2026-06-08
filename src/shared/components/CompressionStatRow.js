@@ -78,10 +78,11 @@ export default function CompressionStatRow({ stats, proxyStats, kind, emptyHint,
   const saved = resolvedBytesSaved(s);
   const hasLocal = !!(s.hits || s.requests || saved || s.bytesBefore);
   const hasProxy = !!(proxyStats && (
+    proxyStats.dashboardUrl != null ||
+    proxyStats.requestsTotal != null ||
     proxyStats.mcpCompressions ||
     proxyStats.tokensSaved ||
     proxyStats.proxyCompressionSaved ||
-    proxyStats.requestsTotal ||
     proxyStats.compressionRequests
   ));
   const isEmpty = !hasLocal && !hasProxy;
