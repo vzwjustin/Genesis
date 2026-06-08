@@ -1,11 +1,16 @@
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT, REFRESH_LEAD_MS } from "../config/appConstants.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../utils/proxyFetch.js";
+
+function resolveProxyOptions(credentials, proxyOptions) {
+  return proxyOptions ?? (credentials ? buildProxyOptionsFromCredentials(credentials) : null);
+}
+import { buildKiroSocialAuthRefreshUrl, resolveKiroRegion } from "./kiroHeaders.js";
 
 // xAI refresh — wraps the class method from src/lib/oauth/services/xai.js so
 // the token-refresh switches below can stay flat (one function per provider).
 let _xaiServiceSingleton = null;
-async function refreshXaiToken(refreshToken, log) {
+async function refreshXaiToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("xai", refreshToken, async () => {
     try {
@@ -13,7 +18,7 @@ async function refreshXaiToken(refreshToken, log) {
         const mod = await import("../../src/lib/oauth/services/xai.js");
         _xaiServiceSingleton = new mod.XaiService();
       }
-      const tokens = await _xaiServiceSingleton.refreshAccessToken(refreshToken);
+      const tokens = await _xaiServiceSingleton.refreshAccessToken(refreshToken, proxyOptions);
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || refreshToken,
@@ -95,7 +100,7 @@ export function getRefreshLeadMs(provider) {
 /**
  * Refresh OAuth access token using refresh token
  */
-export async function refreshAccessToken(provider, refreshToken, credentials, log) {
+export async function refreshAccessToken(provider, refreshToken, credentials, log, proxyOptions = null) {
   const config = PROVIDERS[provider];
 
   if (!config || !config.refreshUrl) {
@@ -108,9 +113,11 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
     return null;
   }
 
+  const resolvedProxy = resolveProxyOptions(credentials, proxyOptions);
+
   return dedupRefresh(provider, refreshToken, async () => {
   try {
-    const response = await fetch(config.refreshUrl, {
+    const response = await proxyAwareFetch(config.refreshUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -122,7 +129,7 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
         client_id: config.clientId,
         client_secret: config.clientSecret,
       }),
-    });
+    }, resolvedProxy);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -158,11 +165,11 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
 /**
  * Specialized refresh for Claude OAuth tokens
  */
-export async function refreshClaudeOAuthToken(refreshToken, log) {
+export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("claude", refreshToken, async () => {
   try {
-    const response = await fetch(OAUTH_ENDPOINTS.anthropic.token, {
+    const response = await proxyAwareFetch(OAUTH_ENDPOINTS.anthropic.token, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -173,7 +180,7 @@ export async function refreshClaudeOAuthToken(refreshToken, log) {
         refresh_token: refreshToken,
         client_id: PROVIDERS.claude.clientId,
       }),
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -194,11 +201,11 @@ export async function refreshClaudeOAuthToken(refreshToken, log) {
 /**
  * Specialized refresh for Google providers (Gemini, Antigravity)
  */
-export async function refreshGoogleToken(refreshToken, clientId, clientSecret, log) {
+export async function refreshGoogleToken(refreshToken, clientId, clientSecret, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh(`google:${clientId}`, refreshToken, async () => {
   try {
-    const response = await fetch(OAUTH_ENDPOINTS.google.token, {
+    const response = await proxyAwareFetch(OAUTH_ENDPOINTS.google.token, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -210,7 +217,7 @@ export async function refreshGoogleToken(refreshToken, clientId, clientSecret, l
         client_id: clientId,
         client_secret: clientSecret,
       }),
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -231,13 +238,13 @@ export async function refreshGoogleToken(refreshToken, clientId, clientSecret, l
 /**
  * Specialized refresh for Qwen OAuth tokens
  */
-export async function refreshQwenToken(refreshToken, log) {
+export async function refreshQwenToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("qwen", refreshToken, async () => {
   const endpoint = OAUTH_ENDPOINTS.qwen.token;
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -248,7 +255,7 @@ export async function refreshQwenToken(refreshToken, log) {
         refresh_token: refreshToken,
         client_id: PROVIDERS.qwen.clientId,
       }),
-    });
+    }, proxyOptions);
 
     if (response.status === 200) {
       const tokens = await response.json();
@@ -291,11 +298,11 @@ export async function refreshQwenToken(refreshToken, log) {
  * Returns { error: 'unrecoverable_refresh_error' } when token already consumed/invalid,
  * so callers stop retrying and request re-authentication.
  */
-export async function refreshCodexToken(refreshToken, log) {
+export async function refreshCodexToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("codex", refreshToken, async () => {
   try {
-  const response = await fetch(OAUTH_ENDPOINTS.openai.token, {
+  const response = await proxyAwareFetch(OAUTH_ENDPOINTS.openai.token, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -307,7 +314,7 @@ export async function refreshCodexToken(refreshToken, log) {
       client_id: PROVIDERS.codex.clientId,
       scope: "openid profile email offline_access",
     }),
-  });
+  }, proxyOptions);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -416,8 +423,11 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
     };
   }
 
-  // Social Auth (Google/GitHub) - use Kiro's refresh endpoint
-  const response = await proxyAwareFetch(PROVIDERS.kiro.tokenUrl, {
+  // Social Auth (Google/GitHub) - use regional Kiro refresh endpoint
+  const socialRefreshUrl = buildKiroSocialAuthRefreshUrl(
+    resolveKiroRegion({ providerSpecificData })
+  );
+  const response = await proxyAwareFetch(socialRefreshUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -456,12 +466,12 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
 /**
  * Specialized refresh for iFlow OAuth tokens
  */
-export async function refreshIflowToken(refreshToken, log) {
+export async function refreshIflowToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("iflow", refreshToken, async () => {
   const basicAuth = btoa(`${PROVIDERS.iflow.clientId}:${PROVIDERS.iflow.clientSecret}`);
 
-  const response = await fetch(OAUTH_ENDPOINTS.iflow.token, {
+  const response = await proxyAwareFetch(OAUTH_ENDPOINTS.iflow.token, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -474,7 +484,7 @@ export async function refreshIflowToken(refreshToken, log) {
       client_id: PROVIDERS.iflow.clientId,
       client_secret: PROVIDERS.iflow.clientSecret,
     }),
-  });
+  }, proxyOptions);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -504,7 +514,7 @@ export async function refreshIflowToken(refreshToken, log) {
 /**
  * Specialized refresh for GitHub Copilot OAuth tokens
  */
-export async function refreshGitHubToken(refreshToken, log) {
+export async function refreshGitHubToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("github", refreshToken, async () => {
   const params = {
@@ -516,14 +526,14 @@ export async function refreshGitHubToken(refreshToken, log) {
     params.client_secret = PROVIDERS.github.clientSecret;
   }
 
-  const response = await fetch(OAUTH_ENDPOINTS.github.token, {
+  const response = await proxyAwareFetch(OAUTH_ENDPOINTS.github.token, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
     body: new URLSearchParams(params),
-  });
+  }, proxyOptions);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -553,11 +563,11 @@ export async function refreshGitHubToken(refreshToken, log) {
 /**
  * Refresh GitHub Copilot token using GitHub access token
  */
-export async function refreshCopilotToken(githubAccessToken, log) {
+export async function refreshCopilotToken(githubAccessToken, log, proxyOptions = null) {
   if (!githubAccessToken) return null;
   return dedupRefresh("copilot", githubAccessToken, async () => {
   try {
-    const response = await fetch("https://api.github.com/copilot_internal/v2/token", {
+    const response = await proxyAwareFetch("https://api.github.com/copilot_internal/v2/token", {
       headers: {
         "Authorization": `token ${githubAccessToken}`,
         "User-Agent": GITHUB_COPILOT.USER_AGENT,
@@ -566,7 +576,7 @@ export async function refreshCopilotToken(githubAccessToken, log) {
         "Accept": "application/json",
         "x-github-api-version": GITHUB_COPILOT.API_VERSION
       }
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -612,6 +622,8 @@ export async function getAccessToken(provider, credentials, log) {
 }
 
 async function _getAccessTokenInternal(provider, credentials, log) {
+  const proxyOptions = buildProxyOptionsFromCredentials(credentials);
+
   switch (provider) {
     case "gemini":
     case "gemini-cli":
@@ -620,39 +632,41 @@ async function _getAccessTokenInternal(provider, credentials, log) {
         credentials.refreshToken,
         PROVIDERS[provider].clientId,
         PROVIDERS[provider].clientSecret,
-        log
+        log,
+        proxyOptions
       );
 
     case "claude":
-      return await refreshClaudeOAuthToken(credentials.refreshToken, log);
+      return await refreshClaudeOAuthToken(credentials.refreshToken, log, proxyOptions);
 
     case "codex":
-      return await refreshCodexToken(credentials.refreshToken, log);
+      return await refreshCodexToken(credentials.refreshToken, log, proxyOptions);
 
     case "qwen":
-      return await refreshQwenToken(credentials.refreshToken, log);
+      return await refreshQwenToken(credentials.refreshToken, log, proxyOptions);
 
     case "iflow":
-      return await refreshIflowToken(credentials.refreshToken, log);
+      return await refreshIflowToken(credentials.refreshToken, log, proxyOptions);
 
     case "github":
-      return await refreshGitHubToken(credentials.refreshToken, log);
+      return await refreshGitHubToken(credentials.refreshToken, log, proxyOptions);
 
     case "kiro":
       return await refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
-        log
+        log,
+        proxyOptions
       );
 
     case "xai":
-      return await refreshXaiToken(credentials.refreshToken, log);
+      return await refreshXaiToken(credentials.refreshToken, log, proxyOptions);
 
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);
       if (!saJson) return null;
-      return await refreshVertexToken(saJson, log);
+      return await refreshVertexToken(saJson, log, proxyOptions);
     }
 
     default:
@@ -664,8 +678,10 @@ async function _getAccessTokenInternal(provider, credentials, log) {
 /**
  * Refresh token by provider type (helper for handlers)
  */
-export async function refreshTokenByProvider(provider, credentials, log) {
+export async function refreshTokenByProvider(provider, credentials, log, proxyOptions = null) {
   if (!credentials.refreshToken) return null;
+
+  const resolvedProxy = resolveProxyOptions(credentials, proxyOptions);
 
   switch (provider) {
     case "gemini-cli":
@@ -674,34 +690,36 @@ export async function refreshTokenByProvider(provider, credentials, log) {
         credentials.refreshToken,
         PROVIDERS[provider].clientId,
         PROVIDERS[provider].clientSecret,
-        log
+        log,
+        resolvedProxy
       );
     case "claude":
-      return refreshClaudeOAuthToken(credentials.refreshToken, log);
+      return refreshClaudeOAuthToken(credentials.refreshToken, log, resolvedProxy);
     case "codex":
-      return refreshCodexToken(credentials.refreshToken, log);
+      return refreshCodexToken(credentials.refreshToken, log, resolvedProxy);
     case "qwen":
-      return refreshQwenToken(credentials.refreshToken, log);
+      return refreshQwenToken(credentials.refreshToken, log, resolvedProxy);
     case "iflow":
-      return refreshIflowToken(credentials.refreshToken, log);
+      return refreshIflowToken(credentials.refreshToken, log, resolvedProxy);
     case "github":
-      return refreshGitHubToken(credentials.refreshToken, log);
+      return refreshGitHubToken(credentials.refreshToken, log, resolvedProxy);
     case "kiro":
       return refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
-        log
+        log,
+        resolvedProxy
       );
     case "xai":
-      return refreshXaiToken(credentials.refreshToken, log);
+      return refreshXaiToken(credentials.refreshToken, log, resolvedProxy);
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);
       if (!saJson) return null;
-      return refreshVertexToken(saJson, log);
+      return refreshVertexToken(saJson, log, resolvedProxy);
     }
     default:
-      return refreshAccessToken(provider, credentials.refreshToken, credentials, log);
+      return refreshAccessToken(provider, credentials.refreshToken, credentials, log, resolvedProxy);
   }
 }
 
@@ -804,7 +822,7 @@ const vertexTokenCache = new Map();
  * using Service Account JSON + jose (RS256 JWT assertion flow).
  * Token is cached until 5 minutes before expiry.
  */
-export async function refreshVertexToken(saJson, log) {
+export async function refreshVertexToken(saJson, log, proxyOptions = null) {
   const cacheKey = saJson.client_email;
   const cached = vertexTokenCache.get(cacheKey);
 
@@ -827,14 +845,14 @@ export async function refreshVertexToken(saJson, log) {
       .setExpirationTime(now + 3600)
       .sign(privateKey);
 
-    const res = await fetch("https://oauth2.googleapis.com/token", {
+    const res = await proxyAwareFetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
         assertion: jwt,
       }),
-    });
+    }, proxyOptions);
 
     if (!res.ok) {
       const err = await res.text();

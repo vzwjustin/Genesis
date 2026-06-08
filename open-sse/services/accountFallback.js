@@ -93,8 +93,8 @@ export function getEarliestRateLimitedUntil(accounts) {
 export function formatRetryAfter(rateLimitedUntil) {
   if (!rateLimitedUntil) return "";
   const diffMs = new Date(rateLimitedUntil).getTime() - Date.now();
-  if (diffMs <= 0) return "reset after 0s";
-  const totalSec = Math.ceil(diffMs / 1000);
+  // Match unavailableResponse: never advertise "0s" when header enforces ≥1s minimum
+  const totalSec = Math.max(1, Math.ceil(diffMs / 1000));
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;

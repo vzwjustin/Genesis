@@ -3,7 +3,7 @@
  * Requirements 5.1–5.6
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { shouldComboAdvance, handleComboChat, resetComboRotation, isZeroConnectionsResponse } from "../../open-sse/services/combo.js";
+import { shouldComboAdvance, handleComboChat, resetComboRotation, isZeroConnectionsResponse, isModelResolutionFailureResponse } from "../../open-sse/services/combo.js";
 
 describe("shouldComboAdvance (Requirement 5.1, 5.3–5.5)", () => {
   it("does not advance on 2xx", () => {
@@ -200,6 +200,64 @@ describe("handleComboChat sequencing", () => {
     expect(handleSingleModel).toHaveBeenCalledTimes(2);
     const body = await response.json();
     expect(body.error.message).toContain("No active credentials");
+  });
+});
+
+describe("isModelResolutionFailureResponse", () => {
+  it("returns true for 400 with Failed to resolve model message", async () => {
+    const response = new Response(JSON.stringify({
+      error: { message: 'Failed to resolve model: "bad-alias". Not a registered alias, combo name, or valid provider/model format. Check your model configuration.' },
+    }), { status: 400, headers: { "Content-Type": "application/json" } });
+    expect(await isModelResolutionFailureResponse(response)).toBe(true);
+  });
+
+  it("returns true for 400 with Invalid model format (image/TTS handlers)", async () => {
+    const response = new Response(JSON.stringify({ error: { message: "Invalid model format" } }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(await isModelResolutionFailureResponse(response)).toBe(true);
+  });
+
+  it("returns false for other 400 errors", async () => {
+    const response = new Response(JSON.stringify({ error: { message: "Invalid request body" } }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(await isModelResolutionFailureResponse(response)).toBe(false);
+  });
+});
+
+describe("handleComboChat — model resolution failure advances", () => {
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+  beforeEach(() => {
+    resetComboRotation();
+    vi.clearAllMocks();
+  });
+
+  it("advances past unresolvable combo member to next model", async () => {
+    const resolutionError = new Response(JSON.stringify({
+      error: { message: 'Failed to resolve model: "bad-alias". Not a registered alias, combo name, or valid provider/model format. Check your model configuration.' },
+    }), { status: 400, headers: { "Content-Type": "application/json" } });
+    const success = new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const handleSingleModel = vi.fn()
+      .mockResolvedValueOnce(resolutionError)
+      .mockResolvedValueOnce(success);
+
+    const response = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: ["bad-alias", "claude/sonnet"],
+      handleSingleModel,
+      log,
+    });
+
+    expect(handleSingleModel).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(200);
   });
 });
 

@@ -3,6 +3,7 @@ import { startLocalServer } from "../utils/server.js";
 import { generatePKCE } from "../utils/pkce.js";
 import { spinner as createSpinner } from "../utils/ui.js";
 import { OAUTH_TIMEOUT } from "../constants/oauth.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * Generic OAuth Authorization Code Flow with PKCE
@@ -102,7 +103,7 @@ export class OAuthService {
             code_verifier: codeVerifier,
           });
 
-    const response = await fetch(this.config.tokenUrl, {
+    const response = await oauthFetch(this.config.tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": contentType,

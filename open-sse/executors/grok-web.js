@@ -1,5 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const GROK_CHAT_API = PROVIDERS["grok-web"].baseUrl;
 const GROK_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
@@ -225,7 +226,7 @@ export class GrokWebExecutor extends BaseExecutor {
     super("grok-web", PROVIDERS["grok-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
@@ -295,9 +296,9 @@ export class GrokWebExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await fetch(GROK_CHAT_API, {
+      response = await proxyAwareFetch(GROK_CHAT_API, {
         method: "POST", headers, body: JSON.stringify(grokPayload), signal,
-      });
+      }, proxyOptions);
     } catch (err) {
       log?.error?.("GROK-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({

@@ -213,8 +213,16 @@ function compressFunctionResponse(fr, stats, filterConfig) {
   if (compressed !== text) writeFunctionResponseText(fr, compressed);
 }
 
+function restoreGeminiContents(contents, snapshot) {
+  if (!Array.isArray(contents) || !Array.isArray(snapshot)) return;
+  for (let i = 0; i < snapshot.length; i++) {
+    contents[i] = snapshot[i];
+  }
+}
+
 function compressGeminiContents(contents, filterConfig) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
+  const snapshot = contents.map((c) => JSON.parse(JSON.stringify(c)));
   try {
     for (const content of contents) {
       if (!Array.isArray(content?.parts)) continue;
@@ -226,6 +234,7 @@ function compressGeminiContents(contents, filterConfig) {
     }
   } catch (e) {
     console.warn("[RTK] compressGeminiContents error:", e.message);
+    restoreGeminiContents(contents, snapshot);
     return null;
   }
   return stats;
@@ -237,8 +246,11 @@ function compressGeminiContents(contents, filterConfig) {
 // currentMessage (which has not yet been cached) is safe to compress.
 function compressKiroFormat(body, enabled, filterConfig) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
+  const state = body.conversationState;
+  const currentMessageSnapshot = state?.currentMessage
+    ? JSON.parse(JSON.stringify(state.currentMessage))
+    : null;
   try {
-    const state = body.conversationState;
     // Skip history entirely — it is cache-protected upstream.
     const messagesToCompress = state?.currentMessage ? [state.currentMessage] : [];
 
@@ -259,6 +271,9 @@ function compressKiroFormat(body, enabled, filterConfig) {
     }
   } catch (e) {
     console.warn("[RTK] compressKiroFormat error:", e.message);
+    if (currentMessageSnapshot && state) {
+      state.currentMessage = currentMessageSnapshot;
+    }
     return null;
   }
   return stats;

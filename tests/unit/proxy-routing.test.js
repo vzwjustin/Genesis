@@ -47,6 +47,15 @@ describe("proxy URL precedence (Requirement 10.1)", () => {
   it("normalizes host:port proxy URLs", () => {
     expect(normalizeProxyUrl("127.0.0.1:7890")).toBe("http://127.0.0.1:7890");
   });
+
+  it("per-connection proxy takes precedence over vercel relay URL in options", () => {
+    const proxyOptions = {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://conn-proxy:3128",
+      vercelRelayUrl: "https://relay.example.com/api/relay",
+    };
+    expect(resolveConnectionProxyUrl(TARGET, proxyOptions)).toBe("http://conn-proxy:3128");
+  });
 });
 
 describe("NO_PROXY bypass (Requirement 10.4)", () => {

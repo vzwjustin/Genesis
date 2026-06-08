@@ -4,6 +4,7 @@ import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { urlToBase64 } from "./imageProviders/_base.js";
+import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../utils/proxyFetch.js";
 
 function serializeRequestBody(requestBody) {
   if (typeof FormData !== "undefined" && requestBody instanceof FormData) return requestBody;
@@ -64,13 +65,14 @@ export async function handleImageGenerationCore({
 
   log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..."`);
 
+  const proxyOptions = buildProxyOptionsFromCredentials(credentials);
   let providerResponse;
   try {
-    providerResponse = await fetch(url, {
+    providerResponse = await proxyAwareFetch(url, {
       method: "POST",
       headers,
       body: serializeRequestBody(requestBody),
-    });
+    }, proxyOptions);
   } catch (error) {
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
     log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);
@@ -86,7 +88,7 @@ export async function handleImageGenerationCore({
       providerResponse.status === HTTP_STATUS.FORBIDDEN)
   ) {
     const newCredentials = await refreshWithRetry(
-      () => executor.refreshCredentials(credentials, log, null),
+      () => executor.refreshCredentials(credentials, log, proxyOptions),
       3,
       log
     );
@@ -100,13 +102,15 @@ export async function handleImageGenerationCore({
         const retryBody = await adapter.buildBody(model, body);
         const retryHeaders = adapter.buildHeaders(credentials, retryBody, model, body);
         const retryUrl = adapter.buildUrl(model, credentials);
-        providerResponse = await fetch(retryUrl, {
+        providerResponse = await proxyAwareFetch(retryUrl, {
           method: "POST",
           headers: retryHeaders,
           body: serializeRequestBody(retryBody),
-        });
-      } catch {
+        }, proxyOptions);
+      } catch (retryError) {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
+        const errMsg = formatProviderError(retryError, provider, model, HTTP_STATUS.BAD_GATEWAY);
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
       }
     } else {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
@@ -133,6 +137,7 @@ export async function handleImageGenerationCore({
         requestBody,
         model,
         body,
+        proxyOptions,
       });
       // Codex streaming case: returns an SSE Response directly
       if (parsed?.sseResponse) {
@@ -158,7 +163,7 @@ export async function handleImageGenerationCore({
     const first = finalBody.data?.[0];
     let b64 = first?.b64_json;
     if (!b64 && first?.url) {
-      try { b64 = await urlToBase64(first.url); } catch {}
+      try { b64 = await urlToBase64(first.url, proxyOptions); } catch {}
     }
     if (b64) {
       const buf = Buffer.from(b64, "base64");
@@ -175,6 +180,7 @@ export async function handleImageGenerationCore({
         }),
       };
     }
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Binary output requested but no image data in response");
   }
 
   return {

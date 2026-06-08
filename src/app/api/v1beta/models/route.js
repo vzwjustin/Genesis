@@ -1,3 +1,4 @@
+import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 
 /**
@@ -17,7 +18,10 @@ export async function OPTIONS() {
  * GET /v1beta/models - Gemini compatible models list
  * Returns models in Gemini API format
  */
-export async function GET() {
+export async function GET(request) {
+  const routeAuth = await requireRouteAuth(request);
+  if (!routeAuth.ok) return routeAuth.response;
+
   try {
     // Collect all models from all providers
     const models = [];

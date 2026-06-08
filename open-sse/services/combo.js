@@ -4,6 +4,7 @@
 
 import { formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
+import { MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
 
 /**
  * Track rotation state per combo (for round-robin strategy)
@@ -116,6 +117,22 @@ export function getComboModelsFromData(modelStr, combosData) {
 }
 
 /**
+ * Return a descriptive error when a combo name exists in data but has no valid targets.
+ * @param {string} modelStr
+ * @param {Array|Object} combosData
+ * @returns {string|null}
+ */
+export function getBrokenComboErrorFromData(modelStr, combosData) {
+  if (modelStr.includes("/")) return null;
+  const combos = Array.isArray(combosData) ? combosData : (combosData?.combos || []);
+  const combo = combos.find((c) => c.name === modelStr);
+  if (!combo) return null;
+  const models = getComboModelsFromData(modelStr, combosData);
+  if (models) return null;
+  return `Combo "${modelStr}" has no valid model targets configured.`;
+}
+
+/**
  * Determine whether a combo should advance to the next model based on status code.
  *
  * Combo Sequencing Rules (Requirements 5.1–5.5):
@@ -153,6 +170,47 @@ export async function isZeroConnectionsResponse(response) {
     const body = await response.clone().json();
     const message = body?.error?.message || "";
     return message.startsWith("No active credentials for provider:");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detect proxy-side model resolution failures inside a combo member.
+ * These are not upstream client errors — the combo should advance to the next model.
+ */
+export async function isModelResolutionFailureResponse(response) {
+  if (response.status !== 400) return false;
+  try {
+    const body = await response.clone().json();
+    const message = body?.error?.message || "";
+    return (
+      message.startsWith("Failed to resolve model:") ||
+      message === "Invalid model format" ||
+      message.includes("has no valid model targets configured")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detect proxy-side provider account exhaustion (all connections failed / unavailable).
+ * Distinguished from upstream semantic 401/403 by Retry-After or known proxy messages.
+ * Combo should advance — this is provider-level unavailability, not a client auth error.
+ */
+export async function isProviderAccountsExhaustedResponse(response) {
+  if (response.status !== 401 && response.status !== 403) return false;
+  if (response.headers.get("Retry-After")) return true;
+  try {
+    const body = await response.clone().json();
+    const message = body?.error?.message || "";
+    return (
+      message.includes("All accounts unavailable") ||
+      message.includes("No more accounts available") ||
+      message.includes("Token refresh failed") ||
+      message.startsWith("No active credentials for provider:")
+    );
   } catch {
     return false;
   }
@@ -212,13 +270,21 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // Check for zero-connections 404 — this is provider unavailability, not a client error.
         // The combo should advance past providers with no configured connections.
         const zeroConns = await isZeroConnectionsResponse(result);
-        if (!zeroConns) {
+        const resolutionFailed = await isModelResolutionFailureResponse(result);
+        const accountsExhausted = await isProviderAccountsExhaustedResponse(result);
+        if (!zeroConns && !resolutionFailed && !accountsExhausted) {
           // 4xx (non-429): Return response directly to client, do NOT advance (Req 5.3)
           log.info("COMBO", `Model ${modelStr} returned ${result.status} (client error), returning to client without advancing`);
           return result;
         }
-        // Zero connections detected — treat like unavailability, advance to next model
-        log.info("COMBO", `Model ${modelStr} has zero connections, advancing to next model`);
+        if (resolutionFailed) {
+          log.info("COMBO", `Model ${modelStr} failed to resolve, advancing to next model`);
+        } else if (accountsExhausted) {
+          log.info("COMBO", `Model ${modelStr} provider accounts exhausted, advancing to next model`);
+        } else {
+          // Zero connections detected — treat like unavailability, advance to next model
+          log.info("COMBO", `Model ${modelStr} has zero connections, advancing to next model`);
+        }
       }
 
       // 429 or 5xx: Advance to next model in combo.
@@ -282,9 +348,8 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
     return unavailableResponse(finalStatus, msg, earliestRetryAfter, retryHuman);
   }
 
-  log.warn("COMBO", `All models exhausted | ${msg}`);
-  return new Response(
-    JSON.stringify({ error: { message: msg } }),
-    { status: finalStatus, headers: { "Content-Type": "application/json" } }
-  );
+  const minRetryAt = new Date(Date.now() + MIN_RETRY_DELAY_MS).toISOString();
+  const retryHuman = formatRetryAfter(minRetryAt);
+  log.warn("COMBO", `All models exhausted | ${msg} (${retryHuman})`);
+  return unavailableResponse(finalStatus, msg, minRetryAt, retryHuman);
 }

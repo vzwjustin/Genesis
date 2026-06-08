@@ -6,6 +6,7 @@ import {
   invalidateProjectId,
   removeConnection,
 } from "open-sse/services/projectId.js";
+import { buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
 import {
   TOKEN_EXPIRY_BUFFER_MS as BUFFER_MS,
   refreshAccessToken as _refreshAccessToken,
@@ -121,13 +122,15 @@ function needsProjectId(provider) {
  * @param {string} connectionId
  * @param {string} accessToken
  */
-function _refreshProjectId(provider, connectionId, accessToken) {
+function _refreshProjectId(provider, connectionId, accessToken, credentials = null) {
   if (!needsProjectId(provider) || !connectionId || !accessToken) return;
 
   // Evict the stale cached entry so getProjectIdForConnection does a real fetch
   invalidateProjectId(connectionId);
 
-  getProjectIdForConnection(connectionId, accessToken)
+  const proxyOptions = credentials ? buildProxyOptionsFromCredentials(credentials) : null;
+
+  getProjectIdForConnection(connectionId, accessToken, proxyOptions)
     .then((projectId) => {
       if (!projectId) return;
       updateProviderCredentials(connectionId, { projectId }).catch((err) => {
@@ -266,7 +269,7 @@ export async function checkAndRefreshToken(provider, credentials) {
         };
 
         // Non-blocking: refresh projectId with the new access token
-        _refreshProjectId(provider, creds.connectionId, creds.accessToken);
+        _refreshProjectId(provider, creds.connectionId, creds.accessToken, creds);
       } else {
         // Token refresh failed (returned null) — mark for Account_Fallback
         log.warn("TOKEN_REFRESH", "Token refresh failed — marking connection unusable for fallback", {

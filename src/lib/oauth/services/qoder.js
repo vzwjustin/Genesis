@@ -5,6 +5,7 @@ import {
 } from "../../qoder/constants.js";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
+import { oauthFetchWithTimeout } from "../utils/oauthFetch.js";
 
 /**
  * Qoder OAuth Service
@@ -42,13 +43,7 @@ function base64Url(buf) {
  * abandoned polls accumulate hung sockets.
  */
 async function fetchWithTimeout(url, init = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("timeout"), FETCH_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
+  return oauthFetchWithTimeout(url, init, FETCH_TIMEOUT_MS);
 }
 
 export class QoderService {

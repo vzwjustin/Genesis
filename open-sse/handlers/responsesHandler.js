@@ -57,6 +57,14 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
     try {
       const jsonResponse = await convertResponsesStreamToJson(response.body);
 
+      if (jsonResponse.status !== "completed") {
+        return {
+          success: false,
+          status: 502,
+          error: "Incomplete streaming response"
+        };
+      }
+
       return {
         success: true,
         response: new Response(JSON.stringify(jsonResponse), {

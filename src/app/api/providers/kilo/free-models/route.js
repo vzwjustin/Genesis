@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const KILO_MODELS_URL = "https://api.kilo.ai/api/gateway/models";
 
@@ -16,7 +17,7 @@ export async function GET() {
   }
 
   try {
-    const res = await fetch(KILO_MODELS_URL, {
+    const res = await proxyAwareFetch(KILO_MODELS_URL, {
       headers: { "Accept": "application/json" },
       signal: AbortSignal.timeout(10000),
     });

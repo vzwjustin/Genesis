@@ -8,6 +8,7 @@ import openrouter from "./openrouter.js";
 import gemini, { fetchGeminiVoices } from "./gemini.js";
 import { FORMAT_HANDLERS } from "./genericFormats.js";
 import { parseModelVoice } from "./_base.js";
+import { buildProxyOptionsFromCredentials } from "../../utils/proxyFetch.js";
 
 // Special providers with custom synthesize() logic
 const SPECIAL_ADAPTERS = {
@@ -35,7 +36,8 @@ export async function synthesizeViaConfig(provider, text, model, credentials) {
   if (cfg.authType !== "none" && !apiKey) throw new Error(`${provider} API key required`);
   const defaultModel = cfg.models?.[0]?.id || "";
   const { modelId, voiceId } = parseModelVoice(model, defaultModel, "", cfg.models || []);
-  return handler({ baseUrl: cfg.baseUrl, apiKey, text, modelId, voiceId });
+  const proxyOptions = buildProxyOptionsFromCredentials(credentials);
+  return handler({ baseUrl: cfg.baseUrl, apiKey, text, modelId, voiceId, proxyOptions });
 }
 
 // Voice fetchers (used by /api/media-providers/tts/voices route)

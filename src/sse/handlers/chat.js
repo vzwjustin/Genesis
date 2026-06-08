@@ -7,8 +7,8 @@ import {
   authenticateRequest,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
-import { getSettings, getProviderConnections } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getSettings } from "@/lib/localDb";
+import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse, validationErrorResponse, VALIDATION_ERROR_TYPES } from "open-sse/utils/error.js";
 import { handleComboChat } from "open-sse/services/combo.js";
@@ -18,7 +18,12 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
-import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
+import {
+  resolveProviderRetryLimits,
+  noActiveCredentialsResponse,
+  exhaustedAccountsResponse,
+} from "../utils/providerCredentialRetry.js";
 
 /**
  * Handle chat completion request
@@ -70,6 +75,12 @@ export async function handleChat(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   // Check if model is a combo (has multiple models with fallback)
+  const brokenComboError = await getBrokenComboError(modelStr);
+  if (brokenComboError) {
+    log.warn("CHAT", `Combo resolution failed: ${brokenComboError}`);
+    return validationErrorResponse(VALIDATION_ERROR_TYPES.VALIDATION_FAILED, brokenComboError);
+  }
+
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global
@@ -102,6 +113,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // If provider is null, this might be a combo name - check and handle
   if (!modelInfo.provider) {
+    const brokenComboError = await getBrokenComboError(modelStr);
+    if (brokenComboError) {
+      log.warn("CHAT", `Combo resolution failed: ${brokenComboError}`);
+      return validationErrorResponse(VALIDATION_ERROR_TYPES.VALIDATION_FAILED, brokenComboError);
+    }
+
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
       const chatSettings = await getSettings();
@@ -145,18 +162,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastStatus = null;
   let had5xx = false;
 
-  // Requirement 4.7: Retry at most N times, where N = number of configured connections for the provider.
-  // Get total configured connections to enforce the retry limit.
-  const providerId = resolveProviderId(provider);
-  const isNoAuthProvider = !!FREE_PROVIDERS[providerId]?.noAuth;
-  const allConnections = await getProviderConnections({ provider: providerId, isActive: true });
-  const maxRetries = isNoAuthProvider ? 1 : allConnections.length;
+  const { isNoAuthProvider, maxRetries } = await resolveProviderRetryLimits(provider);
 
-  // Requirement 4.8: zero configured connections → immediate HTTP 404, no dispatch, no retries
-  // noAuth free providers inject a virtual credential and have no stored connections.
   if (!isNoAuthProvider && maxRetries === 0) {
     log.warn("AUTH", `No active credentials for provider: ${provider}`);
-    return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+    return noActiveCredentialsResponse(provider);
   }
 
   let retryCount = 0;
@@ -165,8 +175,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Enforce max retry limit (Requirement 4.7)
     if (retryCount >= maxRetries) {
       log.warn("CHAT", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
-      const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
-      return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
     retryCount++;
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
@@ -181,12 +190,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       if (excludeConnectionIds.size === 0) {
         log.warn("AUTH", `No active credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+        return noActiveCredentialsResponse(provider);
       }
       log.warn("CHAT", "No more accounts available", { provider });
-      // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503
-      const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
-      return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
 
     // Log account selection
@@ -206,12 +213,24 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
     if ((provider === "antigravity" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
-      const pid = await getProjectIdForConnection(credentials.connectionId, refreshedCredentials.accessToken);
+      const pid = await getProjectIdForConnection(
+        credentials.connectionId,
+        refreshedCredentials.accessToken,
+        buildProxyOptionsFromCredentials(refreshedCredentials)
+      );
       if (pid) {
         refreshedCredentials.projectId = pid;
         // Persist to DB in background so subsequent requests have it immediately
         updateProviderCredentials(credentials.connectionId, { projectId: pid }).catch(() => { });
       }
+    }
+
+    if (provider === "antigravity" && !refreshedCredentials.projectId) {
+      log.warn("AUTH", `Antigravity missing projectId for ${credentials.connectionName}, trying next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Antigravity requires projectId (Cloud Code Assist fetch failed)";
+      lastStatus = 400;
+      continue;
     }
 
     // Use shared chatCore

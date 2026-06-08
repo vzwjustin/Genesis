@@ -30,6 +30,134 @@ function pickAssistantMessageForChatCompletion(output) {
   return { msgItem: last, textContent: textFromResponsesMessageItem(last) };
 }
 
+function sseTextToStream(rawSSE) {
+  const bytes = new TextEncoder().encode(String(rawSSE || ""));
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+}
+
+/**
+ * Assemble Anthropic Messages API SSE into a single message JSON object.
+ */
+export function parseSSEToClaudeResponse(rawSSE) {
+  const events = [];
+  for (const line of String(rawSSE || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      events.push(JSON.parse(payload));
+    } catch {
+      return null;
+    }
+  }
+
+  if (events.length === 0) return null;
+
+  let message = null;
+  const openBlocks = new Map();
+  let stopReason = null;
+  let stopSequence = null;
+  let usage = null;
+  let sawMessageStop = false;
+  let sawContent = false;
+  let invalidToolJson = false;
+
+  const finalizeBlock = (index) => {
+    const block = openBlocks.get(index);
+    if (!block) return;
+    if (block._partialJson) {
+      try {
+        block.input = JSON.parse(block._partialJson);
+      } catch {
+        invalidToolJson = true;
+        return;
+      }
+      delete block._partialJson;
+    }
+    if (!message) message = { type: "message", role: "assistant", content: [] };
+    message.content.push(block);
+    openBlocks.delete(index);
+    sawContent = true;
+  };
+
+  for (const ev of events) {
+    switch (ev.type) {
+      case "message_start":
+        message = { ...ev.message, content: [] };
+        break;
+      case "content_block_start": {
+        const block = { ...ev.content_block };
+        if (block.type === "text") block.text = "";
+        if (block.type === "thinking") block.thinking = "";
+        if (block.type === "tool_use") block.input = block.input || {};
+        openBlocks.set(ev.index, block);
+        break;
+      }
+      case "content_block_delta": {
+        const block = openBlocks.get(ev.index);
+        if (!block || !ev.delta) break;
+        if (ev.delta.type === "text_delta") {
+          block.text = (block.text || "") + (ev.delta.text || "");
+        } else if (ev.delta.type === "thinking_delta") {
+          block.thinking = (block.thinking || "") + (ev.delta.thinking || "");
+        } else if (ev.delta.type === "input_json_delta") {
+          block._partialJson = (block._partialJson || "") + (ev.delta.partial_json || "");
+        }
+        break;
+      }
+      case "content_block_stop":
+        finalizeBlock(ev.index);
+        break;
+      case "message_delta":
+        if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+        if (ev.delta?.stop_sequence !== undefined) stopSequence = ev.delta.stop_sequence;
+        if (ev.usage) usage = ev.usage;
+        break;
+      case "message_stop":
+        sawMessageStop = true;
+        break;
+      case "error":
+        return null;
+      default:
+        break;
+    }
+  }
+
+  for (const index of [...openBlocks.keys()]) {
+    finalizeBlock(index);
+  }
+
+  if (invalidToolJson) return null;
+  if (!message) return null;
+  if (!sawMessageStop && !stopReason) return null;
+
+  if (stopReason) message.stop_reason = stopReason;
+  if (stopSequence !== undefined) message.stop_sequence = stopSequence;
+  if (usage) message.usage = usage;
+  return message;
+}
+
+/**
+ * Assemble SSE into the client's native response format for passthrough mode.
+ */
+export async function parseSSEToNativeResponse(rawSSE, sourceFormat, fallbackModel) {
+  if (sourceFormat === FORMATS.CLAUDE) {
+    return parseSSEToClaudeResponse(rawSSE);
+  }
+  if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+    const jsonResponse = await convertResponsesStreamToJson(sseTextToStream(rawSSE));
+    if (jsonResponse.status !== "completed") return null;
+    return jsonResponse;
+  }
+  return parseSSEToOpenAIResponse(rawSSE, fallbackModel);
+}
+
 /**
  * Parse OpenAI-style SSE text into a single chat completion JSON.
  * Used when provider forces streaming but client wants non-streaming.
@@ -83,10 +211,9 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     }
   }
 
-  // Fail closed: content arrived but the stream never signalled completion
-  // (no finish_reason, no [DONE]) → truncated. Return null so the caller emits
-  // a BAD_GATEWAY error instead of partial JSON with a fabricated "stop".
-  if (!sawTerminal && (contentParts.length > 0 || reasoningParts.length > 0 || toolCallMap.size > 0)) {
+  // Fail closed: stream never signalled completion (no finish_reason, no [DONE]).
+  // Includes role-only chunks that would otherwise fabricate an empty "stop" response.
+  if (!sawTerminal && chunks.length > 0) {
     return null;
   }
 
@@ -153,8 +280,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
-      // Client is Responses API → return as-is
-      if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+      // Passthrough: preserve native Responses API JSON — do not convert to chat.completion.
+      if (passthrough || sourceFormat === FORMATS.OPENAI_RESPONSES) {
         return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
       }
 
@@ -210,7 +337,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
   // Standard Chat Completions SSE path
   try {
     const sseText = await providerResponse.text();
-    const parsed = parseSSEToOpenAIResponse(sseText, model);
+    const parsed = passthrough
+      ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
+      : parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
 
     if (onRequestSuccess) await onRequestSuccess();

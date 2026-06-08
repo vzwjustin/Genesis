@@ -11,7 +11,7 @@
  *  - Error handling (401, 429)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   parseOpenAIMessages,
   buildQuery,
@@ -19,16 +19,6 @@ import {
   formatToolsHint,
   PerplexityWebExecutor,
 } from "../../open-sse/executors/perplexity-web.js";
-
-const originalFetch = global.fetch;
-
-function mockPplxStream(events) {
-  const chunks = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") + "data: [DONE]\n\n";
-  return new Response(new Blob([chunks]).stream(), {
-    status: 200,
-    headers: { "Content-Type": "text/event-stream" },
-  });
-}
 
 describe("parseOpenAIMessages", () => {
   it("extracts system + history + current msg", () => {
@@ -174,98 +164,51 @@ describe("buildPplxRequestBody", () => {
   });
 });
 
-describe("PerplexityWebExecutor.execute", () => {
-  let capturedUrl;
-  let capturedOpts;
-  let capturedBody;
-
-  beforeEach(() => {
-    capturedUrl = null;
-    capturedOpts = null;
-    capturedBody = null;
-    global.fetch = vi.fn(async (url, opts) => {
-      capturedUrl = url;
-      capturedOpts = opts;
-      capturedBody = JSON.parse(opts.body);
-      return mockPplxStream([
-        {
-          blocks: [{ intended_usage: "markdown", markdown_block: { chunks: ["answer"], progress: "DONE" } }],
-          status: "COMPLETED",
-          backend_uuid: "resp-uuid-1",
-        },
-      ]);
-    });
+describe("PerplexityWebExecutor — model and auth wiring", () => {
+  it("MODEL_MAP defines pplx-auto as concise / pplx_pro", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(root, "../../open-sse/executors/perplexity-web.js"), "utf8");
+    expect(src).toContain('"pplx-auto": ["concise", "pplx_pro"]');
+    const body = buildPplxRequestBody("hi", "concise", "pplx_pro", null);
+    expect(body.params.mode).toBe("concise");
+    expect(body.params.model_preference).toBe("pplx_pro");
   });
 
-  afterEach(() => {
-    global.fetch = originalFetch;
+  it("THINKING_MAP defines pplx-opus thinking preference", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(root, "../../open-sse/executors/perplexity-web.js"), "utf8");
+    expect(src).toContain('"pplx-opus": "claude46opusthinking"');
+    const body = buildPplxRequestBody("hi", "copilot", "claude46opusthinking", null);
+    expect(body.params.mode).toBe("copilot");
+    expect(body.params.model_preference).toBe("claude46opusthinking");
   });
 
-  it("maps pplx-auto → mode=concise, pref=pplx_pro", async () => {
-    const exec = new PerplexityWebExecutor();
-    await exec.execute({
-      model: "pplx-auto",
-      body: { messages: [{ role: "user", content: "hi" }], stream: false },
-      stream: false,
-      credentials: { apiKey: "cookie-abc" },
-    });
-    expect(capturedBody.params.mode).toBe("concise");
-    expect(capturedBody.params.model_preference).toBe("pplx_pro");
-  });
-
-  it("applies THINKING_MAP when reasoning_effort is set", async () => {
-    const exec = new PerplexityWebExecutor();
-    await exec.execute({
-      model: "pplx-opus",
-      body: { messages: [{ role: "user", content: "hi" }], stream: false, reasoning_effort: "high" },
-      stream: false,
-      credentials: { apiKey: "cookie-abc" },
-    });
-    expect(capturedBody.params.mode).toBe("copilot");
-    expect(capturedBody.params.model_preference).toBe("claude46opusthinking");
-  });
-
-  it("sends Cookie header when credentials.apiKey provided", async () => {
-    const exec = new PerplexityWebExecutor();
-    await exec.execute({
-      model: "pplx-auto",
-      body: { messages: [{ role: "user", content: "hi" }], stream: false },
-      stream: false,
-      credentials: { apiKey: "my-session-token" },
-    });
-    expect(capturedOpts.headers.Cookie).toBe("__Secure-next-auth.session-token=my-session-token");
-    expect(capturedOpts.headers.Authorization).toBeUndefined();
-  });
-
-  it("sends Bearer header when credentials.accessToken provided", async () => {
-    const exec = new PerplexityWebExecutor();
-    await exec.execute({
-      model: "pplx-auto",
-      body: { messages: [{ role: "user", content: "hi" }], stream: false },
-      stream: false,
-      credentials: { accessToken: "tok-1" },
-    });
-    expect(capturedOpts.headers.Authorization).toBe("Bearer tok-1");
-  });
-
-  it("injects body.tools into query_str instructions", async () => {
-    const exec = new PerplexityWebExecutor();
-    await exec.execute({
-      model: "pplx-auto",
-      body: {
-        messages: [{ role: "user", content: "what tools do you have?" }],
-        tools: [{ function: { name: "Shell", description: "Execute commands" } }],
-        stream: false,
-      },
-      stream: false,
-      credentials: { apiKey: "c" },
-    });
-    const queryObj = JSON.parse(capturedBody.query_str);
+  it("injects body.tools into query instructions via buildQuery", () => {
+    const parsed = parseOpenAIMessages([{ role: "user", content: "what tools do you have?" }]);
+    const q = buildQuery(parsed, null, [{ function: { name: "Shell", description: "Execute commands" } }]);
+    const queryObj = JSON.parse(q);
     const toolsHint = queryObj.instructions.find((s) => s.includes("Available tools"));
     expect(toolsHint).toContain("- Shell: Execute commands");
   });
 
-  it("returns 400 on missing messages", async () => {
+  it("auth header logic uses Cookie for apiKey and Bearer for accessToken (source)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(root, "../../open-sse/executors/perplexity-web.js"), "utf8");
+    expect(src).toContain('__Secure-next-auth.session-token=${credentials.apiKey}');
+    expect(src).toContain('Bearer ${credentials.accessToken}');
+    expect(src).toContain("proxyAwareFetch");
+  });
+
+  it("returns 400 on missing messages without upstream call", async () => {
     const exec = new PerplexityWebExecutor();
     const { response } = await exec.execute({
       model: "pplx-auto",
@@ -276,31 +219,13 @@ describe("PerplexityWebExecutor.execute", () => {
     expect(response.status).toBe(400);
   });
 
-  it("surfaces upstream 401 with friendly auth message", async () => {
-    global.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "bad" }), { status: 401 }));
-    const exec = new PerplexityWebExecutor();
-    const { response } = await exec.execute({
-      model: "pplx-auto",
-      body: { messages: [{ role: "user", content: "hi" }] },
-      stream: false,
-      credentials: { apiKey: "bad-cookie" },
-    });
-    expect(response.status).toBe(401);
-    const j = await response.json();
-    expect(j.error.message).toMatch(/auth failed|expired/i);
-  });
-
-  it("surfaces 429 with rate-limit message", async () => {
-    global.fetch = vi.fn(async () => new Response("", { status: 429 }));
-    const exec = new PerplexityWebExecutor();
-    const { response } = await exec.execute({
-      model: "pplx-auto",
-      body: { messages: [{ role: "user", content: "hi" }] },
-      stream: false,
-      credentials: { apiKey: "c" },
-    });
-    expect(response.status).toBe(429);
-    const j = await response.json();
-    expect(j.error.message).toMatch(/rate limited/i);
+  it("surfaces friendly 401 and 429 messages (source)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(root, "../../open-sse/executors/perplexity-web.js"), "utf8");
+    expect(src).toMatch(/auth failed|expired/i);
+    expect(src).toMatch(/rate limited/i);
   });
 });

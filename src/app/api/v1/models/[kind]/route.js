@@ -1,3 +1,4 @@
+import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
 import { buildModelsList } from "../route.js";
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
@@ -24,7 +25,10 @@ export async function OPTIONS() {
  * GET /v1/models/{kind} - OpenAI-compatible models list filtered by capability.
  * Supported kinds: image, tts, stt, embedding, image-to-text, web.
  */
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
+  const routeAuth = await requireRouteAuth(request);
+  if (!routeAuth.ok) return routeAuth.response;
+
   try {
     const { kind } = await params;
     const kindFilter = KIND_SLUG_MAP[kind];

@@ -38,6 +38,14 @@ describe("MITM bypass host detection", () => {
   it("matches exact host and subdomains", () => {
     expect(shouldBypassMitmDns("https://sub.api2.cursor.sh/v1/chat")).toBe(true);
   });
+
+  it("detects regional Kiro and CodeWhisperer hosts via isKiroMitmHost", () => {
+    expect(shouldBypassMitmDns("https://runtime.eu-central-1.kiro.dev/generate")).toBe(true);
+    expect(shouldBypassMitmDns("https://q.eu-central-1.amazonaws.com/v1/chat")).toBe(true);
+    expect(shouldBypassMitmDns("https://codewhisperer.eu-central-1.amazonaws.com/v1/chat")).toBe(true);
+    expect(shouldBypassMitmDns("https://q.us-gov-east-1.amazonaws.com/v1/chat")).toBe(true);
+    expect(shouldBypassMitmDns("https://management.us-east-1.kiro.dev/limits")).toBe(false);
+  });
 });
 
 describe("DNS bypass fail-closed (Requirement 11.4)", () => {

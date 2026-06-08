@@ -104,3 +104,16 @@ export async function getComboModels(modelStr) {
 
   return validModels;
 }
+
+/**
+ * Return a descriptive error when a combo name is registered but has no valid targets.
+ * @returns {Promise<string|null>}
+ */
+export async function getBrokenComboError(modelStr) {
+  if (modelStr.includes("/")) return null;
+  const combo = await getComboByName(modelStr);
+  if (!combo) return null;
+  const models = await getComboModels(modelStr);
+  if (models) return null;
+  return `Combo "${modelStr}" has no valid model targets configured.`;
+}

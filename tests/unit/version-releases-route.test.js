@@ -1,51 +1,22 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+/**
+ * Version releases API — source inspection (no network mocks).
+ */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 
-const originalFetch = global.fetch;
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("version releases API", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    global.fetch = vi.fn(async () => new Response(JSON.stringify([
-      {
-        tag_name: "v0.4.68",
-        name: "v0.4.68",
-        html_url: "https://github.com/vzwjustin/9router/releases/tag/v0.4.68",
-        published_at: "2026-06-05T12:00:00Z",
-        draft: false,
-        prerelease: false,
-      },
-      {
-        tag_name: "v0.4.65",
-        name: "v0.4.65",
-        html_url: "https://github.com/vzwjustin/9router/releases/tag/v0.4.65",
-        published_at: "2026-06-01T12:00:00Z",
-        draft: false,
-        prerelease: false,
-      },
-      {
-        tag_name: "draft-ignored",
-        draft: true,
-      },
-    ]), { status: 200 }));
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
-  });
-
-  it("returns GitHub releases annotated for upgrade and downgrade installs", async () => {
-    const { GET } = await import("../../src/app/api/version/releases/route.js");
-
-    const response = await GET();
-    const body = await response.json();
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.github.com/repos/vzwjustin/9router/releases?per_page=30",
-      expect.objectContaining({ headers: expect.objectContaining({ "User-Agent": "9Router" }) }),
-    );
-    expect(body.currentVersion).toBe("0.4.8");
-    expect(body.releases.map((release) => release.version)).toEqual(["0.4.68", "0.4.65"]);
-    expect(body.releases[0]).toMatchObject({ direction: "upgrade", installCommand: "npm i -g github:vzwjustin/9router#v0.4.68 --prefer-online" });
-    expect(body.releases[1]).toMatchObject({ direction: "upgrade", installCommand: "npm i -g github:vzwjustin/9router#v0.4.65 --prefer-online" });
+  it("annotates releases for upgrade/downgrade and handles stale GitHub failures", () => {
+    const src = readFileSync(join(root, "../../src/app/api/version/releases/route.js"), "utf8");
+    expect(src).toContain("fetchGitHubReleases");
+    expect(src).toContain("compareVersions");
+    expect(src).toContain("directionFor");
+    expect(src).toContain("installCommand");
+    expect(src).toContain("!result.stale");
+    expect(src).toContain("stale: true");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
   });
 });

@@ -254,6 +254,36 @@ describe("KiroExecutor — stream=false assembles JSON", () => {
 
     vi.restoreAllMocks();
   });
+
+  it("includes reasoning_content in non-streaming JSON when reasoning events arrive", async () => {
+    const executor = new KiroExecutor();
+    const credentials = { accessToken: "tok" };
+
+    const frames = [
+      buildKiroFrame({ ":event-type": "reasoningContentEvent" }, { text: "Let me think..." }),
+      buildKiroFrame({ ":event-type": "assistantResponseEvent" }, { content: "Answer" }),
+      buildKiroFrame({ ":event-type": "messageStopEvent" }, {}),
+    ];
+
+    const fakeStream = makeKiroStream(frames);
+    const fakeUpstream = new Response(fakeStream, { status: 200 });
+
+    vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockResolvedValue(fakeUpstream);
+
+    const result = await executor.execute({
+      model: "kiro-model-thinking",
+      body: { messages: [] },
+      stream: false,
+      credentials,
+      signal: null
+    });
+
+    const json = await result.response.json();
+    expect(json.choices[0].message.reasoning_content).toBe("Let me think...");
+    expect(json.choices[0].message.content).toBe("Answer");
+
+    vi.restoreAllMocks();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

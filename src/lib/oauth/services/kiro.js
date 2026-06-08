@@ -1,4 +1,11 @@
 import { KIRO_CONFIG } from "../constants/oauth.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import {
+  buildKiroFingerprintHeaders,
+  buildKiroSocialAuthRefreshUrl,
+  regionFromProfileArn,
+  resolveKiroRegion,
+} from "open-sse/services/kiroHeaders.js";
 
 /**
  * Kiro OAuth Service
@@ -19,7 +26,7 @@ export class KiroService {
   async registerClient(region = "us-east-1") {
     const endpoint = `https://oidc.${region}.amazonaws.com/client/register`;
 
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -52,7 +59,7 @@ export class KiroService {
   async startDeviceAuthorization(clientId, clientSecret, startUrl, region = "us-east-1") {
     const endpoint = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -86,7 +93,7 @@ export class KiroService {
   async pollDeviceToken(clientId, clientSecret, deviceCode, region = "us-east-1") {
     const endpoint = `https://oidc.${region}.amazonaws.com/token`;
 
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -142,10 +149,12 @@ export class KiroService {
     // Must match the redirect_uri used in buildSocialLoginUrl
     const redirectUri = "kiro://kiro.kiroAgent/authenticate-success";
 
-    const response = await fetch(`${KIRO_AUTH_SERVICE}/oauth/token`, {
+    const response = await proxyAwareFetch(`${KIRO_AUTH_SERVICE}/oauth/token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
+        ...buildKiroFingerprintHeaders({ providerSpecificData: {} }),
       },
       body: JSON.stringify({
         code,
@@ -178,10 +187,12 @@ export class KiroService {
     if (clientId && clientSecret) {
       const endpoint = `https://oidc.${region || "us-east-1"}.amazonaws.com/token`;
 
-      const response = await fetch(endpoint, {
+      const response = await proxyAwareFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
+          ...buildKiroFingerprintHeaders({ refreshToken, providerSpecificData }),
         },
         body: JSON.stringify({
           clientId,
@@ -205,10 +216,13 @@ export class KiroService {
     }
 
     // Social auth refresh (Google/GitHub)
-    const response = await fetch(`${KIRO_AUTH_SERVICE}/refreshToken`, {
+    const refreshUrl = buildKiroSocialAuthRefreshUrl(resolveKiroRegion(providerSpecificData));
+    const response = await proxyAwareFetch(refreshUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
+        ...buildKiroFingerprintHeaders({ refreshToken, providerSpecificData }),
       },
       body: JSON.stringify({
         refreshToken,
@@ -257,16 +271,20 @@ export class KiroService {
    * List available models from CodeWhisperer API
    */
   async listAvailableModels(accessToken, profileArn) {
-    const endpoint = "https://codewhisperer.us-east-1.amazonaws.com";
+    const region = regionFromProfileArn(profileArn);
+    const endpoint = `https://codewhisperer.${region}.amazonaws.com`;
     const target = "AmazonCodeWhispererService.ListAvailableModels";
 
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": target,
+        ...buildKiroFingerprintHeaders(
+          { accessToken, providerSpecificData: { profileArn } },
+          { accept: "application/json" }
+        ),
         "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
       },
       body: JSON.stringify({
         origin: "AI_EDITOR",

@@ -1,6 +1,10 @@
 import { Readable } from "stream";
+import { createRequire } from "module";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
+
+const require = createRequire(import.meta.url);
+const { isKiroMitmHost } = require("../../src/shared/constants/mitmToolHosts.js");
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
@@ -151,6 +155,7 @@ function hostnameMatchesMitmBypass(hostname, bypassHost) {
 function shouldBypassMitmDns(url) {
   try {
     const hostname = new URL(url).hostname;
+    if (isKiroMitmHost(hostname)) return true;
     return MITM_BYPASS_HOSTS.some((host) => hostnameMatchesMitmBypass(hostname, host));
   } catch { return false; }
 }
@@ -311,9 +316,13 @@ async function createBypassRequest(parsedUrl, realIP, options) {
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
 
-  // Vercel relay: forward request via relay headers
-  const vercelRelayUrl = normalizeString(proxyOptions?.vercelRelayUrl);
-  if (vercelRelayUrl) {
+  const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
+  const envProxyUrl = connectionProxyUrl ? null : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
+  let proxyUrl = connectionProxyUrl || envProxyUrl;
+
+  // Vercel relay is lower precedence than per-connection proxy (AGENTS.md § outbound proxy routing)
+  const vercelRelayUrl = !connectionProxyUrl ? normalizeString(proxyOptions?.vercelRelayUrl) : null;
+  if (!proxyUrl && vercelRelayUrl) {
     const parsed = new URL(targetUrl);
     const relayHeaders = {
       ...options.headers,
@@ -322,10 +331,6 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     };
     return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
-
-  const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  const envProxyUrl = connectionProxyUrl ? null : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
-  const proxyUrl = connectionProxyUrl || envProxyUrl;
 
   // MITM DNS bypass: for known MITM-intercepted hosts, resolve real IP to avoid DNS spoof
   if (shouldBypassMitmDns(targetUrl)) {
@@ -382,6 +387,20 @@ if (globalThis.fetch !== patchedFetch) {
 }
 
 export default patchedFetch;
+
+/**
+ * Build proxy routing options from a connection credentials record (same shape as chatCore).
+ */
+export function buildProxyOptionsFromCredentials(credentials) {
+  const psd = credentials?.providerSpecificData || {};
+  return {
+    connectionProxyEnabled: psd.connectionProxyEnabled === true,
+    connectionProxyUrl: psd.connectionProxyUrl || "",
+    connectionNoProxy: psd.connectionNoProxy || "",
+    vercelRelayUrl: psd.vercelRelayUrl || "",
+    strictProxy: psd.strictProxy === true,
+  };
+}
 
 export {
   resolveConnectionProxyUrl,

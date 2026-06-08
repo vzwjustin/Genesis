@@ -102,7 +102,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
-  if (clientPrefersJson && !clientPrefersSSE && body.stream !== true) {
+  if (!passthrough && clientPrefersJson && !clientPrefersSSE && body.stream !== true) {
     stream = false;
   }
 
@@ -170,9 +170,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const compressionAllowed = !passthrough || passthroughCompression === true;
 
   // Snapshot original body for recovery if compression fails
-  const originalBodySnapshot = compressionAllowed
-    ? JSON.stringify(translatedBody)
-    : null;
+  let originalBodySnapshot = null;
+  if (compressionAllowed) {
+    try {
+      originalBodySnapshot = JSON.stringify(translatedBody);
+    } catch (snapshotError) {
+      console.warn(`[COMPRESSION] Could not snapshot body for restore: ${snapshotError.message}`);
+    }
+  }
 
   const chainStages = [];
 
@@ -261,14 +266,30 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (originalBodySnapshot) {
       try {
         const restored = JSON.parse(originalBodySnapshot);
-        Object.assign(translatedBody, restored);
         for (const key of Object.keys(translatedBody)) {
           if (!(key in restored)) delete translatedBody[key];
         }
-      } catch {
-        // If restore fails, translatedBody may be partially modified but we continue
+        Object.assign(translatedBody, restored);
+      } catch (restoreError) {
+        console.error(`[COMPRESSION] Failed to restore body after compression error: ${restoreError.message}`);
+        trackPendingRequest(model, provider, connectionId, false, true);
+        return createErrorResult(
+          HTTP_STATUS.BAD_REQUEST,
+          "Request compression failed and could not be restored",
+          undefined,
+          { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED }
+        );
       }
       console.warn(`[COMPRESSION] Compression failed, continuing with original content: ${compressionError.message}`);
+    } else if (compressionAllowed) {
+      console.error(`[COMPRESSION] Error during compression with no body snapshot: ${compressionError.message}`);
+      trackPendingRequest(model, provider, connectionId, false, true);
+      return createErrorResult(
+        HTTP_STATUS.BAD_REQUEST,
+        "Request compression failed",
+        undefined,
+        { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED }
+      );
     } else {
       console.warn(`[COMPRESSION] Error during compression, continuing: ${compressionError.message}`);
     }
@@ -295,6 +316,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
     connectionNoProxy: credentials?.providerSpecificData?.connectionNoProxy || "",
     vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
+    strictProxy: credentials?.providerSpecificData?.strictProxy === true,
   };
 
   if (proxyOptions.vercelRelayUrl) {
@@ -366,8 +388,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         }
         try {
           const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, passthrough });
-          if (retryResult.response.ok) { providerResponse = retryResult.response; providerUrl = retryResult.url; providerHeaders = retryResult.headers; }
-        } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
+          providerResponse = retryResult.response;
+          providerUrl = retryResult.url;
+          providerHeaders = retryResult.headers;
+          finalBody = retryResult.transformedBody;
+        } catch (retryError) {
+          log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
+          trackPendingRequest(model, provider, connectionId, false, true);
+          return createErrorResult(
+            HTTP_STATUS.BAD_GATEWAY,
+            `Retry after token refresh failed: ${retryError.message}`
+          );
+        }
       } else {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
       }
@@ -451,7 +483,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       streamController.handleComplete();
       return result;
     }
-    // Provider returned non-SSE; fall through to streaming with controller still connected
+    // Provider returned non-SSE JSON — assemble as JSON instead of wrapping in SSE.
+    try {
+      return await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    } finally {
+      streamController.handleComplete();
+    }
   }
 
   // True non-streaming response

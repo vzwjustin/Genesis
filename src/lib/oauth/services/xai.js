@@ -5,6 +5,7 @@ import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "../constants/xai.js";
 import { startLocalServer } from "../utils/server.js";
 import { generateCodeVerifier, generateCodeChallenge, generateState } from "../utils/pkce.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * xAI (Grok) OAuth Service
@@ -53,7 +54,7 @@ export async function discoverEndpoints() {
   if (cachedDiscovery) return cachedDiscovery;
 
   try {
-    const res = await fetch(XAI_CONFIG.discoveryUrl, {
+    const res = await oauthFetch(XAI_CONFIG.discoveryUrl, {
       headers: { Accept: "application/json" },
     });
     if (res.ok) {
@@ -127,7 +128,7 @@ export class XaiService extends OAuthService {
    * xAI is a public PKCE client — no client_secret.
    */
   async exchangeXaiCode({ tokenUrl, code, redirectUri, codeVerifier }) {
-    const res = await fetch(tokenUrl, {
+    const res = await oauthFetch(tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -152,9 +153,9 @@ export class XaiService extends OAuthService {
   /**
    * Refresh an access token using a refresh_token.
    */
-  async refreshAccessToken(refreshToken) {
+  async refreshAccessToken(refreshToken, proxyOptions = null) {
     const { tokenUrl } = await discoverEndpoints();
-    const res = await fetch(tokenUrl, {
+    const res = await oauthFetch(tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -165,7 +166,7 @@ export class XaiService extends OAuthService {
         client_id: XAI_CONFIG.clientId,
         refresh_token: refreshToken,
       }),
-    });
+    }, proxyOptions);
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`xAI token refresh failed: ${err}`);

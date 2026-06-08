@@ -2,6 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
+import { buildKiroChatUrl, buildKiroFingerprintHeaders } from "../services/kiroHeaders.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry } from "../config/runtimeConfig.js";
 
@@ -14,11 +15,21 @@ export class KiroExecutor extends BaseExecutor {
     super("kiro", PROVIDERS.kiro);
   }
 
+  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    if (credentials) {
+      return buildKiroChatUrl(credentials);
+    }
+    return super.buildUrl(model, stream, urlIndex, credentials);
+  }
+
   buildHeaders(credentials, stream = true) {
+    const fingerprint = buildKiroFingerprintHeaders(credentials);
     const headers = {
       ...this.config.headers,
+      ...fingerprint,
       "Amz-Sdk-Request": "attempt=1; max=3",
-      "Amz-Sdk-Invocation-Id": uuidv4()
+      "Amz-Sdk-Invocation-Id": uuidv4(),
+      Accept: this.config.headers?.Accept || "application/vnd.amazon.eventstream",
     };
 
     if (credentials.accessToken) {
@@ -36,7 +47,7 @@ export class KiroExecutor extends BaseExecutor {
    * Custom execute for Kiro - handles AWS EventStream binary response with retry support
    */
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
-    const url = this.buildUrl(model, stream, 0);
+    const url = this.buildUrl(model, stream, 0, credentials);
     // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
     // Only model name + auth header are swapped (Requirement 1.2).
     const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
@@ -65,6 +76,11 @@ export class KiroExecutor extends BaseExecutor {
       }
 
       if (!response.ok) {
+        return { response, url, headers, transformedBody };
+      }
+
+      // Passthrough: preserve native AWS EventStream bytes (no OpenAI SSE conversion).
+      if (passthrough) {
         return { response, url, headers, transformedBody };
       }
 
@@ -452,6 +468,7 @@ export class KiroExecutor extends BaseExecutor {
 
     // Parse all EventStream frames
     let totalContent = "";
+    let reasoningContent = "";
     const toolCalls = [];
     const seenToolIds = new Map();
     let toolCallIndex = 0;
@@ -471,6 +488,17 @@ export class KiroExecutor extends BaseExecutor {
       if (!event) continue;
 
       const eventType = event.headers[":event-type"] || "";
+
+      if (eventType === "reasoningContentEvent") {
+        const reasoning = event.payload?.reasoningContentEvent || event.payload || {};
+        const reasoningText = (typeof reasoning === "string")
+          ? reasoning
+          : (reasoning.text || reasoning.content || "");
+        if (reasoningText) {
+          reasoningContent += reasoningText;
+          totalContentLength += reasoningText.length;
+        }
+      }
 
       if (eventType === "assistantResponseEvent" && event.payload?.content) {
         totalContent += event.payload.content;
@@ -495,6 +523,13 @@ export class KiroExecutor extends BaseExecutor {
               args = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput);
             }
             toolCalls.push({ id: toolCallId, type: "function", function: { name: toolName, arguments: args } });
+          } else if (toolInput !== undefined) {
+            const idx = seenToolIds.get(toolCallId);
+            const existing = toolCalls[idx];
+            if (existing?.function) {
+              const argsStr = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput);
+              existing.function.arguments = (existing.function.arguments || "") + argsStr;
+            }
           }
         }
       }
@@ -522,6 +557,7 @@ export class KiroExecutor extends BaseExecutor {
     }
 
     const message = { role: "assistant", content: totalContent || null };
+    if (reasoningContent) message.reasoning_content = reasoningContent;
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
 
     const completion = {

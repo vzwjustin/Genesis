@@ -1,5 +1,6 @@
 // Gemini TTS — generateContent with AUDIO modality returns PCM L16, wrap as WAV
 import { Buffer } from "node:buffer";
+import { ttsFetch } from "./_base.js";
 
 const DEFAULT_MODEL = "gemini-2.5-flash-preview-tts";
 const DEFAULT_VOICE = "Kore";
@@ -52,7 +53,7 @@ export default {
     if (!credentials?.apiKey) throw new Error("No Gemini API key configured");
     const { modelId, voiceId } = parseGeminiModelVoice(model);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${credentials.apiKey}`;
-    const res = await fetch(url, {
+    const res = await ttsFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -62,7 +63,7 @@ export default {
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceId } } },
         },
       }),
-    });
+    }, credentials);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err?.error?.message || `Gemini TTS failed: ${res.status}`);

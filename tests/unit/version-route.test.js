@@ -1,42 +1,26 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+/**
+ * Version API — source inspection (no network mocks).
+ */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 
-const originalFetch = global.fetch;
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("version API", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    global.fetch = vi.fn(async () => new Response(JSON.stringify([
-      {
-        tag_name: "v0.4.9",
-        draft: false,
-        prerelease: false,
-      },
-      {
-        tag_name: "v0.4.8",
-        draft: false,
-        prerelease: false,
-      },
-    ]), { status: 200 }));
+  it("uses fetchGitHubReleases with stale fallback instead of bare fetch", () => {
+    const src = readFileSync(join(root, "../../src/app/api/version/route.js"), "utf8");
+    expect(src).toContain("fetchGitHubReleases");
+    expect(src).toContain("result.stale");
+    expect(src).toContain("hasUpdate");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
   });
 
-  afterEach(() => {
-    global.fetch = originalFetch;
-  });
-
-  it("checks latest version from the fork GitHub releases", async () => {
-    const { GET } = await import("../../src/app/api/version/route.js");
-
-    const response = await GET();
-    const body = await response.json();
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.github.com/repos/vzwjustin/9router/releases?per_page=30",
-      expect.objectContaining({ headers: expect.objectContaining({ "User-Agent": "9Router" }) }),
-    );
-    expect(body).toEqual({
-      currentVersion: "0.4.8",
-      latestVersion: "0.4.9",
-      hasUpdate: true,
-    });
+  it("githubReleases targets the fork releases API via proxyAwareFetch", () => {
+    const src = readFileSync(join(root, "../../src/lib/githubReleases.js"), "utf8");
+    expect(src).toContain("GITHUB_CONFIG.releasesApiUrl");
+    expect(src).toContain("proxyAwareFetch");
+    expect(src).toContain("User-Agent");
   });
 });

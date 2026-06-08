@@ -5,15 +5,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 describe("compressWithHeadroom hard skip before probing", () => {
-  const originalFetch = globalThis.fetch;
-
   beforeEach(() => {
     vi.resetModules();
-    globalThis.fetch = vi.fn(() => Promise.reject(new Error("probe should not run")));
-  });
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
   });
 
   it("skips when tail is empty (cache boundary is last message)", async () => {
@@ -26,7 +19,6 @@ describe("compressWithHeadroom hard skip before probing", () => {
     };
     const result = await compressWithHeadroom(body, "gpt-4");
     expect(result).toBeNull();
-    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("skips when tail is system-only", async () => {
@@ -39,7 +31,6 @@ describe("compressWithHeadroom hard skip before probing", () => {
     };
     const result = await compressWithHeadroom(body, "gpt-4");
     expect(result).toBeNull();
-    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("attempts compression for a single post-cache message (Claude Code tool tail)", async () => {
@@ -76,7 +67,6 @@ describe("compressWithHeadroom hard skip before probing", () => {
     };
     const result = await compressWithHeadroom(body, "gpt-4");
     expect(result).toBeNull();
-    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
 

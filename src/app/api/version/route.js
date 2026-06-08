@@ -1,33 +1,9 @@
 import pkg from "../../../../package.json" with { type: "json" };
-import { GITHUB_CONFIG } from "@/shared/constants/config";
+import { fetchGitHubReleases } from "@/lib/githubReleases.js";
 
 function normalizeVersion(tagName) {
   const version = String(tagName || "").trim().replace(/^v/i, "");
   return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) ? version : null;
-}
-
-async function fetchLatestReleaseVersion() {
-  try {
-    const response = await fetch(GITHUB_CONFIG.releasesApiUrl, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "9Router",
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!response.ok) return null;
-
-    const releases = await response.json();
-    for (const release of releases) {
-      if (release?.draft) continue;
-      const version = normalizeVersion(release.tag_name);
-      if (version) return version;
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function compareVersions(a, b) {
@@ -68,9 +44,25 @@ function compareVersions(a, b) {
 }
 
 export async function GET() {
-  const latestVersion = await fetchLatestReleaseVersion();
+  const result = await fetchGitHubReleases({ timeoutMs: 4000 });
+  let latestVersion = null;
+  if (result.ok || result.stale) {
+    for (const release of result.releases || []) {
+      if (release?.draft) continue;
+      const version = normalizeVersion(release.tag_name);
+      if (version) {
+        latestVersion = version;
+        break;
+      }
+    }
+  }
   const currentVersion = pkg.version;
   const hasUpdate = latestVersion ? compareVersions(latestVersion, currentVersion) > 0 : false;
 
-  return Response.json({ currentVersion, latestVersion, hasUpdate });
+  return Response.json({
+    currentVersion,
+    latestVersion,
+    hasUpdate,
+    ...(result.stale ? { stale: true, warning: result.error } : {}),
+  });
 }

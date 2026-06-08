@@ -1,3 +1,5 @@
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+
 const DEFAULT_PROXY_URL = "http://localhost:8787";
 const DEFAULT_CLOUD_URL = "https://api.headroom.ai";
 const PROBE_TTL_MS = 30_000;
@@ -43,10 +45,10 @@ async function probeProxy(baseUrl = resolveHeadroomBaseUrl()) {
   if (cached && now - cached.ts < PROBE_TTL_MS) return cached.reachable;
   let reachable = false;
   try {
-    const res = await fetch(`${baseUrl}/health`, {
+    const res = await proxyAwareFetch(`${baseUrl}/health`, {
       signal: AbortSignal.timeout(1500),
       cache: "no-store",
-    });
+    }, null);
     reachable = res.ok;
   } catch {
     reachable = false;
@@ -63,11 +65,24 @@ function invalidateProbe() {
   invalidateHeadroomProbe();
 }
 
+function tailHasToolHistory(messages) {
+  for (const msg of messages) {
+    if (msg?.role === "tool") return true;
+    if (Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0) return true;
+    if (!Array.isArray(msg?.content)) continue;
+    if (msg.content.some((block) => block?.type === "tool_use" || block?.type === "tool_result")) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function shouldSkipHeadroomForMessages(messages) {
   const cacheFloor = findCacheFloor(messages);
   const tail = messages.slice(cacheFloor + 1);
   if (tail.length === 0) return true;
   if (tail.every((m) => m?.role === "system" || m?.role === "developer")) return true;
+  if (tailHasToolHistory(tail)) return true;
   return false;
 }
 
@@ -230,6 +245,11 @@ async function compressInputBody(body, model, compress) {
       newTail.push(compressedMsg ? applyCompressedTextToInputItem(item, compressedMsg) : item);
     }
 
+    if (compressedIdx !== r.compressed.length) {
+      console.warn("[HEADROOM] compressInputBody: compressed message mapping mismatch, skipping");
+      return null;
+    }
+
     body.input = [...headItems, ...newTail];
     return { before: r.before, after: r.after, saved: r.saved };
   } catch (err) {
@@ -287,10 +307,10 @@ export async function getHeadroomProxyStats(baseUrl = resolveHeadroomBaseUrl()) 
   if (!cloud && !(await probeProxy(baseUrl))) return null;
 
   try {
-    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/stats?cached=1`, {
+    const res = await proxyAwareFetch(`${baseUrl.replace(/\/+$/, "")}/stats?cached=1`, {
       signal: AbortSignal.timeout(2000),
       cache: "no-store",
-    });
+    }, null);
     if (!res.ok) return null;
     const data = await res.json();
     return normalizeHeadroomProxyStats(data, baseUrl);

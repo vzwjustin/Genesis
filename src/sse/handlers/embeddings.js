@@ -4,10 +4,17 @@ import {
   clearAccountError,
   authenticateRequest,
 } from "../services/auth.js";
-import { getModelInfo } from "../services/model.js";
+import { getSettings } from "@/lib/localDb";
+import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { handleComboChat } from "open-sse/services/combo.js";
+import {
+  resolveProviderRetryLimits,
+  noActiveCredentialsResponse,
+  exhaustedAccountsResponse,
+} from "../utils/providerCredentialRetry.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 
@@ -33,7 +40,7 @@ export async function handleEmbeddings(request) {
 
   const auth = await authenticateRequest(request, log);
   if (!auth.ok) return auth.response;
-  const { apiKey } = auth;
+  const { settings } = auth;
 
   if (!modelStr) {
     log.warn("EMBEDDINGS", "Missing model");
@@ -45,10 +52,61 @@ export async function handleEmbeddings(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
   }
 
+  const brokenComboError = await getBrokenComboError(modelStr);
+  if (brokenComboError) {
+    log.warn("EMBEDDINGS", `Combo resolution failed: ${brokenComboError}`);
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+  }
+
+  const comboModels = await getComboModels(modelStr);
+  if (comboModels) {
+    const comboStrategies = settings.comboStrategies || {};
+    const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+    log.info("EMBEDDINGS", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    return handleComboChat({
+      body,
+      models: comboModels,
+      handleSingleModel: (b, m) => handleSingleModelEmbeddings(b, m),
+      log,
+      comboName: modelStr,
+      comboStrategy,
+      comboStickyLimit,
+    });
+  }
+
+  return handleSingleModelEmbeddings(body, modelStr);
+}
+
+async function handleSingleModelEmbeddings(body, modelStr) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
+    const brokenComboError = await getBrokenComboError(modelStr);
+    if (brokenComboError) {
+      log.warn("EMBEDDINGS", `Combo resolution failed: ${brokenComboError}`);
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+    }
+    const comboModels = await getComboModels(modelStr);
+    if (comboModels) {
+      const settings = await getSettings();
+      const comboStrategies = settings.comboStrategies || {};
+      const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
+      const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+      return handleComboChat({
+        body,
+        models: comboModels,
+        handleSingleModel: (b, m) => handleSingleModelEmbeddings(b, m),
+        log,
+        comboName: modelStr,
+        comboStrategy,
+        comboStickyLimit,
+      });
+    }
     log.warn("EMBEDDINGS", "Invalid model format", { model: modelStr });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
+    return errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Failed to resolve model: "${modelStr}". Not a registered alias, combo name, or valid provider/model format.`
+    );
   }
 
   const { provider, model } = modelInfo;
@@ -59,16 +117,27 @@ export async function handleEmbeddings(request) {
     log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
   }
 
-  // Credential + fallback loop (mirrors handleChat)
+  const { isNoAuthProvider, maxRetries } = await resolveProviderRetryLimits(provider);
+  if (!isNoAuthProvider && maxRetries === 0) {
+    log.warn("AUTH", `No active credentials for provider: ${provider}`);
+    return noActiveCredentialsResponse(provider);
+  }
+
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
   let had5xx = false;
+  let retryCount = 0;
 
   while (true) {
+    if (retryCount >= maxRetries) {
+      log.warn("EMBEDDINGS", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
+    }
+    retryCount++;
+
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
-    // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
@@ -77,21 +146,17 @@ export async function handleEmbeddings(request) {
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) {
-        log.error("AUTH", `No credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
+        log.warn("AUTH", `No active credentials for provider: ${provider}`);
+        return noActiveCredentialsResponse(provider);
       }
       log.warn("EMBEDDINGS", "No more accounts available", { provider });
-      // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503
-      const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
-      return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
-    // Requirement 3.6: If token refresh fails during pre-check, mark connection
-    // as unusable and proceed to Account_Fallback for the next available connection.
     if (refreshedCredentials._tokenRefreshFailed) {
       log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
       excludeConnectionIds.add(credentials.connectionId);

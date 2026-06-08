@@ -347,7 +347,7 @@ export class GithubExecutor extends BaseExecutor {
         if (copilotResult) {
           return { ...githubTokens, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt };
         }
-        return githubTokens;
+        return null;
       }
     }
 

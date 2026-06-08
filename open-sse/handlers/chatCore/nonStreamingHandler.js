@@ -4,7 +4,7 @@ import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.j
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
-import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
+import { parseSSEToOpenAIResponse, parseSSEToNativeResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
@@ -352,13 +352,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
   if (contentType.includes("text/event-stream")) {
     const sseText = await providerResponse.text();
-    const parsed = parseSSEToOpenAIResponse(sseText, model);
+    const parsed = passthrough
+      ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
+      : parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
     }
     responseBody = parsed;
-    parsedFromSSE = true;
+    parsedFromSSE = !passthrough;
   } else {
     try {
       responseBody = await providerResponse.json();
@@ -370,6 +372,19 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }
 
   reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
+
+  if (!passthrough) {
+    const hasOpenAIChoices = Array.isArray(responseBody?.choices) && responseBody.choices.length > 0;
+    const hasClaudeContent = Array.isArray(responseBody?.content);
+    const hasGeminiCandidates =
+      Array.isArray(responseBody?.candidates) ||
+      Array.isArray(responseBody?.response?.candidates);
+    if (!hasOpenAIChoices && !hasClaudeContent && !hasGeminiCandidates) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Empty or malformed completion response");
+    }
+  }
+
   if (onRequestSuccess) await onRequestSuccess();
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
@@ -445,9 +460,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     translatedResponse.usage = filterUsageForFormat(addBufferToUsage(translatedResponse.usage), sourceFormat);
   }
 
-  // Strip reasoning_content — some clients (e.g. Firecrawl AI SDK) have JSON parsers that
-  // break on this non-standard field, even though OpenAI allows it in extensions.
-  if (translatedResponse?.choices) {
+  // Strip reasoning_content for generic clients (e.g. Firecrawl AI SDK) that break on the
+  // non-standard field. Preserve it for Kiro thinking models where clients expect it.
+  const preserveReasoning = provider === "kiro" || String(model || "").includes("-thinking");
+  if (!preserveReasoning && translatedResponse?.choices) {
     for (const choice of translatedResponse.choices) {
       if (choice?.message) delete choice.message.reasoning_content;
     }
