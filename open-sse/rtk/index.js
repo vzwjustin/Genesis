@@ -191,6 +191,9 @@ function writeFunctionResponseText(fr, text) {
       }
       return;
     }
+    // result is null or a non-string primitive — write directly without clobbering sibling fields
+    fr.response.result = text;
+    return;
   }
   if (typeof fr.response === "string") {
     fr.response = text;

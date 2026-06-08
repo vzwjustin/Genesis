@@ -162,7 +162,7 @@ async function compressMessagesBody(body, model, compress) {
 
   try {
     const r = await compressTail(cloneForCompress(tail), model, compress);
-    if (!r) return null;
+    if (!r || r.saved <= 0) return null;
     body.messages = [...head, ...r.compressed];
     return { before: r.before, after: r.after, saved: r.saved };
   } catch (err) {
@@ -207,7 +207,7 @@ async function compressInputBody(body, model, compress) {
 
   try {
     const r = await compressTail(cloneForCompress(messages), model, compress);
-    if (!r) return null;
+    if (!r || r.saved <= 0) return null;
 
     const removedCount = messages.length - r.compressed.length;
     const newTail = [];
