@@ -20,6 +20,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const [loading, setLoading] = useState(true);
   const [modelMappings, setModelMappings] = useState({});
   const [cloudEnabled, setCloudEnabled] = useState(false);
+  const [cloudUrl, setCloudUrl] = useState("");
   const [tunnelEnabled, setTunnelEnabled] = useState(false);
   const [tunnelPublicUrl, setTunnelPublicUrl] = useState("");
   const [tailscaleEnabled, setTailscaleEnabled] = useState(false);
@@ -44,6 +45,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
         if (settingsRes.ok) {
           const data = await settingsRes.json();
           setCloudEnabled(data.cloudEnabled || false);
+          setCloudUrl(data.cloudUrl || "");
         }
         if (tunnelRes.ok) {
           const data = await tunnelRes.json();
@@ -94,7 +96,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
 
   const getBaseUrl = () => {
     if (tunnelEnabled && tunnelPublicUrl) return tunnelPublicUrl;
-    if (cloudEnabled && CLOUD_URL) return CLOUD_URL;
+    if (cloudEnabled && (cloudUrl || CLOUD_URL)) return cloudUrl || CLOUD_URL;
     if (typeof window !== "undefined") return window.location.origin;
     return "http://localhost:20128";
   };

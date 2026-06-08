@@ -6,8 +6,10 @@ import { useTheme } from "@/shared/hooks/useTheme";
 import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { SECURITY_COPY } from "@/shared/constants/securityCopy";
+import { useNotificationStore } from "@/store/notificationStore";
 
 export default function ProfilePage() {
+  const notify = useNotificationStore();
   const { theme, setTheme, isDark } = useTheme();
   const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
   const [loading, setLoading] = useState(true);
@@ -227,9 +229,13 @@ export default function ProfilePage() {
       });
       if (res.ok) {
         setSettings(prev => ({ ...prev, fallbackStrategy: strategy }));
+        notify.success("Routing strategy updated");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to update routing strategy");
       }
     } catch (err) {
-      console.error("Failed to update settings:", err);
+      notify.error(err.message || "Failed to update routing strategy");
     }
   };
 

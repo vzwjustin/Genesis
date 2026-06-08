@@ -40,7 +40,7 @@ export default function CombosPage() {
       }
       setComboStrategies(settingsData.comboStrategies || {});
     } catch (error) {
-      console.log("Error fetching data:", error);
+      notify.error(error?.message || "Failed to load combos");
     } finally {
       setLoading(false);
     }
@@ -66,7 +66,7 @@ export default function CombosPage() {
         notify.error(err.error || "Failed to create combo");
       }
     } catch (error) {
-      console.log("Error creating combo:", error);
+      notify.error(error?.message || "Failed to create combo");
     }
   };
 
@@ -85,7 +85,7 @@ export default function CombosPage() {
         notify.error(err.error || "Failed to update combo");
       }
     } catch (error) {
-      console.log("Error updating combo:", error);
+      notify.error(error?.message || "Failed to update combo");
     }
   };
 
@@ -101,7 +101,7 @@ export default function CombosPage() {
             setCombos(combos.filter(c => c.id !== id));
           }
         } catch (error) {
-          console.log("Error deleting combo:", error);
+          notify.error(error?.message || "Failed to delete combo");
         }
       }
     });
@@ -124,7 +124,7 @@ export default function CombosPage() {
       
       setComboStrategies(updated);
     } catch (error) {
-      console.log("Error updating combo strategy:", error);
+      notify.error(error?.message || "Failed to update combo strategy");
     }
   };
 

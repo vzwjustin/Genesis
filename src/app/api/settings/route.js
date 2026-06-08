@@ -26,6 +26,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "comboStickyRoundRobinLimit",
   "currentPassword",
   "enableObservability",
+  "fallbackStrategy",
   "headroomEnabled",
   "mitmAutoSetupOnImport",
   "newPassword",

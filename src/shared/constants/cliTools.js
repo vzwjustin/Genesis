@@ -373,6 +373,12 @@ amp --model "{{model}}"
     notes: [
       { type: "info", text: "Gemini CLI uses OAuth or API key. Connect a gemini-cli provider, then point GEMINI_API_BASE_URL at your 9router endpoint." },
     ],
+    guideSteps: [
+      { step: 1, title: "Connect provider", desc: "Add a gemini-cli OAuth connection under Providers" },
+      { step: 2, title: "Base URL", value: "{{baseUrl}}", copyable: true },
+      { step: 3, title: "Set environment", desc: "export GEMINI_API_BASE_URL to the base URL above (without /v1)" },
+      { step: 4, title: "Model (optional)", type: "modelSelector" },
+    ],
   },
   copilot: {
     id: "copilot",

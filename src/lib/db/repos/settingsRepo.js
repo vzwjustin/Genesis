@@ -5,6 +5,8 @@ const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
 const DEFAULT_SETTINGS = {
   cloudEnabled: false,
+  cloudUrl: "",
+  fallbackStrategy: "fill-first",
   tunnelEnabled: false,
   tunnelUrl: "",
   tunnelProvider: "cloudflare",

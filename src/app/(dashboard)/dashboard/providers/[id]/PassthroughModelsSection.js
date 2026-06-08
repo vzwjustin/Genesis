@@ -125,7 +125,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
       await onSetAlias(modelId, defaultAlias);
       setNewModel("");
     } catch (error) {
-      console.log("Error adding model:", error);
+      notify.error(error?.message || "Failed to add model");
     } finally {
       setAdding(false);
     }
