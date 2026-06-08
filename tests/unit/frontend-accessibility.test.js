@@ -72,17 +72,20 @@ describe("frontend accessibility regressions", () => {
 
   it("shows compression stats in the token saver card", () => {
     const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+    const statRow = read("src/shared/components/CompressionStatRow.js");
+    const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
 
     expect(endpoint).toContain('fetch("/api/compression/stats"');
     expect(endpoint).toContain("CompressionStatRow");
-    expect(endpoint).toContain("Saved");
-    expect(endpoint).toContain("Est. tokens saved");
-    expect(endpoint).toContain("Savings not measurable");
-    expect(endpoint).toContain("Hits");
-    expect(endpoint).toContain("Prompt injections");
-    expect(endpoint).toContain("headroomProxy");
-    expect(endpoint).toContain("Proxy tokens");
-    expect(endpoint).toContain("Headroom dashboard");
+    expect(statRow).toContain("Saved");
+    expect(statRow).toContain("Est. tokens saved");
+    expect(statRow).toContain("Savings not measurable");
+    expect(statRow).toContain("Hits");
+    expect(statRow).toContain("Prompt injections");
+    expect(statRow).toContain("Proxy tokens");
+    expect(statRow).toContain("Headroom dashboard");
+    expect(caching).toContain("/api/compression/history");
+    expect(read("src/shared/components/Sidebar.js")).toContain('href: "/dashboard/caching"');
   });
 
   it("exposes Headroom controls tied to live proxy reachability", () => {
