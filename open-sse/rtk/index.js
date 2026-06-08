@@ -67,6 +67,14 @@ export function compressMessages(body, enabled = rtkEnabled) {
     return compressKiroFormat(body, enabled);
   }
 
+  // Gemini / Antigravity: tool results live in contents[].parts[].functionResponse
+  const geminiContents = Array.isArray(body.contents) ? body.contents
+    : Array.isArray(body.request?.contents) ? body.request.contents
+    : null;
+  if (geminiContents) {
+    return compressGeminiContents(geminiContents);
+  }
+
   // Support both OpenAI/Claude "messages" and OpenAI Responses "input"
   const items = Array.isArray(body.messages) ? body.messages
     : Array.isArray(body.input) ? body.input
@@ -151,6 +159,70 @@ export function compressMessages(body, enabled = rtkEnabled) {
   } catch (e) {
     console.warn("[RTK] compressMessages error:", e.message);
     restoreItems(items, itemsSnapshot);
+    return null;
+  }
+  return stats;
+}
+
+function functionResponseText(response) {
+  if (response == null) return null;
+  if (typeof response === "string") return response;
+  if (typeof response.result === "string") return response.result;
+  if (response.result != null) {
+    return typeof response.result === "object"
+      ? JSON.stringify(response.result)
+      : String(response.result);
+  }
+  return JSON.stringify(response);
+}
+
+function writeFunctionResponseText(fr, text) {
+  if (!fr || text == null) return;
+  if (fr.response && typeof fr.response === "object" && "result" in fr.response) {
+    if (typeof fr.response.result === "string") {
+      fr.response.result = text;
+      return;
+    }
+    if (fr.response.result != null && typeof fr.response.result === "object") {
+      try {
+        fr.response.result = JSON.parse(text);
+      } catch {
+        fr.response.result = text;
+      }
+      return;
+    }
+  }
+  if (typeof fr.response === "string") {
+    fr.response = text;
+    return;
+  }
+  try {
+    fr.response = JSON.parse(text);
+  } catch {
+    fr.response = { result: text };
+  }
+}
+
+function compressFunctionResponse(fr, stats) {
+  const text = functionResponseText(fr?.response);
+  if (typeof text !== "string" || !text) return;
+  const compressed = compressText(text, stats, "gemini-function-response");
+  if (compressed !== text) writeFunctionResponseText(fr, compressed);
+}
+
+function compressGeminiContents(contents) {
+  const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
+  try {
+    for (const content of contents) {
+      if (!Array.isArray(content?.parts)) continue;
+      for (const part of content.parts) {
+        if (part?.functionResponse) {
+          compressFunctionResponse(part.functionResponse, stats);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[RTK] compressGeminiContents error:", e.message);
     return null;
   }
   return stats;

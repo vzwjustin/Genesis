@@ -79,6 +79,53 @@ function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl })
   );
 }
 
+function ProviderCompressionTable({ rows, emptyMessage }) {
+  if (!rows?.length) {
+    return <p className="text-sm text-text-muted px-2 pb-2">{emptyMessage}</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs text-text-muted">
+            <th className="px-3 py-2">Provider</th>
+            <th className="px-3 py-2 text-right">Events</th>
+            <th className="px-3 py-2 text-right">RTK saved</th>
+            <th className="px-3 py-2 text-right">Headroom saved</th>
+            <th className="px-3 py-2 text-right">Caveman</th>
+            <th className="px-3 py-2 text-right">Total saved</th>
+            <th className="px-3 py-2">Last activity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.provider} className="border-b border-border/50 hover:bg-surface-2/50">
+              <td className="px-3 py-2 font-medium">{row.provider}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{row.events}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs text-success">
+                {row.rtk.bytesSaved > 0 ? formatBytes(row.rtk.bytesSaved) : "—"}
+              </td>
+              <td className="px-3 py-2 text-right font-mono text-xs text-success">
+                {row.headroom.bytesSaved > 0 ? formatBytes(row.headroom.bytesSaved) : "—"}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                {row.caveman.injections > 0 ? `${row.caveman.injections} inj` : "—"}
+              </td>
+              <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-success">
+                {row.bytesSaved > 0 ? formatBytes(row.bytesSaved) : "—"}
+              </td>
+              <td className="px-3 py-2 text-xs text-text-muted whitespace-nowrap">
+                {row.lastUsed ? new Date(row.lastUsed).toLocaleString() : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function CachingPageClient() {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
@@ -97,6 +144,7 @@ export default function CachingPageClient() {
   const [ccFilterNaming, setCcFilterNaming] = useState(false);
   const [mitmAutoSetupOnImport, setMitmAutoSetupOnImport] = useState(true);
   const [providerCache, setProviderCache] = useState(null);
+  const [providerCompression, setProviderCompression] = useState(null);
   const [cachePeriod, setCachePeriod] = useState("7d");
   const [filterLeaderboard, setFilterLeaderboard] = useState([]);
   const [fileLogSessions, setFileLogSessions] = useState([]);
@@ -152,6 +200,13 @@ export default function CachingPageClient() {
     try {
       const res = await fetch(`/api/compression/provider-cache?period=${period}`, { cache: "no-store" });
       if (res.ok) setProviderCache(await res.json());
+    } catch { /* ignore */ }
+  }, [cachePeriod]);
+
+  const fetchProviderCompression = useCallback(async (period = cachePeriod) => {
+    try {
+      const res = await fetch(`/api/compression/by-provider?period=${period}`, { cache: "no-store" });
+      if (res.ok) setProviderCompression(await res.json());
     } catch { /* ignore */ }
   }, [cachePeriod]);
 
@@ -219,9 +274,12 @@ export default function CachingPageClient() {
 
   useEffect(() => {
     if (activeTab === "provider") fetchProviderCache(cachePeriod);
+    if (activeTab === "overview" || activeTab === "provider") {
+      fetchProviderCompression(cachePeriod);
+    }
     if (activeTab === "overview") fetchFilterLeaderboard();
     if (activeTab === "logs") fetchFileLogSessions();
-  }, [activeTab, cachePeriod, fetchProviderCache, fetchFilterLeaderboard, fetchFileLogSessions]);
+  }, [activeTab, cachePeriod, fetchProviderCache, fetchProviderCompression, fetchFilterLeaderboard, fetchFileLogSessions]);
 
   useEffect(() => {
     const anyOn = rtkEnabled || cavemanEnabled || headroomEnabled;
@@ -280,6 +338,10 @@ export default function CachingPageClient() {
             onClick={() => {
               fetchCompressionStats();
               if (activeTab === "history") fetchHistory();
+              if (activeTab === "overview" || activeTab === "provider") {
+                fetchProviderCompression(cachePeriod);
+              }
+              if (activeTab === "provider") fetchProviderCache(cachePeriod);
             }}
           >
             Refresh
@@ -333,6 +395,27 @@ export default function CachingPageClient() {
               Last updated {new Date(compressionStats.updatedAt).toLocaleString()}
             </p>
           )}
+
+          <Card padding="sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-2 pt-2">
+              <div>
+                <h2 className="text-lg font-semibold">Compression by provider</h2>
+                <p className="text-sm text-text-muted mt-0.5">
+                  RTK, Headroom, and Caveman activity grouped by upstream provider.
+                </p>
+              </div>
+              <SegmentedControl
+                options={CACHE_PERIODS}
+                value={cachePeriod}
+                onChange={(v) => { setCachePeriod(v); fetchProviderCompression(v); }}
+                size="sm"
+              />
+            </div>
+            <ProviderCompressionTable
+              rows={providerCompression?.providers}
+              emptyMessage="No per-provider compression yet — send chat traffic with RTK, Headroom, or Caveman enabled."
+            />
+          </Card>
 
           <Card>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -515,6 +598,7 @@ export default function CachingPageClient() {
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-text-muted">
                     <th className="px-3 py-2 font-medium">Time</th>
+                    <th className="px-3 py-2 font-medium">Provider</th>
                     <th className="px-3 py-2 font-medium">Subsystem</th>
                     <th className="px-3 py-2 font-medium text-right">Before</th>
                     <th className="px-3 py-2 font-medium text-right">After</th>
@@ -528,6 +612,7 @@ export default function CachingPageClient() {
                       <td className="px-3 py-2 whitespace-nowrap text-xs">
                         {new Date(row.timestamp).toLocaleString()}
                       </td>
+                      <td className="px-3 py-2 text-xs">{row.provider || "—"}</td>
                       <td className="px-3 py-2">
                         <Badge variant="default" size="sm">{row.subsystem}</Badge>
                       </td>
@@ -559,10 +644,22 @@ export default function CachingPageClient() {
             <SegmentedControl
               options={CACHE_PERIODS}
               value={cachePeriod}
-              onChange={(v) => { setCachePeriod(v); fetchProviderCache(v); }}
+              onChange={(v) => {
+                setCachePeriod(v);
+                fetchProviderCache(v);
+                fetchProviderCompression(v);
+              }}
               size="sm"
             />
           </div>
+
+          <Card padding="sm">
+            <h3 className="font-semibold px-2 pt-2 mb-2">RTK / Headroom / Caveman by provider</h3>
+            <ProviderCompressionTable
+              rows={providerCompression?.providers}
+              emptyMessage="No compression events recorded for this period."
+            />
+          </Card>
 
           {providerCache?.providerCache && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

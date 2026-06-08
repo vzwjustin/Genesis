@@ -3,7 +3,21 @@ import { getAdapter } from "./db/driver.js";
 
 const META_KEY = "compressionStats";
 const TOOL_IDS = ["rtk", "caveman", "headroom"];
+const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
 let writeQueue = Promise.resolve();
+
+function periodToSince(period) {
+  if (period === "all") return null;
+  const ms = PERIOD_MS[period];
+  if (!ms) return new Date(Date.now() - PERIOD_MS["7d"]).toISOString();
+  return new Date(Date.now() - ms).toISOString();
+}
+
+function normalizeProvider(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
 
 function estimateTokensSaved(bytesSaved) {
   return Math.round(toNumber(bytesSaved) / 4);
@@ -134,6 +148,7 @@ export async function resetCompressionStats() {
  * @param {number} record.bytesAfter - bytes after compression
  * @param {string} [record.filterHits] - JSON string of filter names (optional)
  * @param {string} [record.level] - Caveman intensity level (optional)
+ * @param {string} [record.provider] - upstream provider id (optional)
  * @param {string} [record.timestamp] - ISO8601 timestamp (defaults to now)
  */
 export async function saveCompressionStats(record) {
@@ -141,14 +156,15 @@ export async function saveCompressionStats(record) {
     const db = await getAdapter();
     const timestamp = record.timestamp || new Date().toISOString();
     const subsystem = record.subsystem;
+    const provider = normalizeProvider(record.provider);
     const bytesBefore = Number(record.bytesBefore) || 0;
     const bytesAfter = Number(record.bytesAfter) || 0;
     const filterHits = record.filterHits || null;
     const level = record.level || null;
 
     await db.run(
-      `INSERT INTO compressionStats(timestamp, subsystem, bytes_before, bytes_after, filter_hits, level) VALUES(?, ?, ?, ?, ?, ?)`,
-      [timestamp, subsystem, bytesBefore, bytesAfter, filterHits, level]
+      `INSERT INTO compressionStats(timestamp, subsystem, provider, bytes_before, bytes_after, filter_hits, level) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+      [timestamp, subsystem, provider, bytesBefore, bytesAfter, filterHits, level]
     );
   } catch (err) {
     // Stats write failure must never interrupt the request (Req 14.3)
@@ -160,10 +176,143 @@ export async function saveCompressionStats(record) {
   }
 }
 
+export async function clearCompressionHistory() {
+  try {
+    const db = await getAdapter();
+    const row = db.get(`SELECT COUNT(*) AS count FROM compressionStats`);
+    const deleted = row?.count || 0;
+    db.run(`DELETE FROM compressionStats`);
+    return deleted;
+  } catch (err) {
+    try {
+      console.error("[compressionStats] Failed to clear history:", err.message);
+    } catch { /* continue */ }
+    return 0;
+  }
+}
+
+export async function getFilterLeaderboard({ limit = 20, since } = {}) {
+  try {
+    const db = await getAdapter();
+    const conds = [];
+    const params = [];
+    if (since) {
+      conds.push("timestamp >= ?");
+      params.push(since);
+    }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const rows = db.all(
+      `SELECT filter_hits, bytes_before, bytes_after FROM compressionStats ${where} ORDER BY id DESC LIMIT 5000`,
+      params
+    );
+
+    const totals = {};
+    for (const row of rows) {
+      if (!row.filter_hits) continue;
+      let filters = [];
+      try {
+        filters = JSON.parse(row.filter_hits);
+      } catch {
+        continue;
+      }
+      const saved = Math.max(0, (Number(row.bytes_before) || 0) - (Number(row.bytes_after) || 0));
+      for (const filter of filters) {
+        if (!filter) continue;
+        if (!totals[filter]) totals[filter] = { filter, hits: 0, bytesSaved: 0 };
+        totals[filter].hits += 1;
+        totals[filter].bytesSaved += saved;
+      }
+    }
+
+    return Object.values(totals)
+      .sort((a, b) => b.bytesSaved - a.bytesSaved)
+      .slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+function emptyProviderBucket(provider) {
+  return {
+    provider,
+    events: 0,
+    bytesSaved: 0,
+    rtk: { events: 0, bytesSaved: 0 },
+    headroom: { events: 0, bytesSaved: 0 },
+    caveman: { events: 0, injections: 0 },
+    lastUsed: null,
+  };
+}
+
+/**
+ * Aggregate RTK / Headroom / Caveman compression by upstream provider.
+ * @param {string} [period] - 24h | 7d | 30d | 60d | all
+ * @param {{ provider?: string }} [filter]
+ */
+export async function getProviderCompressionStats(period = "7d", filter = {}) {
+  try {
+    const db = await getAdapter();
+    const since = periodToSince(period);
+    const conds = [];
+    const params = [];
+    if (since) {
+      conds.push("timestamp >= ?");
+      params.push(since);
+    }
+    if (filter.provider) {
+      conds.push("provider = ?");
+      params.push(filter.provider);
+    }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const rows = db.all(
+      `SELECT timestamp, provider, subsystem, bytes_before, bytes_after, level FROM compressionStats ${where} ORDER BY id ASC`,
+      params
+    );
+
+    const byProvider = {};
+    for (const row of rows) {
+      const provider = row.provider || "unknown";
+      if (!byProvider[provider]) byProvider[provider] = emptyProviderBucket(provider);
+
+      const bucket = byProvider[provider];
+      const subsystem = row.subsystem;
+      const bytesSaved = Math.max(0, (Number(row.bytes_before) || 0) - (Number(row.bytes_after) || 0));
+      const isCaveman = subsystem === "caveman";
+
+      bucket.events += 1;
+      if (!isCaveman) bucket.bytesSaved += bytesSaved;
+      bucket.lastUsed = row.timestamp || bucket.lastUsed;
+
+      if (subsystem === "rtk") {
+        bucket.rtk.events += 1;
+        bucket.rtk.bytesSaved += bytesSaved;
+      } else if (subsystem === "headroom") {
+        bucket.headroom.events += 1;
+        bucket.headroom.bytesSaved += bytesSaved;
+      } else if (subsystem === "caveman") {
+        bucket.caveman.events += 1;
+        bucket.caveman.injections += 1;
+      }
+    }
+
+    const providers = Object.values(byProvider)
+      .sort((a, b) => b.bytesSaved - a.bytesSaved || b.events - a.events);
+
+    return {
+      period,
+      requests: rows.length,
+      providers,
+    };
+  } catch {
+    return { period, requests: 0, providers: [] };
+  }
+}
+
 /**
  * Retrieve compression stats records from the SQLite table.
  * @param {object} [filter]
  * @param {string} [filter.subsystem] - filter by subsystem
+ * @param {string} [filter.provider] - filter by provider
  * @param {string} [filter.since] - ISO8601 timestamp lower bound
  * @param {number} [filter.limit] - max rows to return (default 100)
  * @returns {Promise<Array>}
@@ -182,13 +331,17 @@ export async function getCompressionStatsHistory(filter = {}) {
       conds.push("timestamp >= ?");
       params.push(filter.since);
     }
+    if (filter.provider) {
+      conds.push("provider = ?");
+      params.push(filter.provider);
+    }
 
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const limit = filter.limit || 100;
     params.push(limit);
 
     return db.all(
-      `SELECT id, timestamp, subsystem, bytes_before, bytes_after, filter_hits, level FROM compressionStats ${where} ORDER BY id DESC LIMIT ?`,
+      `SELECT id, timestamp, subsystem, provider, bytes_before, bytes_after, filter_hits, level FROM compressionStats ${where} ORDER BY id DESC LIMIT ?`,
       params
     );
   } catch {

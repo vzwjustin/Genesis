@@ -182,18 +182,21 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       const rtkStats = compressMessages(translatedBody, rtkEnabled);
       const rtkLine = formatRtkLog(rtkStats);
       if (rtkLine) console.log(rtkLine);
-      if (rtkStats?.hits?.length > 0 || (rtkStats?.bytesBefore > 0 && rtkStats?.bytesAfter < rtkStats?.bytesBefore)) {
+      const rtkScanned = (rtkStats?.bytesBefore || 0) > 0;
+      const rtkSaved = rtkScanned && (rtkStats.bytesAfter < rtkStats.bytesBefore || (rtkStats?.hits?.length || 0) > 0);
+      if (rtkScanned) {
         const filters = Array.from(new Set((rtkStats?.hits || []).map((hit) => hit.filter))).join(",");
         const saved = (rtkStats?.bytesBefore || 0) - (rtkStats?.bytesAfter || 0);
-        chainStages.push(`rtk:${saved}B`);
+        if (rtkSaved) chainStages.push(`rtk:${saved}B`);
         recordCompressionStats("rtk", {
           bytesBefore: rtkStats?.bytesBefore || 0,
           bytesAfter: rtkStats?.bytesAfter || 0,
           hits: rtkStats?.hits?.length || 0,
-          detail: filters || "no compression",
+          detail: filters || (rtkSaved ? "compressed" : "scanned, no savings"),
         }).catch(() => {});
         saveCompressionStats({
           subsystem: "rtk",
+          provider,
           bytesBefore: rtkStats?.bytesBefore || 0,
           bytesAfter: rtkStats?.bytesAfter || 0,
           filterHits: filters ? JSON.stringify(rtkStats.hits.map((h) => h.filter)) : null,
@@ -204,23 +207,29 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     // Stage 2 — Headroom: ML history compression (runs after RTK sees shrunk tool blobs)
     if (compressionAllowed && headroomEnabled) {
       const hrStats = await compressWithHeadroom(translatedBody, model);
-      if (hrStats && hrStats.saved > 0) {
-        const pct = Math.round((hrStats.saved / hrStats.before) * 100);
-        console.log(`[HEADROOM] saved ${hrStats.saved}B / ${hrStats.before}B (${pct}%)`);
-        chainStages.push(`headroom:${hrStats.saved}B`);
+      if (hrStats && (hrStats.before || 0) > 0) {
+        const saved = Math.max(0, hrStats.saved || 0);
+        if (saved > 0) {
+          const pct = Math.round((saved / hrStats.before) * 100);
+          console.log(`[HEADROOM] saved ${saved}B / ${hrStats.before}B (${pct}%)`);
+          chainStages.push(`headroom:${saved}B`);
+        } else {
+          log?.debug?.("HEADROOM", "ran but no savings");
+        }
         recordCompressionStats("headroom", {
           bytesBefore: hrStats.before || 0,
-          bytesAfter: hrStats.after || 0,
-          hits: 1,
-          detail: model,
+          bytesAfter: hrStats.after ?? hrStats.before ?? 0,
+          hits: saved > 0 ? 1 : 0,
+          detail: saved > 0 ? model : `${model}: no savings`,
         }).catch(() => {});
         saveCompressionStats({
           subsystem: "headroom",
+          provider,
           bytesBefore: hrStats.before || 0,
-          bytesAfter: hrStats.after || 0,
+          bytesAfter: hrStats.after ?? hrStats.before ?? 0,
         }).catch(() => {});
       } else {
-        log?.debug?.("HEADROOM", "skipped (unavailable, empty tail, or no savings)");
+        log?.debug?.("HEADROOM", "skipped (unavailable or empty tail)");
       }
     }
 
@@ -236,6 +245,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         }).catch(() => {});
         saveCompressionStats({
           subsystem: "caveman",
+          provider,
           bytesBefore: 0,
           bytesAfter: 0,
           level: cavemanLevel,
