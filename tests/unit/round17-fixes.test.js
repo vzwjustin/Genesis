@@ -1,24 +1,17 @@
 /**
  * Round 17 — TTS proxy migration, models/test hardening, combo resolution
+ * No mocks: source inspection + pure combo helper tests.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
+import { getBrokenComboErrorFromData } from "../../open-sse/services/combo.js";
 
-const proxyAwareFetch = vi.hoisted(() => vi.fn());
-const ttsFetch = vi.hoisted(() => vi.fn());
-
-vi.mock("open-sse/utils/proxyFetch.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    proxyAwareFetch: (...args) => proxyAwareFetch(...args),
-  };
-});
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("TTS providers proxy migration", () => {
-  const ttsRoot = join(dirname(fileURLToPath(import.meta.url)), "../../open-sse/handlers/ttsProviders");
+  const ttsRoot = join(root, "../../open-sse/handlers/ttsProviders");
 
   it("genericFormats and special adapters use ttsFetch instead of bare fetch", () => {
     const files = [
@@ -39,7 +32,7 @@ describe("TTS providers proxy migration", () => {
     }
   });
 
-  it("synthesizeViaConfig passes proxyOptions to format handlers", async () => {
+  it("synthesizeViaConfig passes proxyOptions to format handlers", () => {
     const src = readFileSync(join(ttsRoot, "index.js"), "utf8");
     expect(src).toContain("buildProxyOptionsFromCredentials");
     expect(src).toContain("proxyOptions");
@@ -47,7 +40,7 @@ describe("TTS providers proxy migration", () => {
 });
 
 describe("TTS voice routes proxy migration", () => {
-  const apiRoot = join(dirname(fileURLToPath(import.meta.url)), "../../src/app/api/media-providers/tts");
+  const apiRoot = join(root, "../../src/app/api/media-providers/tts");
 
   it("deepgram, inworld, and minimax voice routes use proxyAwareFetch", () => {
     for (const route of ["deepgram/voices/route.js", "inworld/voices/route.js", "minimax/voices/route.js"]) {
@@ -59,48 +52,28 @@ describe("TTS voice routes proxy migration", () => {
 });
 
 describe("broken combo resolution error", () => {
-  beforeEach(() => {
-    vi.resetModules();
+  it("getBrokenComboErrorFromData returns message when combo has no valid models", () => {
+    const combos = [{ name: "empty-combo", models: ["", "  "] }];
+    expect(getBrokenComboErrorFromData("empty-combo", combos))
+      .toBe('Combo "empty-combo" has no valid model targets configured.');
   });
 
-  it("getBrokenComboError returns message when combo exists but has no valid models", async () => {
-    vi.doMock("@/lib/localDb", () => ({
-      getModelAliases: vi.fn(),
-      getComboByName: vi.fn().mockResolvedValue({ name: "empty-combo", models: ["", "  "] }),
-      getProviderNodes: vi.fn(),
-    }));
-
-    const { getBrokenComboError } = await import("../../src/sse/services/model.js");
-    const error = await getBrokenComboError("empty-combo");
-    expect(error).toBe('Combo "empty-combo" has no valid model targets configured.');
-
-    vi.doUnmock("@/lib/localDb");
+  it("getBrokenComboErrorFromData returns null for unknown model names", () => {
+    expect(getBrokenComboErrorFromData("not-a-combo", [])).toBeNull();
   });
 
-  it("getBrokenComboError returns null for unknown model names", async () => {
-    vi.doMock("@/lib/localDb", () => ({
-      getModelAliases: vi.fn(),
-      getComboByName: vi.fn().mockResolvedValue(null),
-      getProviderNodes: vi.fn(),
-    }));
-
-    const { getBrokenComboError } = await import("../../src/sse/services/model.js");
-    expect(await getBrokenComboError("not-a-combo")).toBeNull();
-
-    vi.doUnmock("@/lib/localDb");
+  it("getBrokenComboErrorFromData returns null for provider/model strings", () => {
+    expect(getBrokenComboErrorFromData("openai/gpt-4o", [{ name: "openai/gpt-4o", models: [] }])).toBeNull();
   });
 });
 
 describe("models/test hardening", () => {
   it("fails closed on empty or invalid JSON via internalApiPost", () => {
     const routeSrc = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../src/app/api/models/test/route.js"),
+      join(root, "../../src/app/api/models/test/route.js"),
       "utf8"
     );
-    const apiSrc = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../src/lib/internalApi.js"),
-      "utf8"
-    );
+    const apiSrc = readFileSync(join(root, "../../src/lib/internalApi.js"), "utf8");
     expect(routeSrc).toContain("internalApiPost");
     expect(routeSrc).toContain("parseError");
     expect(apiSrc).toContain("Empty response body");

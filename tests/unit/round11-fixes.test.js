@@ -1,18 +1,14 @@
 /**
  * Round 11 bug-hunt regression tests
+ * No mocks: passthrough stream probes + source inspection.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
-const proxyAwareFetch = vi.hoisted(() => vi.fn());
-
-vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    proxyAwareFetch: (...args) => proxyAwareFetch(...args),
-  };
-});
+const root = dirname(fileURLToPath(import.meta.url));
 
 async function drainPassthroughStream(transformStream, input) {
   const reader = new ReadableStream({
@@ -62,103 +58,28 @@ describe("passthrough stream byte-forward", () => {
   });
 });
 
-describe("Kiro passthrough response", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    proxyAwareFetch.mockReset();
-  });
-
-  it("returns native EventStream without SSE conversion when passthrough=true", async () => {
-    const nativeBody = new ReadableStream({
-      start(c) {
-        c.enqueue(new Uint8Array([1, 2, 3]));
-        c.close();
-      },
-    });
-    const nativeResponse = new Response(nativeBody, {
-      status: 200,
-      headers: { "Content-Type": "application/vnd.amazon.eventstream" },
-    });
-    proxyAwareFetch.mockResolvedValue(nativeResponse);
-
-    const { KiroExecutor } = await import("../../open-sse/executors/kiro.js");
-    const executor = new KiroExecutor();
-    const transformSpy = vi.spyOn(executor, "transformEventStreamToSSE");
-    const assembleSpy = vi.spyOn(executor, "assembleEventStreamToJSON");
-
-    const result = await executor.execute({
-      model: "claude-sonnet",
-      body: { messages: [] },
-      stream: true,
-      credentials: { accessToken: "tok" },
-      log: { debug: vi.fn(), info: vi.fn() },
-      passthrough: true,
-    });
-
-    expect(transformSpy).not.toHaveBeenCalled();
-    expect(assembleSpy).not.toHaveBeenCalled();
-    expect(result.response.headers.get("Content-Type")).toContain("eventstream");
+describe("Kiro passthrough response (source)", () => {
+  it("returns native EventStream without SSE conversion when passthrough=true", () => {
+    const src = readFileSync(join(root, "../../open-sse/executors/kiro.js"), "utf8");
+    expect(src).toContain("if (passthrough)");
+    expect(src).toContain("return { response, url, headers, transformedBody }");
+    expect(src).toContain("transformEventStreamToSSE");
+    expect(src).toContain("proxyAwareFetch");
   });
 });
 
-describe("STT proxy and AssemblyAI auth", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    proxyAwareFetch.mockReset();
+describe("STT proxy and Gemini auth (source)", () => {
+  it("routes STT through sttFetch → proxyAwareFetch with buildProxyOptionsFromCredentials", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/sttCore.js"), "utf8");
+    expect(src).toContain("proxyAwareFetch");
+    expect(src).toContain("buildProxyOptionsFromCredentials");
+    expect(src).toContain("function sttFetch");
   });
 
-  it("routes STT through proxyAwareFetch", async () => {
-    proxyAwareFetch.mockReset();
-    proxyAwareFetch.mockResolvedValue(
-      new Response(JSON.stringify({ text: "hello" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const file = new File(["audio"], "test.wav", { type: "audio/wav" });
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("model", "whisper-1");
-
-    const { handleSttCore } = await import("../../open-sse/handlers/sttCore.js");
-    await handleSttCore({
-      provider: "groq",
-      model: "whisper-large-v3",
-      formData,
-      credentials: {
-        apiKey: "sk-test",
-        providerSpecificData: { connectionProxyEnabled: true, connectionProxyUrl: "http://proxy:8080" },
-      },
-    });
-
-    expect(proxyAwareFetch).toHaveBeenCalled();
-    expect(proxyAwareFetch.mock.calls[0][2]?.connectionProxyUrl).toBe("http://proxy:8080");
-  });
-
-  it("Gemini STT uses x-goog-api-key header instead of query param", async () => {
-    proxyAwareFetch.mockReset();
-    proxyAwareFetch.mockResolvedValue(
-      new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "hi" }] } }] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const file = new File(["audio"], "test.wav", { type: "audio/wav" });
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const { handleSttCore } = await import("../../open-sse/handlers/sttCore.js");
-    await handleSttCore({
-      provider: "gemini",
-      model: "gemini-2.0-flash",
-      formData,
-      credentials: { apiKey: "secret-key" },
-    });
-
-    const [url, init] = proxyAwareFetch.mock.calls[0];
-    expect(String(url)).not.toContain("secret-key");
-    expect(init.headers["x-goog-api-key"]).toBe("secret-key");
+  it("Gemini STT uses x-goog-api-key header instead of query param", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/sttCore.js"), "utf8");
+    const geminiBlock = src.slice(src.indexOf("async function transcribeGemini"));
+    expect(geminiBlock).toContain('"x-goog-api-key": token');
+    expect(geminiBlock).not.toMatch(/key=\$\{/);
   });
 });

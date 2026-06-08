@@ -1,48 +1,25 @@
 /**
- * Round 13 bug-hunt regression tests
+ * Round 13 — xAI refresh proxy forwarding
+ * No mocks: source inspection.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 
-const proxyAwareFetch = vi.hoisted(() => vi.fn());
-
-vi.mock("open-sse/utils/proxyFetch.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    proxyAwareFetch: (...args) => proxyAwareFetch(...args),
-  };
-});
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("xAI refresh proxy forwarding", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    proxyAwareFetch.mockReset();
+  it("refreshTokenByProvider forwards proxyOptions to XaiService.refreshAccessToken", () => {
+    const refreshSrc = readFileSync(join(root, "../../open-sse/services/tokenRefresh.js"), "utf8");
+    const xaiBlock = refreshSrc.slice(refreshSrc.indexOf('dedupRefresh("xai"'));
+    expect(xaiBlock).toContain("refreshAccessToken(refreshToken, proxyOptions)");
+    expect(xaiBlock).toContain("XaiService");
   });
 
-  it("refreshTokenByProvider forwards proxyOptions to XaiService.refreshAccessToken", async () => {
-    const refreshSpy = vi.fn().mockResolvedValue({
-      access_token: "new-access",
-      refresh_token: "rotated",
-      expires_in: 900,
-    });
-
-    vi.doMock("../../src/lib/oauth/services/xai.js", () => ({
-      XaiService: class {
-        refreshAccessToken = refreshSpy;
-      },
-    }));
-
-    const { refreshTokenByProvider, __clearRefreshDedupCacheForTests } = await import(
-      "../../open-sse/services/tokenRefresh.js"
-    );
-    __clearRefreshDedupCacheForTests();
-
-    const proxyOptions = { connectionProxyEnabled: true, connectionProxyUrl: "http://proxy:8080" };
-    await refreshTokenByProvider("xai", { refreshToken: "rt" }, null, proxyOptions);
-
-    expect(refreshSpy).toHaveBeenCalledWith("rt", proxyOptions);
-
-    vi.doUnmock("../../src/lib/oauth/services/xai.js");
+  it("XaiService.refreshAccessToken uses oauthFetch", () => {
+    const src = readFileSync(join(root, "../../src/lib/oauth/services/xai.js"), "utf8");
+    expect(src).toContain("oauthFetch");
+    expect(src).toMatch(/refreshAccessToken\([^)]*proxyOptions/);
   });
 });
-

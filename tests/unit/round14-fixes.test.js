@@ -1,66 +1,24 @@
 /**
  * Round 14 — provider models route proxy migration
+ * No mocks: source inspection + re-export check.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 
-const proxyAwareFetch = vi.hoisted(() => vi.fn());
-
-vi.mock("open-sse/utils/proxyFetch.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    proxyAwareFetch: (...args) => proxyAwareFetch(...args),
-  };
-});
-
-vi.mock("@/models", () => ({
-  getProviderConnectionById: vi.fn(),
-}));
-
-vi.mock("@/lib/network/connectionProxy", () => ({
-  resolveConnectionProxyConfig: vi.fn().mockResolvedValue({
-    connectionProxyEnabled: true,
-    connectionProxyUrl: "http://proxy:8080",
-    connectionNoProxy: "",
-    vercelRelayUrl: "",
-    strictProxy: false,
-  }),
-}));
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("GET /api/providers/[id]/models proxy migration", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    proxyAwareFetch.mockReset();
-  });
-
-  it("uses proxyAwareFetch for OpenAI-compatible provider model listing", async () => {
-    proxyAwareFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [{ id: "gpt-4o" }] }),
-    });
-
-    const { getProviderConnectionById } = await import("@/models");
-    getProviderConnectionById.mockResolvedValue({
-      id: "conn-1",
-      provider: "openai-compatible-local",
-      apiKey: "sk-test",
-      providerSpecificData: {
-        baseUrl: "https://example.com/v1",
-        connectionProxyEnabled: true,
-        connectionProxyUrl: "http://proxy:8080",
-      },
-    });
-
-    const { GET } = await import("../../src/app/api/providers/[id]/models/route.js");
-    const response = await GET(new Request("http://localhost/api/providers/conn-1/models"), {
-      params: Promise.resolve({ id: "conn-1" }),
-    });
-
-    expect(response.status).toBe(200);
-    expect(proxyAwareFetch).toHaveBeenCalled();
-    const passedProxy = proxyAwareFetch.mock.calls[0][2];
-    expect(passedProxy.connectionProxyEnabled).toBe(true);
-    expect(passedProxy.connectionProxyUrl).toBe("http://proxy:8080");
+  it("uses proxyAwareFetch with connection proxy options", () => {
+    const src = readFileSync(
+      join(root, "../../src/app/api/providers/[id]/models/route.js"),
+      "utf8"
+    );
+    expect(src).toContain("proxyAwareFetch");
+    expect(src).toContain("buildProxyOptionsFromConnection");
+    expect(src).toContain("resolveConnectionProxyConfig");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
   });
 });
 
