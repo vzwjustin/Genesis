@@ -40,8 +40,9 @@ export function hasAnthropicCacheBreakpoints(body) {
 export function cleanAnthropicToolDefinitions(tools, provider) {
   if (!tools || !Array.isArray(tools)) return tools;
 
+  const isAnthropicEndpoint = provider === "claude" || provider?.startsWith("anthropic-compatible");
   let filtered = tools;
-  if (provider !== "claude") {
+  if (!isAnthropicEndpoint) {
     filtered = tools.filter((tool) => !tool.type || tool.type === "function");
   }
 

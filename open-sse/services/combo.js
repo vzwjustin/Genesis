@@ -159,6 +159,21 @@ export async function isZeroConnectionsResponse(response) {
 }
 
 /**
+ * Detect proxy-side model resolution failures inside a combo member.
+ * These are not upstream client errors — the combo should advance to the next model.
+ */
+export async function isModelResolutionFailureResponse(response) {
+  if (response.status !== 400) return false;
+  try {
+    const body = await response.clone().json();
+    const message = body?.error?.message || "";
+    return message.startsWith("Failed to resolve model:");
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Handle combo chat with fallback
  * @param {Object} options
  * @param {Object} options.body - Request body
@@ -212,13 +227,18 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // Check for zero-connections 404 — this is provider unavailability, not a client error.
         // The combo should advance past providers with no configured connections.
         const zeroConns = await isZeroConnectionsResponse(result);
-        if (!zeroConns) {
+        const resolutionFailed = await isModelResolutionFailureResponse(result);
+        if (!zeroConns && !resolutionFailed) {
           // 4xx (non-429): Return response directly to client, do NOT advance (Req 5.3)
           log.info("COMBO", `Model ${modelStr} returned ${result.status} (client error), returning to client without advancing`);
           return result;
         }
-        // Zero connections detected — treat like unavailability, advance to next model
-        log.info("COMBO", `Model ${modelStr} has zero connections, advancing to next model`);
+        if (resolutionFailed) {
+          log.info("COMBO", `Model ${modelStr} failed to resolve, advancing to next model`);
+        } else {
+          // Zero connections detected — treat like unavailability, advance to next model
+          log.info("COMBO", `Model ${modelStr} has zero connections, advancing to next model`);
+        }
       }
 
       // 429 or 5xx: Advance to next model in combo.

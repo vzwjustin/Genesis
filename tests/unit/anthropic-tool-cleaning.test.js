@@ -75,6 +75,17 @@ describe("cleanAnthropicToolDefinitions — built-in tools (Requirement 1.6)", (
     expect(cleaned).toHaveLength(1);
     expect(cleaned[0].name).toBe("client_tool");
   });
+
+  it("preserves built-in tools for anthropic-compatible providers", () => {
+    const tools = [
+      { type: "function", name: "client_tool", input_schema: {} },
+      { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6" },
+    ];
+    const cleaned = cleanAnthropicToolDefinitions(tools, "anthropic-compatible-minimax");
+    expect(cleaned).toHaveLength(2);
+    expect(cleaned[1].type).toBe("web_search_20250305");
+    expect(cleaned[1].model).toBe("claude-opus-4-6");
+  });
 });
 
 describe("hasAnthropicCacheBreakpoints", () => {
@@ -157,6 +168,18 @@ describe("passthrough compatibility fix (Task 9.3)", () => {
     expect(result.tools[0].model).toBe("claude-opus-4-6");
     expect(result.tools[0].type).toBe("web_search_20250305");
     expect(result.tools[0].cache_control).toBeUndefined();
+  });
+
+  it("preserves built-in tools in passthrough for anthropic-compatible providers", () => {
+    const body = {
+      model: "claude-sonnet-4-5",
+      messages: [{ role: "user", content: "Search" }],
+      tools: [{ type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6" }],
+    };
+    const result = applyPassthroughToolCleaning(body, "anthropic-compatible-minimax");
+    expect(result.tools).toHaveLength(1);
+    expect(result.tools[0].type).toBe("web_search_20250305");
+    expect(result.tools[0].model).toBe("claude-opus-4-6");
   });
 
   it("preserves tool cache_control in passthrough", () => {

@@ -63,11 +63,24 @@ function invalidateProbe() {
   invalidateHeadroomProbe();
 }
 
+function tailHasToolHistory(messages) {
+  for (const msg of messages) {
+    if (msg?.role === "tool") return true;
+    if (Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0) return true;
+    if (!Array.isArray(msg?.content)) continue;
+    if (msg.content.some((block) => block?.type === "tool_use" || block?.type === "tool_result")) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function shouldSkipHeadroomForMessages(messages) {
   const cacheFloor = findCacheFloor(messages);
   const tail = messages.slice(cacheFloor + 1);
   if (tail.length === 0) return true;
   if (tail.every((m) => m?.role === "system" || m?.role === "developer")) return true;
+  if (tailHasToolHistory(tail)) return true;
   return false;
 }
 
@@ -228,6 +241,11 @@ async function compressInputBody(body, model, compress) {
 
       const compressedMsg = r.compressed[compressedIdx++];
       newTail.push(compressedMsg ? applyCompressedTextToInputItem(item, compressedMsg) : item);
+    }
+
+    if (compressedIdx !== r.compressed.length) {
+      console.warn("[HEADROOM] compressInputBody: compressed message mapping mismatch, skipping");
+      return null;
     }
 
     body.input = [...headItems, ...newTail];
