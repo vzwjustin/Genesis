@@ -43,7 +43,7 @@ describe("version releases API", () => {
       "https://api.github.com/repos/vzwjustin/9router/releases?per_page=30",
       expect.objectContaining({ headers: expect.objectContaining({ "User-Agent": "9Router" }) }),
     );
-    expect(body.currentVersion).toBe("0.4.71");
+    expect(body.currentVersion).toBe("0.8.0");
     expect(body.releases.map((release) => release.version)).toEqual(["0.4.68", "0.4.65"]);
     expect(body.releases[0]).toMatchObject({ direction: "downgrade", installCommand: "npm i -g github:vzwjustin/9router#v0.4.68 --prefer-online" });
     expect(body.releases[1]).toMatchObject({ direction: "downgrade", installCommand: "npm i -g github:vzwjustin/9router#v0.4.65 --prefer-online" });

@@ -7,12 +7,12 @@ describe("version API", () => {
     vi.resetModules();
     global.fetch = vi.fn(async () => new Response(JSON.stringify([
       {
-        tag_name: "v0.4.72",
+        tag_name: "v0.8.1",
         draft: false,
         prerelease: false,
       },
       {
-        tag_name: "v0.4.71",
+        tag_name: "v0.8.0",
         draft: false,
         prerelease: false,
       },
@@ -34,8 +34,8 @@ describe("version API", () => {
       expect.objectContaining({ headers: expect.objectContaining({ "User-Agent": "9Router" }) }),
     );
     expect(body).toEqual({
-      currentVersion: "0.4.71",
-      latestVersion: "0.4.72",
+      currentVersion: "0.8.0",
+      latestVersion: "0.8.1",
       hasUpdate: true,
     });
   });
