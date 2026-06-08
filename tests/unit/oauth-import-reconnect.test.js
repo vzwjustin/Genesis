@@ -40,6 +40,10 @@ vi.mock("@/models", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
 }));
 
+vi.mock("@/lib/mitm/autoSetupForProvider", () => ({
+  autoSetupMitmForProvider: vi.fn().mockResolvedValue({ attempted: false, skipped: true }),
+}));
+
 describe("OAuth import reconnect", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -17,6 +17,7 @@ import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
+import { useNotificationStore } from "@/store/notificationStore";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -65,6 +66,7 @@ export default function ProviderDetailPage() {
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
   const { copied, copy } = useCopyToClipboard();
+  const notify = useNotificationStore();
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -528,9 +530,29 @@ export default function ProviderDetailPage() {
     });
   };
 
-  const handleOAuthSuccess = () => {
+  const handleOAuthSuccess = (mitm) => {
     fetchConnections();
     closeOAuthModal();
+
+    if (!mitm) return;
+
+    if (mitm.success) {
+      notify.success(mitm.message || "MITM proxy enabled for this IDE. Restart the IDE to apply.");
+      return;
+    }
+
+    if (mitm.reason === "cli_guide") {
+      notify.addNotification({ type: "info", message: mitm.message, duration: 8000 });
+      return;
+    }
+
+    if (mitm.reason === "needs_privilege" || mitm.reason === "setup_failed") {
+      notify.addNotification({
+        type: "warning",
+        message: mitm.message || mitm.error || "Finish MITM setup in the dashboard.",
+        duration: 8000,
+      });
+    }
   };
 
   const handleIFlowCookieSuccess = () => {

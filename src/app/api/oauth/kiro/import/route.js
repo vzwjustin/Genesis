@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection, getProviderConnectionById, updateProviderConnection } from "@/models";
+import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
 
 /**
  * POST /api/oauth/kiro/import
@@ -60,6 +61,8 @@ export async function POST(request) {
       connection = await createProviderConnection(connectionPayload);
     }
 
+    const mitm = await autoSetupMitmForProvider("kiro");
+
     return NextResponse.json({
       success: true,
       connection: {
@@ -67,6 +70,7 @@ export async function POST(request) {
         provider: connection.provider,
         email: connection.email,
       },
+      mitm,
     });
   } catch (error) {
     console.error("Kiro import token error:", error);

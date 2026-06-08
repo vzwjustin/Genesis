@@ -32,7 +32,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose, existingCo
     if (!res.ok) {
       throw new Error(data.error || "Import failed");
     }
-    return data;
+    return data; // includes optional mitm setup result
   }, [existingConnectionId]);
 
   const runAutoDetectAndImport = useCallback(async () => {
@@ -53,8 +53,8 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose, existingCo
         setAutoDetecting(false);
         setImporting(true);
 
-        await importTokens(data.accessToken, data.machineId);
-        onSuccess?.();
+        const importData = await importTokens(data.accessToken, data.machineId);
+        onSuccess?.(importData?.mitm);
         onClose();
         return;
       }
@@ -92,8 +92,8 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose, existingCo
     setError(null);
 
     try {
-      await importTokens(accessToken, machineId);
-      onSuccess?.();
+      const importData = await importTokens(accessToken, machineId);
+      onSuccess?.(importData?.mitm);
       onClose();
     } catch (err) {
       setError(err.message);

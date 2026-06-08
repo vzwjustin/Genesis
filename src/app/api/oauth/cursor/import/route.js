@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { CursorService } from "@/lib/oauth/services/cursor";
 import { createProviderConnection, getProviderConnectionById, updateProviderConnection } from "@/models";
+import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
 
 /**
  * POST /api/oauth/cursor/import
@@ -75,6 +76,8 @@ export async function POST(request) {
       connection = await createProviderConnection(connectionPayload);
     }
 
+    const mitm = await autoSetupMitmForProvider("cursor");
+
     return NextResponse.json({
       success: true,
       connection: {
@@ -82,6 +85,7 @@ export async function POST(request) {
         provider: connection.provider,
         email: connection.email,
       },
+      mitm,
     });
   } catch (error) {
     console.error("Cursor import token error:", error);

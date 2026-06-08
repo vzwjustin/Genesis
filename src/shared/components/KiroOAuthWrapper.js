@@ -28,8 +28,7 @@ export default function KiroOAuthWrapper({ isOpen, providerInfo, onSuccess, onCl
       setAuthMethod("social");
       setSocialProvider(config.provider);
     } else if (method === "import") {
-      // Import handled in KiroAuthModal, just close
-      onSuccess?.();
+      onSuccess?.(config?.mitm);
     }
   }, [onSuccess]);
 

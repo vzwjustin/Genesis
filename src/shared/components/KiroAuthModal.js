@@ -67,9 +67,9 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
           setRefreshToken(data.refreshToken);
           setAutoDetected(true);
           setAutoImporting(true);
-          await importToken(data.refreshToken);
+          const importData = await importToken(data.refreshToken);
           if (cancelled) return;
-          onMethodSelect("import");
+          onMethodSelect("import", { mitm: importData?.mitm });
           return;
         }
       } catch (err) {
@@ -136,8 +136,8 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
     setError(null);
 
     try {
-      await importToken(refreshToken);
-      onMethodSelect("import");
+      const importData = await importToken(refreshToken);
+      onMethodSelect("import", { mitm: importData?.mitm });
     } catch (err) {
       setError(err.message);
     } finally {
