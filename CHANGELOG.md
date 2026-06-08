@@ -1,8 +1,8 @@
-# v0.8.0 (2026-06-08)
+# v0.4.8 (2026-06-08)
 
 ## Changes
 - Point in-app updater at `vzwjustin/9router` fork (GitHub releases + `github:vzwjustin/9router` install)
-- Version bump to 0.8.0
+- Version bump to 0.4.8
 
 # v0.4.66 (2026-05-29)
 
