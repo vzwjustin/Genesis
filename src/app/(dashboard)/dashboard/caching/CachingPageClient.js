@@ -10,7 +10,11 @@ import {
   Badge,
   PageLoading,
 } from "@/shared/components";
-import CompressionStatRow, { formatBytes } from "@/shared/components/CompressionStatRow";
+import CompressionStatRow, {
+  formatBytes,
+  formatCompressionDisplay,
+  estimateTokensFromBytes,
+} from "@/shared/components/CompressionStatRow";
 import InlineAlert from "@/shared/components/InlineAlert";
 import RequestLogSessionModal from "@/shared/components/RequestLogSessionModal";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
@@ -44,14 +48,7 @@ const SUBSYSTEMS = [
 
 function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl }) {
   const s = stats || {};
-  const primary = kind === "injections"
-    ? `${s.hits || 0} injections`
-    : formatBytes(s.bytesSaved || 0);
-  const secondary = kind === "bytes" && s.tokenSavingsAvailable
-    ? `~${(s.estimatedTokensSaved || 0).toLocaleString()} tokens`
-    : kind === "bytes" && (s.bytesSaved || 0) > 0
-      ? "Savings estimated"
-      : null;
+  const { headline: primary, subline: secondary } = formatCompressionDisplay(s, kind);
 
   return (
     <Card padding="md" className="flex flex-col gap-3">
@@ -91,10 +88,10 @@ function ProviderCompressionTable({ rows, emptyMessage }) {
           <tr className="border-b border-border text-left text-xs text-text-muted">
             <th className="px-3 py-2">Provider</th>
             <th className="px-3 py-2 text-right">Events</th>
-            <th className="px-3 py-2 text-right">RTK saved</th>
-            <th className="px-3 py-2 text-right">Headroom saved</th>
+            <th className="px-3 py-2 text-right">RTK tokens</th>
+            <th className="px-3 py-2 text-right">Headroom tokens</th>
             <th className="px-3 py-2 text-right">Caveman</th>
-            <th className="px-3 py-2 text-right">Total saved</th>
+            <th className="px-3 py-2 text-right">Total tokens</th>
             <th className="px-3 py-2">Last activity</th>
           </tr>
         </thead>
@@ -104,16 +101,22 @@ function ProviderCompressionTable({ rows, emptyMessage }) {
               <td className="px-3 py-2 font-medium">{row.provider}</td>
               <td className="px-3 py-2 text-right tabular-nums">{row.events}</td>
               <td className="px-3 py-2 text-right font-mono text-xs text-success">
-                {row.rtk.bytesSaved > 0 ? formatBytes(row.rtk.bytesSaved) : "—"}
+                {row.rtk.bytesSaved > 0
+                  ? `~${estimateTokensFromBytes(row.rtk.bytesSaved).toLocaleString()}`
+                  : "—"}
               </td>
               <td className="px-3 py-2 text-right font-mono text-xs text-success">
-                {row.headroom.bytesSaved > 0 ? formatBytes(row.headroom.bytesSaved) : "—"}
+                {row.headroom.bytesSaved > 0
+                  ? `~${estimateTokensFromBytes(row.headroom.bytesSaved).toLocaleString()}`
+                  : "—"}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">
                 {row.caveman.injections > 0 ? `${row.caveman.injections} inj` : "—"}
               </td>
               <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-success">
-                {row.bytesSaved > 0 ? formatBytes(row.bytesSaved) : "—"}
+                {row.bytesSaved > 0
+                  ? `~${estimateTokensFromBytes(row.bytesSaved).toLocaleString()}`
+                  : "—"}
               </td>
               <td className="px-3 py-2 text-xs text-text-muted whitespace-nowrap">
                 {row.lastUsed ? new Date(row.lastUsed).toLocaleString() : "—"}
@@ -602,7 +605,7 @@ export default function CachingPageClient() {
                     <th className="px-3 py-2 font-medium">Subsystem</th>
                     <th className="px-3 py-2 font-medium text-right">Before</th>
                     <th className="px-3 py-2 font-medium text-right">After</th>
-                    <th className="px-3 py-2 font-medium text-right">Saved</th>
+                    <th className="px-3 py-2 font-medium text-right">Saved (tokens)</th>
                     <th className="px-3 py-2 font-medium">Detail</th>
                   </tr>
                 </thead>
@@ -619,7 +622,11 @@ export default function CachingPageClient() {
                       <td className="px-3 py-2 text-right font-mono text-xs">{formatBytes(row.bytesBefore)}</td>
                       <td className="px-3 py-2 text-right font-mono text-xs">{formatBytes(row.bytesAfter)}</td>
                       <td className="px-3 py-2 text-right font-mono text-xs text-success">
-                        {formatBytes(row.bytesSaved)}
+                        {row.bytesSaved > 0
+                          ? `~${estimateTokensFromBytes(row.bytesSaved).toLocaleString()} (${formatBytes(row.bytesSaved)})`
+                          : row.bytesBefore > 0
+                            ? `~${estimateTokensFromBytes(row.bytesBefore).toLocaleString()} proc.`
+                            : "—"}
                       </td>
                       <td className="px-3 py-2 text-xs text-text-muted max-w-[200px] truncate">
                         {row.level ? `level=${row.level}` : row.filterHits || "—"}
