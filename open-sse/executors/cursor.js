@@ -266,9 +266,15 @@ export class CursorExecutor extends BaseExecutor {
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
     const url = this.buildUrl();
     const headers = this.buildHeaders(credentials);
-    // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
-    // Only model name + auth header are swapped (Requirement 1.2).
-    const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
+    // Passthrough (passthru) mode: body should already be provider-native (protobuf Buffer).
+    // If it's not a Buffer (e.g. a plain JSON object was forwarded), encode it as protobuf so
+    // the upstream never receives an invalid request shape.
+    let transformedBody;
+    if (passthrough) {
+      transformedBody = Buffer.isBuffer(body) ? body : this.transformRequest(model, body, stream, credentials);
+    } else {
+      transformedBody = this.transformRequest(model, body, stream, credentials);
+    }
 
     try {
       const shouldForceFetch = proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true || !!proxyOptions?.vercelRelayUrl;
@@ -289,6 +295,16 @@ export class CursorExecutor extends BaseExecutor {
           headers: { "Content-Type": "application/json" }
         });
         return { response: errorResponse, url, headers, transformedBody: body };
+      }
+
+      // Passthrough mode: return raw upstream bytes without any protobuf→SSE/JSON conversion.
+      // The caller is expected to handle the provider-native binary response directly.
+      if (passthrough) {
+        const rawResponse = new Response(response.body, {
+          status: 200,
+          headers: { "Content-Type": "application/octet-stream" }
+        });
+        return { response: rawResponse, url, headers, transformedBody: body };
       }
 
       const transformedResponse = stream !== false
