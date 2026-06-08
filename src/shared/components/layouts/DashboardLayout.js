@@ -39,11 +39,21 @@ export default function DashboardLayout({ children }) {
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
+  const clearAll = useNotificationStore((state) => state.clearAll);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">
       <ConfirmDialogHost />
-      <div className="fixed top-4 right-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2">
+      <div className="fixed bottom-4 right-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2 sm:top-4 sm:bottom-auto">
+        {notifications.length > 1 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="self-end rounded-md border border-border bg-surface/95 px-2 py-1 text-[11px] text-text-muted hover:text-text-main"
+          >
+            Dismiss all
+          </button>
+        )}
         {notifications.map((n) => {
           const style = getToastStyle(n.type);
           return (
@@ -56,6 +66,18 @@ export default function DashboardLayout({ children }) {
                 <div className="min-w-0 flex-1">
                   {n.title ? <p className="text-xs font-semibold mb-0.5">{n.title}</p> : null}
                   <p className="text-xs whitespace-pre-wrap break-words">{n.message}</p>
+                  {n.action?.label ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        n.action.onClick?.();
+                        removeNotification(n.id);
+                      }}
+                      className="mt-2 text-xs font-semibold underline hover:opacity-80"
+                    >
+                      {n.action.label}
+                    </button>
+                  ) : null}
                 </div>
                 {n.dismissible ? (
                   <button

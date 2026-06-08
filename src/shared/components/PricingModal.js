@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import { getDefaultPricing, formatCost } from "@/shared/constants/pricing.js";
 import { confirmDialog } from "@/store/confirmStore";
+import { useNotificationStore } from "@/store/notificationStore";
 
 export default function PricingModal({ isOpen, onClose, onSave }) {
+  const notify = useNotificationStore();
   const [pricingData, setPricingData] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,11 +65,11 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
         onClose();
       } else {
         const error = await response.json();
-        alert(`Failed to save pricing: ${error.error}`);
+        notify.error(error.error || "Failed to save pricing");
       }
     } catch (error) {
       console.error("Failed to save pricing:", error);
-      alert("Failed to save pricing");
+      notify.error("Failed to save pricing");
     } finally {
       setSaving(false);
     }
@@ -89,7 +91,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
       }
     } catch (error) {
       console.error("Failed to reset pricing:", error);
-      alert("Failed to reset pricing");
+      notify.error("Failed to reset pricing");
     }
   };
 
