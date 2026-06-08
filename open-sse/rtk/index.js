@@ -156,15 +156,18 @@ export function compressMessages(body, enabled = rtkEnabled) {
   return stats;
 }
 
-// Compress Kiro format: conversationState.history[].userInputMessage.userInputMessageContext.toolResults[].content[].text
+// Compress Kiro format: only conversationState.currentMessage tool results.
+// History messages are already part of the provider's cached prefix — compressing
+// them changes the content hash and invalidates the upstream KV cache. Only the
+// currentMessage (which has not yet been cached) is safe to compress.
 function compressKiroFormat(body, enabled) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
   try {
     const state = body.conversationState;
-    const allMessages = [...(Array.isArray(state?.history) ? state.history : [])];
-    if (state?.currentMessage) allMessages.push(state.currentMessage);
+    // Skip history entirely — it is cache-protected upstream.
+    const messagesToCompress = state?.currentMessage ? [state.currentMessage] : [];
 
-    for (const msg of allMessages) {
+    for (const msg of messagesToCompress) {
       const toolResults = msg?.userInputMessage?.userInputMessageContext?.toolResults;
       if (!Array.isArray(toolResults)) continue;
 
