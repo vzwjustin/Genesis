@@ -1,13 +1,14 @@
 /**
- * Round 21 — stale compact shim, test harness fixes, combo exhaustion Retry-After
+ * Round 21 — stale compact shim, test harness, combo exhaustion Retry-After
+ * No mocks: real imports, real Response objects, source inspection.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { handleComboChat } from "../../open-sse/services/combo.js";
 
-const mockLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+const noopLog = { info() {}, warn() {}, error() {} };
 const root = dirname(fileURLToPath(import.meta.url));
 
 describe("compact.js re-export shim", () => {
@@ -23,33 +24,30 @@ describe("compact.js re-export shim", () => {
 });
 
 describe("handleComboChat — mixed account exhaustion Retry-After", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("propagates earliest Retry-After when models fail with exhaustion then rate limit", async () => {
-    const handleSingleModel = vi.fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: { message: "All accounts unavailable" } }), {
+    let callCount = 0;
+    const handleSingleModel = async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Response(JSON.stringify({ error: { message: "All accounts unavailable" } }), {
           status: 401,
           headers: { "Retry-After": "120", "Content-Type": "application/json" },
-        })
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: { message: "rate limited" } }), {
-          status: 429,
-          headers: { "Retry-After": "30", "Content-Type": "application/json" },
-        })
-      );
+        });
+      }
+      return new Response(JSON.stringify({ error: { message: "rate limited" } }), {
+        status: 429,
+        headers: { "Retry-After": "30", "Content-Type": "application/json" },
+      });
+    };
 
     const result = await handleComboChat({
       body: { messages: [] },
       models: ["openai/gpt-4o", "anthropic/claude-sonnet"],
       handleSingleModel,
-      log: mockLog,
+      log: noopLog,
     });
 
-    expect(handleSingleModel).toHaveBeenCalledTimes(2);
+    expect(callCount).toBe(2);
     expect(result.status).toBe(503);
     const retryAfter = parseInt(result.headers.get("Retry-After"), 10);
     expect(retryAfter).toBeGreaterThanOrEqual(1);
@@ -57,15 +55,23 @@ describe("handleComboChat — mixed account exhaustion Retry-After", () => {
   });
 });
 
-describe("version and minimax test harness alignment", () => {
-  it("version route tests mock proxyAwareFetch not global.fetch", () => {
-    const versionTest = readFileSync(join(root, "version-route.test.js"), "utf8");
-    const releasesTest = readFileSync(join(root, "version-releases-route.test.js"), "utf8");
-    const minimaxTest = readFileSync(join(root, "minimax-voices.test.js"), "utf8");
-
-    for (const src of [versionTest, releasesTest, minimaxTest]) {
-      expect(src).toContain("proxyAwareFetch");
-      expect(src).not.toMatch(/global\.fetch\s*=\s*vi\.fn/);
+describe("version and minimax routes use proxyAwareFetch (source)", () => {
+  it("version routes delegate to fetchGitHubReleases without bare fetch", () => {
+    const version = readFileSync(join(root, "../../src/app/api/version/route.js"), "utf8");
+    const releases = readFileSync(join(root, "../../src/app/api/version/releases/route.js"), "utf8");
+    for (const src of [version, releases]) {
+      expect(src).toContain("fetchGitHubReleases");
+      expect(src).not.toMatch(/\bfetch\s*\(/);
     }
+  });
+
+  it("minimax voices route uses proxyAwareFetch not bare fetch", () => {
+    const src = readFileSync(
+      join(root, "../../src/app/api/media-providers/tts/minimax/voices/route.js"),
+      "utf8"
+    );
+    expect(src).toContain("proxyAwareFetch");
+    expect(src).toContain("buildProxyOptionsFromCredentials");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
   });
 });

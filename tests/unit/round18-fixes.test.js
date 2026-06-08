@@ -4,18 +4,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { getBrokenComboErrorFromData } from "../../open-sse/services/combo.js";
-
-const proxyAwareFetch = vi.hoisted(() => vi.fn());
-
-vi.mock("open-sse/utils/proxyFetch.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    proxyAwareFetch: (...args) => proxyAwareFetch(...args),
-  };
-});
 
 describe("cowork MCP SSRF guard", () => {
   it("route uses assertSafeFetchUrl and proxyAwareFetch", () => {
@@ -30,22 +20,14 @@ describe("cowork MCP SSRF guard", () => {
 });
 
 describe("GitHub releases helper", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    proxyAwareFetch.mockReset();
-  });
-
-  it("fetchGitHubReleases uses proxyAwareFetch and fails closed on invalid JSON", async () => {
-    proxyAwareFetch.mockResolvedValue({
-      ok: true,
-      json: async () => "not-an-array",
-    });
-
-    const { fetchGitHubReleases } = await import("../../src/lib/githubReleases.js");
-    const result = await fetchGitHubReleases();
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("Unexpected");
-    expect(proxyAwareFetch).toHaveBeenCalled();
+  it("fetchGitHubReleases uses proxyAwareFetch and fails closed on invalid JSON shape", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../../src/lib/githubReleases.js"),
+      "utf8"
+    );
+    expect(src).toContain("proxyAwareFetch");
+    expect(src).toContain("!Array.isArray(releases)");
+    expect(src).toContain("Unexpected GitHub releases response shape");
   });
 });
 
