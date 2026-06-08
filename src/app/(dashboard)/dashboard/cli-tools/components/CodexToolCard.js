@@ -24,6 +24,8 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
   const [modelAliases, setModelAliases] = useState({});
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
+  const [importToken, setImportToken] = useState("");
+  const [importingToken, setImportingToken] = useState(false);
 
   const fetchModelAliases = async () => {
     try {
@@ -125,6 +127,34 @@ useEffect(() => {
     }
   };
 
+  const handleImportToken = async () => {
+    const token = importToken.trim();
+    if (!token) {
+      setMessage({ type: "error", text: "Paste a ChatGPT access token first" });
+      return;
+    }
+    setImportingToken(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/oauth/codex/import-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: token }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: "success", text: `Codex provider imported${data.connection?.email ? ` (${data.connection.email})` : ""}` });
+        setImportToken("");
+      } else {
+        setMessage({ type: "error", text: data.error || "Import failed" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setImportingToken(false);
+    }
+  };
+
   const handleResetSettings = async () => {
     setRestoring(true);
     setMessage(null);
@@ -212,6 +242,23 @@ model = "${effectiveSubagentModel}"
 
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
+          <div className="p-3 rounded-lg border border-border bg-surface/40 flex flex-col gap-2">
+            <p className="text-sm font-medium">Import ChatGPT access token</p>
+            <p className="text-xs text-text-muted">
+              Paste a token from chatgpt.com settings to add a Codex provider without OAuth refresh.
+            </p>
+            <textarea
+              value={importToken}
+              onChange={(e) => setImportToken(e.target.value)}
+              placeholder="eyJ..."
+              rows={2}
+              className="w-full rounded border border-border bg-surface px-3 py-2 text-xs font-mono"
+            />
+            <Button size="sm" onClick={handleImportToken} loading={importingToken} icon="file_upload">
+              Import as provider
+            </Button>
+          </div>
+
           {checkingCodex && (
             <div className="flex items-center gap-2 text-text-muted">
               <span className="material-symbols-outlined animate-spin">progress_activity</span>
