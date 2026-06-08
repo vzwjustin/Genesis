@@ -1,5 +1,6 @@
 import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { UPDATER_CONFIG } from "@/shared/constants/config";
 
 // Provider → internal voices API. Edge/local-device share the generic endpoint.
 const PROVIDER_API = {
@@ -23,7 +24,7 @@ export async function GET(request) {
   if (!routeAuth.ok) return routeAuth.response;
 
   try {
-    const { searchParams, origin } = new URL(request.url);
+    const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider");
     const lang = searchParams.get("lang");
 
@@ -34,10 +35,19 @@ export async function GET(request) {
       );
     }
 
-    const baseUrl = PROVIDER_API[provider](origin);
+    const internalOrigin = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
+    const baseUrl = PROVIDER_API[provider](internalOrigin);
     const url = lang ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}lang=${encodeURIComponent(lang)}` : baseUrl;
     const res = await fetch(url, { cache: "no-store" });
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      return Response.json(
+        { error: { message: "Invalid JSON from voices upstream", type: "server_error" } },
+        { status: 502, headers: { "Access-Control-Allow-Origin": "*" } },
+      );
+    }
     if (!res.ok || data.error) {
       return Response.json(
         { error: { message: data.error || `Upstream ${res.status}`, type: "server_error" } },

@@ -119,3 +119,26 @@ describe("v1beta streaming terminal validation", () => {
     expect(src).toContain("Stream ended without terminal completion chunk");
   });
 });
+
+describe("v1/audio/voices internal origin", () => {
+  it("uses loopback origin instead of request origin for internal fetch", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../../src/app/api/v1/audio/voices/route.js"),
+      "utf8"
+    );
+    expect(src).toContain("internalOrigin");
+    expect(src).toContain("127.0.0.1");
+    expect(src).not.toMatch(/PROVIDER_API\[provider\]\(origin\)/);
+  });
+});
+
+describe("kilo free-models proxy migration", () => {
+  it("uses proxyAwareFetch for Kilo models API", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../../src/app/api/providers/kilo/free-models/route.js"),
+      "utf8"
+    );
+    expect(src).toContain("proxyAwareFetch");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
+  });
+});
