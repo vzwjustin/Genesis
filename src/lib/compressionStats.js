@@ -88,9 +88,45 @@ function normalizeStats(value) {
 
 export async function getCompressionStats() {
   try {
-    return normalizeStats(await getMeta(META_KEY, null));
+    const db = await getAdapter();
+    const rows = db.all(
+      `SELECT subsystem, bytes_before, bytes_after, filter_hits, level, timestamp FROM compressionStats ORDER BY id ASC`
+    );
+
+    const base = emptyStats();
+    for (const row of rows) {
+      const tool = row.subsystem;
+      if (!TOOL_IDS.includes(tool)) continue;
+      const target = base.tools[tool];
+      const bb = Number(row.bytes_before) || 0;
+      const ba = Number(row.bytes_after) || 0;
+      const saved = Math.max(0, bb - ba);
+      target.requests += 1;
+      target.bytesBefore += bb;
+      target.bytesAfter += ba;
+      target.bytesSaved += saved;
+      if (saved > 0 || tool === "caveman") target.hits += 1;
+      if (row.timestamp) target.lastUsed = row.timestamp;
+    }
+
+    for (const tool of TOOL_IDS) {
+      const target = base.tools[tool];
+      target.tokenSavingsAvailable = canEstimateTokenSavings(tool, target.bytesSaved);
+      target.estimatedTokensSaved = target.tokenSavingsAvailable
+        ? estimateTokensSaved(target.bytesSaved)
+        : 0;
+    }
+
+    // updatedAt from last record
+    const last = rows[rows.length - 1];
+    base.updatedAt = last?.timestamp || null;
+    return base;
   } catch {
-    return emptyStats();
+    try {
+      return normalizeStats(await getMeta(META_KEY, null));
+    } catch {
+      return emptyStats();
+    }
   }
 }
 
