@@ -616,7 +616,9 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
             <div
               className="size-8 shrink-0 rounded-lg flex items-center justify-center"
               style={{
-                backgroundColor: `${provider.color?.length > 7 ? provider.color : provider.color + "15"}`,
+                backgroundColor: provider.color
+                  ? (provider.color.length > 7 ? provider.color : `${provider.color}15`)
+                  : "transparent",
               }}
             >
               <ProviderIcon
@@ -731,7 +733,9 @@ function ApiKeyProviderCard({
             <div
               className="size-8 shrink-0 rounded-lg flex items-center justify-center"
               style={{
-                backgroundColor: `${provider.color?.length > 7 ? provider.color : provider.color + "15"}`,
+                backgroundColor: provider.color
+                  ? (provider.color.length > 7 ? provider.color : `${provider.color}15`)
+                  : "transparent",
               }}
             >
               <ProviderIcon
