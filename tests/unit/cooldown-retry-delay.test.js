@@ -72,6 +72,12 @@ describe("Cooldown retry delay enforcement (Requirement 3.4)", () => {
     expect(body.error.message).toContain("reset after 10s");
   });
 
+  it("includes CORS header for browser clients", () => {
+    const futureTimestamp = new Date(Date.now() + 5000).toISOString();
+    const response = unavailableResponse(503, "Unavailable", futureTimestamp, "reset after 5s");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
   it("preserves status code in response", () => {
     const futureTimestamp = new Date(Date.now() + 5000).toISOString();
 

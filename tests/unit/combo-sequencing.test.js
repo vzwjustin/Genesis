@@ -211,6 +211,14 @@ describe("isModelResolutionFailureResponse", () => {
     expect(await isModelResolutionFailureResponse(response)).toBe(true);
   });
 
+  it("returns true for 400 with Invalid model format (image/TTS handlers)", async () => {
+    const response = new Response(JSON.stringify({ error: { message: "Invalid model format" } }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(await isModelResolutionFailureResponse(response)).toBe(true);
+  });
+
   it("returns false for other 400 errors", async () => {
     const response = new Response(JSON.stringify({ error: { message: "Invalid request body" } }), {
       status: 400,

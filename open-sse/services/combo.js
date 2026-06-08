@@ -168,7 +168,7 @@ export async function isModelResolutionFailureResponse(response) {
   try {
     const body = await response.clone().json();
     const message = body?.error?.message || "";
-    return message.startsWith("Failed to resolve model:");
+    return message.startsWith("Failed to resolve model:") || message === "Invalid model format";
   } catch {
     return false;
   }

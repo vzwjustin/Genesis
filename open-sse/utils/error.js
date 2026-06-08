@@ -155,7 +155,8 @@ export function unavailableResponse(statusCode, message, retryAfter, retryAfterH
       status: statusCode,
       headers: {
         "Content-Type": "application/json",
-        "Retry-After": String(retryAfterSec)
+        "Retry-After": String(retryAfterSec),
+        "Access-Control-Allow-Origin": "*"
       }
     }
   );

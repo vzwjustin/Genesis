@@ -1,6 +1,8 @@
 import { getProviderConnections } from "@/lib/localDb";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
-import { errorResponse } from "open-sse/utils/error.js";
+import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { formatRetryAfter } from "open-sse/services/accountFallback.js";
+import { MIN_RETRY_DELAY_MS } from "open-sse/config/errorConfig.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 
 /**
@@ -20,5 +22,7 @@ export function noActiveCredentialsResponse(provider) {
 
 export function exhaustedAccountsResponse(had5xx, lastStatus, lastError) {
   const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
-  return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");
+  const msg = lastError || "All accounts unavailable";
+  const minRetryAt = new Date(Date.now() + MIN_RETRY_DELAY_MS).toISOString();
+  return unavailableResponse(exhaustedStatus, msg, minRetryAt, formatRetryAfter(minRetryAt));
 }

@@ -388,6 +388,20 @@ if (globalThis.fetch !== patchedFetch) {
 
 export default patchedFetch;
 
+/**
+ * Build proxy routing options from a connection credentials record (same shape as chatCore).
+ */
+export function buildProxyOptionsFromCredentials(credentials) {
+  const psd = credentials?.providerSpecificData || {};
+  return {
+    connectionProxyEnabled: psd.connectionProxyEnabled === true,
+    connectionProxyUrl: psd.connectionProxyUrl || "",
+    connectionNoProxy: psd.connectionNoProxy || "",
+    vercelRelayUrl: psd.vercelRelayUrl || "",
+    strictProxy: psd.strictProxy === true,
+  };
+}
+
 export {
   resolveConnectionProxyUrl,
   getEnvProxyUrl,
