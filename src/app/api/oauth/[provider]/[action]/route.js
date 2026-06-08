@@ -7,6 +7,7 @@ import {
   pollForToken 
 } from "@/lib/oauth/providers";
 import { createProviderConnection } from "@/models";
+import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
 import {
   startCodexProxy,
   stopCodexProxy,
@@ -95,26 +96,8 @@ export async function GET(request, { params }) {
     }
 
     if (action === "start-proxy") {
-      if (!["codex", "xai"].includes(provider)) {
-        return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
-      }
-      const appPort = searchParams.get("app_port");
-      if (!appPort) {
-        return NextResponse.json({ error: "Missing app_port" }, { status: 400 });
-      }
-      const state = searchParams.get("state");
-      const codeVerifier = searchParams.get("code_verifier");
-      const redirectUri = searchParams.get("redirect_uri");
-      const result = provider === "xai"
-        ? await startXaiProxy(Number(appPort))
-        : await startCodexProxy(Number(appPort));
-      let serverSide = false;
-      if (result.success && state && codeVerifier && redirectUri) {
-        serverSide = provider === "xai"
-          ? registerXaiSession({ state, codeVerifier, redirectUri })
-          : registerCodexSession({ state, codeVerifier, redirectUri });
-      }
-      return NextResponse.json({ ...result, serverSide });
+      // start-proxy has side effects (spawns a process) — POST only to prevent CSRF.
+      return NextResponse.json({ error: "Method Not Allowed: use POST for start-proxy" }, { status: 405 });
     }
 
     if (action === "poll-status") {
@@ -137,12 +120,8 @@ export async function GET(request, { params }) {
     }
 
     if (action === "stop-proxy") {
-      if (!["codex", "xai"].includes(provider)) {
-        return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
-      }
-      if (provider === "xai") stopXaiProxy();
-      else stopCodexProxy();
-      return NextResponse.json({ success: true });
+      // stop-proxy has side effects (kills a process) — POST only to prevent CSRF.
+      return NextResponse.json({ error: "Method Not Allowed: use POST for stop-proxy" }, { status: 405 });
     }
 
     if (action === "device-code") {
@@ -200,6 +179,35 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Invalid or empty request body" }, { status: 400 });
     }
 
+    if (action === "start-proxy") {
+      if (!["codex", "xai"].includes(provider)) {
+        return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
+      }
+      const { appPort, state, codeVerifier, redirectUri } = body;
+      if (!appPort) {
+        return NextResponse.json({ error: "Missing app_port" }, { status: 400 });
+      }
+      const result = provider === "xai"
+        ? await startXaiProxy(Number(appPort))
+        : await startCodexProxy(Number(appPort));
+      let serverSide = false;
+      if (result.success && state && codeVerifier && redirectUri) {
+        serverSide = provider === "xai"
+          ? registerXaiSession({ state, codeVerifier, redirectUri })
+          : registerCodexSession({ state, codeVerifier, redirectUri });
+      }
+      return NextResponse.json({ ...result, serverSide });
+    }
+
+    if (action === "stop-proxy") {
+      if (!["codex", "xai"].includes(provider)) {
+        return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
+      }
+      if (provider === "xai") stopXaiProxy();
+      else stopCodexProxy();
+      return NextResponse.json({ success: true });
+    }
+
     if (action === "exchange") {
       const { code, redirectUri, codeVerifier, state, meta } = body;
 
@@ -234,6 +242,8 @@ export async function POST(request, { params }) {
           testStatus: "active",
         });
 
+        const mitm = await autoSetupMitmForProvider(provider);
+
         return NextResponse.json({
           success: true,
           connection: {
@@ -241,7 +251,8 @@ export async function POST(request, { params }) {
             provider: connection.provider,
             email: connection.email,
             displayName: connection.displayName,
-          }
+          },
+          mitm,
         });
       }
 
@@ -278,6 +289,8 @@ export async function POST(request, { params }) {
         testStatus: "active",
       });
 
+      const mitm = await autoSetupMitmForProvider(provider);
+
       return NextResponse.json({ 
         success: true, 
         connection: {
@@ -285,7 +298,8 @@ export async function POST(request, { params }) {
           provider: connection.provider,
           email: connection.email,
           displayName: connection.displayName,
-        }
+        },
+        mitm,
       });
     }
 
@@ -332,12 +346,15 @@ export async function POST(request, { params }) {
           testStatus: "active",
         });
 
+        const mitm = await autoSetupMitmForProvider(provider);
+
         return NextResponse.json({ 
           success: true, 
           connection: {
             id: connection.id,
             provider: connection.provider,
-          }
+          },
+          mitm,
         });
       }
 

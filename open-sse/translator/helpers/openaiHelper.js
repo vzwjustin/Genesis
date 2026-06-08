@@ -39,24 +39,49 @@ export function filterToOpenAIFormat(body) {
     // Handle array content
     if (Array.isArray(msg.content)) {
       const filteredContent = [];
+      const toolUseCalls = [];
       
       for (const block of msg.content) {
         // Skip thinking blocks
         if (block.type === "thinking" || block.type === "redacted_thinking") continue;
         
+        // Convert tool_use blocks to OpenAI tool_calls format instead of dropping them
+        if (block.type === "tool_use") {
+          toolUseCalls.push({
+            id: block.id || `call_${Date.now()}_${toolUseCalls.length}`,
+            type: "function",
+            function: {
+              name: block.name || "",
+              arguments: typeof block.input === "string"
+                ? block.input
+                : JSON.stringify(block.input ?? {})
+            }
+          });
+          continue;
+        }
+
         // Only keep valid OpenAI content types
         if (VALID_OPENAI_CONTENT_TYPES.includes(block.type)) {
           // Remove signature field if exists
           const { signature, cache_control, ...cleanBlock } = block;
           filteredContent.push(cleanBlock);
-        } else if (block.type === "tool_use") {
-          // Convert tool_use to tool_calls format (handled separately)
-          continue;
         } else if (block.type === "tool_result") {
           // Keep tool_result but clean it
           const { signature, cache_control, ...cleanBlock } = block;
           filteredContent.push(cleanBlock);
         }
+      }
+
+      // If tool_use blocks were found, build an assistant message with tool_calls
+      if (toolUseCalls.length > 0) {
+        const outMsg = { ...msg, tool_calls: toolUseCalls };
+        if (filteredContent.length === 0) {
+          outMsg.content = null;
+        } else {
+          const textOnly = flattenTextOnlyContent(filteredContent);
+          outMsg.content = textOnly !== null ? textOnly : filteredContent;
+        }
+        return outMsg;
       }
       
       // If all content was filtered, add empty text

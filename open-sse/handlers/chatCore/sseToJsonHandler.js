@@ -42,7 +42,11 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     if (!trimmed.startsWith("data:")) continue;
     const payload = trimmed.slice(5).trim();
     if (!payload || payload === "[DONE]") continue;
-    try { chunks.push(JSON.parse(payload)); } catch { /* ignore malformed lines */ }
+    try {
+      chunks.push(JSON.parse(payload));
+    } catch {
+      return null;
+    }
   }
 
   if (chunks.length === 0) return null;

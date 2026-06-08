@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { normalizeCacheTokens } from "@/lib/cacheTokenUtils.js";
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
@@ -728,4 +729,92 @@ export async function getRecentLogs(limit = 200) {
     console.error("[usageRepo] getRecentLogs failed:", e.message);
     return [];
   }
+}
+
+function periodToSince(period) {
+  if (period === "all") return null;
+  const ms = PERIOD_MS[period];
+  if (!ms) return new Date(Date.now() - PERIOD_MS["7d"]).toISOString();
+  return new Date(Date.now() - ms).toISOString();
+}
+
+export async function getProviderCacheStats(period = "7d", filter = {}) {
+  const since = periodToSince(period);
+  const db = await getAdapter();
+  const conds = [];
+  const params = [];
+  if (since) {
+    conds.push("timestamp >= ?");
+    params.push(since);
+  }
+  if (filter.provider) {
+    conds.push("provider = ?");
+    params.push(filter.provider);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const rows = db.all(
+    `SELECT timestamp, provider, model, tokens FROM usageHistory ${where} ORDER BY id ASC`,
+    params,
+  );
+
+  const seen = new Set();
+  const totals = {
+    requests: 0,
+    requestsWithCache: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    byProvider: {},
+  };
+
+  for (const row of rows) {
+    const tokens = parseJson(row.tokens, {});
+    const norm = normalizeCacheTokens(tokens);
+    if (norm.input === 0 && norm.output === 0 && !norm.hasCache) continue;
+
+    const minute = row.timestamp ? row.timestamp.slice(0, 16) : "";
+    const dedupeKey = `${row.provider}|${row.model}|${norm.input}|${norm.output}|${norm.cacheRead}|${norm.cacheCreate}|${minute}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    totals.requests += 1;
+    totals.inputTokens += norm.input;
+    totals.outputTokens += norm.output;
+    totals.cacheReadTokens += norm.cacheRead;
+    totals.cacheCreationTokens += norm.cacheCreate;
+    if (norm.hasCache) totals.requestsWithCache += 1;
+
+    const provider = row.provider || "unknown";
+    if (!totals.byProvider[provider]) {
+      totals.byProvider[provider] = {
+        provider,
+        requests: 0,
+        requestsWithCache: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+      };
+    }
+    const bucket = totals.byProvider[provider];
+    bucket.requests += 1;
+    bucket.inputTokens += norm.input;
+    bucket.outputTokens += norm.output;
+    bucket.cacheReadTokens += norm.cacheRead;
+    bucket.cacheCreationTokens += norm.cacheCreate;
+    if (norm.hasCache) bucket.requestsWithCache += 1;
+  }
+
+  totals.hitRate = totals.requests > 0
+    ? Math.round((totals.requestsWithCache / totals.requests) * 1000) / 10
+    : 0;
+  totals.byProvider = Object.values(totals.byProvider)
+    .map((p) => ({
+      ...p,
+      hitRate: p.requests > 0 ? Math.round((p.requestsWithCache / p.requests) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.cacheReadTokens - a.cacheReadTokens);
+
+  return totals;
 }

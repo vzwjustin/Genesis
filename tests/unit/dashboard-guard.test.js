@@ -199,7 +199,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("allows local-only route on loopback when requireLogin=false", async () => {
+  it("rejects local-only route on loopback when requireLogin=false and no JWT (host-spoofing protection)", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
@@ -207,10 +207,11 @@ describe("dashboard guard local-only access", () => {
       origin: "http://localhost:20128",
     }));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("allows local-only route on bracketed IPv6 loopback when requireLogin=false", async () => {
+  it("rejects local-only route on bracketed IPv6 loopback when requireLogin=false and no JWT", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
@@ -218,6 +219,21 @@ describe("dashboard guard local-only access", () => {
       origin: "http://[::1]:20128",
     }));
 
+    expect(response.status).toBe(403);
+  });
+
+  it("allows local-only route on loopback when requireLogin=false and valid JWT", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/antigravity-mitm" },
+      headers: new Headers({ host: "localhost:20128", origin: "http://localhost:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://localhost/api/cli-tools/antigravity-mitm",
+    };
+
+    const response = await proxy(cookieReq);
     expect(response).toBe(mocks.nextResponse);
   });
 
@@ -268,6 +284,49 @@ describe("dashboard guard helpers", () => {
     });
 
     expect(__test__.extractApiKey(apiRequest)).toBe("bearer-key");
+  });
+});
+
+describe("dashboard guard CLI token timing-safe comparison", () => {
+  // cachedCliToken is module-level — it is set to "cli-token" during the first
+  // describe block's beforeEach and never cleared. All tests in this suite must
+  // use that value as the canonical expected token.
+  const CACHED_TOKEN = "cli-token";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getConsistentMachineId.mockResolvedValue(CACHED_TOKEN);
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  it("rejects token shorter than the correct token", async () => {
+    const response = await proxy(request("/api/mcp/filesystem/sse", {
+      host: "router.example.com",
+      "x-9r-cli-token": "short",
+    }));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects wrong token of identical length", async () => {
+    // Same length as "cli-token" (9 chars) but different content.
+    const response = await proxy(request("/api/mcp/filesystem/sse", {
+      host: "router.example.com",
+      "x-9r-cli-token": "cli-XXXXX",
+    }));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("accepts exact correct CLI token on local-only route", async () => {
+    const response = await proxy(request("/api/mcp/filesystem/sse", {
+      host: "router.example.com",
+      "x-9r-cli-token": CACHED_TOKEN,
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
   });
 });
 

@@ -46,8 +46,15 @@ export function recordSuccess(ip) {
 }
 
 export function getClientIp(request) {
-  if (process.env.TRUST_PROXY_HEADERS !== "true") return "unknown";
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return request.headers.get("x-real-ip") || "unknown";
+  if (process.env.TRUST_PROXY_HEADERS === "true") {
+    const xff = request.headers.get("x-forwarded-for");
+    if (xff) return xff.split(",")[0].trim();
+    const realIp = request.headers.get("x-real-ip");
+    if (realIp) return realIp.trim();
+  }
+
+  const socketIp = request.socket?.remoteAddress || request.ip;
+  if (socketIp) return String(socketIp).replace(/^::ffff:/, "");
+
+  return "unknown";
 }

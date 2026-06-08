@@ -10,6 +10,7 @@
 import { buildSearchRequest } from "./callers.js";
 import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
+import { withSearchCache } from "./cache.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);
@@ -100,36 +101,50 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
   log?.info?.("SEARCH", `${provider.id} | "${params.query.slice(0, 80)}" | type=${params.searchType}`);
 
   try {
-    const resp = await fetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
-    clearTimeout(timer);
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => "");
-      log?.error?.("SEARCH", `${provider.id} ${resp.status}: ${errText.slice(0, 200)}`);
-      return { success: false, status: resp.status, error: `${provider.id} returned ${resp.status}: ${errText.slice(0, 200)}` };
-    }
-    const data = await resp.json();
-    const normalized = normalizeSearchResponse(provider.id, data, params.query, params.searchType);
-    const results = normalized.results.slice(0, params.maxResults);
-    const duration = Date.now() - startTime;
+    const data = await withSearchCache({
+      providerId: provider.id,
+      providerConfig,
+      params,
+      fetcher: async () => {
+        const resp = await fetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => "");
+          log?.error?.("SEARCH", `${provider.id} ${resp.status}: ${errText.slice(0, 200)}`);
+          throw Object.assign(new Error(`${provider.id} returned ${resp.status}: ${errText.slice(0, 200)}`), { status: resp.status });
+        }
+        const raw = await resp.json();
+        const normalized = normalizeSearchResponse(provider.id, raw, params.query, params.searchType);
+        const results = normalized.results.slice(0, params.maxResults);
+        const duration = Date.now() - startTime;
+        return {
+          provider: provider.id,
+          query: params.query,
+          results,
+          answer: null,
+          usage: { queries_used: 1, search_cost_usd: providerConfig.costPerQuery || 0 },
+          metrics: {
+            response_time_ms: duration,
+            upstream_latency_ms: duration,
+            total_results_available: normalized.totalResults,
+            cache_hit: false,
+          },
+          errors: [],
+        };
+      },
+    });
 
-    return {
-      success: true,
-      data: {
-        provider: provider.id,
-        query: params.query,
-        results,
-        answer: null,
-        usage: { queries_used: 1, search_cost_usd: providerConfig.costPerQuery || 0 },
-        metrics: { response_time_ms: duration, upstream_latency_ms: duration, total_results_available: normalized.totalResults },
-        errors: []
-      }
-    };
+    return { success: true, data };
   } catch (err) {
     clearTimeout(timer);
+    if (err?.status) {
+      return { success: false, status: err.status, error: err.message };
+    }
     const isTimeout = err.name === "AbortError";
     const status = isTimeout ? 504 : 502;
     log?.error?.("SEARCH", `${provider.id} ${isTimeout ? "timeout" : "error"}: ${err.message}`);
     return { success: false, status, error: `${provider.id} ${isTimeout ? "timeout" : "error"}: ${err.message}` };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

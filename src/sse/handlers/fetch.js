@@ -39,7 +39,7 @@ export async function handleFetch(request) {
 
   const auth = await authenticateRequest(request, log);
   if (!auth.ok) return auth.response;
-  const { settings } = auth;
+  const { apiKey, settings } = auth;
 
   if (!providerInput || typeof providerInput !== "string") {
     log.warn("FETCH", "Missing provider/model");

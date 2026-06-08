@@ -83,8 +83,10 @@ function maskSensitiveHeaders(headers) {
     const lowerKey = key.toLowerCase();
     if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
       const value = masked[key];
-      if (value && value.length > 20) {
-        masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
+      if (value) {
+        masked[key] = value.length > 20
+          ? value.slice(0, 4) + "..." + value.slice(-4)
+          : "[redacted]";
       }
     }
   }
@@ -235,6 +237,40 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
 // Legacy functions for backward compatibility
 export function logRequest() {}
 export function logResponse() {}
+export async function listRequestLogSessions(limit = 50) {
+  await ensureNodeModules();
+  if (!fs || !LOGS_DIR) return { enabled: LOGGING_ENABLED, sessions: [] };
+
+  try {
+    if (!fs.existsSync(LOGS_DIR)) {
+      return { enabled: LOGGING_ENABLED, sessions: [] };
+    }
+    const entries = fs.readdirSync(LOGS_DIR, { withFileTypes: true });
+    const sessions = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => {
+        const sessionPath = path.join(LOGS_DIR, e.name);
+        let mtime = null;
+        let hasError = false;
+        try {
+          const stat = fs.statSync(sessionPath);
+          mtime = stat.mtime.toISOString();
+          hasError = fs.existsSync(path.join(sessionPath, "8_error.json"));
+        } catch { /* ignore */ }
+        return { name: e.name, mtime, hasError };
+      })
+      .sort((a, b) => new Date(b.mtime || 0) - new Date(a.mtime || 0))
+      .slice(0, limit);
+
+    return { enabled: LOGGING_ENABLED, sessions };
+  } catch (err) {
+    try {
+      console.log("[LOG] Failed to list sessions:", err.message);
+    } catch { /* ignore */ }
+    return { enabled: LOGGING_ENABLED, sessions: [] };
+  }
+}
+
 export function logError(provider, { error, url, model, requestBody }) {
   if (!fs || !LOGS_DIR) return;
   

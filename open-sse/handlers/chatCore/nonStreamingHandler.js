@@ -345,6 +345,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
+  // Flag: true when the response was parsed from an SSE stream and is already in
+  // OpenAI chat-completion format. Prevents re-running the targetFormat→OpenAI step
+  // (step 1 of translateNonStreamingResponse) on a body that is already OpenAI format.
+  let parsedFromSSE = false;
 
   if (contentType.includes("text/event-stream")) {
     const sseText = await providerResponse.text();
@@ -354,6 +358,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
     }
     responseBody = parsed;
+    parsedFromSSE = true;
   } else {
     try {
       responseBody = await providerResponse.json();
@@ -407,9 +412,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     };
   }
 
-  const translatedResponse = needsTranslation(targetFormat, sourceFormat)
-    ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
-    : responseBody;
+  // When the body was parsed from SSE it is already in OpenAI format.
+  // Only run step 2 (OpenAI → sourceFormat) if necessary; skip step 1 (targetFormat → OpenAI)
+  // which would misinterpret the already-OpenAI body as a targetFormat-shaped response.
+  const translatedResponse = parsedFromSSE
+    ? translateNonStreamingResponse(responseBody, FORMATS.OPENAI, sourceFormat)
+    : (needsTranslation(targetFormat, sourceFormat)
+        ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
+        : responseBody);
 
   // Fix finish_reason for tool_calls: some providers return non-standard values (e.g. "other")
   if (translatedResponse?.choices?.[0]) {
