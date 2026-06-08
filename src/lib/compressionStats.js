@@ -89,8 +89,18 @@ function normalizeStats(value) {
 export async function getCompressionStats() {
   try {
     const db = await getAdapter();
+    // Aggregate in SQL (indexed, scales) instead of scanning every row in JS.
     const rows = db.all(
-      `SELECT subsystem, bytes_before, bytes_after, filter_hits, level, timestamp FROM compressionStats ORDER BY id ASC`
+      `SELECT subsystem,
+              COUNT(*) AS requests,
+              SUM(bytes_before) AS bytesBefore,
+              SUM(bytes_after) AS bytesAfter,
+              SUM(CASE WHEN bytes_before > bytes_after THEN bytes_before - bytes_after ELSE 0 END) AS bytesSaved,
+              SUM(CASE WHEN bytes_before > bytes_after THEN 1 ELSE 0 END) AS savedRows,
+              MAX(timestamp) AS lastUsed
+       FROM compressionStats
+       GROUP BY subsystem`,
+      []
     );
 
     const base = emptyStats();
@@ -98,31 +108,31 @@ export async function getCompressionStats() {
       const tool = row.subsystem;
       if (!TOOL_IDS.includes(tool)) continue;
       const target = base.tools[tool];
-      const bb = Number(row.bytes_before) || 0;
-      const ba = Number(row.bytes_after) || 0;
-      const saved = Math.max(0, bb - ba);
-      target.requests += 1;
-      target.bytesBefore += bb;
-      target.bytesAfter += ba;
-      target.bytesSaved += saved;
-      if (saved > 0 || tool === "caveman") target.hits += 1;
-      if (row.timestamp) target.lastUsed = row.timestamp;
-    }
-
-    for (const tool of TOOL_IDS) {
-      const target = base.tools[tool];
-      target.tokenSavingsAvailable = canEstimateTokenSavings(tool, target.bytesSaved);
+      const bytesBefore = Number(row.bytesBefore) || 0;
+      const bytesAfter = Number(row.bytesAfter) || 0;
+      const bytesSaved = Number(row.bytesSaved) || 0;
+      const requests = Number(row.requests) || 0;
+      const savedRows = Number(row.savedRows) || 0;
+      target.requests = requests;
+      target.bytesBefore = bytesBefore;
+      target.bytesAfter = bytesAfter;
+      target.bytesSaved = bytesSaved;
+      // caveman has no byte savings — count every injection as a hit
+      target.hits = tool === "caveman" ? requests : savedRows;
+      target.lastUsed = row.lastUsed || null;
+      target.tokenSavingsAvailable = canEstimateTokenSavings(tool, bytesSaved);
       target.estimatedTokensSaved = target.tokenSavingsAvailable
-        ? estimateTokensSaved(target.bytesSaved)
+        ? estimateTokensSaved(bytesSaved)
         : 0;
+      if (row.lastUsed && (!base.updatedAt || row.lastUsed > base.updatedAt)) {
+        base.updatedAt = row.lastUsed;
+      }
     }
 
-    // updatedAt from last record
-    const last = rows[rows.length - 1];
-    base.updatedAt = last?.timestamp || null;
     return base;
-  } catch {
+  } catch (err) {
     try {
+      console.error("[compressionStats] getCompressionStats SQLite failed:", err?.message || err);
       return normalizeStats(await getMeta(META_KEY, null));
     } catch {
       return emptyStats();
