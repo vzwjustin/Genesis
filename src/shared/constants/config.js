@@ -7,18 +7,44 @@ export const APP_CONFIG = {
   version: pkg.version,
 };
 
+// Fork used for in-app updates, release list, and changelog
+export const FORK_GITHUB = {
+  owner: "vzwjustin",
+  repo: "9router",
+  defaultBranch: "master",
+};
+
+const forkRepoSlug = `${FORK_GITHUB.owner}/${FORK_GITHUB.repo}`;
+const githubPackageSpec = `github:${forkRepoSlug}`;
+
 // GitHub configuration
 export const GITHUB_CONFIG = {
-  changelogUrl: "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md",
-  releasesApiUrl: "https://api.github.com/repos/decolua/9router/releases?per_page=30",
+  owner: FORK_GITHUB.owner,
+  repo: FORK_GITHUB.repo,
+  changelogUrl: `https://raw.githubusercontent.com/${forkRepoSlug}/refs/heads/${FORK_GITHUB.defaultBranch}/CHANGELOG.md`,
+  releasesApiUrl: `https://api.github.com/repos/${forkRepoSlug}/releases?per_page=30`,
   donateUrl: "https://9router.com/api/donate",
 };
+
+/** npm global install spec for the fork (optionally pinned to a release tag). */
+export function formatUpdaterPackageSpec(version) {
+  if (!version) return githubPackageSpec;
+  const normalized = String(version).trim().replace(/^v/i, "");
+  if (!normalized || normalized === "latest") return githubPackageSpec;
+  return `${githubPackageSpec}#v${normalized}`;
+}
+
+/** Full shell command shown in the update UI and release picker. */
+export function formatInstallCommand(version) {
+  return `npm i -g ${formatUpdaterPackageSpec(version)} --prefer-online`;
+}
 
 // Updater configuration
 export const UPDATER_CONFIG = {
   npmPackageName: "9router",
-  installCmd: "npm i -g 9router",
-  installCmdLatest: "npm i -g 9router@latest --prefer-online",
+  githubPackageSpec,
+  installCmd: `npm i -g ${githubPackageSpec}`,
+  installCmdLatest: `npm i -g ${githubPackageSpec} --prefer-online`,
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,
