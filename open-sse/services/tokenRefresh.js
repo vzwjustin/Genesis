@@ -384,6 +384,17 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
  * Specialized refresh for Kiro (AWS CodeWhisperer) tokens
  * Supports both AWS SSO OIDC (Builder ID/IDC) and Social Auth (Google/GitHub)
  */
+// Backfill missing Kiro profileArn on refresh so existing IDC connections self-heal
+async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn) {
+  if (providerSpecificData?.profileArn) return {};
+  let profileArn = refreshedArn?.trim?.() || null;
+  if (!profileArn) {
+    const { fetchKiroProfileArn } = await import("../../src/lib/oauth/providers.js");
+    profileArn = await fetchKiroProfileArn(accessToken);
+  }
+  return profileArn ? { providerSpecificData: { profileArn } } : {};
+}
+
 export async function refreshKiroToken(refreshToken, providerSpecificData, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("kiro", refreshToken, async () => {
@@ -437,6 +448,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken || refreshToken,
       expiresIn: tokens.expiresIn,
+      ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken)),
     };
   }
 
@@ -478,6 +490,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken || refreshToken,
     expiresIn: tokens.expiresIn,
+    ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn)),
   };
   } catch (error) {
     log?.error?.("TOKEN_REFRESH", `Network error refreshing Kiro token: ${error.message}`);
