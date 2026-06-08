@@ -70,7 +70,11 @@ function buildData({ provider, url, title, format, text, costUsd, responseMs, up
 async function readJsonOrText(res) {
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
-    try { return { json: await res.json() }; } catch { return { text: "" }; }
+    try {
+      return { json: await res.json() };
+    } catch (err) {
+      return { parseError: err?.message || "Invalid JSON response" };
+    }
   }
   return { text: await res.text() };
 }
@@ -137,7 +141,10 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
     return { success: false, status: r.timeout ? 504 : 502, error: r.error };
   }
   const upstreamMs = Date.now() - upstreamStart;
-  const { json } = await readJsonOrText(r.res);
+  const { json, parseError } = await readJsonOrText(r.res);
+  if (parseError) {
+    return { success: false, status: 502, error: parseError };
+  }
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Firecrawl error: ${r.res.status}` };
   }
@@ -194,7 +201,10 @@ async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
     return { success: false, status: r.timeout ? 504 : 502, error: r.error };
   }
   const upstreamMs = Date.now() - upstreamStart;
-  const { json } = await readJsonOrText(r.res);
+  const { json, parseError } = await readJsonOrText(r.res);
+  if (parseError) {
+    return { success: false, status: 502, error: parseError };
+  }
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Tavily error: ${r.res.status}` };
   }
@@ -224,7 +234,10 @@ async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery
     return { success: false, status: r.timeout ? 504 : 502, error: r.error };
   }
   const upstreamMs = Date.now() - upstreamStart;
-  const { json } = await readJsonOrText(r.res);
+  const { json, parseError } = await readJsonOrText(r.res);
+  if (parseError) {
+    return { success: false, status: 502, error: parseError };
+  }
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Exa error: ${r.res.status}` };
   }

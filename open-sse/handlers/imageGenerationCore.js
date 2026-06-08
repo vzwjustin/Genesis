@@ -107,8 +107,10 @@ export async function handleImageGenerationCore({
           headers: retryHeaders,
           body: serializeRequestBody(retryBody),
         }, proxyOptions);
-      } catch {
+      } catch (retryError) {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
+        const errMsg = formatProviderError(retryError, provider, model, HTTP_STATUS.BAD_GATEWAY);
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
       }
     } else {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
@@ -178,6 +180,7 @@ export async function handleImageGenerationCore({
         }),
       };
     }
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Binary output requested but no image data in response");
   }
 
   return {

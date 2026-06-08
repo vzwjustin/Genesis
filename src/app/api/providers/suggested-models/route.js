@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import { FILTERS } from "./filters.js";
+import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { FREE_PROVIDERS, FREE_TIER_PROVIDERS } from "@/shared/constants/providers";
 
 export const dynamic = "force-dynamic";
+
+const ALLOWED_MODELS_URLS = new Set(
+  [...Object.values(FREE_PROVIDERS), ...Object.values(FREE_TIER_PROVIDERS)]
+    .map((p) => p.modelsFetcher?.url)
+    .filter(Boolean)
+);
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -17,8 +26,18 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unknown filter type" }, { status: 400 });
   }
 
+  if (!ALLOWED_MODELS_URLS.has(url)) {
+    return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
+  }
+
   try {
-    const res = await fetch(url);
+    assertSafeFetchUrl(url);
+  } catch (err) {
+    return NextResponse.json({ error: err.message || "Invalid URL" }, { status: 400 });
+  }
+
+  try {
+    const res = await proxyAwareFetch(url);
     if (!res.ok) {
       return NextResponse.json({ data: [] });
     }

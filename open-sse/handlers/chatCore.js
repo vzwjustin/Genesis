@@ -392,7 +392,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           providerUrl = retryResult.url;
           providerHeaders = retryResult.headers;
           finalBody = retryResult.transformedBody;
-        } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
+        } catch (retryError) {
+          log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
+          trackPendingRequest(model, provider, connectionId, false, true);
+          return createErrorResult(
+            HTTP_STATUS.BAD_GATEWAY,
+            `Retry after token refresh failed: ${retryError.message}`
+          );
+        }
       } else {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
       }

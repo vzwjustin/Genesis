@@ -372,6 +372,19 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }
 
   reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
+
+  if (!passthrough) {
+    const hasOpenAIChoices = Array.isArray(responseBody?.choices) && responseBody.choices.length > 0;
+    const hasClaudeContent = Array.isArray(responseBody?.content);
+    const hasGeminiCandidates =
+      Array.isArray(responseBody?.candidates) ||
+      Array.isArray(responseBody?.response?.candidates);
+    if (!hasOpenAIChoices && !hasClaudeContent && !hasGeminiCandidates) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Empty or malformed completion response");
+    }
+  }
+
   if (onRequestSuccess) await onRequestSuccess();
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)

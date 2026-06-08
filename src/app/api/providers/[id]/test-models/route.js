@@ -37,10 +37,18 @@ async function pingModel(modelId, baseUrl, apiKey, cliToken) {
       signal: AbortSignal.timeout(15000),
     });
     const latencyMs = Date.now() - start;
-    // 200 = working; 400 = bad request but auth passed (model reachable)
-    const ok = res.status === 200 || res.status === 400;
+    let ok = res.status === 200;
     let error = null;
-    if (!ok) {
+    if (ok) {
+      try {
+        const body = await res.json();
+        ok = Array.isArray(body?.choices) && body.choices.length > 0;
+        if (!ok) error = "HTTP 200 but response missing choices";
+      } catch {
+        ok = false;
+        error = "HTTP 200 but invalid JSON response";
+      }
+    } else {
       const text = await res.text().catch(() => "");
       error = `HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`;
     }
