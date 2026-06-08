@@ -194,7 +194,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           hits: rtkStats?.hits?.length || 0,
           detail: filters || (rtkSaved ? "compressed" : "scanned, no savings"),
         }).catch(() => {});
-        saveCompressionStats({
+        if (rtkSaved) saveCompressionStats({
           subsystem: "rtk",
           provider,
           bytesBefore: rtkStats?.bytesBefore || 0,
