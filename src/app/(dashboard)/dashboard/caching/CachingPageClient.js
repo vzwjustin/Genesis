@@ -17,6 +17,14 @@ const TABS = [
   { value: "overview", label: "Overview" },
   { value: "history", label: "History" },
   { value: "provider", label: "Provider Cache" },
+  { value: "logs", label: "Debug Logs" },
+];
+
+const CACHE_PERIODS = [
+  { value: "24h", label: "24h" },
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+  { value: "all", label: "All" },
 ];
 
 const CAVEMAN_LEVELS = [
@@ -84,6 +92,14 @@ export default function CachingPageClient() {
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [passthroughCompression, setPassthroughCompression] = useState(false);
+  const [ccFilterNaming, setCcFilterNaming] = useState(false);
+  const [mitmAutoSetupOnImport, setMitmAutoSetupOnImport] = useState(true);
+  const [providerCache, setProviderCache] = useState(null);
+  const [cachePeriod, setCachePeriod] = useState("7d");
+  const [filterLeaderboard, setFilterLeaderboard] = useState([]);
+  const [fileLogSessions, setFileLogSessions] = useState([]);
+  const [enableRequestLogs, setEnableRequestLogs] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
 
   const patchSetting = async (patch) => {
     try {
@@ -119,6 +135,36 @@ export default function CachingPageClient() {
       setCavemanLevel(data.cavemanLevel || "full");
       setHeadroomEnabled(data.headroomEnabled === true);
       setPassthroughCompression(data.passthroughCompression === true);
+      setCcFilterNaming(data.ccFilterNaming === true);
+      setMitmAutoSetupOnImport(data.mitmAutoSetupOnImport !== false);
+      setEnableRequestLogs(data.enableRequestLogs === true);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchProviderCache = useCallback(async (period = cachePeriod) => {
+    try {
+      const res = await fetch(`/api/compression/provider-cache?period=${period}`, { cache: "no-store" });
+      if (res.ok) setProviderCache(await res.json());
+    } catch { /* ignore */ }
+  }, [cachePeriod]);
+
+  const fetchFilterLeaderboard = useCallback(async () => {
+    try {
+      const res = await fetch("/api/compression/filter-leaderboard?limit=12", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setFilterLeaderboard(data.rows || []);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchFileLogSessions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/request-logs/sessions?limit=30", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setFileLogSessions(data.sessions || []);
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -148,6 +194,12 @@ export default function CachingPageClient() {
   }, [activeTab, historyFilter, fetchHistory]);
 
   useEffect(() => {
+    if (activeTab === "provider") fetchProviderCache(cachePeriod);
+    if (activeTab === "overview") fetchFilterLeaderboard();
+    if (activeTab === "logs") fetchFileLogSessions();
+  }, [activeTab, cachePeriod, fetchProviderCache, fetchFilterLeaderboard, fetchFileLogSessions]);
+
+  useEffect(() => {
     const anyOn = rtkEnabled || cavemanEnabled || headroomEnabled;
     if (!anyOn) return;
     const timer = setInterval(() => {
@@ -164,6 +216,20 @@ export default function CachingPageClient() {
       if (res.ok) await fetchCompressionStats();
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!window.confirm("Delete all per-request compression history rows? This cannot be undone.")) return;
+    setClearingHistory(true);
+    try {
+      const res = await fetch("/api/compression/history/clear", { method: "POST" });
+      if (res.ok) {
+        setHistory([]);
+        await fetchFilterLeaderboard();
+      }
+    } finally {
+      setClearingHistory(false);
     }
   };
 
@@ -321,8 +387,54 @@ export default function CachingPageClient() {
                   }}
                 />
               </div>
+              <div className="flex items-center justify-between py-4 gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Claude Code filter naming</p>
+                  <p className="text-sm text-text-muted">Bypass RTK when tool names match CC filter patterns</p>
+                </div>
+                <Toggle
+                  checked={ccFilterNaming}
+                  onChange={(v) => { setCcFilterNaming(v); patchSetting({ ccFilterNaming: v }); }}
+                />
+              </div>
+              <div className="flex items-center justify-between py-4 gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">MITM auto-setup on OAuth import</p>
+                  <p className="text-sm text-text-muted">Start MITM + DNS + model mappings after Kiro/Antigravity/Copilot OAuth</p>
+                </div>
+                <Toggle
+                  checked={mitmAutoSetupOnImport}
+                  onChange={(v) => { setMitmAutoSetupOnImport(v); patchSetting({ mitmAutoSetupOnImport: v }); }}
+                />
+              </div>
             </div>
           </Card>
+
+          {filterLeaderboard.length > 0 && (
+            <Card>
+              <h2 className="text-lg font-semibold mb-3">RTK filter leaderboard</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs text-text-muted">
+                      <th className="px-3 py-2">Filter</th>
+                      <th className="px-3 py-2 text-right">Hits</th>
+                      <th className="px-3 py-2 text-right">Bytes saved</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filterLeaderboard.map((row) => (
+                      <tr key={row.filter} className="border-b border-border/50">
+                        <td className="px-3 py-2 font-mono text-xs">{row.filter}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.hits}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-success">{formatBytes(row.bytesSaved)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
 
           <InlineAlert
             variant="info"
@@ -341,7 +453,16 @@ export default function CachingPageClient() {
         <Card padding="sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-2 pt-2">
             <h2 className="text-lg font-semibold">Per-request compression log</h2>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="delete_sweep"
+                onClick={handleClearHistory}
+                loading={clearingHistory}
+              >
+                Clear history
+              </Button>
               {SUBSYSTEMS.map((s) => (
                 <button
                   key={s.value || "all"}
@@ -403,10 +524,70 @@ export default function CachingPageClient() {
 
       {activeTab === "provider" && (
         <div className="flex flex-col gap-4">
-          <InlineAlert
-            variant="info"
-            message="Provider prompt caching is separate from RTK/Headroom compression. Upstream providers cache repeated prompt prefixes; 9router records cache token usage in request logs and applies cheaper pricing when available."
-          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <InlineAlert
+              variant="info"
+              className="flex-1"
+              message="Upstream prompt-cache tokens are tracked in usage logs. Web search responses are cached locally per provider cacheTTLMs."
+            />
+            <SegmentedControl
+              options={CACHE_PERIODS}
+              value={cachePeriod}
+              onChange={(v) => { setCachePeriod(v); fetchProviderCache(v); }}
+              size="sm"
+            />
+          </div>
+
+          {providerCache?.providerCache && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Card padding="md">
+                <p className="text-xs text-text-muted">Cache hit rate</p>
+                <p className="text-2xl font-bold tabular-nums">{providerCache.providerCache.hitRate}%</p>
+              </Card>
+              <Card padding="md">
+                <p className="text-xs text-text-muted">Cache read tokens</p>
+                <p className="text-2xl font-bold tabular-nums">{providerCache.providerCache.cacheReadTokens.toLocaleString()}</p>
+              </Card>
+              <Card padding="md">
+                <p className="text-xs text-text-muted">Cache creation</p>
+                <p className="text-2xl font-bold tabular-nums">{providerCache.providerCache.cacheCreationTokens.toLocaleString()}</p>
+              </Card>
+              <Card padding="md">
+                <p className="text-xs text-text-muted">Search cache hits</p>
+                <p className="text-2xl font-bold tabular-nums">{providerCache.searchCache?.hits || 0}</p>
+              </Card>
+            </div>
+          )}
+
+          {providerCache?.providerCache?.byProvider?.length > 0 && (
+            <Card padding="sm">
+              <h3 className="font-semibold px-2 pt-2 mb-2">By provider</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs text-text-muted">
+                      <th className="px-3 py-2">Provider</th>
+                      <th className="px-3 py-2 text-right">Requests</th>
+                      <th className="px-3 py-2 text-right">Hit rate</th>
+                      <th className="px-3 py-2 text-right">Cache read</th>
+                      <th className="px-3 py-2 text-right">Cache create</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providerCache.providerCache.byProvider.map((row) => (
+                      <tr key={row.provider} className="border-b border-border/50">
+                        <td className="px-3 py-2">{row.provider}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.requests}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.hitRate}%</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.cacheReadTokens.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.cacheCreationTokens.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Card>
@@ -458,8 +639,65 @@ export default function CachingPageClient() {
             <p className="text-sm text-text-muted">
               Per-request cache token breakdown is available in{" "}
               <Link href="/dashboard/usage?tab=details" className="text-primary underline">Usage → Details</Link>.
-              Aggregate cost impact uses cached-token pricing from your configured model rates.
+              Model rates: <Link href="/dashboard/pricing" className="text-primary underline">Pricing</Link>.
             </p>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "logs" && (
+        <div className="flex flex-col gap-4">
+          <Card>
+            <h2 className="text-lg font-semibold mb-2">Usage request log (SQLite)</h2>
+            <p className="text-sm text-text-muted mb-3">
+              Live usage rows from the dashboard database. View formatted entries on the Usage page.
+            </p>
+            <Link href="/dashboard/usage?tab=logs">
+              <Button size="sm" variant="secondary" icon="open_in_new">Open Usage → Logs</Button>
+            </Link>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-lg font-semibold">File request logs</h2>
+                <p className="text-sm text-text-muted">
+                  Raw translator dumps when <code className="text-xs">ENABLE_REQUEST_LOGS=true</code>
+                  {enableRequestLogs ? " (enabled)" : " (disabled — set env var and restart)"}
+                </p>
+              </div>
+              <Button size="sm" variant="ghost" icon="refresh" onClick={fetchFileLogSessions}>Refresh</Button>
+            </div>
+            {fileLogSessions.length === 0 ? (
+              <p className="text-sm text-text-muted">No file log sessions found under ./logs</p>
+            ) : (
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs text-text-muted">
+                      <th className="px-3 py-2">Session folder</th>
+                      <th className="px-3 py-2">Modified</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fileLogSessions.map((s) => (
+                      <tr key={s.name} className="border-b border-border/50">
+                        <td className="px-3 py-2 font-mono text-xs truncate max-w-md">{s.name}</td>
+                        <td className="px-3 py-2 text-xs whitespace-nowrap">
+                          {s.mtime ? new Date(s.mtime).toLocaleString() : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Badge variant={s.hasError ? "error" : "success"} size="sm">
+                            {s.hasError ? "failed" : "ok"}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         </div>
       )}

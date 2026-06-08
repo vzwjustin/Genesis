@@ -168,6 +168,62 @@ export async function saveCompressionStats(record) {
  * @param {number} [filter.limit] - max rows to return (default 100)
  * @returns {Promise<Array>}
  */
+export async function clearCompressionHistory() {
+  try {
+    const db = await getAdapter();
+    const row = db.get(`SELECT COUNT(*) AS count FROM compressionStats`);
+    const deleted = row?.count || 0;
+    db.run(`DELETE FROM compressionStats`);
+    return deleted;
+  } catch (err) {
+    try {
+      console.error("[compressionStats] Failed to clear history:", err.message);
+    } catch { /* continue */ }
+    return 0;
+  }
+}
+
+export async function getFilterLeaderboard({ limit = 20, since } = {}) {
+  try {
+    const db = await getAdapter();
+    const conds = [];
+    const params = [];
+    if (since) {
+      conds.push("timestamp >= ?");
+      params.push(since);
+    }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const rows = db.all(
+      `SELECT filter_hits, bytes_before, bytes_after FROM compressionStats ${where} ORDER BY id DESC LIMIT 5000`,
+      params
+    );
+
+    const totals = {};
+    for (const row of rows) {
+      if (!row.filter_hits) continue;
+      let filters = [];
+      try {
+        filters = JSON.parse(row.filter_hits);
+      } catch {
+        continue;
+      }
+      const saved = Math.max(0, (Number(row.bytes_before) || 0) - (Number(row.bytes_after) || 0));
+      for (const filter of filters) {
+        if (!filter) continue;
+        if (!totals[filter]) totals[filter] = { filter, hits: 0, bytesSaved: 0 };
+        totals[filter].hits += 1;
+        totals[filter].bytesSaved += saved;
+      }
+    }
+
+    return Object.values(totals)
+      .sort((a, b) => b.bytesSaved - a.bytesSaved)
+      .slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
 export async function getCompressionStatsHistory(filter = {}) {
   try {
     const db = await getAdapter();

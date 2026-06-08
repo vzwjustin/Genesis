@@ -27,6 +27,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "currentPassword",
   "enableObservability",
   "headroomEnabled",
+  "mitmAutoSetupOnImport",
   "newPassword",
   "observabilityBatchSize",
   "observabilityFlushIntervalMs",

@@ -85,7 +85,10 @@ describe("frontend accessibility regressions", () => {
     expect(statRow).toContain("Proxy tokens");
     expect(statRow).toContain("Headroom dashboard");
     expect(caching).toContain("/api/compression/history");
+    expect(caching).toContain("/api/compression/provider-cache");
+    expect(caching).toContain("mitmAutoSetupOnImport");
     expect(read("src/shared/components/Sidebar.js")).toContain('href: "/dashboard/caching"');
+    expect(read("src/shared/components/Sidebar.js")).toContain('href: "/dashboard/pricing"');
   });
 
   it("exposes Headroom controls tied to live proxy reachability", () => {
