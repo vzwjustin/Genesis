@@ -68,6 +68,12 @@ export class KiroExecutor extends BaseExecutor {
         return { response, url, headers, transformedBody };
       }
 
+      // For non-streaming clients, collect the full EventStream and assemble a JSON response.
+      if (stream === false) {
+        const jsonResponse = await this.assembleEventStreamToJSON(response, model);
+        return { response: jsonResponse, url, headers, transformedBody };
+      }
+
       // Success - transform and return
       // For Kiro, we need to transform the binary EventStream to SSE
       // Create a TransformStream to convert binary to SSE text
@@ -280,21 +286,12 @@ export class KiroExecutor extends BaseExecutor {
             }
           }
 
-          // Handle messageStopEvent
+          // Handle messageStopEvent — note: metering/context events may arrive AFTER this.
+          // Set endDetected so the metering handler knows to emit the final chunk once both
+          // meteringEvent and contextUsageEvent have arrived. Do NOT emit the finish chunk here
+          // because doing so would set finishEmitted=true and suppress the usage-bearing chunk.
           if (eventType === "messageStopEvent") {
-            const chunk = {
-              id: responseId,
-              object: "chat.completion.chunk",
-              created,
-              model,
-              choices: [{
-                index: 0,
-                delta: {},
-                finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
-              }]
-            };
-            state.finishEmitted = true;
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+            state.endDetected = true;
           }
 
           // Handle contextUsageEvent to extract contextUsagePercentage
@@ -327,8 +324,10 @@ export class KiroExecutor extends BaseExecutor {
             }
           }
 
-          // Emit final chunk only after receiving BOTH meteringEvent AND contextUsageEvent
-          if (state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
+          // Emit final chunk once we have seen messageStopEvent AND both metering signals.
+          // This ordering fix ensures usage data is included even when messageStopEvent arrives
+          // before meteringEvent / contextUsageEvent in the stream.
+          if (state.endDetected && state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
             state.finishEmitted = true;
             
             // Estimate tokens if not available from events
@@ -378,7 +377,8 @@ export class KiroExecutor extends BaseExecutor {
       },
 
       flush(controller) {
-        // Emit finish chunk if not already sent
+        // Emit finish chunk if not already sent (e.g. stream ended without metering events,
+        // or messageStopEvent arrived but metering/context signals never completed).
         if (!state.finishEmitted) {
           state.finishEmitted = true;
           const finishChunk = {
@@ -392,6 +392,10 @@ export class KiroExecutor extends BaseExecutor {
               finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
             }]
           };
+          // Include usage if already computed
+          if (state.usage) {
+            finishChunk.usage = state.usage;
+          }
           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(finishChunk)}\n\n`));
         }
 
@@ -414,6 +418,128 @@ export class KiroExecutor extends BaseExecutor {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive"
       }
+    });
+  }
+
+  /**
+   * Collect the full AWS EventStream binary response and assemble an OpenAI-compatible
+   * non-streaming JSON completion object.  Used when the client did not request streaming.
+   */
+  async assembleEventStreamToJSON(response, model) {
+    const responseId = `chatcmpl-${Date.now()}`;
+    const created = Math.floor(Date.now() / 1000);
+
+    if (!response.body) {
+      return new Response(JSON.stringify({
+        id: responseId, object: "chat.completion", created, model,
+        choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+      }), { status: response.status, headers: { "Content-Type": "application/json" } });
+    }
+
+    // Collect the full binary stream
+    const chunks = [];
+    const reader = response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const totalLength = chunks.reduce((n, c) => n + c.length, 0);
+    let buffer = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const c of chunks) { buffer.set(c, offset); offset += c.length; }
+
+    // Parse all EventStream frames
+    let totalContent = "";
+    const toolCalls = [];
+    const seenToolIds = new Map();
+    let toolCallIndex = 0;
+    let usage = null;
+    let contextUsagePercentage = 0;
+    let totalContentLength = 0;
+
+    let pos = 0;
+    while (buffer.length - pos >= 16) {
+      const view = new DataView(buffer.buffer, buffer.byteOffset + pos);
+      const totalLen = view.getUint32(0, false);
+      if (totalLen < 16 || pos + totalLen > buffer.length) break;
+
+      const eventData = buffer.slice(pos, pos + totalLen);
+      pos += totalLen;
+      const event = parseEventFrame(eventData);
+      if (!event) continue;
+
+      const eventType = event.headers[":event-type"] || "";
+
+      if (eventType === "assistantResponseEvent" && event.payload?.content) {
+        totalContent += event.payload.content;
+        totalContentLength += event.payload.content.length;
+      }
+
+      if (eventType === "codeEvent" && event.payload?.content) {
+        totalContent += event.payload.content;
+        totalContentLength += event.payload.content.length;
+      }
+
+      if (eventType === "toolUseEvent" && event.payload) {
+        const toolUses = Array.isArray(event.payload) ? event.payload : [event.payload];
+        for (const tu of toolUses) {
+          const toolCallId = tu.toolUseId || `call_${Date.now()}`;
+          const toolName = tu.name || "";
+          const toolInput = tu.input;
+          if (!seenToolIds.has(toolCallId)) {
+            seenToolIds.set(toolCallId, toolCallIndex++);
+            let args = "{}";
+            if (toolInput !== undefined) {
+              args = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput);
+            }
+            toolCalls.push({ id: toolCallId, type: "function", function: { name: toolName, arguments: args } });
+          }
+        }
+      }
+
+      if (eventType === "contextUsageEvent" && event.payload?.contextUsagePercentage) {
+        contextUsagePercentage = event.payload.contextUsagePercentage;
+      }
+
+      if (eventType === "metricsEvent") {
+        const metrics = event.payload?.metricsEvent || event.payload;
+        if (metrics && typeof metrics === "object") {
+          const inputTokens = metrics.inputTokens || 0;
+          const outputTokens = metrics.outputTokens || 0;
+          if (inputTokens > 0 || outputTokens > 0) {
+            usage = { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: inputTokens + outputTokens };
+          }
+        }
+      }
+    }
+
+    if (!usage) {
+      const estimatedOutput = totalContentLength > 0 ? Math.max(1, Math.floor(totalContentLength / 4)) : 0;
+      const estimatedInput = contextUsagePercentage > 0 ? Math.floor(contextUsagePercentage * 200000 / 100) : 0;
+      usage = { prompt_tokens: estimatedInput, completion_tokens: estimatedOutput, total_tokens: estimatedInput + estimatedOutput };
+    }
+
+    const message = { role: "assistant", content: totalContent || null };
+    if (toolCalls.length > 0) message.tool_calls = toolCalls;
+
+    const completion = {
+      id: responseId,
+      object: "chat.completion",
+      created,
+      model,
+      choices: [{
+        index: 0,
+        message,
+        finish_reason: toolCalls.length > 0 ? "tool_calls" : "stop"
+      }],
+      usage
+    };
+
+    return new Response(JSON.stringify(completion), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" }
     });
   }
 

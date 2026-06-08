@@ -131,6 +131,17 @@ describe("SSE→JSON assembly for always-streaming providers (Requirements 6.3, 
       expect(result).toBeNull();
     });
 
+    it("returns null when valid chunks are followed by malformed JSON (partial assembly)", () => {
+      const sseText = [
+        'data: {"choices":[{"delta":{"content":"hello"}}]}',
+        "data: {broken json",
+        "data: [DONE]",
+      ].join("\n");
+
+      const result = parseSSEToOpenAIResponse(sseText, "gpt-4");
+      expect(result).toBeNull();
+    });
+
     it("returns null when SSE text is null or undefined", () => {
       expect(parseSSEToOpenAIResponse(null, "gpt-4")).toBeNull();
       expect(parseSSEToOpenAIResponse(undefined, "gpt-4")).toBeNull();

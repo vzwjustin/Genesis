@@ -45,7 +45,7 @@ describe("version releases API", () => {
     );
     expect(body.currentVersion).toBe("0.4.71");
     expect(body.releases.map((release) => release.version)).toEqual(["0.4.68", "0.4.65"]);
-    expect(body.releases[0]).toMatchObject({ direction: "upgrade", installCommand: "npm i -g 9router@0.4.68 --prefer-online" });
+    expect(body.releases[0]).toMatchObject({ direction: "downgrade", installCommand: "npm i -g 9router@0.4.68 --prefer-online" });
     expect(body.releases[1]).toMatchObject({ direction: "downgrade", installCommand: "npm i -g 9router@0.4.65 --prefer-online" });
   });
 });

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { getSettings } from "@/lib/localDb";
+import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
 
 export const OIDC_COOKIE_NAMES = {
   state: "oidc_state",
@@ -69,11 +70,26 @@ export async function getOidcRuntimeConfig() {
 
 export async function fetchOidcDiscovery(issuerUrl) {
   const discoveryUrl = `${trimTrailingSlashes(issuerUrl)}/.well-known/openid-configuration`;
+  assertSafeFetchUrl(discoveryUrl);
   const res = await fetch(discoveryUrl, { cache: "no-store" });
   if (!res.ok) {
-    throw new Error(`Failed to load OIDC discovery document from ${discoveryUrl}`);
+    throw new Error("Failed to load OIDC discovery document");
   }
   return await res.json();
+}
+
+/**
+ * Sanitize an OIDC error before embedding it in a redirect URL.
+ * Strips tokens, URLs, and caps length to prevent information leakage.
+ */
+export function sanitizeOidcError(error, fallback = "oidc_error") {
+  let msg = (error?.message != null ? String(error.message) : String(error ?? "")).trim();
+  msg = msg
+    .replace(/(client_secret|code_verifier|access_token|refresh_token|id_token|code)=([^&\s"']+)/gi, "$1=[redacted]")
+    .replace(/(eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/g, "[redacted-jwt]")
+    .replace(/https?:\/\/\S+/gi, "[url]");
+  if (msg.length > 120) msg = msg.slice(0, 120) + "\u2026";
+  return msg || fallback;
 }
 
 export function createPkcePair() {

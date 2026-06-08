@@ -8,6 +8,7 @@ import {
   fetchOidcDiscovery,
   getOidcRuntimeConfig,
   getPublicOrigin,
+  sanitizeOidcError,
 } from "@/lib/auth/oidc";
 import { shouldUseSecureCookie } from "@/lib/auth/dashboardSession";
 
@@ -47,6 +48,7 @@ export async function GET(request) {
 
     return NextResponse.redirect(authUrl);
   } catch (error) {
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message || "oidc_start_failed")}`, getPublicOrigin(request)));
+    console.error("[OIDC start] Failed to initiate OIDC flow:", error);
+    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(sanitizeOidcError(error, "oidc_start_failed"))}`, getPublicOrigin(request)));
   }
 }

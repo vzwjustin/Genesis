@@ -59,10 +59,8 @@ export function gitDiff(diff, maxLines = 500) {
           hunkSkipped += 1;
         }
       } else if (hunkShown < maxHunkLines && !line.startsWith("\\")) {
-        if (hunkShown > 0) {
-          result.push(`  ${line}`);
-          hunkShown += 1;
-        }
+        result.push(`  ${line}`);
+        hunkShown += 1;
       }
     }
 

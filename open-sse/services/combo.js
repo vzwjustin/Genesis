@@ -236,6 +236,18 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // Ignore JSON parse errors
       }
 
+      // unavailableResponse() puts retry hint in the Retry-After header, not the JSON body
+      const retryAfterHeader = result.headers.get("Retry-After");
+      if (retryAfterHeader) {
+        const retryAfterSec = parseInt(retryAfterHeader, 10);
+        if (!Number.isNaN(retryAfterSec) && retryAfterSec > 0) {
+          const fromHeader = new Date(Date.now() + retryAfterSec * 1000).toISOString();
+          if (!retryAfter || new Date(fromHeader) < new Date(retryAfter)) {
+            retryAfter = fromHeader;
+          }
+        }
+      }
+
       // Track earliest retryAfter across all combo models
       if (retryAfter && (!earliestRetryAfter || new Date(retryAfter) < new Date(earliestRetryAfter))) {
         earliestRetryAfter = retryAfter;

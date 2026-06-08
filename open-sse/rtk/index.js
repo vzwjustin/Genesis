@@ -156,15 +156,18 @@ export function compressMessages(body, enabled = rtkEnabled) {
   return stats;
 }
 
-// Compress Kiro format: conversationState.history[].userInputMessage.userInputMessageContext.toolResults[].content[].text
+// Compress Kiro format: only conversationState.currentMessage tool results.
+// History messages are already part of the provider's cached prefix — compressing
+// them changes the content hash and invalidates the upstream KV cache. Only the
+// currentMessage (which has not yet been cached) is safe to compress.
 function compressKiroFormat(body, enabled) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
   try {
     const state = body.conversationState;
-    const allMessages = [...(Array.isArray(state?.history) ? state.history : [])];
-    if (state?.currentMessage) allMessages.push(state.currentMessage);
+    // Skip history entirely — it is cache-protected upstream.
+    const messagesToCompress = state?.currentMessage ? [state.currentMessage] : [];
 
-    for (const msg of allMessages) {
+    for (const msg of messagesToCompress) {
       const toolResults = msg?.userInputMessage?.userInputMessageContext?.toolResults;
       if (!Array.isArray(toolResults)) continue;
 
@@ -205,10 +208,12 @@ function compressText(text, stats, shape) {
     }
   }
 
-  // Fallback (Req 7.8) and secondary fallback when named filter fails or grows (Req 7.9, 7.10)
-  const truncOut = safeApply(smartTruncate, text);
-  if (truncOut && truncOut.length > 0 && truncOut.length < bytesIn) {
-    candidates.push({ out: truncOut, filter: "smart-truncate" });
+  // Fallback only when named filter failed or grew the input (Req 7.8–7.10)
+  if (candidates.length === 0) {
+    const truncOut = safeApply(smartTruncate, text);
+    if (truncOut && truncOut.length > 0 && truncOut.length < bytesIn) {
+      candidates.push({ out: truncOut, filter: "smart-truncate" });
+    }
   }
 
   if (candidates.length === 0) {

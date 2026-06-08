@@ -17,6 +17,7 @@ export function buildOutput(input) {
   let compilingCount = 0;
   let downloadingCount = 0;
   let inCargoError = false;
+  let inCargoWarning = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -26,6 +27,13 @@ export function buildOutput(input) {
       if (!trimmed) { inCargoError = false; continue; }
       if (RE_CARGO_ERR_CONT.test(line)) { errors.push(line); continue; }
       inCargoError = false;
+    }
+
+    // Continuation of cargo warning block: route to warnings, not errors
+    if (inCargoWarning) {
+      if (!trimmed) { inCargoWarning = false; continue; }
+      if (RE_CARGO_ERR_CONT.test(line)) { warnings.push(line); continue; }
+      inCargoWarning = false;
     }
 
     if (!trimmed) continue;
@@ -52,7 +60,7 @@ export function buildOutput(input) {
 
     if (/^warning(\[|:)/i.test(trimmed) || trimmed.startsWith("warning -->")) {
       warnings.push(line);
-      inCargoError = true;
+      inCargoWarning = true;
       continue;
     }
 

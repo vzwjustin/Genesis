@@ -16,9 +16,9 @@ export function dedupLog(input) {
 
   for (const line of lines) {
     if (line.trim() === "") {
+      flushRun();
       if (blankStreak < 1) out.push(line);
       blankStreak += 1;
-      flushRun();
       prev = null;
       runCount = 0;
       continue;

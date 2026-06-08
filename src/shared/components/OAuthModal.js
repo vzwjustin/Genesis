@@ -6,6 +6,15 @@ import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { isTrustedOAuthMessageOrigin } from "@/shared/utils/oauthOrigin";
 
+async function postOAuthProxyAction(provider, action, body = {}) {
+  const res = await fetch(`/api/oauth/${provider}/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
 /**
  * OAuth Modal Component
  * - Localhost: Auto callback via popup message
@@ -239,13 +248,12 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       let codexServerSide = false;
       if (provider === "codex") {
         try {
-          const proxyUrl = new URL(`/api/oauth/codex/start-proxy`, window.location.origin);
-          proxyUrl.searchParams.set("app_port", appPort);
-          proxyUrl.searchParams.set("state", data.state);
-          proxyUrl.searchParams.set("code_verifier", data.codeVerifier);
-          proxyUrl.searchParams.set("redirect_uri", redirectUri);
-          const proxyRes = await fetch(proxyUrl.toString());
-          const proxyData = await proxyRes.json();
+          const proxyData = await postOAuthProxyAction("codex", "start-proxy", {
+            appPort,
+            state: data.state,
+            codeVerifier: data.codeVerifier,
+            redirectUri,
+          });
           codexProxyActive = proxyData.success;
           codexServerSide = !!proxyData.serverSide;
         } catch {
@@ -258,13 +266,12 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       let xaiServerSide = false;
       if (provider === "xai") {
         try {
-          const proxyUrl = new URL(`/api/oauth/xai/start-proxy`, window.location.origin);
-          proxyUrl.searchParams.set("app_port", appPort);
-          proxyUrl.searchParams.set("state", data.state);
-          proxyUrl.searchParams.set("code_verifier", data.codeVerifier);
-          proxyUrl.searchParams.set("redirect_uri", redirectUri);
-          const proxyRes = await fetch(proxyUrl.toString());
-          const proxyData = await proxyRes.json();
+          const proxyData = await postOAuthProxyAction("xai", "start-proxy", {
+            appPort,
+            state: data.state,
+            codeVerifier: data.codeVerifier,
+            redirectUri,
+          });
           xaiProxyActive = proxyData.success;
           xaiServerSide = !!proxyData.serverSide;
           if (!xaiProxyActive && proxyData.reason === "port_busy") {
@@ -325,9 +332,9 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       // Abort polling and cleanup proxy when modal closes
       pollingAbortRef.current = true;
       if (provider === "codex") {
-        fetch("/api/oauth/codex/stop-proxy").catch(() => {});
+        postOAuthProxyAction("codex", "stop-proxy").catch(() => {});
       } else if (provider === "xai") {
-        fetch("/api/oauth/xai/stop-proxy").catch(() => {});
+        postOAuthProxyAction("xai", "stop-proxy").catch(() => {});
       }
     }
   }, [isOpen, provider, startOAuthFlow]);
@@ -507,9 +514,9 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   // Clear session on modal close + cleanup proxy
   const handleClose = useCallback(() => {
     if (provider === "codex") {
-      fetch("/api/oauth/codex/stop-proxy").catch(() => {});
+      postOAuthProxyAction("codex", "stop-proxy").catch(() => {});
     } else if (provider === "xai") {
-      fetch("/api/oauth/xai/stop-proxy").catch(() => {});
+      postOAuthProxyAction("xai", "stop-proxy").catch(() => {});
     }
     onClose();
   }, [onClose, provider]);

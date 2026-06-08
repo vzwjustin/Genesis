@@ -67,9 +67,12 @@ function resolveProxyPort() {
 }
 
 async function waitForReachable(timeoutMs = HEALTH_WAIT_MS) {
+  // Clear stale pre-start probe state exactly once so the first loop check
+  // makes a fresh HTTP call. Never invalidate inside the loop — doing so
+  // hammers /health every second and violates the 30-second PROBE_TTL_MS gap.
+  invalidateHeadroomProbe();
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    invalidateHeadroomProbe();
     const status = await getHeadroomStatus();
     if (status.reachable) return status;
     await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_MS));

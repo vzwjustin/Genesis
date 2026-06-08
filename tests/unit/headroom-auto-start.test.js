@@ -107,4 +107,59 @@ describe("autoStartHeadroomProxy", () => {
       })
     );
   });
+
+  // Fix: waitForReachable must call invalidateHeadroomProbe exactly once (before the
+  // loop), never once per loop iteration. Invalidating every second violates the
+  // 30-second PROBE_TTL_MS gap enforced by the headroom probe cache.
+
+  it("waitForReachable calls invalidateHeadroomProbe exactly once when loop exits on first iteration", async () => {
+    execSync.mockReturnValue(Buffer.from("0.23.0"));
+
+    const fakeChild = { stderr: { on: vi.fn() }, on: vi.fn(), pid: 1234 };
+    spawn.mockReturnValue(fakeChild);
+
+    // initial check (before spawn): not reachable
+    // waitForReachable first iteration: immediately reachable → exits loop
+    getHeadroomStatus
+      .mockResolvedValueOnce({ reachable: false, proxyUrl: "http://localhost:8787" })
+      .mockResolvedValue({ reachable: true, proxyUrl: "http://localhost:8787" });
+
+    const logSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { autoStartHeadroomProxy } = await import("../../src/shared/services/headroomManager.js");
+    await autoStartHeadroomProxy();
+
+    // Must be called exactly once (before loop), not one per iteration
+    expect(invalidateHeadroomProbe).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+  });
+
+  it("waitForReachable calls invalidateHeadroomProbe exactly once across multiple loop iterations", async () => {
+    vi.useFakeTimers();
+
+    execSync.mockReturnValue(Buffer.from("0.23.0"));
+
+    const fakeChild = { stderr: { on: vi.fn() }, on: vi.fn(), pid: 5678 };
+    spawn.mockReturnValue(fakeChild);
+
+    // initial check (before spawn): not reachable
+    // waitForReachable iter 1: still not reachable (sleeps 1s)
+    // waitForReachable iter 2: reachable → exits
+    getHeadroomStatus
+      .mockResolvedValueOnce({ reachable: false, proxyUrl: "http://localhost:8787" })
+      .mockResolvedValueOnce({ reachable: false, proxyUrl: "http://localhost:8787" })
+      .mockResolvedValue({ reachable: true, proxyUrl: "http://localhost:8787" });
+
+    const logSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { autoStartHeadroomProxy } = await import("../../src/shared/services/headroomManager.js");
+
+    const runPromise = autoStartHeadroomProxy();
+    await vi.runAllTimersAsync();
+    await runPromise;
+
+    // Must still be exactly 1, never once per iteration
+    expect(invalidateHeadroomProbe).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+    logSpy.mockRestore();
+  });
 });
