@@ -93,4 +93,14 @@ describe("injectCaveman stats gating (Task 13.4)", () => {
     expect(injectCaveman(body, "openai", "full")).toBe(true);
     expect(body.messages.some((m) => m.role === "system")).toBe(true);
   });
+
+  it("appends Claude string system as a new block instead of mutating cached text", async () => {
+    const { injectCaveman } = await import("../../open-sse/rtk/caveman.js");
+    const body = { system: "cached system prompt" };
+    expect(injectCaveman(body, "claude", "full")).toBe(true);
+    expect(body.system).toEqual([
+      { type: "text", text: "cached system prompt" },
+      { type: "text", text: expect.stringContaining("caveman") },
+    ]);
+  });
 });

@@ -17,6 +17,22 @@ export function hasValidContent(msg) {
   return false;
 }
 
+/** True when the client already placed Anthropic cache_control breakpoints. */
+export function hasAnthropicCacheBreakpoints(body) {
+  if (!body || typeof body !== "object") return false;
+  if (Array.isArray(body.system) && body.system.some((b) => b?.cache_control)) return true;
+  if (Array.isArray(body.tools) && body.tools.some((t) => t?.cache_control)) return true;
+  if (!Array.isArray(body.messages)) return false;
+  for (const msg of body.messages) {
+    if (msg?.cache_control) return true;
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block?.cache_control) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Clean Anthropic tool definitions for upstream compatibility.
  * Client tools: strip model and type. Built-in tools: preserve properties but strip provider prefix from model.
@@ -30,13 +46,12 @@ export function cleanAnthropicToolDefinitions(tools, provider) {
   }
 
   return filtered.map((tool) => {
-    const { cache_control, ...rest } = tool;
     if (!tool.type || tool.type === "function") {
-      const { model, type, ...clientRest } = rest;
+      const { model, type, ...clientRest } = tool;
       return { ...clientRest };
     }
 
-    const cleanedTool = { ...rest };
+    const cleanedTool = { ...tool };
     if (typeof cleanedTool.model === "string" && cleanedTool.model.includes("/")) {
       cleanedTool.model = cleanedTool.model.slice(cleanedTool.model.indexOf("/") + 1);
     }
@@ -110,7 +125,7 @@ export function fixToolUseOrdering(messages) {
 const CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG = new Set(["minimax", "minimax-cn"]);
 
 // Prepare request for Claude format endpoints
-// - Cleanup cache_control
+// - Optionally normalize cache_control (skipped when client already set breakpoints)
 // - Filter empty messages
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
@@ -122,8 +137,10 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     delete body.output_config;
   }
 
-  // 1. System: remove all cache_control, add only to last block with ttl 1h
-  if (body.system && Array.isArray(body.system)) {
+  const preserveClientCache = hasAnthropicCacheBreakpoints(body);
+
+  // 1. System: only rewrite cache_control when the client did not set breakpoints
+  if (!preserveClientCache && body.system && Array.isArray(body.system)) {
     body.system = body.system.map((block, i) => {
       const { cache_control, ...rest } = block;
       if (i === body.system.length - 1) {
@@ -142,8 +159,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     for (let i = 0; i < len; i++) {
       const msg = body.messages[i];
 
-      // Remove cache_control from content blocks
-      if (Array.isArray(msg.content)) {
+      // Remove cache_control from content blocks (only when normalizing cache ourselves)
+      if (!preserveClientCache && Array.isArray(msg.content)) {
         for (const block of msg.content) {
           delete block.cache_control;
         }
@@ -167,15 +184,13 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     const lastMessageIsUser = lastMessage?.role === "user";
     const thinkingEnabled = body.thinking?.type === "enabled" && lastMessageIsUser;
 
-    // Pass 2 (reverse): add cache_control to last assistant + handle thinking for Anthropic
+    // Pass 2 (reverse): optional cache_control on last assistant + thinking for Anthropic
     let lastAssistantProcessed = false;
     for (let i = filtered.length - 1; i >= 0; i--) {
       const msg = filtered[i];
 
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        // Add cache_control to last non-thinking block of first (from end) assistant with content
-        // thinking/redacted_thinking blocks do not support cache_control
-        if (!lastAssistantProcessed && msg.content.length > 0) {
+        if (!preserveClientCache && !lastAssistantProcessed && msg.content.length > 0) {
           for (let j = msg.content.length - 1; j >= 0; j--) {
             const block = msg.content[j];
             if (block.type !== "thinking" && block.type !== "redacted_thinking") {
@@ -216,12 +231,14 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
   if (body.tools && Array.isArray(body.tools)) {
     body.tools = cleanAnthropicToolDefinitions(body.tools, provider);
-    body.tools = body.tools.map((tool, i) => {
-      if (i === body.tools.length - 1) {
-        return { ...tool, cache_control: { type: "ephemeral", ttl: "1h" } };
-      }
-      return tool;
-    });
+    if (!preserveClientCache) {
+      body.tools = body.tools.map((tool, i) => {
+        if (i === body.tools.length - 1) {
+          return { ...tool, cache_control: { type: "ephemeral", ttl: "1h" } };
+        }
+        return tool;
+      });
+    }
 
     // Remove tools array and tool_choice if empty after filtering
     if (body.tools.length === 0) {
