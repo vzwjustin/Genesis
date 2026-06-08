@@ -4,6 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Badge, Toggle } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
+import {
+  getConnectionErrorTag,
+  getConnectionErrorHint,
+  getConnectionErrorLabel,
+} from "@/shared/utils/connectionErrorUtils";
 
 export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect, oneByOneStatus = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
@@ -126,6 +131,12 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     && connection.isActive !== false
     && (effectiveStatus === "error" || effectiveStatus === "expired");
 
+  const errorTag = connection.lastError && connection.isActive !== false
+    ? getConnectionErrorTag(connection)
+    : null;
+  const errorLabel = getConnectionErrorLabel(errorTag);
+  const errorHint = getConnectionErrorHint(errorTag);
+
   const getOneByOneLabel = () => {
     if (!oneByOneStatus) return null;
     if (oneByOneStatus.state === "queued") return "queued";
@@ -173,10 +184,10 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               </Badge>
             )}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
-            {connection.lastError && connection.isActive !== false && (
-              <span className="max-w-full truncate text-xs text-danger sm:max-w-[300px]" title={connection.lastError}>
-                {connection.lastError}
-              </span>
+            {errorLabel && (
+              <Badge variant="error" size="sm" title={errorHint}>
+                {errorLabel}
+              </Badge>
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
             {connection.globalPriority && (
@@ -204,6 +215,12 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 </span>
               )}
             </div>
+          )}
+          {connection.lastError && connection.isActive !== false && (
+            <p className="mt-1 text-xs text-danger line-clamp-2" title={connection.lastError}>
+              {connection.lastError}
+              {errorHint ? <span className="text-text-muted"> — {errorHint}</span> : null}
+            </p>
           )}
         </div>
       </div>

@@ -72,11 +72,14 @@ describe("frontend accessibility regressions", () => {
 
   it("shows compression stats in the token saver card", () => {
     const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+    const summary = read("src/shared/components/CompressionSummaryCard.js");
     const statRow = read("src/shared/components/CompressionStatRow.js");
     const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
 
     expect(endpoint).toContain('fetch("/api/compression/stats"');
-    expect(endpoint).toContain("CompressionStatRow");
+    expect(endpoint).toContain("CompressionSummaryCard");
+    expect(summary).toContain("CompressionStatRow");
+    expect(summary).toContain("/dashboard/caching");
     expect(statRow).toContain("Saved");
     expect(statRow).toContain("Est. tokens saved");
     expect(statRow).toContain("Savings not measurable");
@@ -93,10 +96,42 @@ describe("frontend accessibility regressions", () => {
 
   it("exposes Headroom controls tied to live proxy reachability", () => {
     const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
+    const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
 
     expect(endpoint).toContain("fetch(\"/api/headroom/status\")");
     expect(endpoint).toContain("headroomEnabled");
-    expect(endpoint).toContain("disabled={!headroomStatus?.reachable}");
+    expect(caching).toContain("disabled={!headroomStatus?.reachable}");
+  });
+
+  it("uses toast notifications instead of blocking alerts in key dashboard flows", () => {
+    const dashboardFiles = [
+      "src/app/(dashboard)/dashboard/translator/page.js",
+      "src/shared/components/PricingModal.js",
+      "src/app/(dashboard)/dashboard/providers/[id]/PassthroughModelsSection.js",
+      "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js",
+      "src/shared/components/layouts/DashboardLayout.js",
+      "src/store/notificationStore.js",
+    ].map(read).join("\n");
+
+    expect(dashboardFiles).toContain("useNotificationStore");
+    expect(dashboardFiles).toContain("Dismiss all");
+    expect(dashboardFiles).not.toMatch(/\balert\s*\(/);
+  });
+
+  it("surfaces connection error hints on provider connection rows", () => {
+    const row = read("src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js");
+    const utils = read("src/shared/utils/connectionErrorUtils.js");
+
+    expect(row).toContain("getConnectionErrorTag");
+    expect(row).toContain("getConnectionErrorHint");
+    expect(utils).toContain("getConnectionErrorLabel");
+  });
+
+  it("shows setup checklist on dashboard overview", () => {
+    const overview = read("src/app/(dashboard)/dashboard/DashboardOverviewClient.js");
+
+    expect(overview).toContain("Setup checklist");
+    expect(overview).toContain("/dashboard/caching");
   });
 
   it("keeps primary dashboard copy direct and task-oriented", () => {
