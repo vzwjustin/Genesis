@@ -33,6 +33,7 @@ export default function ProviderDetailPage() {
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
   const [showOAuthModal, setShowOAuthModal] = useState(false);
+  const [reconnectConnectionId, setReconnectConnectionId] = useState(null);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
   const [addConnectionError, setAddConnectionError] = useState("");
@@ -67,8 +68,14 @@ export default function ProviderDetailPage() {
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
-  const openOAuthConnection = () => {
+  const openOAuthConnection = (connectionId = null) => {
+    setReconnectConnectionId(connectionId);
     setShowOAuthModal(true);
+  };
+
+  const closeOAuthModal = () => {
+    setShowOAuthModal(false);
+    setReconnectConnectionId(null);
   };
 
   const triggerOAuthConnection = () => {
@@ -523,7 +530,7 @@ export default function ProviderDetailPage() {
 
   const handleOAuthSuccess = () => {
     fetchConnections();
-    setShowOAuthModal(false);
+    closeOAuthModal();
   };
 
   const handleIFlowCookieSuccess = () => {
@@ -753,6 +760,11 @@ export default function ProviderDetailPage() {
                   setShowEditModal(true);
                 }}
                 onDelete={() => handleDelete(conn.id)}
+                onReconnect={
+                  isOAuth && (conn.authType === "oauth" || conn.authType == null)
+                    ? () => openOAuthConnection(conn.id)
+                    : undefined
+                }
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
             </div>
@@ -1388,20 +1400,22 @@ export default function ProviderDetailPage() {
           isOpen={showOAuthModal}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={closeOAuthModal}
+          existingConnectionId={reconnectConnectionId}
         />
       ) : providerId === "cursor" ? (
         <CursorAuthModal
           isOpen={showOAuthModal}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={closeOAuthModal}
+          existingConnectionId={reconnectConnectionId}
         />
       ) : providerId === "gitlab" ? (
         <GitLabAuthModal
           isOpen={showOAuthModal}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={closeOAuthModal}
         />
       ) : (
         <OAuthModal
@@ -1409,7 +1423,7 @@ export default function ProviderDetailPage() {
           provider={providerId}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={closeOAuthModal}
         />
       )}
       {providerId === "iflow" && (

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { CursorService } from "@/lib/oauth/services/cursor";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection, getProviderConnectionById, updateProviderConnection } from "@/models";
 
 /**
  * POST /api/oauth/cursor/import
@@ -12,7 +12,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
-    const { accessToken, machineId } = await request.json();
+    const { accessToken, machineId, existingConnectionId } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {
       return NextResponse.json(
@@ -39,12 +39,11 @@ export async function POST(request) {
     // Try to extract user info from token
     const userInfo = cursorService.extractUserInfo(tokenData.accessToken);
 
-    // Save to database
-    const connection = await createProviderConnection({
+    const connectionPayload = {
       provider: "cursor",
       authType: "oauth",
       accessToken: tokenData.accessToken,
-      refreshToken: null, // Cursor doesn't have public refresh endpoint
+      refreshToken: null,
       expiresAt: new Date(Date.now() + tokenData.expiresIn * 1000).toISOString(),
       email: userInfo?.email || null,
       providerSpecificData: {
@@ -54,7 +53,27 @@ export async function POST(request) {
         userId: userInfo?.userId,
       },
       testStatus: "active",
-    });
+      lastError: null,
+      lastErrorAt: null,
+      isActive: true,
+    };
+
+    let connection;
+    if (existingConnectionId) {
+      const existing = await getProviderConnectionById(existingConnectionId);
+      if (!existing || existing.provider !== "cursor") {
+        return NextResponse.json({ error: "Invalid connection" }, { status: 400 });
+      }
+      connection = await updateProviderConnection(existingConnectionId, {
+        ...connectionPayload,
+        providerSpecificData: {
+          ...(existing.providerSpecificData || {}),
+          ...connectionPayload.providerSpecificData,
+        },
+      });
+    } else {
+      connection = await createProviderConnection(connectionPayload);
+    }
 
     return NextResponse.json({
       success: true,
