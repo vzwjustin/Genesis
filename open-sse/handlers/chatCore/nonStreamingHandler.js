@@ -447,9 +447,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     translatedResponse.usage = filterUsageForFormat(addBufferToUsage(translatedResponse.usage), sourceFormat);
   }
 
-  // Strip reasoning_content — some clients (e.g. Firecrawl AI SDK) have JSON parsers that
-  // break on this non-standard field, even though OpenAI allows it in extensions.
-  if (translatedResponse?.choices) {
+  // Strip reasoning_content for generic clients (e.g. Firecrawl AI SDK) that break on the
+  // non-standard field. Preserve it for Kiro thinking models where clients expect it.
+  const preserveReasoning = provider === "kiro" || String(model || "").includes("-thinking");
+  if (!preserveReasoning && translatedResponse?.choices) {
     for (const choice of translatedResponse.choices) {
       if (choice?.message) delete choice.message.reasoning_content;
     }

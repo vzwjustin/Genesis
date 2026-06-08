@@ -96,7 +96,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) {
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
+        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
       }
       return errorResponse(had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE), lastError || "All accounts unavailable");
     }

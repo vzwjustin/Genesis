@@ -22,6 +22,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
 import { refreshKiroToken } from "./tokenRefresh.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
 const KIRO_AGENT_OS = "windows";
@@ -156,7 +157,7 @@ function formatDisplayName(modelName, modelId, rateMultiplier) {
  * Fetch the raw model catalog from Kiro. Returns the array under `.models`
  * from the API response, or throws on network/HTTP error.
  */
-async function fetchKiroCatalogRaw(credentials, signal) {
+async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
   const profileArn = credentials?.providerSpecificData?.profileArn || "";
   const region = regionFromProfileArn(profileArn);
   const params = new URLSearchParams();
@@ -178,11 +179,11 @@ async function fetchKiroCatalogRaw(credentials, signal) {
 
   let response;
   try {
-    response = await fetch(url, {
+    response = await proxyAwareFetch(url, {
       method: "GET",
       headers,
       signal: controller.signal
-    });
+    }, proxyOptions);
   } finally {
     clearTimeout(timer);
   }
@@ -250,14 +251,15 @@ export async function resolveKiroModels(credentials, options = {}) {
 
   let raw;
   try {
-    raw = await fetchKiroCatalogRaw(credentials, options.signal);
+    raw = await fetchKiroCatalogRaw(credentials, options.signal, options.proxyOptions);
   } catch (err) {
     if (err && err.status === 401 && credentials.refreshToken) {
       options.log?.info?.("KIRO_MODELS", "Got 401 from Kiro; refreshing token");
       const refreshed = await refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
-        options.log
+        options.log,
+        options.proxyOptions
       );
       if (refreshed?.accessToken) {
         const next = { ...credentials, ...refreshed };
@@ -267,7 +269,7 @@ export async function resolveKiroModels(credentials, options = {}) {
           }
         }
         try {
-          raw = await fetchKiroCatalogRaw(next, options.signal);
+          raw = await fetchKiroCatalogRaw(next, options.signal, options.proxyOptions);
           // Update the in-memory credential reference too so retry logic uses
           // the fresh token consistently.
           credentials.accessToken = next.accessToken;

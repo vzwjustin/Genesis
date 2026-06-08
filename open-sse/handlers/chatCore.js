@@ -464,7 +464,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       streamController.handleComplete();
       return result;
     }
-    // Provider returned non-SSE; fall through to streaming with controller still connected
+    // Provider returned non-SSE JSON — assemble as JSON instead of wrapping in SSE.
+    try {
+      return await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    } finally {
+      streamController.handleComplete();
+    }
   }
 
   // True non-streaming response

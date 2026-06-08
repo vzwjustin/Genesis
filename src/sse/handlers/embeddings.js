@@ -78,7 +78,7 @@ export async function handleEmbeddings(request) {
       }
       if (excludeConnectionIds.size === 0) {
         log.error("AUTH", `No credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
+        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
       }
       log.warn("EMBEDDINGS", "No more accounts available", { provider });
       // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503

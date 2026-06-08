@@ -66,6 +66,7 @@ export function parseSSEToClaudeResponse(rawSSE) {
   let usage = null;
   let sawMessageStop = false;
   let sawContent = false;
+  let invalidToolJson = false;
 
   const finalizeBlock = (index) => {
     const block = openBlocks.get(index);
@@ -74,7 +75,8 @@ export function parseSSEToClaudeResponse(rawSSE) {
       try {
         block.input = JSON.parse(block._partialJson);
       } catch {
-        block.input = {};
+        invalidToolJson = true;
+        return;
       }
       delete block._partialJson;
     }
@@ -131,8 +133,9 @@ export function parseSSEToClaudeResponse(rawSSE) {
     finalizeBlock(index);
   }
 
+  if (invalidToolJson) return null;
   if (!message) return null;
-  if (!sawMessageStop && !stopReason && sawContent) return null;
+  if (!sawMessageStop && !stopReason) return null;
 
   if (stopReason) message.stop_reason = stopReason;
   if (stopSequence !== undefined) message.stop_sequence = stopSequence;
@@ -208,10 +211,9 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     }
   }
 
-  // Fail closed: content arrived but the stream never signalled completion
-  // (no finish_reason, no [DONE]) → truncated. Return null so the caller emits
-  // a BAD_GATEWAY error instead of partial JSON with a fabricated "stop".
-  if (!sawTerminal && (contentParts.length > 0 || reasoningParts.length > 0 || toolCallMap.size > 0)) {
+  // Fail closed: stream never signalled completion (no finish_reason, no [DONE]).
+  // Includes role-only chunks that would otherwise fabricate an empty "stop" response.
+  if (!sawTerminal && chunks.length > 0) {
     return null;
   }
 

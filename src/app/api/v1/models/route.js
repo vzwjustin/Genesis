@@ -7,6 +7,7 @@ import {
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
@@ -16,11 +17,19 @@ import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 // Adding a provider here makes /v1/models prefer the live catalog for it.
 const LIVE_MODEL_RESOLVERS = {
   kiro: async (conn) => {
+    const proxyConfig = await resolveConnectionProxyConfig(conn.providerSpecificData || {});
+    const proxyOptions = {
+      connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
+      connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
+      connectionNoProxy: proxyConfig.connectionNoProxy || "",
+      vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
+      strictProxy: proxyConfig.strictProxy === true,
+    };
     const result = await resolveKiroModels({
       accessToken: conn.accessToken,
       refreshToken: conn.refreshToken,
       providerSpecificData: conn.providerSpecificData || {}
-    }, { log: console });
+    }, { log: console, proxyOptions });
     return result?.models?.length ? { models: result.models } : null;
   },
   qoder: async (conn) => {

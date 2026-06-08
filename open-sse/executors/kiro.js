@@ -452,6 +452,7 @@ export class KiroExecutor extends BaseExecutor {
 
     // Parse all EventStream frames
     let totalContent = "";
+    let reasoningContent = "";
     const toolCalls = [];
     const seenToolIds = new Map();
     let toolCallIndex = 0;
@@ -471,6 +472,17 @@ export class KiroExecutor extends BaseExecutor {
       if (!event) continue;
 
       const eventType = event.headers[":event-type"] || "";
+
+      if (eventType === "reasoningContentEvent") {
+        const reasoning = event.payload?.reasoningContentEvent || event.payload || {};
+        const reasoningText = (typeof reasoning === "string")
+          ? reasoning
+          : (reasoning.text || reasoning.content || "");
+        if (reasoningText) {
+          reasoningContent += reasoningText;
+          totalContentLength += reasoningText.length;
+        }
+      }
 
       if (eventType === "assistantResponseEvent" && event.payload?.content) {
         totalContent += event.payload.content;
@@ -495,6 +507,13 @@ export class KiroExecutor extends BaseExecutor {
               args = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput);
             }
             toolCalls.push({ id: toolCallId, type: "function", function: { name: toolName, arguments: args } });
+          } else if (toolInput !== undefined) {
+            const idx = seenToolIds.get(toolCallId);
+            const existing = toolCalls[idx];
+            if (existing?.function) {
+              const argsStr = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput);
+              existing.function.arguments = (existing.function.arguments || "") + argsStr;
+            }
           }
         }
       }
@@ -522,6 +541,7 @@ export class KiroExecutor extends BaseExecutor {
     }
 
     const message = { role: "assistant", content: totalContent || null };
+    if (reasoningContent) message.reasoning_content = reasoningContent;
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
 
     const completion = {

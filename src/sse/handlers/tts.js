@@ -89,7 +89,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
         return unavailableResponse(status, `[${provider}/${model}] ${msg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
-      if (excludeConnectionIds.size === 0) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
+      if (excludeConnectionIds.size === 0) return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
       // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503
       const exhaustedStatus = had5xx ? HTTP_STATUS.SERVICE_UNAVAILABLE : (lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE);
       return errorResponse(exhaustedStatus, lastError || "All accounts unavailable");

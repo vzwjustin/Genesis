@@ -142,7 +142,7 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
       }
       if (excludeConnectionIds.size === 0) {
         log.error("AUTH", `No credentials for provider: ${providerId}`);
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${providerId}`);
+        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${providerId}`);
       }
       log.warn("SEARCH", "No more accounts available", { provider: providerId });
       // Requirement 4.5: If all connections exhausted AND at least one returned 5xx → HTTP 503

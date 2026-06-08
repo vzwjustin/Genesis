@@ -4,6 +4,7 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/sha
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 
@@ -250,10 +251,19 @@ const PROVIDER_MODELS_CONFIG = {
         refreshToken: connection.refreshToken,
         providerSpecificData: connection.providerSpecificData || {}
       };
+      const proxyConfig = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+      const proxyOptions = {
+        connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
+        connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
+        connectionNoProxy: proxyConfig.connectionNoProxy || "",
+        vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
+        strictProxy: proxyConfig.strictProxy === true,
+      };
       let warning;
       try {
         const result = await resolveKiroModels(credentials, {
           log: console,
+          proxyOptions,
           onCredentialsRefreshed: async (refreshed) => {
             if (refreshed?.accessToken) {
               await updateProviderCredentials(connection.id, {

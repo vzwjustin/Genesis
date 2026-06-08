@@ -31,7 +31,7 @@ vi.mock("open-sse/handlers/chatCore/requestDetail.js", () => ({
 }));
 
 const { convertResponsesStreamToJson } = await import("../../open-sse/transformer/streamToJsonConverter.js");
-const { parseSSEToOpenAIResponse, handleForcedSSEToJson } = await import("../../open-sse/handlers/chatCore/sseToJsonHandler.js");
+const { parseSSEToOpenAIResponse, parseSSEToClaudeResponse, handleForcedSSEToJson } = await import("../../open-sse/handlers/chatCore/sseToJsonHandler.js");
 
 /** Build a ReadableStream emitting the given SSE text as one chunk. */
 function sseStream(text) {
@@ -208,5 +208,30 @@ describe("parseSSEToOpenAIResponse — missing terminal signal (Bug C)", () => {
     const result = parseSSEToOpenAIResponse(sse, "gpt-4");
     expect(result).not.toBeNull();
     expect(result.choices[0].finish_reason).toBe("stop");
+  });
+
+  it("returns null for role-only chunks without terminal signal", () => {
+    const sse =
+      'data: {"id":"c5","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}';
+    expect(parseSSEToOpenAIResponse(sse, "gpt-4")).toBeNull();
+  });
+});
+
+describe("parseSSEToClaudeResponse — truncated stream fail-closed", () => {
+  it("returns null for message_start only without message_stop", () => {
+    const sse =
+      'data: {"type":"message_start","message":{"id":"msg_x","type":"message","role":"assistant","content":[]}}';
+    expect(parseSSEToClaudeResponse(sse)).toBeNull();
+  });
+
+  it("returns null when tool_use input_json_delta is truncated", () => {
+    const sse = [
+      'data: {"type":"message_start","message":{"id":"msg_t","type":"message","role":"assistant","content":[]}}',
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_1","name":"get_weather","input":{}}}',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"NYC"}}',
+      'data: {"type":"content_block_stop","index":0}',
+      'data: {"type":"message_stop"}',
+    ].join("\n");
+    expect(parseSSEToClaudeResponse(sse)).toBeNull();
   });
 });
