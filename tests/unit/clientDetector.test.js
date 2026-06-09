@@ -73,6 +73,10 @@ describe("detectClientTool", () => {
     expect(detectClientTool({ "openai-intent": "conversation-panel" }, {})).toBe("github-copilot");
   });
 
+  it("does not detect github-copilot from x-initiator alone", () => {
+    expect(detectClientTool({ "x-initiator": "user" }, {})).toBeNull();
+  });
+
   // --- DeepSeek TUI ---
   it("detects DeepSeek TUI from user-agent", () => {
     expect(detectClientTool({ "user-agent": "deepseek-tui/1.0.0" }, {})).toBe("deepseek-tui");

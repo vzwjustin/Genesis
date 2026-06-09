@@ -1,4 +1,5 @@
 import { DefaultExecutor } from "./default.js";
+import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
 
 export class AzureExecutor extends DefaultExecutor {
   constructor() {
@@ -19,7 +20,7 @@ export class AzureExecutor extends DefaultExecutor {
       || process.env.AZURE_DEPLOYMENT
       || "gpt-4";
 
-    const endpoint = azureEndpoint.replace(/\/$/, "");
+    const endpoint = validateProviderBaseUrl(azureEndpoint);
     return `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
   }
 

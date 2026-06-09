@@ -298,6 +298,7 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
+      let errored = false;
       try {
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
@@ -310,11 +311,9 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
         for await (const chunk of extractContent(eventStream, signal)) {
           if (chunk.backendUuid) respBackendUuid = chunk.backendUuid;
           if (chunk.error) {
-            controller.enqueue(encoder.encode(sseChunk({
-              id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-              choices: [{ index: 0, delta: { content: `[Error: ${chunk.error}]` }, finish_reason: null, logprobs: null }],
-            })));
-            break;
+            errored = true;
+            controller.error(new Error(chunk.error));
+            return;
           }
           if (chunk.thinking) {
             controller.enqueue(encoder.encode(sseChunk({
@@ -345,14 +344,11 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
 
         sessionStore(history, currentMsg, cleanResponse(fullAnswer), respBackendUuid);
       } catch (err) {
-        controller.enqueue(encoder.encode(sseChunk({
-          id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-          choices: [{ index: 0, delta: { content: `[Stream error: ${err.message || String(err)}]` }, finish_reason: "stop", logprobs: null }],
-        })));
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      } finally {
-        controller.close();
+        errored = true;
+        controller.error(err);
+        return;
       }
+      if (!errored) controller.close();
     },
   });
 }

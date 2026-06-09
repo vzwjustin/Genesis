@@ -2,6 +2,7 @@ import { Readable } from "stream";
 import { createRequire } from "module";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
+import { assertSafeResolvedHostname } from "./ssrfGuard.js";
 
 const require = createRequire(import.meta.url);
 const { isKiroMitmHost } = require("../../src/shared/constants/mitmToolHosts.js");
@@ -266,21 +267,38 @@ async function createBypassRequest(parsedUrl, realIP, options) {
 
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
+    let req = null;
     let settled = false;
+    let activeRes = null;
+
+    const cleanup = () => {
+      try { req?.destroy(); } catch { /* noop */ }
+      try { activeRes?.destroy(); } catch { /* noop */ }
+      try { socket.destroy(); } catch { /* noop */ }
+    };
 
     const fail = (err) => {
       if (settled) return;
       settled = true;
-      try { socket.destroy(); } catch { /* noop */ }
+      options.signal?.removeEventListener("abort", onAbort);
+      cleanup();
       reject(err);
+    };
+
+    const onAbort = () => {
+      if (settled) {
+        cleanup();
+        return;
+      }
+      fail(options.signal?.reason || new Error("aborted"));
     };
 
     if (options.signal) {
       if (options.signal.aborted) {
-        fail(new Error("aborted"));
+        fail(options.signal.reason || new Error("aborted"));
         return;
       }
-      options.signal.addEventListener("abort", () => fail(new Error("aborted")), { once: true });
+      options.signal.addEventListener("abort", onAbort);
     }
 
     socket.connect(HTTPS_PORT, realIP, () => {
@@ -301,9 +319,9 @@ async function createBypassRequest(parsedUrl, realIP, options) {
         },
       };
 
-      const req = https.request(reqOptions, (res) => {
+      req = https.request(reqOptions, (res) => {
         if (settled) return;
-        settled = true;
+        activeRes = res;
         const response = {
           ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
           status: res.statusCode,
@@ -334,6 +352,16 @@ async function createBypassRequest(parsedUrl, realIP, options) {
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
 
+  if (!shouldBypassMitmDns(targetUrl)) {
+    try {
+      const hostname = new URL(targetUrl).hostname;
+      const allowLoopback = ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(hostname.toLowerCase());
+      await assertSafeResolvedHostname(hostname, { allowLoopback });
+    } catch (dnsError) {
+      throw new Error(`[ProxyFetch] DNS safety check failed: ${dnsError.message}`);
+    }
+  }
+
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
   const envProxyUrl = connectionProxyUrl ? null : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
   let proxyUrl = connectionProxyUrl || envProxyUrl;
@@ -361,8 +389,8 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         const dispatcher = await getDispatcher(proxyUrl);
         return await originalFetch(url, { ...options, dispatcher });
       } catch (proxyError) {
-        if (proxyOptions?.strictProxy === true) {
-          throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
+        if (proxyOptions?.strictProxy === true || connectionProxyUrl) {
+          throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
         }
         console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);
       }
@@ -380,9 +408,9 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       const dispatcher = await getDispatcher(proxyUrl);
       return await originalFetch(url, { ...options, dispatcher });
     } catch (proxyError) {
-      // If strictProxy is enabled, fail hard instead of falling back to direct
-      if (proxyOptions?.strictProxy === true) {
-        throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
+      // Per-connection proxy and strictProxy fail closed — no direct fallback
+      if (proxyOptions?.strictProxy === true || connectionProxyUrl) {
+        throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
       }
       console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
       return originalFetch(url, options);

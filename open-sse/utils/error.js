@@ -1,5 +1,8 @@
 import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES, MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
 
+/** Response header set by proxy-generated account-exhaustion responses. */
+export const PROXY_EXHAUSTED_HEADER = "X-9router-Account-Exhausted";
+
 /**
  * Pre-dispatch validation error types for HTTP 400 responses.
  * Used when request-shape failures prevent successful request processing.
@@ -156,6 +159,7 @@ export function unavailableResponse(statusCode, message, retryAfter, retryAfterH
       headers: {
         "Content-Type": "application/json",
         "Retry-After": String(retryAfterSec),
+        [PROXY_EXHAUSTED_HEADER]: "1",
         "Access-Control-Allow-Origin": "*"
       }
     }

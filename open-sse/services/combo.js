@@ -3,7 +3,7 @@
  */
 
 import { formatRetryAfter } from "./accountFallback.js";
-import { unavailableResponse } from "../utils/error.js";
+import { unavailableResponse, PROXY_EXHAUSTED_HEADER } from "../utils/error.js";
 import { MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
 
 /**
@@ -201,18 +201,24 @@ export async function isModelResolutionFailureResponse(response) {
  */
 export async function isProviderAccountsExhaustedResponse(response) {
   if (response.status !== 401 && response.status !== 403) return false;
-  if (response.headers.get("Retry-After")) return true;
+
+  const hasProxyMarker = response.headers.get(PROXY_EXHAUSTED_HEADER) === "1";
+  const hasRetryAfter = !!response.headers.get("Retry-After");
+
   try {
     const body = await response.clone().json();
     const message = body?.error?.message || "";
-    return (
+    const hasKnownMessage = (
       message.includes("All accounts unavailable") ||
       message.includes("No more accounts available") ||
       message.includes("Token refresh failed") ||
       message.startsWith("No active credentials for provider:")
     );
+    if (hasKnownMessage) return true;
+    // Retry-After alone is insufficient — require proxy exhaustion marker
+    return hasProxyMarker && hasRetryAfter;
   } catch {
-    return false;
+    return hasProxyMarker && hasRetryAfter;
   }
 }
 
