@@ -85,6 +85,7 @@ export async function resolveConnectionProxyConfig(
             strictProxy: proxyPool.strictProxy === true,
 
             vercelRelayUrl: proxyUrl, // Still mapped to vercelRelayUrl in the unified payload since they use the exact same header spec
+            relayAuthSecret: normalizeString(proxyPool.relayAuthSecret),
           };
         }
 

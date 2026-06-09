@@ -224,6 +224,27 @@ describe("parseSSEToClaudeResponse — truncated stream fail-closed", () => {
     expect(parseSSEToClaudeResponse(sse)).toBeNull();
   });
 
+  it("returns null when message_delta has stop_reason but message_stop is missing", () => {
+    const sse = [
+      'data: {"type":"message_start","message":{"id":"msg_x","type":"message","role":"assistant","content":[]}}',
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}',
+      'data: {"type":"content_block_stop","index":0}',
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
+    ].join("\n");
+    expect(parseSSEToClaudeResponse(sse)).toBeNull();
+  });
+
+  it("returns null when content_block_stop is missing (truncated block)", () => {
+    const sse = [
+      'data: {"type":"message_start","message":{"id":"msg_x","type":"message","role":"assistant","content":[]}}',
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}',
+      'data: {"type":"message_stop"}',
+    ].join("\n");
+    expect(parseSSEToClaudeResponse(sse)).toBeNull();
+  });
+
   it("returns null when tool_use input_json_delta is truncated", () => {
     const sse = [
       'data: {"type":"message_start","message":{"id":"msg_t","type":"message","role":"assistant","content":[]}}',

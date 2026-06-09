@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { makeTestApiKey, useTestApiKeySecret } from "../helpers/apiKeyTestUtils.js";
 
 const mocks = vi.hoisted(() => ({
   nextResponse: Symbol("next"),
@@ -33,6 +34,7 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
   verifyDashboardAuthToken: mocks.verifyDashboardAuthToken,
 }));
 
+const VALID_TEST_KEY = makeTestApiKey();
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
 function request(pathname, headers = {}) {
@@ -47,6 +49,7 @@ function request(pathname, headers = {}) {
 
 describe("dashboard guard public LLM API access", () => {
   beforeEach(() => {
+    useTestApiKeySecret();
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
     mocks.validateApiKey.mockResolvedValue(false);
@@ -111,11 +114,11 @@ describe("dashboard guard public LLM API access", () => {
 
     const response = await proxy(request("/api/v1/chat/completions", {
       host: "router.example.com",
-      authorization: "Bearer sk-valid",
+      authorization: `Bearer ${VALID_TEST_KEY}`,
     }));
 
     expect(response).toBe(mocks.nextResponse);
-    expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
   it("allows remote public LLM API with valid x-api-key", async () => {
@@ -123,11 +126,11 @@ describe("dashboard guard public LLM API access", () => {
 
     const response = await proxy(request("/v1/web/fetch", {
       host: "router.example.com",
-      "x-api-key": "sk-valid",
+      "x-api-key": VALID_TEST_KEY,
     }));
 
     expect(response).toBe(mocks.nextResponse);
-    expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
   it("allows remote rewritten beta public LLM API with valid API key", async () => {
@@ -135,17 +138,29 @@ describe("dashboard guard public LLM API access", () => {
 
     const response = await proxy(request("/api/v1beta/models", {
       host: "router.example.com",
-      "x-api-key": "sk-valid",
+      "x-api-key": VALID_TEST_KEY,
     }));
 
     expect(response).toBe(mocks.nextResponse);
-    expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
-  it("allows remote public LLM API without credentials when requireApiKey=false", async () => {
+  it("rejects remote public LLM API without credentials when requireApiKey=false", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
 
     const response = await proxy(request("/v1/models", { host: "router.example.com" }));
+
+    expect(response.status).toBe(401);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API without credentials when requireApiKey=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -166,6 +181,7 @@ describe("dashboard guard public LLM API access", () => {
 
 describe("dashboard guard management API access", () => {
   beforeEach(() => {
+    useTestApiKeySecret();
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
     mocks.validateApiKey.mockResolvedValue(false);
@@ -173,14 +189,13 @@ describe("dashboard guard management API access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
-  it("rejects management API when requireLogin=false and no JWT/CLI token", async () => {
+  it("allows management API on loopback when requireLogin=false and no JWT/CLI token", async () => {
     const response = await proxy(request("/api/keys", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
     }));
 
-    expect(response.status).toBe(401);
-    expect(response.body.error).toBe("Unauthorized");
+    expect(response).toBe(mocks.nextResponse);
   });
 
   it("rejects management API from tunnel host even when requireLogin=false", async () => {

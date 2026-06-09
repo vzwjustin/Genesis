@@ -108,6 +108,10 @@ export async function importDb(payload) {
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
+    db.run(`DELETE FROM usageHistory`);
+    db.run(`DELETE FROM usageDaily`);
+    db.run(`DELETE FROM requestDetails`);
+    db.run(`DELETE FROM compressionStats`);
 
     // Settings
     if (payload.settings) {

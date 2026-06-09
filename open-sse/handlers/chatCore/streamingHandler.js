@@ -49,8 +49,6 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
  * duplicate DB records for the same streaming request.
  */
 export function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, streamController, onStreamComplete, passthrough, streamDetailId }) {
-  if (onRequestSuccess) onRequestSuccess();
-
   const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, passthrough });
   const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController);
 
@@ -65,7 +63,7 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
     providerRequest: finalBody || translatedBody || null,
     providerResponse: "[Streaming - raw response not captured]",
     response: { content: "[Streaming in progress...]", thinking: null, type: "streaming" },
-    status: "success"
+    status: "in_progress"
   }, { id: detailId })).catch(err => {
     console.error("[RequestDetail] Failed to save streaming request:", err.message);
   });
@@ -79,7 +77,7 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
 /**
  * Build onStreamComplete callback for streaming usage tracking.
  */
-export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest }) {
+export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, onRequestSuccess }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
   const onStreamComplete = (contentObj, usage, ttftAt) => {
@@ -104,6 +102,12 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     });
 
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE" });
+
+    if (onRequestSuccess) {
+      Promise.resolve(onRequestSuccess()).catch((err) => {
+        console.error("[Streaming] onRequestSuccess failed:", err.message);
+      });
+    }
   };
 
   return { onStreamComplete, streamDetailId };

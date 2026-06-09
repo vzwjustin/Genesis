@@ -95,9 +95,6 @@ export async function PUT(request, { params }) {
       defaultModel,
       isActive,
       apiKey,
-      testStatus,
-      lastError,
-      lastErrorAt,
       providerSpecificData
     } = body;
 
@@ -123,9 +120,7 @@ export async function PUT(request, { params }) {
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
-    if (testStatus !== undefined) updateData.testStatus = testStatus;
-    if (lastError !== undefined) updateData.lastError = lastError;
-    if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;
+    // Health fields (testStatus, lastError, lastErrorAt) are server-managed only.
 
     if (
       shouldMergeProviderSpecificData(

@@ -240,13 +240,14 @@ export default function ProviderDetailPage() {
       .catch(() => {});
   }, [providerId]);
 
-  const fetchConnections = useCallback(async () => {
+  const fetchConnections = useCallback(async (signal) => {
     try {
+      const fetchOpts = { cache: "no-store", signal };
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
-        fetch("/api/providers", { cache: "no-store" }),
-        fetch("/api/provider-nodes", { cache: "no-store" }),
-        fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
-        fetch("/api/settings", { cache: "no-store" }),
+        fetch("/api/providers", fetchOpts),
+        fetch("/api/provider-nodes", fetchOpts),
+        fetch("/api/proxy-pools?isActive=true", fetchOpts),
+        fetch("/api/settings", fetchOpts),
       ]);
       const connectionsData = await connectionsRes.json();
       const nodesData = await nodesRes.json();
@@ -379,17 +380,23 @@ export default function ProviderDetailPage() {
   };
 
   useEffect(() => {
+    const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchConnections();
+    fetchConnections(controller.signal);
     fetchAliases();
     fetchDisabledModels();
-  }, [fetchConnections, fetchAliases, fetchDisabledModels]);
+    return () => controller.abort();
+  }, [fetchConnections, fetchAliases, fetchDisabledModels, providerId]);
 
   // Fetch suggested models from provider's public API (if configured)
   useEffect(() => {
     const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
     if (!fetcher) return;
-    fetchSuggestedModels(fetcher).then(setSuggestedModels);
+    let cancelled = false;
+    fetchSuggestedModels(fetcher).then((models) => {
+      if (!cancelled) setSuggestedModels(models);
+    });
+    return () => { cancelled = true; };
   }, [providerId]);
 
   const handleSetAlias = async (modelId, alias, providerAliasOverride = providerAlias) => {
@@ -631,7 +638,7 @@ export default function ProviderDetailPage() {
     setConnections(newConnections);
 
     try {
-      await Promise.all([
+      const [res1, res2] = await Promise.all([
         fetch(`/api/providers/${newConnections[index1].id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -643,6 +650,9 @@ export default function ProviderDetailPage() {
           body: JSON.stringify({ priority: index2 }),
         }),
       ]);
+      if (!res1.ok || !res2.ok) {
+        throw new Error(`HTTP ${res1.status}/${res2.status}`);
+      }
     } catch (error) {
       actionError(notify, "Failed to swap priority", error);
       await fetchConnections();

@@ -1,49 +1,9 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { buildDenoRelayCode, generateRelayAuthSecret } from "@/lib/network/relayDeploy.js";
 
 const DENO_V2_API = "https://api.deno.com/v2";
-
-const DENO_RELAY_CODE = `Deno.serve(async (request) => {
-  const target = request.headers.get("x-relay-target");
-  const relayPath = request.headers.get("x-relay-path") || "/";
-
-  if (!target) {
-    return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
-  }
-
-  const targetUrl = target.replace(/\\/$/, "") + relayPath;
-  const newHeaders = new Headers(request.headers);
-  newHeaders.delete("x-relay-target");
-  newHeaders.delete("x-relay-path");
-  newHeaders.delete("host");
-
-  const init = {
-    method: request.method,
-    headers: newHeaders,
-  };
-
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
-    init.duplex = "half";
-  }
-
-  try {
-    const response = await fetch(targetUrl, init);
-    return new Response(response.body, {
-      status: response.status,
-      headers: response.headers,
-    });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 502,
-      headers: { "content-type": "application/json" },
-    });
-  }
-});`;
 
 export async function POST(request) {
   try {
@@ -59,6 +19,9 @@ export async function POST(request) {
     if (!denoToken) {
       return NextResponse.json({ error: "Deno Deploy API token is required" }, { status: 400 });
     }
+
+    const relayAuthSecret = generateRelayAuthSecret();
+    const DENO_RELAY_CODE = buildDenoRelayCode(relayAuthSecret);
 
     const headers = {
       Authorization: `Bearer ${denoToken}`,
@@ -166,7 +129,8 @@ export async function POST(request) {
       type: "deno",
       noProxy: "",
       isActive: true,
-      strictProxy: false,
+      strictProxy: true,
+      relayAuthSecret,
     });
 
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
