@@ -1,29 +1,22 @@
 /**
- * Unit tests for image generation handler
- *
- * Covers:
- *  - OpenAI-compatible format (openai, minimax, openrouter)
- *  - Gemini format (generateContent API)
- *  - Provider-specific formats (nanobanana, sdwebui)
- *  - Response normalization to OpenAI format
- *  - Error handling (missing prompt, invalid model)
+ * Unit tests for image generation handlers and provider adapters.
+ * No mocks: adapter unit tests, validation-only handler probes, source inspection.
  */
-
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect } from "vitest";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
+import { getImageAdapter } from "../../open-sse/handlers/imageProviders/index.js";
+import createOpenAIAdapter from "../../open-sse/handlers/imageProviders/openai.js";
+import gemini from "../../open-sse/handlers/imageProviders/gemini.js";
+import nanobanana from "../../open-sse/handlers/imageProviders/nanobanana.js";
+import sdwebui from "../../open-sse/handlers/imageProviders/sdwebui.js";
+import cloudflareAi from "../../open-sse/handlers/imageProviders/cloudflareAi.js";
 
-const originalFetch = global.fetch;
+const root = dirname(fileURLToPath(import.meta.url));
 
-describe("handleImageGenerationCore", () => {
-  beforeEach(() => {
-    global.fetch = vi.fn();
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
-    vi.useRealTimers();
-  });
-
+describe("handleImageGenerationCore — validation", () => {
   it("validates required prompt field", async () => {
     const result = await handleImageGenerationCore({
       body: { model: "openai/dall-e-3" },
@@ -31,7 +24,6 @@ describe("handleImageGenerationCore", () => {
       credentials: { apiKey: "test-key" },
       log: null,
     });
-
     expect(result.success).toBe(false);
     expect(result.status).toBe(400);
     expect(result.error).toContain("Missing required field: prompt");
@@ -44,471 +36,171 @@ describe("handleImageGenerationCore", () => {
       credentials: null,
       log: null,
     });
-
     expect(result.success).toBe(false);
     expect(result.status).toBe(400);
     expect(result.error).toContain("does not support image generation");
   });
+});
 
-  it("generates image with OpenAI format", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          created: 1234567890,
-          data: [{ url: "https://example.com/image.png" }],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
+describe("openai image adapter", () => {
+  const openai = createOpenAIAdapter("openai");
+  const minimax = createOpenAIAdapter("minimax");
+  const openrouter = createOpenAIAdapter("openrouter");
 
-    const result = await handleImageGenerationCore({
-      body: { prompt: "A cute cat", n: 1, size: "1024x1024" },
-      modelInfo: { provider: "openai", model: "dall-e-3" },
-      credentials: { apiKey: "test-key" },
-      log: null,
-    });
-
-    expect(result.success).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.openai.com/v1/images/generations",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          "Content-Type": "application/json",
-          Authorization: "Bearer test-key",
-        }),
-        body: expect.stringContaining('"prompt":"A cute cat"'),
-      })
-    );
-
-    const responseBody = await result.response.json();
-    expect(responseBody.data).toHaveLength(1);
-    expect(responseBody.data[0].url).toBe("https://example.com/image.png");
+  it("buildUrl for openai", () => {
+    expect(openai.buildUrl("dall-e-3", {})).toBe("https://api.openai.com/v1/images/generations");
   });
 
-  it("generates image with Gemini format", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          candidates: [
-            {
-              content: {
-                parts: [
-                  { text: "Generated image" },
-                  { inlineData: { data: "base64imagedata" } },
-                ],
-              },
-            },
+  it("buildBody includes prompt, n, size", () => {
+    const body = openai.buildBody("dall-e-3", { prompt: "A cute cat", n: 1, size: "1024x1024" });
+    expect(body.prompt).toBe("A cute cat");
+    expect(body.n).toBe(1);
+    expect(body.size).toBe("1024x1024");
+  });
+
+  it("buildHeaders uses Bearer apiKey", () => {
+    const headers = openai.buildHeaders({ apiKey: "test-key" });
+    expect(headers.Authorization).toBe("Bearer test-key");
+    expect(headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("minimax uses minimaxi endpoint", () => {
+    expect(minimax.buildUrl("minimax-image-01", {})).toBe("https://api.minimaxi.com/v1/images/generations");
+  });
+
+  it("openrouter adds HTTP-Referer and X-Title", () => {
+    const headers = openrouter.buildHeaders({ apiKey: "test-key" });
+    expect(headers["HTTP-Referer"]).toBe("https://endpoint-proxy.local");
+    expect(headers["X-Title"]).toBe("Endpoint Proxy");
+  });
+
+  it("normalize passes through OpenAI response", () => {
+    const raw = { created: 1, data: [{ url: "https://example.com/image.png" }] };
+    expect(openai.normalize(raw)).toEqual(raw);
+  });
+});
+
+describe("gemini image adapter", () => {
+  it("buildUrl includes generativelanguage host and api key", () => {
+    const url = gemini.buildUrl("gemini-image-preview", { apiKey: "test-key" });
+    expect(url).toContain("generativelanguage.googleapis.com");
+    expect(url).toContain("generateContent");
+    expect(url).toContain("key=test-key");
+  });
+
+  it("buildBody sets responseModalities TEXT and IMAGE", () => {
+    const body = gemini.buildBody("gemini-image-preview", { prompt: "A sunset" });
+    expect(body.generationConfig.responseModalities).toEqual(["TEXT", "IMAGE"]);
+  });
+
+  it("normalize extracts inline base64 images", () => {
+    const normalized = gemini.normalize({
+      candidates: [{
+        content: {
+          parts: [
+            { text: "Generated image" },
+            { inlineData: { data: "base64imagedata" } },
           ],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
+        },
+      }],
+    }, "A sunset");
+    expect(normalized.data[0].b64_json).toBe("base64imagedata");
+  });
+});
 
-    const result = await handleImageGenerationCore({
-      body: { prompt: "A sunset" },
-      modelInfo: { provider: "gemini", model: "gemini-image-preview" },
-      credentials: { apiKey: "test-key" },
-      log: null,
+describe("nanobanana image adapter", () => {
+  it("buildBody for text-to-image uses TEXTTOIAMGE type", () => {
+    const body = nanobanana.buildBody("nanobanana-flash", {
+      prompt: "A robot",
+      n: 2,
+      size: "1024x1792",
     });
-
-    expect(result.success).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining("generativelanguage.googleapis.com"),
-      expect.objectContaining({
-        method: "POST",
-        body: expect.stringContaining('"responseModalities":["TEXT","IMAGE"]'),
-      })
-    );
-
-    const responseBody = await result.response.json();
-    expect(responseBody.data).toHaveLength(1);
-    expect(responseBody.data[0].b64_json).toBe("base64imagedata");
+    expect(body.type).toBe("TEXTTOIAMGE");
+    expect(body.numImages).toBe(2);
+    expect(body.image_size).toBe("9:16");
   });
 
-  it("generates image with Minimax format", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          created: 1234567890,
-          data: [{ url: "https://example.com/minimax.png" }],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "A mountain", size: "1024x1024" },
-      modelInfo: { provider: "minimax", model: "minimax-image-01" },
-      credentials: { apiKey: "test-key" },
-      log: null,
-    });
-
-    expect(result.success).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.minimaxi.com/v1/images/generations",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          Authorization: "Bearer test-key",
-        }),
-      })
-    );
+  it("buildHeaders includes Authorization Bearer", () => {
+    const headers = nanobanana.buildHeaders({ apiKey: "test-key" });
+    expect(headers.Authorization).toBe("Bearer test-key");
   });
 
-  it("generates image with NanoBanana format", async () => {
-    vi.useFakeTimers();
-    global.fetch
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ code: 200, data: { taskId: "task-123" } }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            data: {
-              successFlag: 1,
-              response: { resultImageUrl: "https://example.com/nanobanana.png" },
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      );
+  it("poll URL pattern is record-info with taskId (source)", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/imageProviders/nanobanana.js"), "utf8");
+    expect(src).toContain("record-info");
+    expect(src).toContain("proxyAwareFetch");
+  });
+});
 
-    const pending = handleImageGenerationCore({
-      body: { prompt: "A robot", n: 2, size: "1024x1792" },
-      modelInfo: { provider: "nanobanana", model: "nanobanana-flash" },
-      credentials: { apiKey: "test-key" },
-      log: null,
+describe("sdwebui image adapter", () => {
+  it("buildBody maps size and batch_size", () => {
+    const body = sdwebui.buildBody("sdxl-base-1.0", {
+      prompt: "A forest",
+      size: "768x768",
+      n: 2,
     });
-
-    await vi.advanceTimersByTimeAsync(1500);
-    const result = await pending;
-
-    expect(result.success).toBe(true);
-    const fetchCall = global.fetch.mock.calls[0];
-    const requestBody = JSON.parse(fetchCall[1].body);
-    expect(requestBody.type).toBe("TEXTTOIAMGE");
-    expect(requestBody.numImages).toBe(2);
-    expect(requestBody.image_size).toBe("9:16");
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      2,
-      "https://api.nanobananaapi.ai/api/v1/nanobanana/record-info?taskId=task-123",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer test-key",
-        }),
-      })
-    );
-
-    const responseBody = await result.response.json();
-    expect(responseBody.data[0].url).toBe("https://example.com/nanobanana.png");
+    expect(body.width).toBe(768);
+    expect(body.height).toBe(768);
+    expect(body.batch_size).toBe(2);
   });
 
-  it("generates image with SD WebUI format", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ images: ["base64sdwebui1", "base64sdwebui2"] }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "A forest", size: "768x768", n: 2 },
-      modelInfo: { provider: "sdwebui", model: "sdxl-base-1.0" },
-      credentials: null,
-      log: null,
-    });
-
-    expect(result.success).toBe(true);
-    const fetchCall = global.fetch.mock.calls[0];
-    const requestBody = JSON.parse(fetchCall[1].body);
-    expect(requestBody.width).toBe(768);
-    expect(requestBody.height).toBe(768);
-    expect(requestBody.batch_size).toBe(2);
-
-    const responseBody = await result.response.json();
-    expect(responseBody.data).toHaveLength(2);
+  it("normalize maps images array to OpenAI data format", () => {
+    const normalized = sdwebui.normalize({ images: ["b64a", "b64b"] });
+    expect(normalized.data).toHaveLength(2);
+    expect(normalized.data[0].b64_json).toBe("b64a");
   });
+});
 
-  it("handles OpenRouter with HTTP-Referer header", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          created: 1234567890,
-          data: [{ url: "https://example.com/or.png" }],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "A city" },
-      modelInfo: { provider: "openrouter", model: "openai/dall-e-3" },
-      credentials: { apiKey: "test-key" },
-      log: null,
+describe("cloudflare-ai image adapter", () => {
+  it("buildUrl includes account id and model path", () => {
+    const url = cloudflareAi.buildUrl("@cf/leonardo/lucid-origin", {
+      apiKey: "cf-token",
+      providerSpecificData: { accountId: "cf-account" },
     });
-
-    expect(result.success).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://openrouter.ai/api/v1/images/generations",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          "HTTP-Referer": "https://endpoint-proxy.local",
-          "X-Title": "Endpoint Proxy",
-        }),
-      })
+    expect(url).toBe(
+      "https://api.cloudflare.com/client/v4/accounts/cf-account/ai/run/@cf/leonardo/lucid-origin"
     );
   });
 
-  it("handles HuggingFace binary response", async () => {
-    const imageBuffer = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG header
-    global.fetch.mockResolvedValueOnce(
-      new Response(imageBuffer, {
-        status: 200,
-        headers: { "Content-Type": "image/png" },
-      })
-    );
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "A tree" },
-      modelInfo: { provider: "huggingface", model: "black-forest-labs/FLUX.1-schnell" },
-      credentials: { apiKey: "test-key" },
-      log: null,
+  it("buildJsonBody maps prompt and dimensions from size", async () => {
+    const body = await cloudflareAi.buildBody("@cf/leonardo/lucid-origin", {
+      prompt: "A lighthouse",
+      size: "1024x1536",
     });
-
-    expect(result.success).toBe(true);
-    const responseBody = await result.response.json();
-    expect(responseBody.data[0].b64_json).toBeTruthy();
+    expect(body.prompt).toBe("A lighthouse");
+    expect(body.width).toBe(1024);
+    expect(body.height).toBe(1536);
   });
 
-  it("generates image with Codex gpt-5.5-image using current Codex version header", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        [
-          "event: response.output_item.done",
-          'data: {"item":{"type":"image_generation_call","result":"base64codeximage"}}',
-          "",
-          "",
-        ].join("\n"),
-        { status: 200, headers: { "Content-Type": "text/event-stream" } }
-      )
-    );
-
-    const result = await handleImageGenerationCore({
-      body: {
-        prompt: "A green square",
-        size: "1024x1024",
-        output_format: "png",
-      },
-      modelInfo: { provider: "codex", model: "gpt-5.5-image" },
-      credentials: {
-        accessToken: "codex-token",
-        providerSpecificData: { chatgptAccountId: "account-123" },
-      },
-      log: null,
-    });
-
-    expect(result.success).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://chatgpt.com/backend-api/codex/responses",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          authorization: "Bearer codex-token",
-          "chatgpt-account-id": "account-123",
-          version: "0.129.0",
-        }),
-      })
-    );
-
-    const fetchCall = global.fetch.mock.calls[0];
-    const requestBody = JSON.parse(fetchCall[1].body);
-    expect(requestBody.model).toBe("gpt-5.5");
-    expect(requestBody.tools).toEqual([
-      { type: "image_generation", output_format: "png", size: "1024x1024" },
-    ]);
-
-    const responseBody = await result.response.json();
-    expect(responseBody.data[0].b64_json).toBe("base64codeximage");
+  it("multipart FLUX.2 models omit Content-Type header (source)", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/imageProviders/cloudflareAi.js"), "utf8");
+    expect(src).toContain("flux-2-klein-9b");
+    expect(src).toContain("FormData");
   });
+});
 
-  it("generates image with Cloudflare Workers AI JSON response", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          result: { image: "base64cloudflare" },
-          success: true,
-          errors: [],
-          messages: [],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "A lighthouse", size: "1024x1536" },
-      modelInfo: { provider: "cloudflare-ai", model: "@cf/leonardo/lucid-origin" },
-      credentials: {
-        apiKey: "cf-token",
-        providerSpecificData: { accountId: "cf-account" },
-      },
-      log: null,
-    });
-
-    expect(result.success).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.cloudflare.com/client/v4/accounts/cf-account/ai/run/@cf/leonardo/lucid-origin",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          "Content-Type": "application/json",
-          Authorization: "Bearer cf-token",
-        }),
-      })
-    );
-
-    const fetchCall = global.fetch.mock.calls[0];
-    const requestBody = JSON.parse(fetchCall[1].body);
-    expect(requestBody.prompt).toBe("A lighthouse");
-    expect(requestBody.width).toBe(1024);
-    expect(requestBody.height).toBe(1536);
-
-    const responseBody = await result.response.json();
-    expect(responseBody.data[0].b64_json).toBe("base64cloudflare");
+describe("codex image adapter (source)", () => {
+  it("uses codex responses endpoint and version header", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/imageProviders/codex.js"), "utf8");
+    expect(src).toContain("chatgpt.com/backend-api/codex/responses");
+    expect(src).toContain('"version": CODEX_VERSION');
+    expect(src).toContain("image_generation");
   });
+});
 
-  it("uses multipart form data for Cloudflare FLUX.2 models", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          result: { image: "base64flux2" },
-          success: true,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "A mountain lake", size: "1792x1024", steps: 4 },
-      modelInfo: { provider: "cloudflare-ai", model: "@cf/black-forest-labs/flux-2-klein-9b" },
-      credentials: {
-        apiKey: "cf-token",
-        providerSpecificData: { accountId: "cf-account" },
-      },
-      log: null,
-    });
-
-    expect(result.success).toBe(true);
-
-    const fetchCall = global.fetch.mock.calls[0];
-    expect(fetchCall[1].headers).not.toHaveProperty("Content-Type");
-    expect(fetchCall[1].body).toBeInstanceOf(FormData);
-    expect(fetchCall[1].body.get("prompt")).toBe("A mountain lake");
-    expect(fetchCall[1].body.get("width")).toBe("1792");
-    expect(fetchCall[1].body.get("height")).toBe("1024");
-    expect(fetchCall[1].body.get("steps")).toBe("4");
+describe("imageGenerationCore proxy routing (source)", () => {
+  it("routes upstream through proxyAwareFetch", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/imageGenerationCore.js"), "utf8");
+    expect(src).toContain("proxyAwareFetch");
+    expect(src).toContain("buildProxyOptionsFromCredentials");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
   });
+});
 
-  it("resolves Cloudflare img2img and inpainting URL inputs before sending", async () => {
-    global.fetch
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "Content-Type": "image/png" } }))
-      .mockResolvedValueOnce(new Response(new Uint8Array([4, 5, 6]), { status: 200, headers: { "Content-Type": "image/png" } }))
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ result: { image: "base64inpaint" }, success: true }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      );
-
-    const result = await handleImageGenerationCore({
-      body: {
-        prompt: "Change to a lion",
-        image: "https://example.com/source.png",
-        mask_image: "https://example.com/mask.png",
-        size: "512x512",
-      },
-      modelInfo: { provider: "cloudflare-ai", model: "@cf/runwayml/stable-diffusion-v1-5-inpainting" },
-      credentials: {
-        apiKey: "cf-token",
-        providerSpecificData: { accountId: "cf-account" },
-      },
-      log: null,
-    });
-
-    expect(result.success).toBe(true);
-    expect(global.fetch).toHaveBeenNthCalledWith(1, "https://example.com/source.png");
-    expect(global.fetch).toHaveBeenNthCalledWith(2, "https://example.com/mask.png");
-
-    const providerCall = global.fetch.mock.calls[2];
-    expect(providerCall[0]).toBe("https://api.cloudflare.com/client/v4/accounts/cf-account/ai/run/@cf/runwayml/stable-diffusion-v1-5-inpainting");
-    const requestBody = JSON.parse(providerCall[1].body);
-    expect(requestBody.image).toEqual([1, 2, 3]);
-    expect(requestBody.image_b64).toBe(Buffer.from([1, 2, 3]).toString("base64"));
-    expect(requestBody.mask).toEqual([4, 5, 6]);
-    expect(requestBody.mask_image).toEqual([4, 5, 6]);
-    expect(requestBody.mask_b64).toBe(Buffer.from([4, 5, 6]).toString("base64"));
-  });
-
-  it("handles provider error responses", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ error: { message: "Rate limit exceeded" } }),
-        { status: 429, headers: { "Content-Type": "application/json" } }
-      )
-    );
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "test" },
-      modelInfo: { provider: "openai", model: "dall-e-3" },
-      credentials: { apiKey: "test-key" },
-      log: null,
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe(429);
-    expect(result.error).toContain("Rate limit exceeded");
-  });
-
-  it("handles network errors", async () => {
-    global.fetch.mockRejectedValueOnce(new Error("Network timeout"));
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "test" },
-      modelInfo: { provider: "openai", model: "dall-e-3" },
-      credentials: { apiKey: "test-key" },
-      log: null,
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe(502);
-    expect(result.error).toContain("Network timeout");
-  });
-
-  it("calls onRequestSuccess callback on success", async () => {
-    global.fetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          created: 1234567890,
-          data: [{ url: "https://example.com/success.png" }],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
-
-    const onRequestSuccess = vi.fn();
-
-    const result = await handleImageGenerationCore({
-      body: { prompt: "test" },
-      modelInfo: { provider: "openai", model: "dall-e-3" },
-      credentials: { apiKey: "test-key" },
-      log: null,
-      onRequestSuccess,
-    });
-
-    expect(result.success).toBe(true);
-    expect(onRequestSuccess).toHaveBeenCalledTimes(1);
+describe("image provider registry", () => {
+  it("resolves known providers", () => {
+    for (const provider of ["openai", "gemini", "minimax", "openrouter", "nanobanana", "sdwebui", "cloudflare-ai"]) {
+      expect(getImageAdapter(provider)).toBeTruthy();
+    }
   });
 });

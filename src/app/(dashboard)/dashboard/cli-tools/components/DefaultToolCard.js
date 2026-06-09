@@ -94,6 +94,20 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
             </button>
           </>
         )}
+        {tool.defaultModels?.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 sm:col-span-full">
+            {tool.defaultModels.map((model) => (
+              <button
+                key={model.id}
+                type="button"
+                onClick={() => setModelValue(model.defaultValue || model.id)}
+                className="px-2 py-1 rounded border border-border bg-surface text-xs text-text-muted hover:border-primary hover:text-primary transition-colors"
+              >
+                {model.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   };

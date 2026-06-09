@@ -1,6 +1,7 @@
 const { err } = require("../logger");
 const { IS_DEV } = require("../config");
 const { fetchRouter } = require("./base");
+const { RedactedToolContentProcessor } = require("./composerRedactedTools");
 const fs = require("fs");
 const path = require("path");
 
@@ -256,6 +257,17 @@ async function pipeOpenAIasEventStream(routerRes, res) {
 
   // Accumulated tool-call state keyed by index
   const toolCallAccum = {};
+  const contentProcessor = new RedactedToolContentProcessor();
+
+  const emitToolUseEvents = (toolCalls) => {
+    for (const tc of toolCalls) {
+      res.write(buildEventStreamFrame("toolUseEvent", {
+        toolUseId: contentProcessor.nextToolUseId(),
+        name: tc.name,
+        input: tc.input,
+      }));
+    }
+  };
 
   const sendStop = () => {
     if (!stopSent) {
@@ -291,9 +303,13 @@ async function pipeOpenAIasEventStream(routerRes, res) {
         const delta = chunk?.choices?.[0]?.delta;
         if (!delta) continue;
 
-        // ── Text content ───────────────────────────────────────────────────────
+        // ── Text content (strip Composer redacted tool-call tokens) ─────────────
         if (delta.content) {
-          res.write(buildEventStreamFrame("assistantResponseEvent", { content: delta.content }));
+          const { text, toolCalls } = contentProcessor.processChunk(delta.content);
+          if (text) {
+            res.write(buildEventStreamFrame("assistantResponseEvent", { content: text }));
+          }
+          emitToolUseEvents(toolCalls);
         }
 
         // ── Tool calls (streamed in pieces by OpenAI SSE) ──────────────────────
@@ -343,8 +359,43 @@ async function pipeOpenAIasEventStream(routerRes, res) {
       }
     }
   } finally {
+    const flushed = contentProcessor.flush();
+    if (flushed.text) {
+      res.write(buildEventStreamFrame("assistantResponseEvent", { content: flushed.text }));
+    }
+    emitToolUseEvents(flushed.toolCalls);
     sendStop();
     res.end();
+  }
+}
+
+/**
+ * True when this Kiro request is part of a tool-call round and must not be translated.
+ * Tool execution turns carry toolResults and/or follow assistant toolUses; MITM
+ * translation can break signing, EventStream framing, and tool-result validation.
+ */
+function kiroRequiresPassthrough(bodyBuffer) {
+  try {
+    const body = JSON.parse(bodyBuffer.toString());
+    const cs = body.conversationState;
+    if (!cs) return false;
+
+    const hasToolResults = (uim) => {
+      const results = uim?.userInputMessageContext?.toolResults;
+      return Array.isArray(results) && results.length > 0;
+    };
+
+    if (hasToolResults(cs.currentMessage?.userInputMessage)) return true;
+
+    for (const item of cs.history || []) {
+      const toolUses = item.assistantResponseMessage?.toolUses;
+      if (Array.isArray(toolUses) && toolUses.length > 0) return true;
+      if (hasToolResults(item.userInputMessage)) return true;
+    }
+
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -398,4 +449,4 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
   }
 }
 
-module.exports = { intercept };
+module.exports = { intercept, kiroRequiresPassthrough };

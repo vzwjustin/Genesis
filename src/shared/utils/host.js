@@ -11,12 +11,15 @@ export function normalizeHostHeaderHostname(hostHeader) {
 
   if (trimmed.startsWith("[")) {
     const end = trimmed.indexOf("]");
-    if (end > 0) return trimmed.slice(1, end);
+    if (end <= 0) return "";
+    return trimmed.slice(1, end);
   }
 
-  const lastColon = trimmed.lastIndexOf(":");
-  if (lastColon > -1 && /^\d+$/.test(trimmed.slice(lastColon + 1))) {
-    return trimmed.slice(0, lastColon);
+  // IPv4 host:port only — unbracketed IPv6 addresses contain multiple colons
+  const colonCount = (trimmed.match(/:/g) || []).length;
+  if (colonCount === 1) {
+    const [host, port] = trimmed.split(":");
+    if (/^\d+$/.test(port)) return host;
   }
 
   return trimmed;

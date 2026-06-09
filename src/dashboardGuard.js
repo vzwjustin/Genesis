@@ -1,23 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { normalizeHostHeaderHostname } from "@/shared/utils/host";
-
-const CLI_TOKEN_HEADER = "x-9r-cli-token";
-const CLI_TOKEN_SALT = "9r-cli-auth";
-
-let cachedCliToken = null;
-async function getCliToken() {
-  if (!cachedCliToken) cachedCliToken = await getConsistentMachineId(CLI_TOKEN_SALT);
-  return cachedCliToken;
-}
-
-async function hasValidCliToken(request) {
-  const token = request.headers.get(CLI_TOKEN_HEADER);
-  if (!token) return false;
-  return token === await getCliToken();
-}
+import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
+import { hasValidCliToken } from "@/shared/auth/cliToken";
+import { verifyApiKeyCrc } from "@/shared/utils/apiKey";
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
 const PUBLIC_API_PATHS = [
@@ -43,27 +30,6 @@ const ALWAYS_PROTECTED = [
   "/api/version/update",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
-];
-
-// Require auth, but allow through if requireLogin is disabled
-const PROTECTED_API_PATHS = [
-  "/api/settings",
-  "/api/keys",
-  "/api/providers",
-  "/api/provider-nodes",
-  "/api/proxy-pools",
-  "/api/combos",
-  "/api/models",
-  "/api/usage",
-  "/api/oauth",
-  "/api/cloud",
-  "/api/media-providers",
-  "/api/pricing",
-  "/api/tags",
-  "/api/cli-tools",
-  "/api/mcp",
-  "/api/translator",
-  "/api/tunnel",
 ];
 
 // Routes that spawn child processes or read host secrets — restrict to localhost.
@@ -96,42 +62,8 @@ function isLoopbackIp(ip) {
   return false;
 }
 
-function normalizeConnectionIp(ip) {
-  if (!ip || typeof ip !== "string") return null;
-  const trimmed = ip.trim();
-  if (!trimmed) return null;
-  return trimmed.startsWith("::ffff:") ? trimmed.slice(7) : trimmed;
-}
-
-function getConnectionRemoteAddress(request) {
-  if (typeof request?.ip === "string" && request.ip) {
-    return normalizeConnectionIp(request.ip);
-  }
-  return normalizeConnectionIp(request?.socket?.remoteAddress);
-}
-
 function isLocalRequest(request) {
-  if (!isLoopbackHostname(request.headers.get("host"))) return false;
-  const origin = request.headers.get("origin");
-  if (origin) {
-    try {
-      if (!isLoopbackHostname(new URL(origin).hostname)) return false;
-    } catch { return false; }
-  }
-
-  const connectionIp = getConnectionRemoteAddress(request);
-  if (connectionIp) return isLoopbackIp(connectionIp);
-
-  // Without a verified socket address, do not trust loopback Host alone.
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const clientIp = xff.split(",")[0].trim();
-    return clientIp ? isLoopbackIp(clientIp) : false;
-  }
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) return isLoopbackIp(realIp.trim());
-
-  return false;
+  return isLoopbackRequest(request);
 }
 
 function isPublicLlmApi(pathname) {
@@ -147,22 +79,33 @@ function extractApiKey(request) {
 async function hasValidApiKey(request) {
   const apiKey = extractApiKey(request);
   if (!apiKey) return false;
+  if (!verifyApiKeyCrc(apiKey)) return false;
   return await validateApiKey(apiKey);
 }
 
 async function canAccessPublicLlmApi(request) {
   if (await hasValidCliToken(request)) return true;
-  return await hasValidApiKey(request);
+
+  const authHeader = request.headers.get("Authorization");
+  const xApiKeyHeader = request.headers.get("x-api-key");
+  const hasCredentialHeader = !!(authHeader?.trim() || xApiKeyHeader?.trim());
+
+  if (hasCredentialHeader) {
+    return await hasValidApiKey(request);
+  }
+
+  const settings = await loadSettings();
+  if (settings && settings.requireApiKey === false && isLoopbackRequest(request)) return true;
+
+  return false;
 }
 
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  if (await hasValidToken(request)) return true;
-  // Verified loopback socket only; requireLogin=false is not enough without proof of locality.
-  if (isLocalRequest(request)) {
-    const settings = await loadSettings();
-    if (settings && settings.requireLogin === false) return true;
-  }
+  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + valid JWT only.
+  // Intentionally does NOT use isDashboardAccessAllowed because that shortcuts
+  // when requireLogin=false — spawn-capable routes must require real auth.
+  if (isLocalRequest(request) && await hasValidToken(request)) return true;
   return false;
 }
 
@@ -188,9 +131,12 @@ async function isDashboardAccessAllowed(request) {
   return false;
 }
 
-/** Management API routes: JWT or CLI token only — never requireLogin=false. */
+/** Management API routes: JWT, CLI token, or loopback when requireLogin=false. */
 async function isApiAuthenticated(request) {
-  return await hasValidToken(request);
+  if (await hasValidToken(request)) return true;
+  const settings = await loadSettings();
+  if (settings && settings.requireLogin === false && isLoopbackRequest(request)) return true;
+  return false;
 }
 
 function isPublicApi(pathname) {

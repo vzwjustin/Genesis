@@ -4,8 +4,13 @@ import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Badge, Toggle } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
+import {
+  getConnectionErrorTag,
+  getConnectionErrorHint,
+  getConnectionErrorLabel,
+} from "@/shared/utils/connectionErrorUtils";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null }) {
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect, oneByOneStatus = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -122,6 +127,16 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     return "default";
   };
 
+  const needsReconnect = isOAuthConnection
+    && connection.isActive !== false
+    && (effectiveStatus === "error" || effectiveStatus === "expired");
+
+  const errorTag = connection.lastError && connection.isActive !== false
+    ? getConnectionErrorTag(connection)
+    : null;
+  const errorLabel = getConnectionErrorLabel(errorTag);
+  const errorHint = getConnectionErrorHint(errorTag);
+
   const getOneByOneLabel = () => {
     if (!oneByOneStatus) return null;
     if (oneByOneStatus.state === "queued") return "queued";
@@ -169,10 +184,10 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               </Badge>
             )}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
-            {connection.lastError && connection.isActive !== false && (
-              <span className="max-w-full truncate text-xs text-danger sm:max-w-[300px]" title={connection.lastError}>
-                {connection.lastError}
-              </span>
+            {errorLabel && (
+              <Badge variant="error" size="sm" title={errorHint}>
+                {errorLabel}
+              </Badge>
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
             {connection.globalPriority && (
@@ -200,6 +215,12 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 </span>
               )}
             </div>
+          )}
+          {connection.lastError && connection.isActive !== false && (
+            <p className="mt-1 text-xs text-danger line-clamp-2" title={connection.lastError}>
+              {connection.lastError}
+              {errorHint ? <span className="text-text-muted"> — {errorHint}</span> : null}
+            </p>
           )}
         </div>
       </div>
@@ -238,6 +259,17 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 </div>
               )}
             </div>
+          )}
+          {needsReconnect && onReconnect && (
+            <button
+              onClick={onReconnect}
+              className="flex flex-col items-center rounded px-2 py-1 text-warning hover:bg-warning/10"
+              title="Reconnect OAuth"
+              aria-label="Reconnect OAuth"
+            >
+              <span className="material-symbols-outlined text-[18px]">sync</span>
+              <span className="text-[10px] leading-tight">Reconnect</span>
+            </button>
           )}
           <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-surface-2 hover:text-primary">
             <span className="material-symbols-outlined text-[18px]">edit</span>
@@ -288,6 +320,7 @@ ConnectionRow.propTypes = {
   onUpdateProxy: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
+  onReconnect: PropTypes.func,
   oneByOneStatus: PropTypes.shape({
     state: PropTypes.string,
     error: PropTypes.string,

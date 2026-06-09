@@ -46,6 +46,7 @@ function ensureInitialized() {
   require("./response/claude-to-openai.js");
   require("./response/openai-to-claude.js");
   require("./response/gemini-to-openai.js");
+  require("./response/openai-to-gemini.js");
   require("./response/openai-to-antigravity.js");
   require("./response/openai-responses.js");
   require("./response/kiro-to-openai.js");
@@ -92,20 +93,23 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   if (sourceFormat !== targetFormat) {
     // Step 1: source -> openai (if source is not openai)
     if (sourceFormat !== FORMATS.OPENAI) {
-      const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
-      if (toOpenAI) {
-        result = toOpenAI(model, result, stream, credentials);
-        // Log OpenAI intermediate format
-        reqLogger?.logOpenAIRequest?.(result);
+      const toOpenAIKey = `${sourceFormat}:${FORMATS.OPENAI}`;
+      const toOpenAI = requestRegistry.get(toOpenAIKey);
+      if (!toOpenAI) {
+        throw new Error(`No request translator registered for ${toOpenAIKey}`);
       }
+      result = toOpenAI(model, result, stream, credentials);
+      reqLogger?.logOpenAIRequest?.(result);
     }
 
     // Step 2: openai -> target (if target is not openai)
     if (targetFormat !== FORMATS.OPENAI) {
-      const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
-      if (fromOpenAI) {
-        result = fromOpenAI(model, result, stream, credentials);
+      const fromOpenAIKey = `${FORMATS.OPENAI}:${targetFormat}`;
+      const fromOpenAI = requestRegistry.get(fromOpenAIKey);
+      if (!fromOpenAI) {
+        throw new Error(`No request translator registered for ${fromOpenAIKey}`);
       }
+      result = fromOpenAI(model, result, stream, credentials);
     }
   }
 
@@ -179,6 +183,14 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
         const converted = fromOpenAI(r, state);
         if (converted) {
           finalResults.push(...(Array.isArray(converted) ? converted : [converted]));
+        }
+      }
+      // When chunk is null (flush), also flush step 2 if step 1 produced no output.
+      // This ensures the step-2 translator can emit any buffered content (e.g. tool args).
+      if (chunk === null && results.length === 0) {
+        const flushed = fromOpenAI(null, state);
+        if (flushed) {
+          finalResults.push(...(Array.isArray(flushed) ? flushed : [flushed]));
         }
       }
       results = finalResults;

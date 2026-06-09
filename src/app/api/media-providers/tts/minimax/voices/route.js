@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
+import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
 
 const MINIMAX_VOICE_ENDPOINTS = {
   minimax: "https://api.minimax.io/v1/get_voice",
@@ -70,19 +71,21 @@ export async function GET(request) {
     const langFilter = searchParams.get("lang");
 
     const connections = await getProviderConnections({ provider, isActive: true });
-    const apiKey = connections[0]?.apiKey;
+    const connection = connections[0];
+    const apiKey = connection?.apiKey;
     if (!apiKey) {
       return NextResponse.json({ error: `No ${provider} connection found` }, { status: 400 });
     }
 
-    const res = await fetch(MINIMAX_VOICE_ENDPOINTS[provider], {
+    const proxyOptions = buildProxyOptionsFromCredentials(connection);
+    const res = await proxyAwareFetch(MINIMAX_VOICE_ENDPOINTS[provider], {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ voice_type: voiceType }),
-    });
+    }, proxyOptions);
 
     const rawText = await res.text();
     let data = {};

@@ -4,14 +4,13 @@ import {
   getProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  isValidApiKey,
+  authenticateRequest,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
-import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { errorResponse, unavailableResponse, validationErrorResponse, VALIDATION_ERROR_TYPES } from "open-sse/utils/error.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -19,6 +18,12 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import { buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
+import {
+  resolveProviderRetryLimits,
+  noActiveCredentialsResponse,
+  exhaustedAccountsResponse,
+} from "../utils/providerCredentialRetry.js";
 
 /**
  * Handle chat completion request
@@ -31,18 +36,7 @@ export async function handleChat(request, clientRawRequest = null) {
     body = await request.json();
   } catch {
     log.warn("CHAT", "Invalid JSON body");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
-  }
-
-  // Preprocess: strip provider prefix from any tool model properties
-  // This fixes clients that send built-in tools with prefixed model names
-  if (body.tools && Array.isArray(body.tools)) {
-    body.tools = body.tools.map(tool => {
-      if (tool && typeof tool.model === "string" && tool.model.includes("/")) {
-        return { ...tool, model: tool.model.slice(tool.model.indexOf("/") + 1) };
-      }
-      return tool;
-    });
+    return validationErrorResponse(VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, "Invalid JSON body");
   }
 
   // Build clientRawRequest for logging (if not provided)
@@ -51,7 +45,8 @@ export async function handleChat(request, clientRawRequest = null) {
     clientRawRequest = {
       endpoint: url.pathname,
       body,
-      headers: Object.fromEntries(request.headers.entries())
+      headers: Object.fromEntries(request.headers.entries()),
+      signal: request.signal,
     };
   }
   // Log request endpoint and model
@@ -64,33 +59,13 @@ export async function handleChat(request, clientRawRequest = null) {
   const effort = body.reasoning_effort || body.reasoning?.effort || null;
   log.request("POST", `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`);
 
-  // Log API key (masked)
-  const authHeader = request.headers.get("Authorization");
-  const apiKey = extractApiKey(request);
-  if (authHeader && apiKey) {
-    const masked = log.maskKey(apiKey);
-    log.debug("AUTH", `API Key: ${masked}`);
-  } else {
-    log.debug("AUTH", "No API key provided (local mode)");
-  }
-
-  // Enforce API key if enabled in settings
-  const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) {
-      log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
-      log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-    }
-  }
+  const auth = await authenticateRequest(request, log);
+  if (!auth.ok) return auth.response;
+  const { apiKey, settings } = auth;
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
+    return validationErrorResponse(VALIDATION_ERROR_TYPES.MISSING_REQUIRED_FIELD, "Missing required field: model");
   }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
@@ -99,6 +74,12 @@ export async function handleChat(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   // Check if model is a combo (has multiple models with fallback)
+  const brokenComboError = await getBrokenComboError(modelStr);
+  if (brokenComboError) {
+    log.warn("CHAT", `Combo resolution failed: ${brokenComboError}`);
+    return validationErrorResponse(VALIDATION_ERROR_TYPES.VALIDATION_FAILED, brokenComboError);
+  }
+
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global
@@ -131,6 +112,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // If provider is null, this might be a combo name - check and handle
   if (!modelInfo.provider) {
+    const brokenComboError = await getBrokenComboError(modelStr);
+    if (brokenComboError) {
+      log.warn("CHAT", `Combo resolution failed: ${brokenComboError}`);
+      return validationErrorResponse(VALIDATION_ERROR_TYPES.VALIDATION_FAILED, brokenComboError);
+    }
+
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
       const chatSettings = await getSettings();
@@ -151,18 +138,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         comboStickyLimit
       });
     }
-    log.warn("CHAT", "Invalid model format", { model: modelStr });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
+    // All resolution methods exhausted: not a provider/model format, not a registered alias,
+    // not a valid combo. Return HTTP 400 per Requirement 2.4 — do NOT silently fall back.
+    log.warn("CHAT", `Model resolution failed: "${modelStr}" is not a registered alias, combo, or provider/model format`);
+    return validationErrorResponse(
+      VALIDATION_ERROR_TYPES.VALIDATION_FAILED,
+      `Failed to resolve model: "${modelStr}". Not a registered alias, combo name, or valid provider/model format. Check your model configuration.`
+    );
   }
 
   const { provider, model } = modelInfo;
 
-  // Log model routing (alias → actual model)
-  if (modelStr !== `${provider}/${model}`) {
-    log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
-  } else {
-    log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
-  }
+  // Log resolved routing path for every request (Requirement 2.5)
+  log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
 
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
@@ -171,8 +159,24 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let had5xx = false;
+
+  const { isNoAuthProvider, maxRetries } = await resolveProviderRetryLimits(provider);
+
+  if (!isNoAuthProvider && maxRetries === 0) {
+    log.warn("AUTH", `No active credentials for provider: ${provider}`);
+    return noActiveCredentialsResponse(provider);
+  }
+
+  let retryCount = 0;
 
   while (true) {
+    // Enforce max retry limit (Requirement 4.7)
+    if (retryCount >= maxRetries) {
+      log.warn("CHAT", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
+    }
+    retryCount++;
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
     // All accounts unavailable
@@ -185,16 +189,26 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       if (excludeConnectionIds.size === 0) {
         log.warn("AUTH", `No active credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+        return noActiveCredentialsResponse(provider);
       }
       log.warn("CHAT", "No more accounts available", { provider });
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
 
     // Log account selection
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+
+    // Requirement 3.6: If token refresh fails during pre-check, mark connection
+    // as unusable and proceed to Account_Fallback for the next available connection.
+    if (refreshedCredentials._tokenRefreshFailed) {
+      log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Token refresh failed";
+      lastStatus = 401;
+      continue;
+    }
 
     if (clientRawRequest?.headers) {
       const normalizedHeaders = Object.fromEntries(
@@ -206,12 +220,24 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
     if ((provider === "antigravity" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
-      const pid = await getProjectIdForConnection(credentials.connectionId, refreshedCredentials.accessToken);
+      const pid = await getProjectIdForConnection(
+        credentials.connectionId,
+        refreshedCredentials.accessToken,
+        buildProxyOptionsFromCredentials(refreshedCredentials)
+      );
       if (pid) {
         refreshedCredentials.projectId = pid;
         // Persist to DB in background so subsequent requests have it immediately
         updateProviderCredentials(credentials.connectionId, { projectId: pid }).catch(() => { });
       }
+    }
+
+    if (provider === "antigravity" && !refreshedCredentials.projectId) {
+      log.warn("AUTH", `Antigravity missing projectId for ${credentials.connectionName}, trying next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Antigravity requires projectId (Cloud Code Assist fetch failed)";
+      lastStatus = 400;
+      continue;
     }
 
     // Use shared chatCore
@@ -227,10 +253,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       userAgent,
       apiKey,
       ccFilterNaming: !!chatSettings.ccFilterNaming,
-      rtkEnabled: !!chatSettings.rtkEnabled,
-      cavemanEnabled: !!chatSettings.cavemanEnabled,
+      rtkEnabled: chatSettings.rtkEnabled !== false,
+      rtkFilterConfig: chatSettings.rtkFilterConfig || null,
+      cavemanEnabled: chatSettings.cavemanEnabled === true,
       cavemanLevel: chatSettings.cavemanLevel || "full",
-      headroomEnabled: !!chatSettings.headroomEnabled,
+      headroomEnabled: chatSettings.headroomEnabled === true,
+      passthroughCompression: !!chatSettings.passthroughCompression,
       providerThinking,
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
@@ -257,6 +285,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
+      if (result.status >= 500 && result.status < 600) had5xx = true;
       continue;
     }
 

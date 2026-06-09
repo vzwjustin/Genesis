@@ -96,7 +96,9 @@ export async function convertResponsesStreamToJson(stream) {
     id: state.responseId || `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     object: "response",
     created_at: state.created,
-    status: state.status || "completed",
+    // Keep the real terminal status. Do NOT coerce a missing terminal event
+    // (still "in_progress") into "completed" — that would mask a truncated stream.
+    status: state.status,
     output,
     usage: state.usage
   };

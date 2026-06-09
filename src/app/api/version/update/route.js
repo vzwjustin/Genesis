@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { killAppProcesses, spawnUpdaterAndExit } from "@/lib/appUpdater";
-import { UPDATER_CONFIG } from "@/shared/constants/config";
+import { formatUpdaterPackageSpec } from "@/shared/constants/config";
 
 function normalizeTargetVersion(version) {
   if (typeof version !== "string") return "";
@@ -29,9 +29,7 @@ export async function POST(request) {
       { status: 400 }
     );
   }
-  const packageName = targetVersion
-    ? `${UPDATER_CONFIG.npmPackageName}@${targetVersion}`
-    : UPDATER_CONFIG.npmPackageName;
+  const packageName = formatUpdaterPackageSpec(targetVersion);
 
   try {
     // Kill sibling processes (cloudflared, MITM, stray next-server) to release file locks on Windows

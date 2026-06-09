@@ -20,6 +20,7 @@ export default function MitmToolCard({
   hasCachedPassword,
   needsSudoPassword,
   isWin,
+  isLinux,
   apiKeys,
   activeProviders,
   hasActiveProviders,
@@ -187,6 +188,14 @@ export default function MitmToolCard({
               {!dnsActive && (
                 <p className="text-warning text-[10px] mt-1">
                   ⚠️ Enable DNS to edit model mappings
+                </p>
+              )}
+              {tool.id === "kiro" && dnsActive && isLinux && (
+                <p className="text-warning text-[10px] mt-1">
+                  Linux/Kiro: restart Kiro from a shell that trusts the MITM CA —{" "}
+                  <code className="font-mono">source ~/.9router/mitm/electron-ca.env</code> then launch Kiro,
+                  or install the root CA via MITM server trust (sudo). curl tests with{" "}
+                  <code className="font-mono">-k</code> skip TLS and do not prove Kiro works.
                 </p>
               )}
             </div>

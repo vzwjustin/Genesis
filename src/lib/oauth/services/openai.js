@@ -2,6 +2,7 @@ import { OAuthService } from "./oauth.js";
 import { OPENAI_CONFIG } from "../constants/oauth.js";
 import { getServerCredentials } from "../config/index.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * OpenAI OAuth Service (Native)
@@ -34,7 +35,7 @@ export class OpenAIService extends OAuthService {
    * Exchange OpenAI authorization code for tokens
    */
   async exchangeOpenAICode(code, redirectUri, codeVerifier) {
-    const response = await fetch(OPENAI_CONFIG.tokenUrl, {
+    const response = await oauthFetch(OPENAI_CONFIG.tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -63,7 +64,7 @@ export class OpenAIService extends OAuthService {
   async saveTokens(tokens) {
     const { server, token, userId } = getServerCredentials();
 
-    const response = await fetch(`${server}/api/cli/providers/openai`, {
+    const response = await oauthFetch(`${server}/api/cli/providers/openai`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

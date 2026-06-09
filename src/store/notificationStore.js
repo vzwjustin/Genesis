@@ -6,6 +6,7 @@
 import { create } from "zustand";
 
 let idCounter = 0;
+const MAX_STACK = 5;
 
 export const useNotificationStore = create((set, get) => ({
   notifications: [],
@@ -19,12 +20,21 @@ export const useNotificationStore = create((set, get) => ({
       title: notification.title || null,
       duration: notification.duration ?? 5000,
       dismissible: notification.dismissible ?? true,
+      action: notification.action || null,
+      dedupeKey: notification.dedupeKey || null,
       createdAt: Date.now(),
     };
 
-    set((s) => ({ notifications: [...s.notifications, entry] }));
+    set((s) => {
+      let next = s.notifications;
+      if (entry.dedupeKey) {
+        next = next.filter((n) => n.dedupeKey !== entry.dedupeKey);
+      }
+      next = [...next, entry];
+      if (next.length > MAX_STACK) next = next.slice(-MAX_STACK);
+      return { notifications: next };
+    });
 
-    // Auto-dismiss
     if (entry.duration > 0) {
       setTimeout(() => get().removeNotification(id), entry.duration);
     }

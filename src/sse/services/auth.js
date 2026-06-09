@@ -1,8 +1,13 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings } from "@/lib/localDb";
+import { errorResponse } from "open-sse/utils/error.js";
+import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, getEarliestRateLimitedUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { parseApiKey, verifyApiKeyCrc } from "@/shared/utils/apiKey.js";
+import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
+import { hasValidCliToken } from "@/shared/auth/cliToken.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -48,6 +53,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           connectionNoProxy: resolvedProxy.connectionNoProxy,
           connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
           vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+          relayAuthSecret: resolvedProxy.relayAuthSecret || "",
+          strictProxy: resolvedProxy.strictProxy === true,
         },
       };
     }
@@ -60,10 +67,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return null;
     }
 
-    // Filter out model-locked and excluded connections
+    // Filter out model-locked, cooldown, excluded, and invalid-credential connections
+    const now = Date.now();
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      // Exclude connections with rateLimitedUntil in the future (legacy cooldown field)
+      if (c.rateLimitedUntil && new Date(c.rateLimitedUntil).getTime() > now) return false;
+      // Exclude connections with failed OAuth refresh / invalid credentials
+      if (c.testStatus === "error") return false;
       return true;
     });
 
@@ -71,9 +83,17 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     connections.forEach(c => {
       const excluded = excludeSet.has(c.id);
       const locked = isModelLockActive(c, model);
-      if (excluded || locked) {
+      const rateLimited = c.rateLimitedUntil && new Date(c.rateLimitedUntil).getTime() > now;
+      const invalidCreds = c.testStatus === "error";
+      if (excluded || locked || rateLimited || invalidCreds) {
         const lockUntil = getEarliestModelLockUntil(c);
-        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? `modelLocked(${model}) until ${lockUntil}` : ""}`);
+        const reasons = [
+          excluded ? "excluded" : "",
+          locked ? `modelLocked(${model}) until ${lockUntil}` : "",
+          rateLimited ? `rateLimited until ${c.rateLimitedUntil}` : "",
+          invalidCreds ? "invalidCredentials(testStatus=error)" : "",
+        ].filter(Boolean).join(", ");
+        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${reasons}`);
       }
     });
 
@@ -91,6 +111,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           retryAfterHuman: formatRetryAfter(earliest),
           lastError: earliestConn?.lastError || null,
           lastErrorCode: earliestConn?.errorCode || null
+        };
+      }
+      const rateLimitedUntil = getEarliestRateLimitedUntil(connections);
+      if (rateLimitedUntil) {
+        const rateLimitedConn = connections.find((c) => c.rateLimitedUntil === rateLimitedUntil) || connections[0];
+        log.warn("AUTH", `${provider} | all ${connections.length} accounts rate-limited (${formatRetryAfter(rateLimitedUntil)}) | lastError=${rateLimitedConn?.lastError?.slice(0, 50)}`);
+        return {
+          allRateLimited: true,
+          retryAfter: rateLimitedUntil,
+          retryAfterHuman: formatRetryAfter(rateLimitedUntil),
+          lastError: rateLimitedConn?.lastError || null,
+          lastErrorCode: rateLimitedConn?.errorCode || null
         };
       }
       log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
@@ -115,37 +147,47 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
-      // Sort by lastUsed (most recent first) to find current candidate
+      // Priority-based sticky round-robin:
+      // 1. Sort by priority (lower = higher priority)
+      // 2. Find the current "active" connection (most recently used)
+      // 3. Stick to it for stickyLimit consecutive requests
+      // 4. Then rotate to the next connection in priority order
+
+      const byPriority = [...availableConnections].sort((a, b) => (a.priority || 999) - (b.priority || 999));
+
+      // Find the most recently used connection among available ones (the "current" one)
       const byRecency = [...availableConnections].sort((a, b) => {
-        if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
+        if (!a.lastUsedAt && !b.lastUsedAt) return 0;
         if (!a.lastUsedAt) return 1;
         if (!b.lastUsedAt) return -1;
         return new Date(b.lastUsedAt) - new Date(a.lastUsedAt);
       });
-
       const current = byRecency[0];
       const currentCount = current?.consecutiveUseCount || 0;
 
-      if (current && current.lastUsedAt && currentCount < stickyLimit) {
-        // Stay with current account
-        connection = current;
-        // Update lastUsedAt and increment count (await to ensure persistence)
+      if (!current || !current.lastUsedAt) {
+        // No connection has been used yet — start with highest priority
+        connection = byPriority[0];
         await updateProviderConnection(connection.id, {
           lastUsedAt: new Date().toISOString(),
-          consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1
+          consecutiveUseCount: 1
+        });
+      } else if (currentCount < stickyLimit) {
+        // Sticky: stay with current connection until limit reached
+        connection = current;
+        await updateProviderConnection(connection.id, {
+          lastUsedAt: new Date().toISOString(),
+          consecutiveUseCount: currentCount + 1
         });
       } else {
-        // Pick the least recently used (excluding current if possible)
-        const sortedByOldest = [...availableConnections].sort((a, b) => {
-          if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
-          if (!a.lastUsedAt) return -1;
-          if (!b.lastUsedAt) return 1;
-          return new Date(a.lastUsedAt) - new Date(b.lastUsedAt);
-        });
+        // Rotate: advance to the next connection in priority order
+        // Find the current connection's position in priority-sorted list
+        const currentIdx = byPriority.findIndex(c => c.id === current.id);
+        // Next in priority order (wrap around)
+        const nextIdx = (currentIdx + 1) % byPriority.length;
+        connection = byPriority[nextIdx];
 
-        connection = sortedByOldest[0];
-
-        // Update lastUsedAt and reset count to 1 (await to ensure persistence)
+        // Reset count to 1 for the newly selected connection
         await updateProviderConnection(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: 1
@@ -173,6 +215,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         connectionNoProxy: resolvedProxy.connectionNoProxy,
         connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
         vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+        relayAuthSecret: resolvedProxy.relayAuthSecret || "",
+        strictProxy: resolvedProxy.strictProxy === true,
       },
       connectionId: connection.id,
       // Include current status for optimization check
@@ -251,7 +295,7 @@ export async function clearAccountError(connectionId, currentConnection, model =
   const now = Date.now();
   const allLockKeys = Object.keys(conn).filter(k => k.startsWith("modelLock_"));
 
-  if (!conn.testStatus && !conn.lastError && allLockKeys.length === 0) return;
+  if (!conn.testStatus && !conn.lastError && !conn.rateLimitedUntil && allLockKeys.length === 0) return;
 
   // Keys to clear: current model's lock + all expired locks
   const keysToClear = allLockKeys.filter(k => {
@@ -261,7 +305,7 @@ export async function clearAccountError(connectionId, currentConnection, model =
     return expiry && new Date(expiry).getTime() <= now;   // expired
   });
 
-  if (keysToClear.length === 0 && conn.testStatus !== "unavailable" && !conn.lastError) return;
+  if (keysToClear.length === 0 && conn.testStatus !== "unavailable" && !conn.lastError && !conn.rateLimitedUntil) return;
 
   // Check if any active locks remain after clearing
   const remainingActiveLocks = allLockKeys.filter(k => {
@@ -274,10 +318,65 @@ export async function clearAccountError(connectionId, currentConnection, model =
 
   // Only reset error state if no active locks remain
   if (remainingActiveLocks.length === 0) {
-    Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
+    Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0, rateLimitedUntil: null });
   }
 
   await updateProviderConnection(connectionId, clearObj);
+}
+
+/**
+ * Enforce API key rules for SSE handlers.
+ * - Invalid/expired credentials are NEVER accepted (even when requireApiKey=false)
+ * - No-auth bypass only when no Authorization/x-api-key header is present
+ */
+export async function authenticateRequest(request, log) {
+  const settings = await getSettings();
+
+  if (await hasValidCliToken(request)) {
+    log?.debug?.("AUTH", "Authenticated via CLI token");
+    return { ok: true, apiKey: null, settings, cliToken: true };
+  }
+
+  const authHeader = request.headers.get("Authorization");
+  const xApiKeyHeader = request.headers.get("x-api-key");
+  // Any present, non-empty credential header counts — a present-but-malformed
+  // Authorization header must fail closed (401), not bypass. Bypass is allowed
+  // only when NO credential header is present (whitespace-only treated as absent).
+  const hasCredentialHeader = !!(authHeader?.trim() || xApiKeyHeader?.trim());
+  const apiKey = extractApiKey(request);
+
+  if (hasCredentialHeader) {
+    if (!apiKey || !(await isValidApiKey(apiKey))) {
+      log?.warn?.("AUTH", "Invalid API key (credential header present)");
+      return {
+        ok: false,
+        response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"),
+      };
+    }
+    const parsedKey = parseApiKey(apiKey);
+    const keyIdSuffix = parsedKey?.keyId ? ` id=${parsedKey.keyId}` : "";
+    log?.debug?.("AUTH", `Authenticated | key=${log?.maskKey ? log.maskKey(apiKey) : "***"}${keyIdSuffix}`);
+    return { ok: true, apiKey, settings, keyId: parsedKey?.keyId || null };
+  }
+
+  if (settings.requireApiKey) {
+    log?.warn?.("AUTH", "Missing API key (requireApiKey=true)");
+    return {
+      ok: false,
+      response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key"),
+    };
+  }
+
+  if (!isLoopbackRequest(request)) {
+    log?.warn?.("AUTH", "Missing API key (remote access requires key)");
+    return {
+      ok: false,
+      response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "API key required for remote API access"),
+    };
+  }
+
+  log?.debug?.("AUTH", "Authentication bypassed (requireApiKey=false, loopback, no credentials)");
+  return { ok: true, apiKey: null, settings, bypassed: true };
 }
 
 /**
@@ -304,5 +403,6 @@ export function extractApiKey(request) {
  */
 export async function isValidApiKey(apiKey) {
   if (!apiKey) return false;
+  if (!verifyApiKeyCrc(apiKey)) return false;
   return await validateApiKey(apiKey);
 }

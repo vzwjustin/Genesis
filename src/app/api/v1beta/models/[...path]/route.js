@@ -175,6 +175,8 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
+  let sawTerminal = false;
+
   const transformStream = new TransformStream({
     transform(chunk, controller) {
       const text = decoder.decode(chunk, { stream: true });
@@ -187,7 +189,10 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
 
         // Drop empty lines and the OpenAI [DONE] sentinel.
         // Gemini SSE ends by stream close, no sentinel needed.
-        if (!data || data === "[DONE]") continue;
+        if (!data || data === "[DONE]") {
+          if (data === "[DONE]") sawTerminal = true;
+          continue;
+        }
 
         let parsed;
         try {
@@ -222,6 +227,7 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
 
         if (choice.finish_reason) {
           candidate.finishReason = FINISH_REASON_MAP[choice.finish_reason] || "STOP";
+          sawTerminal = true;
         }
 
         const geminiChunk = { candidates: [candidate] };
@@ -246,7 +252,11 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
         );
       }
     },
-    // No flush() needed: Gemini SSE ends by stream close, not a sentinel
+    flush(controller) {
+      if (!sawTerminal) {
+        controller.error(new Error("Stream ended without terminal completion chunk"));
+      }
+    },
   });
 
   return new Response(upstreamResponse.body.pipeThrough(transformStream), {

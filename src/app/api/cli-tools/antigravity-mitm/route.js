@@ -78,6 +78,7 @@ export async function GET() {
       dnsStatus: status.dnsStatus || {},
       hasCachedPassword,
       isWin,
+      isLinux: !isWin && process.platform === "linux",
       needsSudoPassword: !isWin && !hasCachedPassword && isSudoPasswordRequired(),
       isAdmin: checkIsAdmin(),
       mitmRouterBaseUrl:

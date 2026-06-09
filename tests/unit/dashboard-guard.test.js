@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { makeTestApiKey, useTestApiKeySecret } from "../helpers/apiKeyTestUtils.js";
 
 const mocks = vi.hoisted(() => ({
   nextResponse: Symbol("next"),
@@ -33,22 +34,22 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
   verifyDashboardAuthToken: mocks.verifyDashboardAuthToken,
 }));
 
+const VALID_TEST_KEY = makeTestApiKey();
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
-function request(pathname, headers = {}, options = {}) {
+function request(pathname, headers = {}) {
   const normalizedHeaders = new Headers(headers);
   return {
     nextUrl: { pathname },
     headers: normalizedHeaders,
     cookies: { get: vi.fn(() => undefined) },
     url: `http://localhost${pathname}`,
-    ip: options.ip,
-    socket: options.socket,
   };
 }
 
 describe("dashboard guard public LLM API access", () => {
   beforeEach(() => {
+    useTestApiKeySecret();
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
     mocks.validateApiKey.mockResolvedValue(false);
@@ -113,11 +114,11 @@ describe("dashboard guard public LLM API access", () => {
 
     const response = await proxy(request("/api/v1/chat/completions", {
       host: "router.example.com",
-      authorization: "Bearer sk-valid",
+      authorization: `Bearer ${VALID_TEST_KEY}`,
     }));
 
     expect(response).toBe(mocks.nextResponse);
-    expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
   it("allows remote public LLM API with valid x-api-key", async () => {
@@ -125,11 +126,11 @@ describe("dashboard guard public LLM API access", () => {
 
     const response = await proxy(request("/v1/web/fetch", {
       host: "router.example.com",
-      "x-api-key": "sk-valid",
+      "x-api-key": VALID_TEST_KEY,
     }));
 
     expect(response).toBe(mocks.nextResponse);
-    expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
   it("allows remote rewritten beta public LLM API with valid API key", async () => {
@@ -137,16 +138,50 @@ describe("dashboard guard public LLM API access", () => {
 
     const response = await proxy(request("/api/v1beta/models", {
       host: "router.example.com",
-      "x-api-key": "sk-valid",
+      "x-api-key": VALID_TEST_KEY,
     }));
 
     expect(response).toBe(mocks.nextResponse);
-    expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
+  it("rejects remote public LLM API without credentials when requireApiKey=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", { host: "router.example.com" }));
+
+    expect(response.status).toBe(401);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API without credentials when requireApiKey=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed API key CRC even when requireApiKey=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "router.example.com",
+      authorization: "Bearer sk-deadbeef-test01-00000000",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 });
 
 describe("dashboard guard management API access", () => {
   beforeEach(() => {
+    useTestApiKeySecret();
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
     mocks.validateApiKey.mockResolvedValue(false);
@@ -154,14 +189,13 @@ describe("dashboard guard management API access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
-  it("rejects management API when requireLogin=false and no JWT/CLI token", async () => {
+  it("allows management API on loopback when requireLogin=false and no JWT/CLI token", async () => {
     const response = await proxy(request("/api/keys", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
     }));
 
-    expect(response.status).toBe(401);
-    expect(response.body.error).toBe("Unauthorized");
+    expect(response).toBe(mocks.nextResponse);
   });
 
   it("rejects management API from tunnel host even when requireLogin=false", async () => {
@@ -201,37 +235,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("allows local-only route on loopback when requireLogin=false", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
-    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
-      host: "localhost:20128",
-      origin: "http://localhost:20128",
-    }, { ip: "127.0.0.1" }));
-
-    expect(response).toBe(mocks.nextResponse);
-  });
-
-  it("allows local-only route on bracketed IPv6 loopback when requireLogin=false", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
-    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
-      host: "[::1]:20128",
-      origin: "http://[::1]:20128",
-    }, { ip: "::1" }));
-
-    expect(response).toBe(mocks.nextResponse);
-  });
-
-  it("allows local-only route on raw IPv6 loopback host when requireLogin=false", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
-    const localRequest = request("/api/cli-tools/antigravity-mitm", { host: "::1" }, { ip: "::1" });
-
-    expect(__test__.isLocalRequest(localRequest)).toBe(true);
-  });
-
-  it("rejects local-only route when loopback host is spoofed without verified socket IP", async () => {
+  it("rejects local-only route on loopback when requireLogin=false and no JWT (host-spoofing protection)", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
@@ -243,15 +247,41 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("rejects local-only route when verified socket IP is remote", async () => {
+  it("rejects local-only route on bracketed IPv6 loopback when requireLogin=false and no JWT", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
-      host: "localhost:20128",
-      origin: "http://localhost:20128",
-    }, { ip: "203.0.113.9" }));
+      host: "[::1]:20128",
+      origin: "http://[::1]:20128",
+    }));
 
     expect(response.status).toBe(403);
+  });
+
+  it("allows local-only route on loopback when requireLogin=false and valid JWT", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/antigravity-mitm" },
+      headers: new Headers({ host: "localhost:20128", origin: "http://localhost:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://localhost/api/cli-tools/antigravity-mitm",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("allows local-only route on raw IPv6 loopback host when requireLogin=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const localRequest = request("/api/cli-tools/antigravity-mitm", {
+      host: "::1",
+      origin: "http://[::1]:20128",
+    });
+
+    expect(__test__.isLocalRequest(localRequest)).toBe(true);
   });
 
   it("rejects local-only route from tunnel host even when requireLogin=false", async () => {
@@ -293,6 +323,49 @@ describe("dashboard guard helpers", () => {
     });
 
     expect(__test__.extractApiKey(apiRequest)).toBe("bearer-key");
+  });
+});
+
+describe("dashboard guard CLI token timing-safe comparison", () => {
+  // cachedCliToken is module-level — it is set to "cli-token" during the first
+  // describe block's beforeEach and never cleared. All tests in this suite must
+  // use that value as the canonical expected token.
+  const CACHED_TOKEN = "cli-token";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getConsistentMachineId.mockResolvedValue(CACHED_TOKEN);
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  it("rejects token shorter than the correct token", async () => {
+    const response = await proxy(request("/api/mcp/filesystem/sse", {
+      host: "router.example.com",
+      "x-9r-cli-token": "short",
+    }));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects wrong token of identical length", async () => {
+    // Same length as "cli-token" (9 chars) but different content.
+    const response = await proxy(request("/api/mcp/filesystem/sse", {
+      host: "router.example.com",
+      "x-9r-cli-token": "cli-XXXXX",
+    }));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("accepts exact correct CLI token on local-only route", async () => {
+    const response = await proxy(request("/api/mcp/filesystem/sse", {
+      host: "router.example.com",
+      "x-9r-cli-token": CACHED_TOKEN,
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
   });
 });
 

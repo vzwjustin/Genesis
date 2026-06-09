@@ -7,6 +7,7 @@
 import "open-sse/index.js";
 import crypto from "crypto";
 
+import { oauthFetch } from "./utils/oauthFetch.js";
 import { generatePKCE, generateState } from "./utils/pkce";
 import {
   CLAUDE_CONFIG,
@@ -49,7 +50,7 @@ function validateXaiOAuthEndpoint(rawUrl, field) {
 async function discoverXaiEndpoints() {
   if (cachedXaiDiscovery) return cachedXaiDiscovery;
   try {
-    const res = await fetch(XAI_CONFIG.discoveryUrl, { headers: { Accept: "application/json" } });
+    const res = await oauthFetch(XAI_CONFIG.discoveryUrl, { headers: { Accept: "application/json" } });
     if (res.ok) {
       const data = await res.json();
       cachedXaiDiscovery = {
@@ -145,7 +146,7 @@ const PROVIDERS = {
         codeState = parts[1] || "";
       }
 
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -198,7 +199,7 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${queryString}`;
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -273,7 +274,7 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${qs}`;
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -325,7 +326,7 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${params.toString()}`;
     },
     exchangeToken: async (config, code, redirectUri) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -349,7 +350,7 @@ const PROVIDERS = {
     },
     postExchange: async (tokens) => {
       // Fetch user info
-      const userInfoRes = await fetch(`${GEMINI_CONFIG.userInfoUrl}?alt=json`, {
+      const userInfoRes = await oauthFetch(`${GEMINI_CONFIG.userInfoUrl}?alt=json`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const userInfo = userInfoRes.ok ? await userInfoRes.json() : {};
@@ -357,7 +358,7 @@ const PROVIDERS = {
       // Fetch project ID
       let projectId = "";
       try {
-        const projectRes = await fetch(
+        const projectRes = await oauthFetch(
           "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
           {
             method: "POST",
@@ -407,7 +408,7 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${params.toString()}`;
     },
     exchangeToken: async (config, code, redirectUri) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -442,7 +443,7 @@ const PROVIDERS = {
       const metadata = getOAuthClientMetadata();
 
       // Fetch user info
-      const userInfoRes = await fetch(`${ANTIGRAVITY_CONFIG.userInfoUrl}?alt=json`, {
+      const userInfoRes = await oauthFetch(`${ANTIGRAVITY_CONFIG.userInfoUrl}?alt=json`, {
         headers: {
           Authorization: `Bearer ${tokens.access_token}`,
           "x-request-source": "local",
@@ -454,7 +455,7 @@ const PROVIDERS = {
       let projectId = "";
       let tierId = "legacy-tier";
       try {
-        const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
+        const loadRes = await oauthFetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
           method: "POST",
           headers: loadHeaders,
           body: JSON.stringify({ metadata }),
@@ -480,7 +481,7 @@ const PROVIDERS = {
         const doOnboard = async () => {
           for (let i = 0; i < 10; i++) {
             try {
-              const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
+              const onboardRes = await oauthFetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
                 method: "POST",
                 headers: loadHeaders,
                 body: JSON.stringify({ tierId, metadata }),
@@ -529,7 +530,7 @@ const PROVIDERS = {
         `${config.clientId}:${config.clientSecret}`
       ).toString("base64");
 
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -554,7 +555,7 @@ const PROVIDERS = {
     },
     postExchange: async (tokens) => {
       // Fetch user info (MUST succeed to get API key)
-      const userInfoRes = await fetch(
+      const userInfoRes = await oauthFetch(
         `${IFLOW_CONFIG.userInfoUrl}?accessToken=${encodeURIComponent(tokens.access_token)}`,
         {
           headers: {
@@ -701,7 +702,7 @@ const PROVIDERS = {
     config: QWEN_CONFIG,
     flowType: "device_code",
     requestDeviceCode: async (config, codeChallenge) => {
-      const response = await fetch(config.deviceCodeUrl, {
+      const response = await oauthFetch(config.deviceCodeUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -723,7 +724,7 @@ const PROVIDERS = {
       return await response.json();
     },
     pollToken: async (config, deviceCode, codeVerifier) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -754,7 +755,7 @@ const PROVIDERS = {
     config: GITHUB_CONFIG,
     flowType: "device_code",
     requestDeviceCode: async (config) => {
-      const response = await fetch(config.deviceCodeUrl, {
+      const response = await oauthFetch(config.deviceCodeUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -774,7 +775,7 @@ const PROVIDERS = {
       return await response.json();
     },
     pollToken: async (config, deviceCode) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -804,7 +805,7 @@ const PROVIDERS = {
     },
     postExchange: async (tokens) => {
       // Get Copilot token using GitHub access token
-      const copilotRes = await fetch(GITHUB_CONFIG.copilotTokenUrl, {
+      const copilotRes = await oauthFetch(GITHUB_CONFIG.copilotTokenUrl, {
         headers: {
           Authorization: `Bearer ${tokens.access_token}`,
           Accept: "application/json",
@@ -815,7 +816,7 @@ const PROVIDERS = {
       const copilotToken = copilotRes.ok ? await copilotRes.json() : {};
 
       // Get user info from GitHub
-      const userRes = await fetch(GITHUB_CONFIG.userInfoUrl, {
+      const userRes = await oauthFetch(GITHUB_CONFIG.userInfoUrl, {
         headers: {
           Authorization: `Bearer ${tokens.access_token}`,
           Accept: "application/json",
@@ -856,7 +857,7 @@ const PROVIDERS = {
       const deviceAuthUrl = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
       // Step 1: Register client with AWS SSO OIDC
-      const registerRes = await fetch(registerClientUrl, {
+      const registerRes = await oauthFetch(registerClientUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -879,7 +880,7 @@ const PROVIDERS = {
       const clientInfo = await registerRes.json();
 
       // Step 2: Request device authorization
-      const deviceRes = await fetch(deviceAuthUrl, {
+      const deviceRes = await oauthFetch(deviceAuthUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -918,7 +919,7 @@ const PROVIDERS = {
     pollToken: async (config, deviceCode, codeVerifier, extraData) => {
       const region = extraData?._region || "us-east-1";
       const tokenUrl = `https://oidc.${region}.amazonaws.com/token`;
-      const response = await fetch(tokenUrl, {
+      const response = await oauthFetch(tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1007,7 +1008,7 @@ const PROVIDERS = {
     config: KIMI_CODING_CONFIG,
     flowType: "device_code",
     requestDeviceCode: async (config) => {
-      const response = await fetch(config.deviceCodeUrl, {
+      const response = await oauthFetch(config.deviceCodeUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: new URLSearchParams({ client_id: config.clientId }),
@@ -1029,7 +1030,7 @@ const PROVIDERS = {
       };
     },
     pollToken: async (config, deviceCode) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: new URLSearchParams({
@@ -1058,7 +1059,7 @@ const PROVIDERS = {
     config: KILOCODE_CONFIG,
     flowType: "device_code",
     requestDeviceCode: async (config) => {
-      const response = await fetch(config.initiateUrl, {
+      const response = await oauthFetch(config.initiateUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -1080,7 +1081,7 @@ const PROVIDERS = {
       };
     },
     pollToken: async (config, deviceCode) => {
-      const response = await fetch(`${config.pollUrlBase}/${deviceCode}`);
+      const response = await oauthFetch(`${config.pollUrlBase}/${deviceCode}`);
       if (response.status === 202) return { ok: false, data: { error: "authorization_pending" } };
       if (response.status === 403) return { ok: false, data: { error: "access_denied", error_description: "Authorization denied by user" } };
       if (response.status === 410) return { ok: false, data: { error: "expired_token", error_description: "Authorization code expired" } };
@@ -1090,7 +1091,7 @@ const PROVIDERS = {
         // Fetch profile to get orgId for X-Kilocode-OrganizationID header
         let orgId = null;
         try {
-          const profileRes = await fetch(`${config.apiBaseUrl}/api/profile`, {
+          const profileRes = await oauthFetch(`${config.apiBaseUrl}/api/profile`, {
             headers: { "Authorization": `Bearer ${data.token}` }
           });
           if (profileRes.ok) {
@@ -1141,7 +1142,7 @@ const PROVIDERS = {
           expires_at: tokenData.expiresAt,
         };
       } catch (e) {
-        const response = await fetch(config.tokenExchangeUrl, {
+        const response = await oauthFetch(config.tokenExchangeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({ grant_type: "authorization_code", code, client_type: "extension", redirect_uri: redirectUri }),
@@ -1200,7 +1201,7 @@ const PROVIDERS = {
         code_verifier: codeVerifier,
       });
       if (clientSecret) body.set("client_secret", clientSecret);
-      const response = await fetch(`${baseUrl}${config.tokenUrlPath}`, {
+      const response = await oauthFetch(`${baseUrl}${config.tokenUrlPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString(),
@@ -1208,7 +1209,7 @@ const PROVIDERS = {
       if (!response.ok) throw new Error(`GitLab token exchange failed: ${await response.text()}`);
       const tokens = await response.json();
       // Fetch user info
-      const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
+      const userRes = await oauthFetch(`${baseUrl}${config.userInfoUrlPath}`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const user = userRes.ok ? await userRes.json() : {};
@@ -1238,7 +1239,7 @@ const PROVIDERS = {
     config: CODEBUDDY_CONFIG,
     flowType: "device_code",
     requestDeviceCode: async (config) => {
-      const response = await fetch(`${config.stateUrl}?platform=${config.platform}`, {
+      const response = await oauthFetch(`${config.stateUrl}?platform=${config.platform}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1266,7 +1267,7 @@ const PROVIDERS = {
       };
     },
     pollToken: async (config, deviceCode) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

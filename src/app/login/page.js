@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, Button, Input, InlineAlert } from "@/shared/components";
+import { Card, Button, Input, InlineAlert, PageLoading } from "@/shared/components";
 import { SECURITY_COPY } from "@/shared/constants/securityCopy";
 import { useRouter } from "next/navigation";
 
@@ -99,10 +99,7 @@ export default function LoginPage() {
   if (hasPassword === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg p-4">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="text-text-muted mt-4">Loading...</p>
-        </div>
+        <PageLoading message="Loading..." />
       </div>
     );
   }
@@ -148,8 +145,8 @@ export default function LoginPage() {
                 )}
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Password</label>
                   <Input
+                    label="Password"
                     type="password"
                     placeholder="Enter password"
                     value={password}
@@ -157,9 +154,9 @@ export default function LoginPage() {
                     required
                     autoFocus={!oidcAvailable}
                   />
-                  {error && <p className="text-xs text-red-500">{error}</p>}
+                  {error && <p className="text-xs text-danger">{error}</p>}
                   {retryAfter > 0 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                    <p className="text-xs text-warning">
                       Locked. Retry in <span className="font-mono">{retryAfter}s</span>.
                     </p>
                   )}
@@ -189,7 +186,7 @@ export default function LoginPage() {
                 )}
               </form>
             ) : (
-              error && <p className="text-xs text-red-500">{error}</p>
+              error && <p className="text-xs text-danger">{error}</p>
             )}
           </div>
         </Card>

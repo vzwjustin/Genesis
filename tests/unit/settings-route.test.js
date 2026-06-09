@@ -36,6 +36,21 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => ({
+    get: () => ({ value: "session-token" }),
+  })),
+}));
+
+vi.mock("@/lib/auth/dashboardSession", () => ({
+  getDashboardAuthSession: vi.fn(async () => ({ sub: "user" })),
+}));
+
+vi.mock("@/lib/security/exposureGate", () => ({
+  isRemoteExposureRequest: () => false,
+  getRemoteExposureBlockReason: () => null,
+}));
+
 const { PATCH } = await import("../../src/app/api/settings/route.js");
 
 function request(body) {
@@ -66,6 +81,13 @@ describe("settings API patch validation", () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("Unsupported setting: customField");
     expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("accepts fallbackStrategy updates", async () => {
+    const response = await PATCH(request({ fallbackStrategy: "round-robin" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ fallbackStrategy: "round-robin" });
   });
 
   it("hashes password changes through the newPassword path", async () => {

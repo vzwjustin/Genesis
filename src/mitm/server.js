@@ -7,10 +7,10 @@ const dns = require("dns");
 const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
-const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, getToolForHost } = require("./config");
+const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, getToolForHost } = require("./config");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
-const { getMitmAlias } = require("./dbReader");
+const { extractModel, getMappedModel } = require("./modelMapping");
 const { applyAntigravityIdeVersionOverride } = require("./antigravityIdeVersion");
 const LOCAL_PORT = 443;
 const IS_WIN = process.platform === "win32";
@@ -30,7 +30,6 @@ const handlers = {
   antigravity: require("./handlers/antigravity"),
   copilot: require("./handlers/copilot"),
   kiro: require("./handlers/kiro"),
-  cursor: require("./handlers/cursor"),
 };
 
 // ── SSL / SNI ─────────────────────────────────────────────────
@@ -91,37 +90,18 @@ function collectBodyRaw(req) {
   });
 }
 
-// Extract model from URL path (Gemini), body (OpenAI/Anthropic), or Kiro conversationState
-function extractModel(url, body) {
-  const urlMatch = url.match(/\/models\/([^/:]+)/);
-  if (urlMatch) return urlMatch[1];
+/** Kiro AWS SDK often POSTs to / with X-Amz-Target instead of /generateAssistantResponse path */
+function isMitmChatRequest(tool, req, bodyBuffer) {
+  const patterns = URL_PATTERNS[tool] || [];
+  if (patterns.some(p => req.url.includes(p))) return true;
+  if (tool !== "kiro") return false;
+  const target = req.headers["x-amz-target"] || req.headers["X-Amz-Target"] || "";
+  if (/GenerateAssistantResponse/i.test(String(target))) return true;
   try {
-    const parsed = JSON.parse(body.toString());
-    if (parsed.conversationState) {
-      return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;
-    }
-    return parsed.model || null;
-  } catch { return null; }
-}
-
-function getMappedModel(tool, model) {
-  if (!model) return null;
-  try {
-    const aliases = getMitmAlias(tool);
-    if (!aliases) return null;
-    // Normalize via synonym map (e.g., gemini-default → gemini-3-flash)
-    const lookup = MODEL_SYNONYMS?.[tool]?.[model] || model;
-    if (aliases[lookup]) return aliases[lookup];
-    // Prefix match fallback
-    const prefixKey = Object.keys(aliases).find(k => k && aliases[k] && (lookup.startsWith(k) || k.startsWith(lookup)));
-    if (prefixKey) return aliases[prefixKey];
-    // Pattern fallback: catches AG renamed variants (e.g. deprecated pro IDs → gemini-pro-agent)
-    const patterns = MODEL_PATTERNS?.[tool] || [];
-    for (const { match, alias } of patterns) {
-      if (match.test(lookup) && aliases[alias]) return aliases[alias];
-    }
-    return null;
-  } catch { return null; }
+    return !!JSON.parse(bodyBuffer.toString()).conversationState;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -318,9 +298,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
     const tool = getToolForHost(req.headers.host);
     if (!tool) return passthrough(req, res, bodyBuffer);
 
-    const patterns = URL_PATTERNS[tool] || [];
-    const isChat = patterns.some(p => req.url.includes(p));
-    if (!isChat) return passthrough(req, res, bodyBuffer);
+    if (!isMitmChatRequest(tool, req, bodyBuffer)) return passthrough(req, res, bodyBuffer);
 
     // Cursor uses binary proto — model extraction not possible at this layer.
     // Delegate directly to handler which decodes proto internally.
@@ -331,7 +309,19 @@ const server = https.createServer(sslOptions, async (req, res) => {
     const model = extractModel(req.url, bodyBuffer);
     const mappedModel = getMappedModel(tool, model);
     if (!mappedModel) {
+      if (tool === "kiro") {
+        log(`kiro passthrough (no alias): host=${req.headers.host} url=${req.url} model=${model ?? "null"}`);
+      }
       return passthrough(req, res, bodyBuffer);
+    }
+
+    if (tool === "kiro" && handlers.kiro.kiroRequiresPassthrough(bodyBuffer)) {
+      log(`kiro passthrough (tool round): host=${req.headers.host} url=${req.url} model=${model ?? "null"}`);
+      return passthrough(req, res, bodyBuffer);
+    }
+
+    if (tool === "kiro") {
+      log(`kiro intercept: ${model} → ${mappedModel}`);
     }
 
     return handlers[tool].intercept(req, res, bodyBuffer, mappedModel, passthrough);

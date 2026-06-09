@@ -33,7 +33,12 @@ export async function createSqlJsAdapter(filePath) {
     saveTimer = setTimeout(() => {
       saveTimer = null;
       if (dirty) {
-        try { persist(); } catch (e) { console.error("[sqljs] save failed:", e); }
+        try {
+          persist();
+        } catch (e) {
+          console.error("[sqljs] save failed:", e);
+          dirty = true;
+        }
       }
     }, SAVE_DEBOUNCE_MS);
   }
@@ -41,6 +46,14 @@ export async function createSqlJsAdapter(filePath) {
   function paramsObj(params) {
     if (!params || (Array.isArray(params) && params.length === 0)) return undefined;
     return params;
+  }
+
+  function flushPendingSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (dirty) persist();
   }
 
   function run(sql, params = []) {
@@ -111,5 +124,5 @@ export async function createSqlJsAdapter(filePath) {
   process.on("SIGINT", flush);
   process.on("SIGTERM", flush);
 
-  return { driver: "sql.js", run, get, all, exec, transaction, close, raw: db };
+  return { driver: "sql.js", run, get, all, exec, transaction, close, flushPendingSave, raw: db };
 }

@@ -14,6 +14,9 @@ export function getRemoteExposureBlockReason(settings) {
   if (settings.requireLogin === false) {
     return "Enable dashboard login in Profile before enabling remote access.";
   }
+  if (settings.requireApiKey === false) {
+    return "Enable API key requirement in Profile before enabling remote access.";
+  }
   return null;
 }
 

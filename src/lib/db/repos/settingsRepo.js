@@ -5,6 +5,8 @@ const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
 const DEFAULT_SETTINGS = {
   cloudEnabled: false,
+  cloudUrl: "",
+  fallbackStrategy: "fill-first",
   tunnelEnabled: false,
   tunnelUrl: "",
   tunnelProvider: "cloudflare",
@@ -32,11 +34,26 @@ const DEFAULT_SETTINGS = {
   outboundProxyUrl: "",
   outboundNoProxy: "",
   mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
+  mitmAutoSetupOnImport: true,
   dnsToolEnabled: {},
   rtkEnabled: true,
+  rtkFilterConfig: {
+    "git-diff": true,
+    "git-status": true,
+    "build-output": true,
+    "grep": true,
+    "find": true,
+    "tree": true,
+    "ls": true,
+    "search-list": true,
+    "read-numbered": true,
+    "dedup-log": true,
+    "smart-truncate": true,
+  },
   cavemanEnabled: false,
   cavemanLevel: "full",
   headroomEnabled: false,
+  passthroughCompression: false,
 };
 
 async function readRaw() {

@@ -1,6 +1,8 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const TIMEOUT_MS = 8000;
 
@@ -16,7 +18,7 @@ async function probeMcp(url) {
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
   try {
     // Step 1: initialize
-    const initRes = await fetch(url, {
+    const initRes = await proxyAwareFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -38,7 +40,7 @@ async function probeMcp(url) {
     if (sessionId) listHeaders["mcp-session-id"] = sessionId;
 
     // Step 2: notifications/initialized (required by spec before tools/list)
-    await fetch(url, {
+    await proxyAwareFetch(url, {
       method: "POST",
       headers: listHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }),
@@ -46,7 +48,7 @@ async function probeMcp(url) {
     }).catch(() => {});
 
     // Step 3: tools/list
-    const listRes = await fetch(url, {
+    const listRes = await proxyAwareFetch(url, {
       method: "POST",
       headers: listHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
@@ -86,6 +88,11 @@ export async function POST(request) {
     const { url } = await request.json();
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "url required" }, { status: 400 });
+    }
+    try {
+      assertSafeFetchUrl(url);
+    } catch (err) {
+      return NextResponse.json({ error: err.message || "Invalid URL" }, { status: 400 });
     }
     const result = await probeMcp(url);
     return NextResponse.json(result);

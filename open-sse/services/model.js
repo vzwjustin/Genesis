@@ -148,28 +148,43 @@ export function resolveProviderAlias(aliasOrId) {
 }
 
 /**
- * Parse model string: "alias/model" or "provider/model" or just alias
+ * Parse model string into its component parts.
+ *
+ * Model strings can be in three formats:
+ *   1. "provider/model" (e.g., "cc/claude-opus-4-6") — resolve provider alias to ID, return directly
+ *   2. Plain string alias (e.g., "opus") — needs alias registry lookup
+ *   3. Combo name (e.g., "primary-fallback") — needs combo expansion into ordered list
+ *
+ * This function handles format detection and provider alias resolution for format 1.
+ * Formats 2 and 3 are both returned as isAlias:true — the distinction between alias
+ * and combo is resolved at lookup time by the caller (see resolveModelAliasFromMap and
+ * getComboModelsFromData).
+ *
+ * @param {string} modelStr - The raw model string from the request
+ * @returns {{ provider: string|null, model: string|null, isAlias: boolean, providerAlias: string|null, original: string }}
  */
 export function parseModel(modelStr) {
   if (!modelStr) {
-    return { provider: null, model: null, isAlias: false, providerAlias: null };
+    return { provider: null, model: null, isAlias: false, providerAlias: null, original: modelStr || "" };
   }
 
-  // Check if standard format: provider/model or alias/model
+  // Format 1: "provider/model" or "alias/model" — resolve provider alias to ID and return directly
   if (modelStr.includes("/")) {
     const firstSlash = modelStr.indexOf("/");
     const providerOrAlias = modelStr.slice(0, firstSlash);
     const model = modelStr.slice(firstSlash + 1);
     const provider = resolveProviderAlias(providerOrAlias);
-    return { provider, model, isAlias: false, providerAlias: providerOrAlias };
+    return { provider, model, isAlias: false, providerAlias: providerOrAlias, original: modelStr };
   }
 
-  // Alias format (model alias, not provider alias)
+  // Format 2 or 3: plain string — could be a model alias or a combo name
+  // The caller resolves which by checking the alias registry and combo registry
   return {
     provider: null,
     model: modelStr,
     isAlias: true,
     providerAlias: null,
+    original: modelStr,
   };
 }
 
@@ -232,9 +247,9 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
     return resolved;
   }
 
-  // Fallback: infer provider from model name prefix
+  // Unresolved alias — fail closed (do not infer provider; callers must return HTTP 400)
   return {
-    provider: inferProviderFromModelName(parsed.model),
+    provider: null,
     model: parsed.model,
   };
 }

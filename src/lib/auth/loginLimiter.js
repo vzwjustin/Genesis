@@ -1,4 +1,8 @@
-// In-memory progressive lockout for dashboard login. Resets on process restart.
+// Progressive lockout for dashboard login. Persisted to disk between restarts.
+
+import fs from "node:fs";
+import path from "node:path";
+import { DATA_DIR } from "@/lib/dataDir";
 
 import crypto from "crypto";
 
@@ -7,10 +11,38 @@ const LOCK_STEPS_MS = [30_000, 120_000, 600_000, 1_800_000]; // 30s, 2m, 10m, 30
 const FAIL_WINDOW_MS = 60 * 60 * 1000; // 1h since last fail → auto reset
 
 const attempts = new Map(); // ip → { fails, lockUntil, lockLevel, lastFailAt }
+const ATTEMPTS_FILE = path.join(DATA_DIR, "auth", "login-attempts.json");
+let attemptsLoaded = false;
 
 function now() { return Date.now(); }
 
+function loadAttempts() {
+  if (attemptsLoaded) return;
+  attemptsLoaded = true;
+  try {
+    const raw = fs.readFileSync(ATTEMPTS_FILE, "utf8");
+    const data = JSON.parse(raw);
+    if (data && typeof data === "object") {
+      for (const [ip, entry] of Object.entries(data)) {
+        if (entry && typeof entry === "object") attempts.set(ip, entry);
+      }
+    }
+  } catch {
+    // fresh start
+  }
+}
+
+function persistAttempts() {
+  try {
+    fs.mkdirSync(path.dirname(ATTEMPTS_FILE), { recursive: true });
+    fs.writeFileSync(ATTEMPTS_FILE, JSON.stringify(Object.fromEntries(attempts)));
+  } catch (e) {
+    console.warn("[loginLimiter] Failed to persist attempts:", e.message);
+  }
+}
+
 function getEntry(ip) {
+  loadAttempts();
   const e = attempts.get(ip);
   if (!e) return null;
   // Auto reset if window expired and not currently locked
@@ -40,25 +72,14 @@ export function recordFail(ip) {
     e.fails = 0;
   }
   attempts.set(ip, e);
+  persistAttempts();
   return { remainingBeforeLock: Math.max(0, MAX_FAILS_BEFORE_LOCK - e.fails) };
 }
 
 export function recordSuccess(ip) {
+  loadAttempts();
   attempts.delete(ip);
-}
-
-function normalizeConnectionIp(ip) {
-  if (!ip || typeof ip !== "string") return null;
-  const trimmed = ip.trim();
-  if (!trimmed) return null;
-  return trimmed.startsWith("::ffff:") ? trimmed.slice(7) : trimmed;
-}
-
-function getConnectionRemoteAddress(request) {
-  if (typeof request?.ip === "string" && request.ip) {
-    return normalizeConnectionIp(request.ip);
-  }
-  return normalizeConnectionIp(request?.socket?.remoteAddress);
+  persistAttempts();
 }
 
 function getFallbackClientKey(request) {
@@ -76,8 +97,8 @@ export function getClientIp(request) {
     if (realIp) return realIp.trim();
   }
 
-  const connectionIp = getConnectionRemoteAddress(request);
-  if (connectionIp) return connectionIp;
+  const socketIp = request.socket?.remoteAddress || request.ip;
+  if (socketIp) return String(socketIp).replace(/^::ffff:/, "");
 
   return getFallbackClientKey(request);
 }

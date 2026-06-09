@@ -4,6 +4,7 @@ import { GEMINI_CONFIG, getOAuthClientMetadata } from "../constants/oauth.js";
 import { getServerCredentials } from "../config/index.js";
 import { startLocalServer } from "../utils/server.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * Gemini CLI (Google Cloud Code Assist) OAuth Service
@@ -35,7 +36,7 @@ export class GeminiCLIService {
    * Exchange authorization code for tokens
    */
   async exchangeCode(code, redirectUri) {
-    const response = await fetch(this.config.tokenUrl, {
+    const response = await oauthFetch(this.config.tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -62,7 +63,7 @@ export class GeminiCLIService {
    * Fetch project ID from Google Cloud Code Assist
    */
   async fetchProjectId(accessToken) {
-    const response = await fetch(
+    const response = await oauthFetch(
       "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
       {
         method: "POST",
@@ -106,7 +107,7 @@ export class GeminiCLIService {
    * Get user info from Google
    */
   async getUserInfo(accessToken) {
-    const response = await fetch(`${this.config.userInfoUrl}?alt=json`, {
+    const response = await oauthFetch(`${this.config.userInfoUrl}?alt=json`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
@@ -127,7 +128,7 @@ export class GeminiCLIService {
   async saveTokens(tokens, userInfo, projectId) {
     const { server, token, userId } = getServerCredentials();
 
-    const response = await fetch(`${server}/api/cli/providers/gemini-cli`, {
+    const response = await oauthFetch(`${server}/api/cli/providers/gemini-cli`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

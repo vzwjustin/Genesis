@@ -33,8 +33,14 @@ function formatTimestamp(date = new Date()) {
   return `${y}${m}${d}_${h}${min}${s}_${ms}`;
 }
 
-// Create log session folder: {sourceFormat}_{targetFormat}_{model}_{timestamp}
-async function createLogSession(sourceFormat, targetFormat, model) {
+export function formatLogFolderPrefix(sourceFormat, targetFormat, model, { passthrough = false } = {}) {
+  const safeModel = (model || "unknown").replace(/[/:]/g, "-");
+  const modePrefix = passthrough ? "passthrough_" : "";
+  return `${modePrefix}${sourceFormat}_${targetFormat}_${safeModel}`;
+}
+
+// Create log session folder: [{passthrough}_]{sourceFormat}_{targetFormat}_{model}_{timestamp}
+async function createLogSession(sourceFormat, targetFormat, model, options = {}) {
   await ensureNodeModules();
   if (!fs || !LOGS_DIR) return null;
   
@@ -44,8 +50,7 @@ async function createLogSession(sourceFormat, targetFormat, model) {
     }
     
     const timestamp = formatTimestamp();
-    const safeModel = (model || "unknown").replace(/[/:]/g, "-");
-    const folderName = `${sourceFormat}_${targetFormat}_${safeModel}_${timestamp}`;
+    const folderName = `${formatLogFolderPrefix(sourceFormat, targetFormat, model, options)}_${timestamp}`;
     const sessionPath = path.join(LOGS_DIR, folderName);
     
     fs.mkdirSync(sessionPath, { recursive: true });
@@ -69,25 +74,23 @@ function writeJsonFile(sessionPath, filename, data) {
   }
 }
 
-// Mask sensitive data in headers (DISABLED - keep full token for testing)
 function maskSensitiveHeaders(headers) {
   if (!headers) return {};
-  return { ...headers };
-  
-  // Old masking code (disabled):
-  // const masked = { ...headers };
-  // const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
-  // 
-  // for (const key of Object.keys(masked)) {
-  //   const lowerKey = key.toLowerCase();
-  //   if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
-  //     const value = masked[key];
-  //     if (value && value.length > 20) {
-  //       masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
-  //     }
-  //   }
-  // }
-  // return masked;
+  const masked = { ...headers };
+  const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
+
+  for (const key of Object.keys(masked)) {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
+      const value = masked[key];
+      if (value) {
+        masked[key] = value.length > 20
+          ? value.slice(0, 4) + "..." + value.slice(-4)
+          : "[redacted]";
+      }
+    }
+  }
+  return masked;
 }
 
 // No-op logger when logging is disabled
@@ -114,14 +117,14 @@ function createNoOpLogger() {
  * @param {string} model - Model name
  * @returns {Promise<object>} Promise that resolves to logger object with methods to log each stage
  */
-export async function createRequestLogger(sourceFormat, targetFormat, model) {
+export async function createRequestLogger(sourceFormat, targetFormat, model, options = {}) {
   // Return no-op logger if logging is disabled
   if (!LOGGING_ENABLED) {
     return createNoOpLogger();
   }
   
   // Wait for session to be created before returning logger
-  const sessionPath = await createLogSession(sourceFormat, targetFormat, model);
+  const sessionPath = await createLogSession(sourceFormat, targetFormat, model, options);
   
   return {
     get sessionPath() { return sessionPath; },
@@ -216,10 +219,13 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       }
     },
     
-    // 6. Log error
-    logError(error, requestBody = null) {
-      writeJsonFile(sessionPath, "6_error.json", {
+    // 8. Log error (failed or incomplete request)
+    logError(error, requestBody = null, logOptions = {}) {
+      writeJsonFile(sessionPath, "8_error.json", {
         timestamp: new Date().toISOString(),
+        failed: true,
+        incomplete: logOptions.incomplete === true,
+        passthrough: options.passthrough === true,
         error: error?.message || String(error),
         stack: error?.stack,
         requestBody
@@ -231,6 +237,138 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 // Legacy functions for backward compatibility
 export function logRequest() {}
 export function logResponse() {}
+
+export async function listRequestLogSessions(limit = 50) {
+  await ensureNodeModules();
+  if (!fs || !LOGS_DIR) return { enabled: LOGGING_ENABLED, sessions: [] };
+
+  try {
+    if (!fs.existsSync(LOGS_DIR)) {
+      return { enabled: LOGGING_ENABLED, sessions: [] };
+    }
+    const entries = fs.readdirSync(LOGS_DIR, { withFileTypes: true });
+    const sessions = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => {
+        const sessionPath = path.join(LOGS_DIR, e.name);
+        let mtime = null;
+        let hasError = false;
+        try {
+          const stat = fs.statSync(sessionPath);
+          mtime = stat.mtime.toISOString();
+          hasError = fs.existsSync(path.join(sessionPath, "8_error.json"));
+        } catch { /* ignore */ }
+        return { name: e.name, mtime, hasError };
+      })
+      .sort((a, b) => new Date(b.mtime || 0) - new Date(a.mtime || 0))
+      .slice(0, limit);
+
+    return { enabled: LOGGING_ENABLED, sessions };
+  } catch (err) {
+    try {
+      console.log("[LOG] Failed to list sessions:", err.message);
+    } catch { /* ignore */ }
+    return { enabled: LOGGING_ENABLED, sessions: [] };
+  }
+}
+
+const ALLOWED_LOG_FILES = new Set([
+  "1_req_client.json",
+  "2_req_source.json",
+  "3_req_openai.json",
+  "4_req_target.json",
+  "5_res_provider.json",
+  "5_res_provider.txt",
+  "6_res_openai.txt",
+  "7_res_client.json",
+  "7_res_client.txt",
+  "8_error.json",
+]);
+
+function sanitizeSessionName(name) {
+  if (!name || typeof name !== "string") return null;
+  if (name.includes("..") || name.includes("/") || name.includes("\\")) return null;
+  if (!/^[\w.-]+$/.test(name)) return null;
+  return name;
+}
+
+export async function getRequestLogSession(sessionName) {
+  await ensureNodeModules();
+  if (!fs || !LOGS_DIR) {
+    return { enabled: LOGGING_ENABLED, error: "File logging not available" };
+  }
+
+  const safe = sanitizeSessionName(sessionName);
+  if (!safe) return { enabled: LOGGING_ENABLED, error: "Invalid session name" };
+
+  const sessionPath = path.join(LOGS_DIR, safe);
+  if (!fs.existsSync(sessionPath)) {
+    return { enabled: LOGGING_ENABLED, error: "Session not found" };
+  }
+
+  let mtime = null;
+  let hasError = false;
+  try {
+    const stat = fs.statSync(sessionPath);
+    mtime = stat.mtime.toISOString();
+    hasError = fs.existsSync(path.join(sessionPath, "8_error.json"));
+  } catch { /* ignore */ }
+
+  const files = fs.readdirSync(sessionPath)
+    .filter((f) => ALLOWED_LOG_FILES.has(f))
+    .sort()
+    .map((f) => {
+      let size = 0;
+      try {
+        size = fs.statSync(path.join(sessionPath, f)).size;
+      } catch { /* ignore */ }
+      return { name: f, size };
+    });
+
+  return { enabled: LOGGING_ENABLED, name: safe, mtime, hasError, files };
+}
+
+export async function readRequestLogSessionFile(sessionName, fileName) {
+  await ensureNodeModules();
+  if (!fs || !LOGS_DIR) {
+    return { enabled: LOGGING_ENABLED, error: "File logging not available" };
+  }
+
+  const safe = sanitizeSessionName(sessionName);
+  if (!safe) return { enabled: LOGGING_ENABLED, error: "Invalid session name" };
+  if (!fileName || !ALLOWED_LOG_FILES.has(fileName)) {
+    return { enabled: LOGGING_ENABLED, error: "Invalid file name" };
+  }
+
+  const filePath = path.join(LOGS_DIR, safe, fileName);
+  if (!fs.existsSync(filePath)) {
+    return { enabled: LOGGING_ENABLED, error: "File not found" };
+  }
+
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const isJson = fileName.endsWith(".json");
+    if (isJson) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed?.headers) parsed.headers = maskSensitiveHeaders(parsed.headers);
+        return {
+          enabled: LOGGING_ENABLED,
+          name: safe,
+          file: fileName,
+          contentType: "json",
+          content: JSON.stringify(parsed, null, 2),
+        };
+      } catch {
+        return { enabled: LOGGING_ENABLED, name: safe, file: fileName, contentType: "text", content: raw };
+      }
+    }
+    return { enabled: LOGGING_ENABLED, name: safe, file: fileName, contentType: "text", content: raw };
+  } catch (err) {
+    return { enabled: LOGGING_ENABLED, error: err.message || "Failed to read file" };
+  }
+}
+
 export function logError(provider, { error, url, model, requestBody }) {
   if (!fs || !LOGS_DIR) return;
   

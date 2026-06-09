@@ -1,5 +1,8 @@
 // Shared helpers for image provider adapters
 
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { assertSafeFetchUrl } from "../../utils/ssrfGuard.js";
+
 export const POLL_INTERVAL_MS = 1500;
 export const POLL_TIMEOUT_MS = 120000;
 
@@ -19,8 +22,9 @@ export function sizeToAspectRatio(size) {
 }
 
 // Fetch URL → base64 (for providers returning image URLs)
-export async function urlToBase64(url) {
-  const res = await fetch(url);
+export async function urlToBase64(url, proxyOptions = null) {
+  assertSafeFetchUrl(url, { requireHttps: false, allowHttp: true });
+  const res = await proxyAwareFetch(url, {}, proxyOptions);
   if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
   const buf = await res.arrayBuffer();
   return Buffer.from(buf).toString("base64");

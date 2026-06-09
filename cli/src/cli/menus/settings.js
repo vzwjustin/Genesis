@@ -1,6 +1,3 @@
-const path = require("path");
-const fs = require("fs");
-const os = require("os");
 const { execSync } = require("child_process");
 const api = require("../api/client");
 const { confirm, pause } = require("../utils/input");
@@ -18,13 +15,6 @@ const COLORS = {
 };
 
 const DEFAULT_PASSWORD = "123456";
-
-// Resolve db.json path (matches app/src/lib/dataDir.js convention)
-function getDbPath() {
-  return process.platform === "win32"
-    ? path.join(process.env.APPDATA || "", "9router", "db.json")
-    : path.join(os.homedir(), ".9router", "db.json");
-}
 
 /**
  * Show settings menu (tunnel + RTK + reset password)
@@ -181,18 +171,10 @@ async function toggleRtk(currentlyOn) {
 }
 
 /**
- * Reset dashboard password by clearing the hash in db.json (Phase B).
- * After reset, user can log in with the default password "123456".
+ * Reset dashboard password via the running server's SQLite settings store.
+ * After reset, user can log in with the default password (123456 unless INITIAL_PASSWORD is set).
  */
 async function resetPassword() {
-  const dbPath = getDbPath();
-
-  if (!fs.existsSync(dbPath)) {
-    showStatus(`db.json not found at ${dbPath}`, "error");
-    await pause();
-    return;
-  }
-
   const ok = await confirm(`Reset dashboard password to default "${DEFAULT_PASSWORD}"?`);
   if (!ok) {
     showStatus("Cancelled", "info");
@@ -200,16 +182,11 @@ async function resetPassword() {
     return;
   }
 
-  try {
-    const raw = fs.readFileSync(dbPath, "utf-8");
-    const db = JSON.parse(raw);
-    if (db.settings && Object.prototype.hasOwnProperty.call(db.settings, "password")) {
-      delete db.settings.password;
-    }
-    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+  const result = await api.updateSettings({ resetPasswordToDefault: true });
+  if (result.success) {
     showStatus(`Password reset. Default: ${DEFAULT_PASSWORD}`, "success");
-  } catch (err) {
-    showStatus(`Failed to reset password: ${err.message}`, "error");
+  } else {
+    showStatus(`Failed to reset password: ${result.error || "server unreachable"}`, "error");
   }
   await pause();
 }

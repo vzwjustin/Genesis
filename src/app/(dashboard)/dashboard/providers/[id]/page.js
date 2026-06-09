@@ -17,11 +17,16 @@ import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
+import { useNotificationStore } from "@/store/notificationStore";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function actionError(notify, message, error) {
+  notify.error(error?.message || message);
 }
 
 export default function ProviderDetailPage() {
@@ -33,6 +38,7 @@ export default function ProviderDetailPage() {
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
   const [showOAuthModal, setShowOAuthModal] = useState(false);
+  const [reconnectConnectionId, setReconnectConnectionId] = useState(null);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
   const [addConnectionError, setAddConnectionError] = useState("");
@@ -64,11 +70,18 @@ export default function ProviderDetailPage() {
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
   const { copied, copy } = useCopyToClipboard();
+  const notify = useNotificationStore();
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
-  const openOAuthConnection = () => {
+  const openOAuthConnection = (connectionId = null) => {
+    setReconnectConnectionId(connectionId);
     setShowOAuthModal(true);
+  };
+
+  const closeOAuthModal = () => {
+    setShowOAuthModal(false);
+    setReconnectConnectionId(null);
   };
 
   const triggerOAuthConnection = () => {
@@ -149,7 +162,7 @@ export default function ProviderDetailPage() {
       const data = await res.json();
       if (res.ok) setDisabledModelIds(data.ids || []);
     } catch (error) {
-      console.log("Error fetching disabled models:", error);
+      actionError(notify, "Failed to fetch disabled models", error);
     }
   }, [providerStorageAlias]);
 
@@ -162,7 +175,7 @@ export default function ProviderDetailPage() {
       });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
-      console.log("Error disabling model:", error);
+      actionError(notify, "Failed to disable model", error);
     }
   };
 
@@ -171,7 +184,7 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(modelId)}`, { method: "DELETE" });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
-      console.log("Error enabling model:", error);
+      actionError(notify, "Failed to enable model", error);
     }
   };
 
@@ -190,7 +203,7 @@ export default function ProviderDetailPage() {
           });
           if (res.ok) await fetchDisabledModels();
         } catch (error) {
-          console.log("Error disabling all models:", error);
+          actionError(notify, "Failed to disable all models", error);
         }
       }
     });
@@ -201,7 +214,7 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { method: "DELETE" });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
-      console.log("Error enabling all models:", error);
+      actionError(notify, "Failed to enable all models", error);
     }
   };
 
@@ -214,7 +227,7 @@ export default function ProviderDetailPage() {
         setModelAliases(data.aliases || {});
       }
     } catch (error) {
-      console.log("Error fetching aliases:", error);
+      actionError(notify, "Failed to fetch aliases", error);
     }
   }, []);
 
@@ -227,13 +240,14 @@ export default function ProviderDetailPage() {
       .catch(() => {});
   }, [providerId]);
 
-  const fetchConnections = useCallback(async () => {
+  const fetchConnections = useCallback(async (signal) => {
     try {
+      const fetchOpts = { cache: "no-store", signal };
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
-        fetch("/api/providers", { cache: "no-store" }),
-        fetch("/api/provider-nodes", { cache: "no-store" }),
-        fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
-        fetch("/api/settings", { cache: "no-store" }),
+        fetch("/api/providers", fetchOpts),
+        fetch("/api/provider-nodes", fetchOpts),
+        fetch("/api/proxy-pools?isActive=true", fetchOpts),
+        fetch("/api/settings", fetchOpts),
       ]);
       const connectionsData = await connectionsRes.json();
       const nodesData = await nodesRes.json();
@@ -272,7 +286,7 @@ export default function ProviderDetailPage() {
         setProviderNode(node);
       }
     } catch (error) {
-      console.log("Error fetching connections:", error);
+      actionError(notify, "Failed to fetch connections", error);
     } finally {
       setLoading(false);
     }
@@ -292,7 +306,7 @@ export default function ProviderDetailPage() {
         setShowEditNodeModal(false);
       }
     } catch (error) {
-      console.log("Error updating provider node:", error);
+      actionError(notify, "Failed to update provider node", error);
     }
   };
 
@@ -322,7 +336,7 @@ export default function ProviderDetailPage() {
         body: JSON.stringify({ providerStrategies: updated }),
       });
     } catch (error) {
-      console.log("Error saving provider strategy:", error);
+      actionError(notify, "Failed to save provider strategy", error);
     }
   };
 
@@ -356,7 +370,7 @@ export default function ProviderDetailPage() {
         body: JSON.stringify({ providerThinking: updated }),
       });
     } catch (error) {
-      console.log("Error saving thinking config:", error);
+      actionError(notify, "Failed to save thinking config", error);
     }
   };
 
@@ -366,17 +380,23 @@ export default function ProviderDetailPage() {
   };
 
   useEffect(() => {
+    const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchConnections();
+    fetchConnections(controller.signal);
     fetchAliases();
     fetchDisabledModels();
-  }, [fetchConnections, fetchAliases, fetchDisabledModels]);
+    return () => controller.abort();
+  }, [fetchConnections, fetchAliases, fetchDisabledModels, providerId]);
 
   // Fetch suggested models from provider's public API (if configured)
   useEffect(() => {
     const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
     if (!fetcher) return;
-    fetchSuggestedModels(fetcher).then(setSuggestedModels);
+    let cancelled = false;
+    fetchSuggestedModels(fetcher).then((models) => {
+      if (!cancelled) setSuggestedModels(models);
+    });
+    return () => { cancelled = true; };
   }, [providerId]);
 
   const handleSetAlias = async (modelId, alias, providerAliasOverride = providerAlias) => {
@@ -391,10 +411,10 @@ export default function ProviderDetailPage() {
         await fetchAliases();
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to set alias");
+        notify.error(data.error || "Failed to set alias");
       }
     } catch (error) {
-      console.log("Error setting alias:", error);
+      actionError(notify, "Failed to set alias", error);
     }
   };
 
@@ -407,7 +427,7 @@ export default function ProviderDetailPage() {
         await fetchAliases();
       }
     } catch (error) {
-      console.log("Error deleting alias:", error);
+      actionError(notify, "Failed to delete alias", error);
     }
   };
 
@@ -515,15 +535,35 @@ export default function ProviderDetailPage() {
             setConnections(connections.filter(c => c.id !== id));
           }
         } catch (error) {
-          console.log("Error deleting connection:", error);
+          actionError(notify, "Failed to delete connection", error);
         }
       }
     });
   };
 
-  const handleOAuthSuccess = () => {
+  const handleOAuthSuccess = (mitm) => {
     fetchConnections();
-    setShowOAuthModal(false);
+    closeOAuthModal();
+
+    if (!mitm) return;
+
+    if (mitm.success) {
+      notify.success(mitm.message || "MITM proxy enabled for this IDE. Restart the IDE to apply.");
+      return;
+    }
+
+    if (mitm.reason === "cli_guide") {
+      notify.addNotification({ type: "info", message: mitm.message, duration: 8000 });
+      return;
+    }
+
+    if (mitm.reason === "needs_privilege" || mitm.reason === "setup_failed") {
+      notify.addNotification({
+        type: "warning",
+        message: mitm.message || mitm.error || "Finish MITM setup in the dashboard.",
+        duration: 8000,
+      });
+    }
   };
 
   const handleIFlowCookieSuccess = () => {
@@ -555,7 +595,7 @@ export default function ProviderDetailPage() {
 
       setAddConnectionError(data?.error || "Failed to save connection");
     } catch (error) {
-      console.log("Error saving connection:", error);
+      actionError(notify, "Failed to save connection", error);
       setAddConnectionError("Failed to save connection");
     }
   };
@@ -572,7 +612,7 @@ export default function ProviderDetailPage() {
         setShowEditModal(false);
       }
     } catch (error) {
-      console.log("Error updating connection:", error);
+      actionError(notify, "Failed to update connection", error);
     }
   };
 
@@ -587,7 +627,7 @@ export default function ProviderDetailPage() {
         setConnections(prev => prev.map(c => c.id === id ? { ...c, isActive } : c));
       }
     } catch (error) {
-      console.log("Error updating connection status:", error);
+      actionError(notify, "Failed to update connection status", error);
     }
   };
 
@@ -598,7 +638,7 @@ export default function ProviderDetailPage() {
     setConnections(newConnections);
 
     try {
-      await Promise.all([
+      const [res1, res2] = await Promise.all([
         fetch(`/api/providers/${newConnections[index1].id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -610,8 +650,11 @@ export default function ProviderDetailPage() {
           body: JSON.stringify({ priority: index2 }),
         }),
       ]);
+      if (!res1.ok || !res2.ok) {
+        throw new Error(`HTTP ${res1.status}/${res2.status}`);
+      }
     } catch (error) {
-      console.log("Error swapping priority:", error);
+      actionError(notify, "Failed to swap priority", error);
       await fetchConnections();
     }
   };
@@ -682,11 +725,11 @@ export default function ProviderDetailPage() {
           });
           if (!res.ok) failed += 1;
         } catch (e) {
-          console.log("Error applying proxy for", connectionId, e);
+          actionError(notify, `Failed to apply proxy for ${connectionId}`, e);
           failed += 1;
         }
       }
-      if (failed > 0) alert(`Updated with ${failed} failed request(s).`);
+      if (failed > 0) notify.warning(`Updated with ${failed} failed request(s).`);
       await fetchConnections();
       setShowBulkProxyModal(false);
     } finally {
@@ -702,7 +745,7 @@ export default function ProviderDetailPage() {
   const handleApplyOneToOne = () => {
     const activePools = proxyPools.filter((p) => p.isActive === true);
     if (activePools.length === 0) {
-      alert("No active proxy pools available.");
+      notify.warning("No active proxy pools available.");
       return;
     }
     const targets = connections.map((c, i) => ({
@@ -745,7 +788,7 @@ export default function ProviderDetailPage() {
                       ));
                     }
                   } catch (error) {
-                    console.log("Error updating proxy:", error);
+                    actionError(notify, "Failed to update proxy", error);
                   }
                 }}
                 onEdit={() => {
@@ -753,6 +796,11 @@ export default function ProviderDetailPage() {
                   setShowEditModal(true);
                 }}
                 onDelete={() => handleDelete(conn.id)}
+                onReconnect={
+                  isOAuth && (conn.authType === "oauth" || conn.authType == null)
+                    ? () => openOAuthConnection(conn.id)
+                    : undefined
+                }
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
             </div>
@@ -1137,7 +1185,7 @@ export default function ProviderDetailPage() {
                           router.push("/dashboard/providers");
                         }
                       } catch (error) {
-                        console.log("Error deleting provider node:", error);
+                        actionError(notify, "Failed to delete provider node", error);
                       }
                     }
                   });
@@ -1388,20 +1436,22 @@ export default function ProviderDetailPage() {
           isOpen={showOAuthModal}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={closeOAuthModal}
+          existingConnectionId={reconnectConnectionId}
         />
       ) : providerId === "cursor" ? (
         <CursorAuthModal
           isOpen={showOAuthModal}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={closeOAuthModal}
+          existingConnectionId={reconnectConnectionId}
         />
       ) : providerId === "gitlab" ? (
         <GitLabAuthModal
           isOpen={showOAuthModal}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={closeOAuthModal}
         />
       ) : (
         <OAuthModal
@@ -1409,7 +1459,7 @@ export default function ProviderDetailPage() {
           provider={providerId}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={closeOAuthModal}
         />
       )}
       {providerId === "iflow" && (

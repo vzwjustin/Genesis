@@ -45,8 +45,34 @@ function buildQwenBaseUrl(resourceUrl, fallbackBaseUrl) {
   return `https://${raw.replace(/\/$/, "")}/v1`;
 }
 
-// Detect request format from body structure
-export function detectFormat(body) {
+// Detect request format from headers, body schema, and heuristics.
+// Priority order: header presence → body field schema → heuristic fallback.
+// The optional `headers` parameter accepts a plain object of request headers
+// (keys should be lowercase or mixed-case — lookups are case-insensitive).
+export function detectFormat(body, headers) {
+  // ─── 1. Header-based detection (highest priority) ───────────────────────────
+  if (headers) {
+    // Normalize header lookup to be case-insensitive
+    const get = (name) => {
+      const lower = name.toLowerCase();
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === lower) return headers[key];
+      }
+      return undefined;
+    };
+
+    // Anthropic-Version header → Claude format
+    if (get("anthropic-version")) {
+      return "claude";
+    }
+
+    // x-goog-api-key header → Gemini format
+    if (get("x-goog-api-key")) {
+      return "gemini";
+    }
+  }
+
+  // ─── 2. Body schema detection ──────────────────────────────────────────────
   // OpenAI Responses API: has input (array or string) instead of messages[]
   // The Responses API accepts both input as array and input as a plain string
   if (body.input && (Array.isArray(body.input) || typeof body.input === "string") && !body.messages) {
@@ -114,6 +140,7 @@ export function detectFormat(body) {
       }
     }
     
+    // ─── 3. Heuristic fallback ─────────────────────────────────────────────────
     // If content is string, it's likely OpenAI (Claude also supports this)
     // Check for other Claude-specific indicators
     if (body.system !== undefined || body.anthropic_version) {

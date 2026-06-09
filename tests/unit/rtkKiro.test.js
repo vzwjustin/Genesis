@@ -67,13 +67,15 @@ describe("Kiro format RTK support", () => {
     expect(savedPercent).toBeGreaterThan(10); // At least 10% savings
   });
 
-  it("compresses tool results in Kiro conversationState.history", () => {
-    // Need >500 bytes for compression to trigger
+  it("does NOT compress tool results in Kiro conversationState.history (cache safety)", () => {
+    // History messages are already part of the provider's cached prefix — compressing
+    // them would change the content hash and bust the upstream KV cache.
     const compilingLines = [];
     for (let i = 1; i <= 20; i++) {
       compilingLines.push(`   Compiling package-${i} v1.0.${i}`);
     }
     compilingLines.push("    Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.34s");
+    const historyText = compilingLines.join("\n");
 
     const kiroBody = {
       conversationState: {
@@ -95,11 +97,7 @@ describe("Kiro format RTK support", () => {
                   {
                     toolUseId: "tool_2",
                     status: "success",
-                    content: [
-                      {
-                        text: compilingLines.join("\n")
-                      }
-                    ]
+                    content: [{ text: historyText }]
                   }
                 ]
               }
@@ -111,13 +109,17 @@ describe("Kiro format RTK support", () => {
 
     const stats = compressMessages(kiroBody, true);
 
+    // Stats are returned (function ran), but history was not touched
     expect(stats).not.toBeNull();
-    expect(stats.hits.length).toBe(1);
-    expect(stats.hits[0].filter).toBe("build-output");
-    expect(stats.bytesAfter).toBeLessThan(stats.bytesBefore);
+    expect(stats.hits.length).toBe(0);
+
+    // History text must be byte-identical after the call
+    const afterText = kiroBody.conversationState.history[0].userInputMessage
+      .userInputMessageContext.toolResults[0].content[0].text;
+    expect(afterText).toBe(historyText);
   });
 
-  it("handles multiple tool results across history and currentMessage", () => {
+  it("compresses only currentMessage tool results, not history", () => {
     // Need >500 bytes for each tool result to trigger compression
     const deprecations1 = [];
     const deprecations2 = [];
@@ -127,6 +129,8 @@ describe("Kiro format RTK support", () => {
     }
     deprecations1.push("added 50 packages in 5s");
     deprecations2.push("added 1 package in 2s");
+    const historyText = deprecations1.join("\n");
+    const currentText = deprecations2.join("\n");
 
     const kiroBody = {
       conversationState: {
@@ -141,11 +145,7 @@ describe("Kiro format RTK support", () => {
                 {
                   toolUseId: "tool_3",
                   status: "success",
-                  content: [
-                    {
-                      text: deprecations2.join("\n")
-                    }
-                  ]
+                  content: [{ text: currentText }]
                 }
               ]
             }
@@ -161,11 +161,7 @@ describe("Kiro format RTK support", () => {
                   {
                     toolUseId: "tool_4",
                     status: "success",
-                    content: [
-                      {
-                        text: deprecations1.join("\n")
-                      }
-                    ]
+                    content: [{ text: historyText }]
                   }
                 ]
               }
@@ -178,8 +174,19 @@ describe("Kiro format RTK support", () => {
     const stats = compressMessages(kiroBody, true);
 
     expect(stats).not.toBeNull();
-    expect(stats.hits.length).toBe(2); // Both tool results compressed
-    expect(stats.hits.every(h => h.filter === "build-output")).toBe(true);
+    // Only currentMessage is compressed (1 hit), history is untouched (cache safety)
+    expect(stats.hits.length).toBe(1);
+    expect(stats.hits[0].filter).toBe("build-output");
+
+    // Verify history text is byte-identical
+    const afterHistoryText = kiroBody.conversationState.history[0].userInputMessage
+      .userInputMessageContext.toolResults[0].content[0].text;
+    expect(afterHistoryText).toBe(historyText);
+
+    // Verify currentMessage text was compressed
+    const afterCurrentText = kiroBody.conversationState.currentMessage.userInputMessage
+      .userInputMessageContext.toolResults[0].content[0].text;
+    expect(afterCurrentText.length).toBeLessThan(currentText.length);
   });
 
   it("preserves error tool results without compression", () => {

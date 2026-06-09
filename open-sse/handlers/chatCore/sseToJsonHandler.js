@@ -30,19 +30,257 @@ function pickAssistantMessageForChatCompletion(output) {
   return { msgItem: last, textContent: textFromResponsesMessageItem(last) };
 }
 
+function sseTextToStream(rawSSE) {
+  const bytes = new TextEncoder().encode(String(rawSSE || ""));
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+}
+
+/**
+ * Assemble Anthropic Messages API SSE into a single message JSON object.
+ */
+export function parseSSEToClaudeResponse(rawSSE) {
+  const events = [];
+  for (const line of String(rawSSE || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      events.push(JSON.parse(payload));
+    } catch {
+      return null;
+    }
+  }
+
+  if (events.length === 0) return null;
+
+  let message = null;
+  const openBlocks = new Map();
+  let stopReason = null;
+  let stopSequence = null;
+  let usage = null;
+  let sawMessageStop = false;
+  let sawContent = false;
+  let invalidToolJson = false;
+
+  const finalizeBlock = (index) => {
+    const block = openBlocks.get(index);
+    if (!block) return;
+    if (block._partialJson) {
+      try {
+        block.input = JSON.parse(block._partialJson);
+      } catch {
+        invalidToolJson = true;
+        return;
+      }
+      delete block._partialJson;
+    }
+    if (!message) message = { type: "message", role: "assistant", content: [] };
+    message.content.push(block);
+    openBlocks.delete(index);
+    sawContent = true;
+  };
+
+  for (const ev of events) {
+    switch (ev.type) {
+      case "message_start":
+        message = { ...ev.message, content: [] };
+        break;
+      case "content_block_start": {
+        const block = { ...ev.content_block };
+        if (block.type === "text") block.text = "";
+        if (block.type === "thinking") block.thinking = "";
+        if (block.type === "tool_use") block.input = block.input || {};
+        openBlocks.set(ev.index, block);
+        break;
+      }
+      case "content_block_delta": {
+        const block = openBlocks.get(ev.index);
+        if (!block || !ev.delta) break;
+        if (ev.delta.type === "text_delta") {
+          block.text = (block.text || "") + (ev.delta.text || "");
+        } else if (ev.delta.type === "thinking_delta") {
+          block.thinking = (block.thinking || "") + (ev.delta.thinking || "");
+        } else if (ev.delta.type === "input_json_delta") {
+          block._partialJson = (block._partialJson || "") + (ev.delta.partial_json || "");
+        }
+        break;
+      }
+      case "content_block_stop":
+        finalizeBlock(ev.index);
+        break;
+      case "message_delta":
+        if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+        if (ev.delta?.stop_sequence !== undefined) stopSequence = ev.delta.stop_sequence;
+        if (ev.usage) usage = ev.usage;
+        break;
+      case "message_stop":
+        sawMessageStop = true;
+        break;
+      case "error":
+        return null;
+      default:
+        break;
+    }
+  }
+
+  if (openBlocks.size > 0) return null;
+
+  if (invalidToolJson) return null;
+  if (!message) return null;
+  if (!sawMessageStop) return null;
+
+  if (stopReason) message.stop_reason = stopReason;
+  if (stopSequence !== undefined) message.stop_sequence = stopSequence;
+  if (usage) message.usage = usage;
+  return message;
+}
+
+function unwrapGeminiStreamChunk(chunk) {
+  if (!chunk || typeof chunk !== "object") return null;
+  return chunk.response && typeof chunk.response === "object" ? chunk.response : chunk;
+}
+
+function mergeGeminiParts(existingParts, incomingParts) {
+  const parts = [...existingParts];
+  for (const part of incomingParts) {
+    if (typeof part.text === "string") {
+      const last = parts[parts.length - 1];
+      if (last && typeof last.text === "string" && !last.thought && !part.thought) {
+        last.text += part.text;
+      } else {
+        parts.push({ ...part });
+      }
+      continue;
+    }
+    if (part.functionCall) {
+      parts.push({ functionCall: { ...part.functionCall } });
+    }
+  }
+  return parts;
+}
+
+/**
+ * Assemble Gemini / Antigravity native SSE into a single JSON object.
+ */
+export function parseSSEToGeminiResponse(rawSSE, wrapInResponse = false) {
+  const chunks = [];
+  let sawTerminal = false;
+
+  for (const line of String(rawSSE || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) continue;
+    if (payload === "[DONE]") {
+      sawTerminal = true;
+      continue;
+    }
+    try {
+      chunks.push(JSON.parse(payload));
+    } catch {
+      return null;
+    }
+  }
+
+  if (chunks.length === 0) return null;
+
+  let mergedCandidate = null;
+  let usageMetadata = null;
+  let modelVersion = null;
+  let responseId = null;
+
+  for (const chunk of chunks) {
+    const body = unwrapGeminiStreamChunk(chunk);
+    if (!body) continue;
+    if (body.modelVersion) modelVersion = body.modelVersion;
+    if (body.responseId) responseId = body.responseId;
+    if (body.usageMetadata && typeof body.usageMetadata === "object") {
+      usageMetadata = { ...(usageMetadata || {}), ...body.usageMetadata };
+    }
+
+    const candidate = body.candidates?.[0];
+    if (!candidate) continue;
+    if (candidate.finishReason) sawTerminal = true;
+
+    if (!mergedCandidate) {
+      mergedCandidate = {
+        ...candidate,
+        content: candidate.content
+          ? { ...candidate.content, parts: [...(candidate.content.parts || [])] }
+          : { role: "model", parts: [] },
+      };
+      continue;
+    }
+
+    const incomingParts = candidate.content?.parts || [];
+    const existingParts = mergedCandidate.content?.parts || [];
+    mergedCandidate.content = {
+      role: mergedCandidate.content?.role || candidate.content?.role || "model",
+      parts: mergeGeminiParts(existingParts, incomingParts),
+    };
+    if (candidate.finishReason) mergedCandidate.finishReason = candidate.finishReason;
+    if (candidate.index !== undefined) mergedCandidate.index = candidate.index;
+  }
+
+  if (!mergedCandidate) return null;
+  if (!sawTerminal && !mergedCandidate.finishReason) return null;
+
+  const result = {
+    candidates: [mergedCandidate],
+    modelVersion: modelVersion || "unknown",
+    responseId: responseId || `resp_${Date.now()}`,
+  };
+  if (usageMetadata) result.usageMetadata = usageMetadata;
+
+  return wrapInResponse ? { response: result } : result;
+}
+
+/**
+ * Assemble SSE into the client's native response format for passthrough mode.
+ */
+export async function parseSSEToNativeResponse(rawSSE, sourceFormat, fallbackModel) {
+  if (sourceFormat === FORMATS.CLAUDE) {
+    return parseSSEToClaudeResponse(rawSSE);
+  }
+  if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+    const jsonResponse = await convertResponsesStreamToJson(sseTextToStream(rawSSE));
+    if (jsonResponse.status !== "completed") return null;
+    return jsonResponse;
+  }
+  if (sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {
+    return parseSSEToGeminiResponse(rawSSE, false);
+  }
+  if (sourceFormat === FORMATS.ANTIGRAVITY) {
+    return parseSSEToGeminiResponse(rawSSE, true);
+  }
+  return parseSSEToOpenAIResponse(rawSSE, fallbackModel);
+}
+
 /**
  * Parse OpenAI-style SSE text into a single chat completion JSON.
  * Used when provider forces streaming but client wants non-streaming.
  */
 export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   const chunks = [];
+  let sawTerminal = false; // [DONE] sentinel OR a finish_reason marks a complete stream
 
   for (const line of String(rawSSE || "").split("\n")) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) continue;
     const payload = trimmed.slice(5).trim();
-    if (!payload || payload === "[DONE]") continue;
-    try { chunks.push(JSON.parse(payload)); } catch { /* ignore malformed lines */ }
+    if (!payload) continue;
+    if (payload === "[DONE]") { sawTerminal = true; continue; }
+    try {
+      chunks.push(JSON.parse(payload));
+    } catch {
+      return null;
+    }
   }
 
   if (chunks.length === 0) return null;
@@ -59,7 +297,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     const delta = choice?.delta || {};
     if (typeof delta.content === "string" && delta.content.length > 0) contentParts.push(delta.content);
     if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) reasoningParts.push(delta.reasoning_content);
-    if (choice?.finish_reason) finishReason = choice.finish_reason;
+    if (choice?.finish_reason) { finishReason = choice.finish_reason; sawTerminal = true; }
     if (chunk?.usage && typeof chunk.usage === "object") usage = chunk.usage;
 
     // Accumulate tool_calls from streaming deltas
@@ -75,6 +313,12 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
         if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
       }
     }
+  }
+
+  // Fail closed: stream never signalled completion (no finish_reason, no [DONE]).
+  // Includes role-only chunks that would otherwise fabricate an empty "stop" response.
+  if (!sawTerminal && chunks.length > 0) {
+    return null;
   }
 
   const message = { role: "assistant", content: contentParts.join("") || (toolCallMap.size > 0 ? null : "") };
@@ -98,7 +342,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, passthrough }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && provider === "codex");
   if (!isSSE) return null; // not handled here
@@ -116,6 +360,13 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
   if (isCodexResponsesApi) {
     try {
       const jsonResponse = await convertResponsesStreamToJson(providerResponse.body);
+
+      // Fail closed: a stream that never reached "completed" is truncated or failed.
+      // Discard the partial assembly and return an error — never emit partial JSON as success.
+      if (jsonResponse.status !== "completed") {
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Incomplete streaming response");
+      }
+
       if (onRequestSuccess) await onRequestSuccess();
 
       const usage = jsonResponse.usage || {};
@@ -133,8 +384,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
-      // Client is Responses API → return as-is
-      if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+      // Passthrough: preserve native Responses API JSON — do not convert to chat.completion.
+      if (passthrough || sourceFormat === FORMATS.OPENAI_RESPONSES) {
         return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
       }
 
@@ -156,14 +407,16 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       const hasToolCalls = toolCalls.length > 0;
 
       if (sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {
-        finalResp = {
-          response: {
-            candidates: [{ content: { role: "model", parts: [{ text: textContent || "" }] }, finishReason: "STOP", index: 0 }],
-            usageMetadata: { promptTokenCount: inTokens, candidatesTokenCount: outTokens, totalTokenCount: inTokens + outTokens },
-            modelVersion: model,
-            responseId: jsonResponse.id || `resp_${Date.now()}`
-          }
+        const geminiBody = {
+          candidates: [{ content: { role: "model", parts: [{ text: textContent || "" }] }, finishReason: "STOP", index: 0 }],
+          usageMetadata: { promptTokenCount: inTokens, candidatesTokenCount: outTokens, totalTokenCount: inTokens + outTokens },
+          modelVersion: model,
+          responseId: jsonResponse.id || `resp_${Date.now()}`
         };
+        // Antigravity wraps in { response: ... }, plain Gemini does not
+        finalResp = sourceFormat === FORMATS.ANTIGRAVITY
+          ? { response: geminiBody }
+          : geminiBody;
       } else {
         const message = { role: "assistant", content: textContent || (hasToolCalls ? null : "") };
         if (hasToolCalls) message.tool_calls = toolCalls;
@@ -188,7 +441,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
   // Standard Chat Completions SSE path
   try {
     const sseText = await providerResponse.text();
-    const parsed = parseSSEToOpenAIResponse(sseText, model);
+    const parsed = passthrough
+      ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
+      : parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
 
     if (onRequestSuccess) await onRequestSuccess();
@@ -198,15 +453,36 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
     const totalLatency = Date.now() - requestStartTime;
+    const isClaudeNative = passthrough && sourceFormat === FORMATS.CLAUDE;
+    const textFromClaudeContent = (content) => {
+      if (!Array.isArray(content)) return null;
+      return content
+        .filter((block) => block?.type === "text" && typeof block.text === "string")
+        .map((block) => block.text)
+        .join("") || null;
+    };
+    const thinkingFromClaudeContent = (content) => {
+      if (!Array.isArray(content)) return null;
+      return content
+        .filter((block) => block?.type === "thinking" && typeof block.thinking === "string")
+        .map((block) => block.thinking)
+        .join("") || null;
+    };
     saveRequestDetail(buildRequestDetail({
       ...ctx,
       latency: { ttft: totalLatency, total: totalLatency },
       tokens: usage,
-      response: {
-        content: parsed.choices?.[0]?.message?.content || null,
-        thinking: parsed.choices?.[0]?.message?.reasoning_content || null,
-        finish_reason: parsed.choices?.[0]?.finish_reason || "unknown"
-      },
+      response: isClaudeNative
+        ? {
+            content: textFromClaudeContent(parsed.content),
+            thinking: thinkingFromClaudeContent(parsed.content),
+            finish_reason: parsed.stop_reason || "unknown",
+          }
+        : {
+            content: parsed.choices?.[0]?.message?.content || null,
+            thinking: parsed.choices?.[0]?.message?.reasoning_content || null,
+            finish_reason: parsed.choices?.[0]?.finish_reason || "unknown",
+          },
       status: "success"
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
@@ -214,7 +490,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     // When content is empty (e.g. thinking models that used all tokens for reasoning),
     // reasoning_content is the only useful output and must be preserved.
     // Previously this was unconditional, which broke Qwen3.5, Claude extended thinking, etc.
-    if (parsed?.choices) {
+    // PASSTHROUGH GUARD: In passthrough mode, preserve all provider-specific fields including reasoning_content.
+    if (!passthrough && parsed?.choices) {
       for (const choice of parsed.choices) {
         if (choice?.message?.reasoning_content && choice.message.content) {
           delete choice.message.reasoning_content;

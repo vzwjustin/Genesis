@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { oauthFetch } from "@/lib/oauth/utils/oauthFetch.js";
 
 /**
  * iFlow Cookie-Based Authentication
@@ -26,7 +27,7 @@ export async function POST(request) {
     }
 
     // Step 1: GET API key info to get the name
-    const getResponse = await fetch("https://platform.iflow.cn/api/openapi/apikey", {
+    const getResponse = await oauthFetch("https://platform.iflow.cn/api/openapi/apikey", {
       method: "GET",
       headers: {
         "Cookie": normalizedCookie,
@@ -63,7 +64,7 @@ export async function POST(request) {
     }
 
     // Step 2: POST to refresh API key
-    const postResponse = await fetch("https://platform.iflow.cn/api/openapi/apikey", {
+    const postResponse = await oauthFetch("https://platform.iflow.cn/api/openapi/apikey", {
       method: "POST",
       headers: {
         "Cookie": normalizedCookie,
@@ -132,6 +133,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("iFlow cookie auth error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to authenticate with cookie" }, { status: 500 });
   }
 }

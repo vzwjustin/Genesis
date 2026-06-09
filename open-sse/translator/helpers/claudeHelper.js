@@ -17,6 +17,77 @@ export function hasValidContent(msg) {
   return false;
 }
 
+/** True when the client already placed Anthropic cache_control breakpoints. */
+export function hasAnthropicCacheBreakpoints(body) {
+  if (!body || typeof body !== "object") return false;
+  if (Array.isArray(body.system) && body.system.some((b) => b?.cache_control)) return true;
+  if (Array.isArray(body.tools) && body.tools.some((t) => t?.cache_control)) return true;
+  if (!Array.isArray(body.messages)) return false;
+  for (const msg of body.messages) {
+    if (msg?.cache_control) return true;
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block?.cache_control) return true;
+    }
+  }
+  return false;
+}
+
+const KNOWN_TOOL_MODEL_PREFIXES = ["cc/", "anthropic/", "claude/", "openrouter/"];
+
+/** Strip one or more provider prefixes from built-in tool model names (e.g. cc/claude-opus-4-6). */
+export function stripProviderModelPrefix(model) {
+  if (typeof model !== "string" || !model.includes("/")) return model;
+  let result = model;
+  for (let i = 0; i < 8; i++) {
+    const lowered = result.toLowerCase();
+    let stripped = false;
+    for (const prefix of KNOWN_TOOL_MODEL_PREFIXES) {
+      if (lowered.startsWith(prefix)) {
+        result = result.slice(prefix.length);
+        stripped = true;
+        break;
+      }
+    }
+    if (!stripped) {
+      const slash = result.indexOf("/");
+      if (slash > 0 && slash <= 32 && !result.slice(0, slash).includes(".")) {
+        result = result.slice(slash + 1);
+        stripped = true;
+      }
+    }
+    if (!stripped) break;
+  }
+  return result;
+}
+
+/**
+ * Clean Anthropic tool definitions for upstream compatibility.
+ * Client tools: strip model and type. Built-in tools: preserve properties but strip provider prefix from model.
+ */
+export function cleanAnthropicToolDefinitions(tools, provider) {
+  if (!tools || !Array.isArray(tools)) return tools;
+
+  const isAnthropicEndpoint = provider === "claude" || provider?.startsWith("anthropic-compatible");
+  let filtered = tools;
+  if (!isAnthropicEndpoint) {
+    filtered = tools.filter((tool) => !tool.type || tool.type === "function");
+  }
+
+  return filtered.map((tool) => {
+    if (!tool.type || tool.type === "function") {
+      const { model, type, ...clientRest } = tool;
+      return { ...clientRest };
+    }
+
+    const cleanedTool = { ...tool };
+    if (typeof cleanedTool.model === "string") {
+      cleanedTool.model = stripProviderModelPrefix(cleanedTool.model);
+    }
+    return cleanedTool;
+  });
+}
+
 // Fix tool_use/tool_result ordering for Claude API
 // 1. Assistant message with tool_use: remove text AFTER tool_use (Claude doesn't allow)
 // 2. Merge consecutive same-role messages
@@ -83,7 +154,7 @@ export function fixToolUseOrdering(messages) {
 const CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG = new Set(["minimax", "minimax-cn"]);
 
 // Prepare request for Claude format endpoints
-// - Cleanup cache_control
+// - Optionally normalize cache_control (skipped when client already set breakpoints)
 // - Filter empty messages
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
@@ -95,8 +166,10 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     delete body.output_config;
   }
 
-  // 1. System: remove all cache_control, add only to last block with ttl 1h
-  if (body.system && Array.isArray(body.system)) {
+  const preserveClientCache = hasAnthropicCacheBreakpoints(body);
+
+  // 1. System: only rewrite cache_control when the client did not set breakpoints
+  if (!preserveClientCache && body.system && Array.isArray(body.system)) {
     body.system = body.system.map((block, i) => {
       const { cache_control, ...rest } = block;
       if (i === body.system.length - 1) {
@@ -115,8 +188,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     for (let i = 0; i < len; i++) {
       const msg = body.messages[i];
 
-      // Remove cache_control from content blocks
-      if (Array.isArray(msg.content)) {
+      // Remove cache_control from content blocks (only when normalizing cache ourselves)
+      if (!preserveClientCache && Array.isArray(msg.content)) {
         for (const block of msg.content) {
           delete block.cache_control;
         }
@@ -140,15 +213,13 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     const lastMessageIsUser = lastMessage?.role === "user";
     const thinkingEnabled = body.thinking?.type === "enabled" && lastMessageIsUser;
 
-    // Pass 2 (reverse): add cache_control to last assistant + handle thinking for Anthropic
+    // Pass 2 (reverse): optional cache_control on last assistant + thinking for Anthropic
     let lastAssistantProcessed = false;
     for (let i = filtered.length - 1; i >= 0; i--) {
       const msg = filtered[i];
 
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        // Add cache_control to last non-thinking block of first (from end) assistant with content
-        // thinking/redacted_thinking blocks do not support cache_control
-        if (!lastAssistantProcessed && msg.content.length > 0) {
+        if (!preserveClientCache && !lastAssistantProcessed && msg.content.length > 0) {
           for (let j = msg.content.length - 1; j >= 0; j--) {
             const block = msg.content[j];
             if (block.type !== "thinking" && block.type !== "redacted_thinking") {
@@ -188,30 +259,15 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
   // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
   if (body.tools && Array.isArray(body.tools)) {
-    // Strip built-in tools (e.g. web_search_20250305) for providers that don't support them
-    if (provider !== "claude") {
-      body.tools = body.tools.filter(tool => !tool.type || tool.type === "function");
-    }
-
-    body.tools = body.tools.map((tool, i) => {
-      const { cache_control, ...rest } = tool;
-      let cleanedTool;
-      if (!tool.type || tool.type === "function") {
-        // Client tools — strip model and type
-        const { model, type, ...clientRest } = rest;
-        cleanedTool = { ...clientRest };
-      } else {
-        // Built-in tools — preserve all properties, but strip provider prefix from model
-        cleanedTool = { ...rest };
-        if (typeof cleanedTool.model === "string" && cleanedTool.model.includes("/")) {
-          cleanedTool.model = cleanedTool.model.slice(cleanedTool.model.indexOf("/") + 1);
+    body.tools = cleanAnthropicToolDefinitions(body.tools, provider);
+    if (!preserveClientCache) {
+      body.tools = body.tools.map((tool, i) => {
+        if (i === body.tools.length - 1) {
+          return { ...tool, cache_control: { type: "ephemeral", ttl: "1h" } };
         }
-      }
-      if (i === body.tools.length - 1) {
-        return { ...cleanedTool, cache_control: { type: "ephemeral", ttl: "1h" } };
-      }
-      return cleanedTool;
-    });
+        return tool;
+      });
+    }
 
     // Remove tools array and tool_choice if empty after filtering
     if (body.tools.length === 0) {

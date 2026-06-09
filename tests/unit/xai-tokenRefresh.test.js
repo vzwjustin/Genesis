@@ -31,7 +31,7 @@ describe("xai/token-refresh wrapper", () => {
     vi.resetModules();
     vi.doMock("../../src/lib/oauth/services/xai.js", () => ({
       XaiService: class {
-        async refreshAccessToken(refreshToken) {
+        async refreshAccessToken(refreshToken, _proxyOptions = null) {
           return {
             access_token: "new-access",
             refresh_token: `${refreshToken}-rotated`,

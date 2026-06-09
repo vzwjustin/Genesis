@@ -1,6 +1,7 @@
 import { OAuthService } from "./oauth.js";
 import { GITHUB_CONFIG } from "../constants/oauth.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * GitHub Copilot OAuth Service
@@ -15,7 +16,7 @@ export class GitHubService extends OAuthService {
    * Get device code for GitHub authentication
    */
   async getDeviceCode() {
-    const response = await fetch(`${GITHUB_CONFIG.deviceCodeUrl}`, {
+    const response = await oauthFetch(`${GITHUB_CONFIG.deviceCodeUrl}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -57,7 +58,7 @@ export class GitHubService extends OAuthService {
     while (true) {
       await new Promise(resolve => setTimeout(resolve, interval));
 
-      const response = await fetch(`${GITHUB_CONFIG.tokenUrl}`, {
+      const response = await oauthFetch(`${GITHUB_CONFIG.tokenUrl}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -103,7 +104,7 @@ export class GitHubService extends OAuthService {
    * Get Copilot token using GitHub access token
    */
   async getCopilotToken(accessToken) {
-    const response = await fetch(`${GITHUB_CONFIG.copilotTokenUrl}`, {
+    const response = await oauthFetch(`${GITHUB_CONFIG.copilotTokenUrl}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`, // GitHub API typically uses Bearer
         Accept: "application/json",
@@ -124,7 +125,7 @@ export class GitHubService extends OAuthService {
    * Get user info using GitHub access token
    */
   async getUserInfo(accessToken) {
-    const response = await fetch(`${GITHUB_CONFIG.userInfoUrl}`, {
+    const response = await oauthFetch(`${GITHUB_CONFIG.userInfoUrl}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`, // GitHub API typically uses Bearer
         Accept: "application/json",
@@ -194,7 +195,7 @@ export class GitHubService extends OAuthService {
       const { server, token, userId } = await import("../config/index.js").then(m => m.getServerCredentials());
       const spinner = (await import("../utils/ui.js")).spinner("Connecting to server...").start();
       
-      const response = await fetch(`${server}/api/cli/providers/github`, {
+      const response = await oauthFetch(`${server}/api/cli/providers/github`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

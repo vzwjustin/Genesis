@@ -13,7 +13,7 @@ import { ConfirmModal } from "./Modal";
 import SidebarSecurityHint from "./SidebarSecurityHint";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
-const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
+const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
@@ -40,6 +40,7 @@ const navItems = [
   { href: "/dashboard/endpoint", label: "Endpoint", icon: "api" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
+  { href: "/dashboard/caching", label: "Caching", icon: "cached" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
@@ -54,6 +55,7 @@ const debugItems = [
 
 const systemItems = [
   { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
+  { href: "/dashboard/pricing", label: "Pricing", icon: "payments" },
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
 ];
 
@@ -203,13 +205,13 @@ export default function Sidebar({ onClose }) {
           </Link>
           {(updateInfo || releases.length > 0) && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
-              <span className="text-xs font-semibold text-success dark:text-warning">
+              <span className="text-xs font-semibold text-warning">
                 {updateInfo ? `↑ New version available: v${updateInfo.latestVersion}` : "Release history available"}
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowUpdateModal(true)}
-                  className="px-2 py-1 rounded bg-success hover:bg-success/90 dark:bg-warning dark:hover:bg-warning/90 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                  className="px-2 py-1 rounded bg-warning hover:bg-warning/90 text-white text-[11px] font-semibold transition-colors cursor-pointer"
                 >
                   Versions
                 </button>
@@ -218,7 +220,7 @@ export default function Sidebar({ onClose }) {
                   title="Copy install command"
                   className="flex-1 text-left hover:opacity-80 transition-opacity cursor-pointer min-w-0"
                 >
-                  <code className="block text-[10px] text-green-600/80 dark:text-amber-400/70 font-mono truncate">
+                  <code className="block text-[10px] text-text-muted font-mono truncate">
                     {copied ? "✓ copied!" : selectedInstallCmd}
                   </code>
                 </button>

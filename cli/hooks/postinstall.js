@@ -20,13 +20,16 @@ try {
   console.warn(`[9router] tray runtime skipped: ${e.message}`);
 }
 
-// Optional: headroom-ai for ML context compression (60-95% token reduction).
-// Not auto-installed — enable when ready: npm install -g headroom-ai && headroom proxy
+// Optional Headroom ML compression (local Python proxy or Headroom Cloud API key).
 try {
   execSync("headroom --version", { stdio: "ignore" });
-  console.log("[9router] headroom-ai detected — run `headroom proxy` to activate ML compression");
+  console.log("[9router] headroom CLI detected — proxy auto-starts when 9router runs");
 } catch {
-  console.log("[9router] tip: `npm install -g headroom-ai && headroom proxy` for ML context compression");
+  if (process.env.HEADROOM_API_KEY) {
+    console.log("[9router] HEADROOM_API_KEY set — Headroom Cloud compression available");
+  } else {
+    console.log("[9router] tip: pipx install \"headroom-ai[proxy]\" for auto-start ML compression — or set HEADROOM_API_KEY for cloud");
+  }
 }
 
 process.exit(0);

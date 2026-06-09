@@ -3,8 +3,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
+import InlineAlert from "@/shared/components/InlineAlert";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { isTrustedOAuthMessageOrigin } from "@/shared/utils/oauthOrigin";
+
+async function postOAuthProxyAction(provider, action, body = {}) {
+  const res = await fetch(`/api/oauth/${provider}/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
 
 /**
  * OAuth Modal Component
@@ -239,13 +249,12 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       let codexServerSide = false;
       if (provider === "codex") {
         try {
-          const proxyUrl = new URL(`/api/oauth/codex/start-proxy`, window.location.origin);
-          proxyUrl.searchParams.set("app_port", appPort);
-          proxyUrl.searchParams.set("state", data.state);
-          proxyUrl.searchParams.set("code_verifier", data.codeVerifier);
-          proxyUrl.searchParams.set("redirect_uri", redirectUri);
-          const proxyRes = await fetch(proxyUrl.toString());
-          const proxyData = await proxyRes.json();
+          const proxyData = await postOAuthProxyAction("codex", "start-proxy", {
+            appPort,
+            state: data.state,
+            codeVerifier: data.codeVerifier,
+            redirectUri,
+          });
           codexProxyActive = proxyData.success;
           codexServerSide = !!proxyData.serverSide;
         } catch {
@@ -258,13 +267,12 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       let xaiServerSide = false;
       if (provider === "xai") {
         try {
-          const proxyUrl = new URL(`/api/oauth/xai/start-proxy`, window.location.origin);
-          proxyUrl.searchParams.set("app_port", appPort);
-          proxyUrl.searchParams.set("state", data.state);
-          proxyUrl.searchParams.set("code_verifier", data.codeVerifier);
-          proxyUrl.searchParams.set("redirect_uri", redirectUri);
-          const proxyRes = await fetch(proxyUrl.toString());
-          const proxyData = await proxyRes.json();
+          const proxyData = await postOAuthProxyAction("xai", "start-proxy", {
+            appPort,
+            state: data.state,
+            codeVerifier: data.codeVerifier,
+            redirectUri,
+          });
           xaiProxyActive = proxyData.success;
           xaiServerSide = !!proxyData.serverSide;
           if (!xaiProxyActive && proxyData.reason === "port_busy") {
@@ -325,9 +333,9 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       // Abort polling and cleanup proxy when modal closes
       pollingAbortRef.current = true;
       if (provider === "codex") {
-        fetch("/api/oauth/codex/stop-proxy").catch(() => {});
+        postOAuthProxyAction("codex", "stop-proxy").catch(() => {});
       } else if (provider === "xai") {
-        fetch("/api/oauth/xai/stop-proxy").catch(() => {});
+        postOAuthProxyAction("xai", "stop-proxy").catch(() => {});
       }
     }
   }, [isOpen, provider, startOAuthFlow]);
@@ -507,9 +515,9 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   // Clear session on modal close + cleanup proxy
   const handleClose = useCallback(() => {
     if (provider === "codex") {
-      fetch("/api/oauth/codex/stop-proxy").catch(() => {});
+      postOAuthProxyAction("codex", "stop-proxy").catch(() => {});
     } else if (provider === "xai") {
-      fetch("/api/oauth/xai/stop-proxy").catch(() => {});
+      postOAuthProxyAction("xai", "stop-proxy").catch(() => {});
     }
     onClose();
   }, [onClose, provider]);
@@ -525,6 +533,12 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   return (
     <Modal isOpen={isOpen} title={modalTitle} onClose={handleClose} size="lg">
       <div className="flex flex-col gap-4">
+        {!isLocalhost && (step === "waiting" || step === "input") && (
+          <InlineAlert
+            variant="info"
+            message="Remote dashboard detected — popup OAuth may be blocked. Use the manual callback URL flow below (copy auth URL, authorize, paste callback)."
+          />
+        )}
         {/* Waiting + Manual Input combined (non-device-code) */}
         {(step === "waiting" || step === "input") && !isDeviceCode && (
           <>

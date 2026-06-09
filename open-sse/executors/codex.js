@@ -7,6 +7,8 @@ import { fetchImageAsBase64 } from "../translator/helpers/imageHelper.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import { getConsistentMachineId } from "../../src/shared/utils/machineId.js";
 import { DEFAULT_RETRY_CONFIG, resolveRetryEntry } from "../config/runtimeConfig.js";
+import { OAUTH_ENDPOINTS } from "../config/appConstants.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 
 // SSE error patterns inside 200-OK body that should trigger retry as if 503
@@ -222,7 +224,7 @@ export class CodexExecutor extends BaseExecutor {
    * Runs before execute() because Codex backend cannot fetch remote images.
    * Mutates body.input in place.
    */
-  async prefetchImages(body) {
+  async prefetchImages(body, proxyOptions = null) {
     if (!Array.isArray(body?.input)) return;
     for (const item of body.input) {
       if (!Array.isArray(item.content)) continue;
@@ -232,10 +234,37 @@ export class CodexExecutor extends BaseExecutor {
         const detail = c.image_url?.detail || "auto";
         if (!url) return c;
         if (url.startsWith("data:")) return { type: "input_image", image_url: url, detail };
-        const fetched = await fetchImageAsBase64(url, { timeoutMs: 15000 });
+        const fetched = await fetchImageAsBase64(url, { timeoutMs: 15000, proxyOptions });
         return { type: "input_image", image_url: fetched?.url || url, detail };
       });
       item.content = await Promise.all(pending);
+    }
+  }
+
+  async refreshCredentials(credentials, log, proxyOptions = null) {
+    if (!credentials?.refreshToken) return null;
+    try {
+      const response = await proxyAwareFetch(OAUTH_ENDPOINTS.openai.token, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: credentials.refreshToken,
+          client_id: PROVIDERS.codex.clientId,
+          scope: "openid profile email offline_access",
+        }),
+      }, proxyOptions);
+      if (!response.ok) return null;
+      const tokens = await response.json();
+      log?.info?.("TOKEN", "codex refreshed");
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || credentials.refreshToken,
+        expiresIn: tokens.expires_in,
+      };
+    } catch (error) {
+      log?.error?.("TOKEN", `codex refresh error: ${error.message}`);
+      return null;
     }
   }
 
@@ -243,12 +272,11 @@ export class CodexExecutor extends BaseExecutor {
     const imgCount = Array.isArray(args.body?.input) ? args.body.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter(c => c.type === "image_url").length : 0), 0) : 0;
     const inputLen = Array.isArray(args.body?.input) ? args.body.input.length : 0;
     dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount} | sessionId=${this._currentSessionId || "pending"}`);
-    if (imgCount > 0) {
-      const t0 = Date.now();
-      await this.prefetchImages(args.body);
-      dbg("CODEX", `prefetchImages done | ${Date.now() - t0}ms`);
-    } else {
-      await this.prefetchImages(args.body);
+    // Remote image inlining is required even in passthrough — Codex upstream cannot fetch URLs.
+    if (!args.passthrough || imgCount > 0) {
+      const t0 = imgCount > 0 ? Date.now() : null;
+      await this.prefetchImages(args.body, args.proxyOptions);
+      if (t0 != null) dbg("CODEX", `prefetchImages done | ${Date.now() - t0}ms`);
     }
 
     // Retry loop for SSE-level overloaded errors (200 OK body contains event: error)

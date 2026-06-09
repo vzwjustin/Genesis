@@ -1,29 +1,9 @@
-import https from "https";
 import pkg from "../../../../package.json" with { type: "json" };
+import { fetchGitHubReleases } from "@/lib/githubReleases.js";
 
-const NPM_PACKAGE_NAME = "9router";
-
-// Fetch latest version from npm registry
-function fetchLatestVersion() {
-  return new Promise((resolve) => {
-    const req = https.get(
-      `https://registry.npmjs.org/${NPM_PACKAGE_NAME}/latest`,
-      { timeout: 4000 },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data).version || null);
-          } catch {
-            resolve(null);
-          }
-        });
-      }
-    );
-    req.on("error", () => resolve(null));
-    req.on("timeout", () => { req.destroy(); resolve(null); });
-  });
+function normalizeVersion(tagName) {
+  const version = String(tagName || "").trim().replace(/^v/i, "");
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) ? version : null;
 }
 
 function compareVersions(a, b) {
@@ -64,9 +44,25 @@ function compareVersions(a, b) {
 }
 
 export async function GET() {
-  const latestVersion = await fetchLatestVersion();
+  const result = await fetchGitHubReleases({ timeoutMs: 4000 });
+  let latestVersion = null;
+  if (result.ok || result.stale) {
+    for (const release of result.releases || []) {
+      if (release?.draft) continue;
+      const version = normalizeVersion(release.tag_name);
+      if (version) {
+        latestVersion = version;
+        break;
+      }
+    }
+  }
   const currentVersion = pkg.version;
   const hasUpdate = latestVersion ? compareVersions(latestVersion, currentVersion) > 0 : false;
 
-  return Response.json({ currentVersion, latestVersion, hasUpdate });
+  return Response.json({
+    currentVersion,
+    latestVersion,
+    hasUpdate,
+    ...(result.stale ? { stale: true, warning: result.error } : {}),
+  });
 }

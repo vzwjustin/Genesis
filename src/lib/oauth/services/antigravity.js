@@ -4,6 +4,7 @@ import { ANTIGRAVITY_CONFIG, getOAuthClientMetadata } from "../constants/oauth.j
 import { getServerCredentials } from "../config/index.js";
 import { startLocalServer } from "../utils/server.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import { oauthFetch } from "../utils/oauthFetch.js";
 
 /**
  * Antigravity OAuth Service
@@ -35,7 +36,7 @@ export class AntigravityService {
    * Exchange authorization code for tokens
    */
   async exchangeCode(code, redirectUri) {
-    const response = await fetch(this.config.tokenUrl, {
+    const response = await oauthFetch(this.config.tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -62,7 +63,7 @@ export class AntigravityService {
    * Get user info from Google
    */
   async getUserInfo(accessToken) {
-    const response = await fetch(`${this.config.userInfoUrl}?alt=json`, {
+    const response = await oauthFetch(`${this.config.userInfoUrl}?alt=json`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
@@ -102,7 +103,7 @@ export class AntigravityService {
    * Fetch Project ID and Tier from loadCodeAssist API
    */
   async loadCodeAssist(accessToken) {
-    const response = await fetch(this.config.loadCodeAssistEndpoint, {
+    const response = await oauthFetch(this.config.loadCodeAssistEndpoint, {
       method: "POST",
       headers: this.getApiHeaders(accessToken),
       body: JSON.stringify({ metadata: this.getMetadata() }),
@@ -139,7 +140,7 @@ export class AntigravityService {
    * Onboard user to enable Gemini Code Assist for the project
    */
   async onboardUser(accessToken, projectId, tierId) {
-    const response = await fetch(this.config.onboardUserEndpoint, {
+    const response = await oauthFetch(this.config.onboardUserEndpoint, {
       method: "POST",
       headers: this.getApiHeaders(accessToken),
       body: JSON.stringify({ tierId, metadata: this.getMetadata() }),
@@ -198,7 +199,7 @@ export class AntigravityService {
   async saveTokens(tokens, userInfo, projectId) {
     const { server, token, userId } = getServerCredentials();
 
-    const response = await fetch(`${server}/api/cli/providers/antigravity`, {
+    const response = await oauthFetch(`${server}/api/cli/providers/antigravity`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

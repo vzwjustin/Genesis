@@ -1,12 +1,14 @@
+import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { internalApiGet } from "@/lib/internalApi.js";
 
-// Provider → internal voices API. Edge/local-device share the generic endpoint.
+// Provider → internal voices API path (loopback via internalApiGet).
 const PROVIDER_API = {
-  elevenlabs: (origin) => `${origin}/api/media-providers/tts/elevenlabs/voices`,
-  deepgram: (origin) => `${origin}/api/media-providers/tts/deepgram/voices`,
-  inworld: (origin) => `${origin}/api/media-providers/tts/inworld/voices`,
-  "edge-tts": (origin) => `${origin}/api/media-providers/tts/voices?provider=edge-tts`,
-  "local-device": (origin) => `${origin}/api/media-providers/tts/voices?provider=local-device`,
+  elevenlabs: "/api/media-providers/tts/elevenlabs/voices",
+  deepgram: "/api/media-providers/tts/deepgram/voices",
+  inworld: "/api/media-providers/tts/inworld/voices",
+  "edge-tts": "/api/media-providers/tts/voices?provider=edge-tts",
+  "local-device": "/api/media-providers/tts/voices?provider=local-device",
 };
 
 export async function OPTIONS() {
@@ -18,8 +20,11 @@ export async function OPTIONS() {
 // GET /v1/audio/voices?provider={p}[&lang=xx]
 // Returns OpenAI-style list with each voice's full model id ready for /v1/audio/speech
 export async function GET(request) {
+  const routeAuth = await requireRouteAuth(request);
+  if (!routeAuth.ok) return routeAuth.response;
+
   try {
-    const { searchParams, origin } = new URL(request.url);
+    const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider");
     const lang = searchParams.get("lang");
 
@@ -30,10 +35,20 @@ export async function GET(request) {
       );
     }
 
-    const baseUrl = PROVIDER_API[provider](origin);
-    const url = lang ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}lang=${encodeURIComponent(lang)}` : baseUrl;
-    const res = await fetch(url, { cache: "no-store" });
-    const data = await res.json();
+    const basePath = PROVIDER_API[provider];
+    const path = lang
+      ? `${basePath}${basePath.includes("?") ? "&" : "?"}lang=${encodeURIComponent(lang)}`
+      : basePath;
+    const res = await internalApiGet(path, { cache: "no-store" });
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      return Response.json(
+        { error: { message: "Invalid JSON from voices upstream", type: "server_error" } },
+        { status: 502, headers: { "Access-Control-Allow-Origin": "*" } },
+      );
+    }
     if (!res.ok || data.error) {
       return Response.json(
         { error: { message: data.error || `Upstream ${res.status}`, type: "server_error" } },

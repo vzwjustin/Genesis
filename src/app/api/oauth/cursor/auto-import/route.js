@@ -56,8 +56,12 @@ function getCandidatePaths(platform) {
     ];
   }
 
-  // Linux and other Unix-like platforms share the XDG config layout.
-  if (platform !== "darwin" && platform !== "win32") {
+  if (
+    platform === "linux"
+    || platform === "freebsd"
+    || platform === "openbsd"
+    || platform === "netbsd"
+  ) {
     return [join(home, ".config/Cursor/User/globalStorage/state.vscdb")];
   }
 

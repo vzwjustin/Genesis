@@ -9,7 +9,8 @@ import {
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { FORMATS } from "../translator/formats.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, shouldBypassMitmDns } from "../utils/proxyFetch.js";
+import { stripRedactedToolCalls, extractRedactedToolCalls } from "../utils/composerRedactedTools.js";
 import zlib from "zlib";
 
 // Detect cloud environment
@@ -52,6 +53,43 @@ function visibleComposerContentFromThinking(thinking) {
   const endIdx = thinking.lastIndexOf(endTag);
   if (endIdx < 0) return "";
   return thinking.slice(endIdx + endTag.length).trimStart();
+}
+
+function emitRedactedToolCallChunks(chunks, responseId, created, model, sourceText, toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds) {
+  for (const tc of extractRedactedToolCalls(sourceText)) {
+    const id = `call_redacted_${Date.now()}_${toolCalls.length}`;
+    const toolCallIndex = toolCalls.length;
+    const entry = {
+      id,
+      type: "function",
+      index: toolCallIndex,
+      function: { name: tc.name, arguments: tc.arguments },
+    };
+    toolCalls.push(entry);
+    toolCallsMap.set(id, entry);
+    finalizedIds.add(id);
+    emittedToolCallIds.add(id);
+    chunks.push(
+      `data: ${JSON.stringify({
+        id: responseId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [{
+              index: toolCallIndex,
+              id,
+              type: "function",
+              function: { name: tc.name, arguments: tc.arguments },
+            }],
+          },
+          finish_reason: null,
+        }],
+      })}\n\n`
+    );
+  }
 }
 
 function decompressPayload(payload, flags) {
@@ -225,30 +263,64 @@ export class CursorExecutor extends BaseExecutor {
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
     const url = this.buildUrl();
     const headers = this.buildHeaders(credentials);
-    const transformedBody = this.transformRequest(model, body, stream, credentials);
+    // Passthrough (passthru) mode: body should already be provider-native (protobuf Buffer).
+    // If it's not a Buffer (e.g. a plain JSON object was forwarded), encode it as protobuf so
+    // the upstream never receives an invalid request shape.
+    let transformedBody;
+    if (passthrough) {
+      transformedBody = Buffer.isBuffer(body) ? body : this.transformRequest(model, body, stream, credentials);
+    } else {
+      transformedBody = this.transformRequest(model, body, stream, credentials);
+    }
 
     try {
-      const shouldForceFetch = proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true || !!proxyOptions?.vercelRelayUrl;
+      const shouldForceFetch = proxyOptions?.enabled === true
+        || proxyOptions?.connectionProxyEnabled === true
+        || !!proxyOptions?.vercelRelayUrl
+        || shouldBypassMitmDns(url);
       const response = (http2 && !shouldForceFetch)
         ? await this.makeHttp2Request(url, headers, transformedBody, signal)
         : await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
+      const status = Number(response.status);
 
-      if (response.status !== 200) {
+      if (status !== 200) {
+        if (passthrough) {
+          const contentType = response.headers?.["content-type"]
+            || response.headers?.get?.("content-type")
+            || "application/octet-stream";
+          return {
+            response: new Response(response.body, { status, headers: { "Content-Type": contentType } }),
+            url,
+            headers,
+            transformedBody: body,
+          };
+        }
+
         const errorText = response.body?.toString() || "Unknown error";
         const errorResponse = new Response(JSON.stringify({
           error: {
-            message: `[${response.status}]: ${errorText}`,
+            message: `[${status}]: ${errorText}`,
             type: "invalid_request_error",
             code: ""
           }
         }), {
-          status: response.status,
+          status,
           headers: { "Content-Type": "application/json" }
         });
         return { response: errorResponse, url, headers, transformedBody: body };
+      }
+
+      // Passthrough mode: return raw upstream bytes without any protobuf→SSE/JSON conversion.
+      // The caller is expected to handle the provider-native binary response directly.
+      if (passthrough) {
+        const rawResponse = new Response(response.body, {
+          status: 200,
+          headers: { "Content-Type": "application/octet-stream" }
+        });
+        return { response: rawResponse, url, headers, transformedBody: body };
       }
 
       const transformedResponse = stream !== false
@@ -562,9 +634,10 @@ export class CursorExecutor extends BaseExecutor {
         if (toolCallsMap.has(tc.id)) {
           // Accumulate arguments for existing tool call
           const existing = toolCallsMap.get(tc.id);
-          const oldArgsLen = existing.function.arguments.length;
           existing.function.arguments += tc.function.arguments;
           existing.isLast = tc.isLast;
+          // Mark finalized once isLast=true is received for this tool call.
+          if (tc.isLast) finalizedIds.add(tc.id);
 
           // Stream the delta arguments
           if (tc.function.arguments) {
@@ -598,9 +671,12 @@ export class CursorExecutor extends BaseExecutor {
             );
           }
         } else {
-          // New tool call - assign index and add to map
+          // New tool call - assign index and add to map.
+          // Only mark finalizedIds when isLast=true arrives (may be this first frame or
+          // a later delta frame). The sweep at the end handles streams that terminate
+          // before isLast is received, without double-pushing to toolCalls.
           const toolCallIndex = toolCalls.length;
-          finalizedIds.add(tc.id);
+          if (tc.isLast) finalizedIds.add(tc.id);
           toolCalls.push({ ...tc, index: toolCallIndex });
           toolCallsMap.set(tc.id, { ...tc, index: toolCallIndex });
 
@@ -637,25 +713,32 @@ export class CursorExecutor extends BaseExecutor {
       }
 
       if (result.text) {
-        totalContent += result.text;
-        chunks.push(
-          `data: ${JSON.stringify({
-            id: responseId,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [
-              {
-                index: 0,
-                delta:
-                  chunks.length === 0 && toolCalls.length === 0
-                    ? { role: "assistant", content: result.text }
-                    : { content: result.text },
-                finish_reason: null
-              }
-            ]
-          })}\n\n`
+        emitRedactedToolCallChunks(
+          chunks, responseId, created, model, result.text,
+          toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
         );
+        const cleanText = stripRedactedToolCalls(result.text);
+        if (cleanText) {
+          totalContent += cleanText;
+          chunks.push(
+            `data: ${JSON.stringify({
+              id: responseId,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta:
+                    chunks.length === 0 && toolCalls.length === 0
+                      ? { role: "assistant", content: cleanText }
+                      : { content: cleanText },
+                  finish_reason: null
+                }
+              ]
+            })}\n\n`
+          );
+        }
       }
 
       if (isComposerModel(model) && result.thinking) {
@@ -691,23 +774,24 @@ export class CursorExecutor extends BaseExecutor {
       `[CURSOR BUFFER SSE] Parsed ${frameCount} frames, toolCallsMap size: ${toolCallsMap.size}, toolCalls array: ${toolCalls.length}`
     );
 
-    // Finalize all remaining tool calls in map (stream may have ended without isLast=true)
+    // Finalize remaining tool calls where isLast=true never arrived (stream terminated early).
+    // Tool calls already pushed to toolCalls on first encounter must not be pushed again.
     for (const [id, tc] of toolCallsMap.entries()) {
       if (!finalizedIds.has(id)) {
         debugLog(`[CURSOR BUFFER SSE] Finalizing incomplete tool call: ${id}, isLast=${tc.isLast}`);
-        const toolCallIndex = toolCalls.length;
-        toolCalls.push({
-          id: tc.id,
-          type: tc.type,
-          index: toolCallIndex,
-          function: {
-            name: tc.function.name,
-            arguments: tc.function.arguments
-          }
-        });
-
-        // Emit SSE chunk for the finalized tool call if not already emitted
-        if (!emittedToolCallIds.has(tc.id)) {
+        if (!emittedToolCallIds.has(id)) {
+          // Rare: tool call entered map but never had a streaming chunk emitted.
+          // Push and emit now so it appears in the response.
+          const toolCallIndex = toolCalls.length;
+          toolCalls.push({
+            id: tc.id,
+            type: tc.type,
+            index: toolCallIndex,
+            function: {
+              name: tc.function.name,
+              arguments: tc.function.arguments
+            }
+          });
           chunks.push(
             `data: ${JSON.stringify({
               id: responseId,
@@ -736,6 +820,8 @@ export class CursorExecutor extends BaseExecutor {
             })}\n\n`
           );
         }
+        // else: already in toolCalls + streamed; isLast just never arrived.
+        // All accumulated arg deltas were already sent to the client.
       }
     }
 
@@ -788,6 +874,11 @@ export class CursorExecutor extends BaseExecutor {
   }
 
   async refreshCredentials() {
+    // Cursor OAuth tokens are long-lived and are managed exclusively by the Cursor
+    // application. Programmatic refresh is not supported via the API. If a 401/403 is
+    // returned, the user must re-authenticate through the Cursor application.
+    // Returning null lets the base chatCore flow log a "refresh failed" warning and
+    // continue — no retry attempt is made.
     return null;
   }
 }

@@ -13,11 +13,11 @@ export default defineConfig({
     silent: false,
   },
   resolve: {
-    alias: {
+    alias: [
       // Resolve open-sse/* imports to the actual local package
-      "open-sse": resolve(__dirname, "../open-sse"),
+      { find: /^open-sse(.*)$/, replacement: resolve(__dirname, "../open-sse$1") },
       // Resolve @/* imports to src directory
-      "@": resolve(__dirname, "../src"),
-    },
+      { find: /^@\/(.*)$/, replacement: resolve(__dirname, "../src/$1") },
+    ],
   },
 });

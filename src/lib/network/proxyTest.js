@@ -1,4 +1,5 @@
 import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
 
 const DEFAULT_TEST_URL = "https://google.com/";
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -32,6 +33,11 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
   }
 
   const normalizedTestUrl = normalizeString(testUrl) || DEFAULT_TEST_URL;
+  try {
+    assertSafeFetchUrl(normalizedTestUrl, { requireHttps: false, allowHttp: true });
+  } catch (err) {
+    return { ok: false, status: 400, error: err.message || "Invalid test URL" };
+  }
   const timeoutMsRaw = Number(timeoutMs);
   const normalizedTimeoutMs =
     Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0

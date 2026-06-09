@@ -42,7 +42,10 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
-    const projectId = credentials?.projectId || this.generateProjectId();
+    const projectId = credentials?.projectId;
+    if (!projectId) {
+      throw new Error("Antigravity: credentials.projectId is required but was not provided");
+    }
 
     // Fix contents for Claude models via Antigravity
     const contents = body.request?.contents?.map(c => {
@@ -80,7 +83,7 @@ export class AntigravityExecutor extends BaseExecutor {
       tools = allDeclarations.length > 0 ? [{ functionDeclarations: allDeclarations }] : [];
     }
 
-    const { tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
+    const { tools: _originalTools, toolConfig: clientToolConfig, safetySettings: clientSafetySettings, ...requestWithoutTools } = body.request || {};
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
     if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
@@ -92,8 +95,12 @@ export class AntigravityExecutor extends BaseExecutor {
       ...(contents && { contents }),
       ...(tools && { tools }),
       sessionId: body.request?.sessionId || deriveSessionId(credentials?.email || credentials?.connectionId),
-      safetySettings: undefined,
-      ...(tools?.length > 0 && { toolConfig: { functionCallingConfig: { mode: "VALIDATED" } } })
+      // Preserve client safetySettings when provided; omit otherwise (undefined is excluded by spread)
+      ...(clientSafetySettings !== undefined ? { safetySettings: clientSafetySettings } : {}),
+      // When tools are present use VALIDATED mode; otherwise preserve client toolConfig if provided
+      ...(tools?.length > 0
+        ? { toolConfig: { functionCallingConfig: { mode: "VALIDATED" } } }
+        : (clientToolConfig !== undefined ? { toolConfig: clientToolConfig } : {}))
     };
 
     return {
@@ -196,7 +203,7 @@ export class AntigravityExecutor extends BaseExecutor {
     return totalMs > 0 ? totalMs : null;
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
@@ -207,7 +214,9 @@ export class AntigravityExecutor extends BaseExecutor {
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex);
-      const transformedBody = this.transformRequest(model, body, stream, credentials);
+      // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
+      // Only model name + auth header are swapped (Requirement 1.2).
+      const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
       const sessionId = transformedBody.request?.sessionId;
       const headers = this.buildHeaders(credentials, stream, sessionId);
 

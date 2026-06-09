@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
-// Fetch with timeout wrapper
-const fetchWithTimeout = (url, options, timeout = 10000) => {
-  return Promise.race([
-    fetch(url, options),
-    new Promise((_, reject) => 
-      setTimeout(() => reject(new Error("Request timeout")), timeout)
-    )
-  ]);
-};
+async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await proxyAwareFetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-// Validate URL format
+// Validate URL format and block embedded credentials
 const isValidUrl = (url) => {
   try {
-    new URL(url);
+    const parsed = new URL(url);
+    if (parsed.username || parsed.password) return false;
     return true;
   } catch {
     return false;

@@ -7,6 +7,7 @@ import {
   pollForToken 
 } from "@/lib/oauth/providers";
 import { createProviderConnection } from "@/models";
+import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
 import {
   startCodexProxy,
   stopCodexProxy,
@@ -18,26 +19,11 @@ import {
   registerXaiSession,
   getXaiSessionStatus,
   clearXaiSession,
-  isAllowedAppPort,
 } from "@/lib/oauth/utils/server";
 
 // Upstream OAuth provider errors can embed raw response bodies containing
 // client_secret / code / code_verifier / tokens. Log the full diagnostic
 // server-side, but only return a redacted, generic message to the browser.
-function isExpiredJwt(token) {
-  try {
-    if (!token || typeof token !== "string") return false;
-    const parts = token.split(".");
-    if (parts.length !== 3) return false;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-    const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
-    return typeof payload.exp === "number" && payload.exp < Math.floor(Date.now() / 1000);
-  } catch {
-    return false;
-  }
-}
-
 function sanitizeOAuthError(error) {
   let msg = String(error?.message || error || "");
   msg = msg
@@ -110,29 +96,8 @@ export async function GET(request, { params }) {
     }
 
     if (action === "start-proxy") {
-      if (!["codex", "xai"].includes(provider)) {
-        return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
-      }
-      const appPort = searchParams.get("app_port");
-      if (!appPort) {
-        return NextResponse.json({ error: "Missing app_port" }, { status: 400 });
-      }
-      if (!isAllowedAppPort(appPort)) {
-        return NextResponse.json({ error: "Invalid app_port" }, { status: 400 });
-      }
-      const state = searchParams.get("state");
-      const codeVerifier = searchParams.get("code_verifier");
-      const redirectUri = searchParams.get("redirect_uri");
-      const result = provider === "xai"
-        ? await startXaiProxy(Number(appPort))
-        : await startCodexProxy(Number(appPort));
-      let serverSide = false;
-      if (result.success && state && codeVerifier && redirectUri) {
-        serverSide = provider === "xai"
-          ? registerXaiSession({ state, codeVerifier, redirectUri })
-          : registerCodexSession({ state, codeVerifier, redirectUri });
-      }
-      return NextResponse.json({ ...result, serverSide });
+      // start-proxy has side effects (spawns a process) — POST only to prevent CSRF.
+      return NextResponse.json({ error: "Method Not Allowed: use POST for start-proxy" }, { status: 405 });
     }
 
     if (action === "poll-status") {
@@ -155,12 +120,8 @@ export async function GET(request, { params }) {
     }
 
     if (action === "stop-proxy") {
-      if (!["codex", "xai"].includes(provider)) {
-        return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
-      }
-      if (provider === "xai") stopXaiProxy();
-      else stopCodexProxy();
-      return NextResponse.json({ success: true });
+      // stop-proxy has side effects (kills a process) — POST only to prevent CSRF.
+      return NextResponse.json({ error: "Method Not Allowed: use POST for stop-proxy" }, { status: 405 });
     }
 
     if (action === "device-code") {
@@ -218,15 +179,40 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Invalid or empty request body" }, { status: 400 });
     }
 
+    if (action === "start-proxy") {
+      if (!["codex", "xai"].includes(provider)) {
+        return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
+      }
+      const { appPort, state, codeVerifier, redirectUri } = body;
+      if (!appPort) {
+        return NextResponse.json({ error: "Missing app_port" }, { status: 400 });
+      }
+      const result = provider === "xai"
+        ? await startXaiProxy(Number(appPort))
+        : await startCodexProxy(Number(appPort));
+      let serverSide = false;
+      if (result.success && state && codeVerifier && redirectUri) {
+        serverSide = provider === "xai"
+          ? registerXaiSession({ state, codeVerifier, redirectUri })
+          : registerCodexSession({ state, codeVerifier, redirectUri });
+      }
+      return NextResponse.json({ ...result, serverSide });
+    }
+
+    if (action === "stop-proxy") {
+      if (!["codex", "xai"].includes(provider)) {
+        return NextResponse.json({ error: "Proxy only supported for codex/xai" }, { status: 400 });
+      }
+      if (provider === "xai") stopXaiProxy();
+      else stopCodexProxy();
+      return NextResponse.json({ success: true });
+    }
+
     if (action === "exchange") {
       const { code, redirectUri, codeVerifier, state, meta } = body;
 
       // Detect if "code" is actually a raw JWT access token (starts with eyJ)
       if (code && code.startsWith("eyJ") && code.includes(".")) {
-        if (isExpiredJwt(code)) {
-          return NextResponse.json({ error: "Token has expired" }, { status: 400 });
-        }
-
         const { extractCodexAccountInfo } = await import("@/lib/oauth/providers");
         const info = extractCodexAccountInfo(code);
 
@@ -256,6 +242,8 @@ export async function POST(request, { params }) {
           testStatus: "active",
         });
 
+        const mitm = await autoSetupMitmForProvider(provider);
+
         return NextResponse.json({
           success: true,
           connection: {
@@ -263,7 +251,8 @@ export async function POST(request, { params }) {
             provider: connection.provider,
             email: connection.email,
             displayName: connection.displayName,
-          }
+          },
+          mitm,
         });
       }
 
@@ -300,6 +289,8 @@ export async function POST(request, { params }) {
         testStatus: "active",
       });
 
+      const mitm = await autoSetupMitmForProvider(provider);
+
       return NextResponse.json({ 
         success: true, 
         connection: {
@@ -307,7 +298,8 @@ export async function POST(request, { params }) {
           provider: connection.provider,
           email: connection.email,
           displayName: connection.displayName,
-        }
+        },
+        mitm,
       });
     }
 
@@ -354,12 +346,15 @@ export async function POST(request, { params }) {
           testStatus: "active",
         });
 
+        const mitm = await autoSetupMitmForProvider(provider);
+
         return NextResponse.json({ 
           success: true, 
           connection: {
             id: connection.id,
             provider: connection.provider,
-          }
+          },
+          mitm,
         });
       }
 

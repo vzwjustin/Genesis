@@ -8,11 +8,13 @@ import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifi
 import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, Toggle, ConfirmModal, EmptyState, MobileStickyActionBar } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { useNotificationStore } from "@/store/notificationStore";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
 export default function CombosPage() {
+  const notify = useNotificationStore();
   const [combos, setCombos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -38,7 +40,7 @@ export default function CombosPage() {
       }
       setComboStrategies(settingsData.comboStrategies || {});
     } catch (error) {
-      console.log("Error fetching data:", error);
+      notify.error(error?.message || "Failed to load combos");
     } finally {
       setLoading(false);
     }
@@ -61,10 +63,10 @@ export default function CombosPage() {
         setShowCreateModal(false);
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to create combo");
+        notify.error(err.error || "Failed to create combo");
       }
     } catch (error) {
-      console.log("Error creating combo:", error);
+      notify.error(error?.message || "Failed to create combo");
     }
   };
 
@@ -80,10 +82,10 @@ export default function CombosPage() {
         setEditingCombo(null);
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to update combo");
+        notify.error(err.error || "Failed to update combo");
       }
     } catch (error) {
-      console.log("Error updating combo:", error);
+      notify.error(error?.message || "Failed to update combo");
     }
   };
 
@@ -99,7 +101,7 @@ export default function CombosPage() {
             setCombos(combos.filter(c => c.id !== id));
           }
         } catch (error) {
-          console.log("Error deleting combo:", error);
+          notify.error(error?.message || "Failed to delete combo");
         }
       }
     });
@@ -122,7 +124,7 @@ export default function CombosPage() {
       
       setComboStrategies(updated);
     } catch (error) {
-      console.log("Error updating combo strategy:", error);
+      notify.error(error?.message || "Failed to update combo strategy");
     }
   };
 

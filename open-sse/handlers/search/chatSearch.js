@@ -3,6 +3,8 @@
  * /v1/search response format. Supports gemini, openai, xai, kimi, minimax, perplexity.
  */
 
+import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../../utils/proxyFetch.js";
+
 const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_RESULTS = 10;
 
@@ -320,6 +322,8 @@ export async function handleChatSearch({
     };
   }
 
+  const proxyOptions = buildProxyOptionsFromCredentials(credentials);
+
   const limit =
     Number.isFinite(maxResults) && maxResults > 0
       ? Math.floor(maxResults)
@@ -335,12 +339,12 @@ export async function handleChatSearch({
   let upstreamStart = Date.now();
   let resp;
   try {
-    resp = await fetch(url, {
+    resp = await proxyAwareFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       signal: controller.signal
-    });
+    }, proxyOptions);
   } catch (err) {
     clearTimeout(timer);
     if (err?.name === "AbortError") {

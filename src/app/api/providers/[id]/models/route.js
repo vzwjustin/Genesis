@@ -2,10 +2,24 @@ import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
-import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { refreshGoogleToken as refreshGoogleTokenWithProxy } from "open-sse/services/tokenRefresh.js";
+
+async function buildProxyOptionsFromConnection(connection) {
+  const proxyConfig = await resolveConnectionProxyConfig(connection?.providerSpecificData || {});
+  return {
+    connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
+    connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
+    connectionNoProxy: proxyConfig.connectionNoProxy || "",
+    vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
+    strictProxy: proxyConfig.strictProxy === true,
+  };
+}
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -86,11 +100,12 @@ const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => asyn
   if (!accessToken) {
     return { error: "No valid token found", status: 401 };
   }
+  const proxyOptions = await buildProxyOptionsFromConnection(connection);
   let warning;
   try {
-    let response = await fetchFn(accessToken, connection);
+    let response = await fetchFn(accessToken, connection, proxyOptions);
     if (!response.ok && (response.status === 401 || response.status === 403) && refreshToken) {
-      const refreshed = await refreshFn(connection);
+      const refreshed = await refreshFn(connection, proxyOptions);
       if (refreshed?.accessToken) {
         await updateProviderCredentials(connection.id, {
           accessToken: refreshed.accessToken,
@@ -99,7 +114,7 @@ const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => asyn
         });
         connection.accessToken = refreshed.accessToken;
         if (refreshed.refreshToken) connection.refreshToken = refreshed.refreshToken;
-        response = await fetchFn(refreshed.accessToken, connection);
+        response = await fetchFn(refreshed.accessToken, connection, proxyOptions);
       }
     }
     if (response.ok) {
@@ -250,10 +265,12 @@ const PROVIDER_MODELS_CONFIG = {
         refreshToken: connection.refreshToken,
         providerSpecificData: connection.providerSpecificData || {}
       };
+      const proxyOptions = await buildProxyOptionsFromConnection(connection);
       let warning;
       try {
         const result = await resolveKiroModels(credentials, {
           log: console,
+          proxyOptions,
           onCredentialsRefreshed: async (refreshed) => {
             if (refreshed?.accessToken) {
               await updateProviderCredentials(connection.id, {
@@ -296,9 +313,10 @@ const PROVIDER_MODELS_CONFIG = {
         displayName: connection.displayName,
         providerSpecificData: connection.providerSpecificData || {},
       };
+      const proxyOptions = await buildProxyOptionsFromConnection(connection);
       let warning;
       try {
-        const result = await resolveQoderModels(credentials, { forceRefresh: true });
+        const result = await resolveQoderModels(credentials, { forceRefresh: true, log: console, proxyOptions });
         if (result?.models?.length) {
           return {
             models: result.models.map((m) => ({
@@ -324,11 +342,17 @@ const PROVIDER_MODELS_CONFIG = {
   },
   "gemini-cli": {
     customResolver: buildOAuthResolver({
-      refreshFn: (conn) => refreshGoogleToken(conn.refreshToken, GEMINI_CONFIG.clientId, GEMINI_CONFIG.clientSecret),
-      fetchFn: (token, conn) => {
+      refreshFn: (conn, proxyOptions) => refreshGoogleTokenWithProxy(
+        conn.refreshToken,
+        GEMINI_CONFIG.clientId,
+        GEMINI_CONFIG.clientSecret,
+        console,
+        proxyOptions
+      ),
+      fetchFn: (token, conn, proxyOptions) => {
         const projectId = conn.projectId || conn.providerSpecificData?.projectId;
         const body = projectId ? { project: projectId } : {};
-        return fetch(GEMINI_CLI_MODELS_URL, {
+        return proxyAwareFetch(GEMINI_CLI_MODELS_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -337,7 +361,7 @@ const PROVIDER_MODELS_CONFIG = {
             "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1"
           },
           body: JSON.stringify(body)
-        });
+        }, proxyOptions);
       },
       parseFn: parseGeminiCliModels,
       errorLabel: "Failed to fetch Gemini CLI models"
@@ -345,11 +369,12 @@ const PROVIDER_MODELS_CONFIG = {
   },
   "ollama-local": {
     customResolver: async (connection) => {
+      const proxyOptions = await buildProxyOptionsFromConnection(connection);
       const url = `${resolveOllamaLocalHost(connection)}/api/tags`;
-      const response = await fetch(url, {
+      const response = await proxyAwareFetch(url, {
         method: "GET",
         headers: { "Content-Type": "application/json" }
-      });
+      }, proxyOptions);
       if (!response.ok) {
         const errorText = await response.text();
         console.log("Error fetching models from ollama-local:", errorText);
@@ -373,19 +398,21 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    const proxyOptions = await buildProxyOptionsFromConnection(connection);
+
     if (isOpenAICompatibleProvider(connection.provider)) {
       const baseUrl = connection.providerSpecificData?.baseUrl;
       if (!baseUrl) {
         return NextResponse.json({ error: "No base URL configured for OpenAI compatible provider" }, { status: 400 });
       }
       const url = `${baseUrl.replace(/\/$/, "")}/models`;
-      const response = await fetch(url, {
+      const response = await proxyAwareFetch(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${connection.apiKey}`,
         },
-      });
+      }, proxyOptions);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -418,7 +445,7 @@ export async function GET(request, { params }) {
       }
 
       const url = `${baseUrl}/models`;
-      const response = await fetch(url, {
+      const response = await proxyAwareFetch(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -426,7 +453,7 @@ export async function GET(request, { params }) {
           "anthropic-version": "2023-06-01",
           "Authorization": `Bearer ${connection.apiKey}`
         },
-      });
+      }, proxyOptions);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -500,7 +527,7 @@ export async function GET(request, { params }) {
       fetchOptions.body = JSON.stringify(config.body);
     }
 
-    const response = await fetch(url, fetchOptions);
+    const response = await proxyAwareFetch(url, fetchOptions, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();

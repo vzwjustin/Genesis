@@ -3,6 +3,7 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
+import { useNotificationStore } from "@/store/notificationStore";
 
 function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
@@ -87,6 +88,7 @@ PassthroughModelRow.propTypes = {
 };
 
 export default function PassthroughModelsSection({ providerAlias, modelAliases, copied, onCopy, onSetAlias, onDeleteAlias }) {
+  const notify = useNotificationStore();
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -114,7 +116,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
     
     // Check if alias already exists
     if (modelAliases[defaultAlias]) {
-      alert(`Alias "${defaultAlias}" already exists. Please use a different model or edit existing alias.`);
+      notify.warning(`Alias "${defaultAlias}" already exists. Use a different model or edit the existing alias.`);
       return;
     }
     
@@ -123,7 +125,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
       await onSetAlias(modelId, defaultAlias);
       setNewModel("");
     } catch (error) {
-      console.log("Error adding model:", error);
+      notify.error(error?.message || "Failed to add model");
     } finally {
       setAdding(false);
     }

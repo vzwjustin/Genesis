@@ -44,6 +44,14 @@ describe("login limiter client identity", () => {
     expect(different).not.toBe(first);
   });
 
+  it("uses socket remoteAddress when proxy headers are not trusted", () => {
+    const req = {
+      headers: new Headers({ "x-forwarded-for": "203.0.113.9" }),
+      socket: { remoteAddress: "192.168.1.42" },
+    };
+    expect(getClientIp(req)).toBe("192.168.1.42");
+  });
+
   it("can trust forwarding headers when explicitly configured", () => {
     vi.stubEnv("TRUST_PROXY_HEADERS", "true");
 

@@ -6,6 +6,8 @@ import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, Securit
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { SECURITY_COPY } from "@/shared/constants/securityCopy";
 import InlineAlert from "@/shared/components/InlineAlert";
+import CompressionSummaryCard from "@/shared/components/CompressionSummaryCard";
+import { useNotificationStore } from "@/store/notificationStore";
 import { revealApiKey } from "@/shared/utils/revealApiKey";
 import { maskApiKeyForDisplay } from "@/shared/utils/apiKey";
 import { getExposureErrorAction } from "@/shared/utils/exposureErrorAction";
@@ -58,12 +60,8 @@ async function clientPingAny(...urls) {
   });
 }
 
-const CAVEMAN_LEVELS = [
-  { id: "lite", label: "Lite", desc: "Drop filler, keep grammar" },
-  { id: "full", label: "Full", desc: "Drop articles, fragments OK" },
-  { id: "ultra", label: "Ultra", desc: "Telegraphic, max compression" },
-];
 export default function APIPageClient({ machineId }) {
+  const notify = useNotificationStore();
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -80,7 +78,13 @@ export default function APIPageClient({ machineId }) {
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [headroomStatus, setHeadroomStatus] = useState(null);
+  const [passthroughCompression, setPassthroughCompression] = useState(false);
   const [compressionStats, setCompressionStats] = useState(null);
+
+  // Cloud endpoint (public URL for remote CLI tools)
+  const [cloudEnabled, setCloudEnabled] = useState(false);
+  const [cloudUrl, setCloudUrl] = useState("");
+  const [cloudUrlDraft, setCloudUrlDraft] = useState("");
 
   // Cloudflare Tunnel state
   const [tunnelChecking, setTunnelChecking] = useState(true);
@@ -258,8 +262,11 @@ export default function APIPageClient({ machineId }) {
         setCavemanEnabled(!!data.cavemanEnabled);
         setCavemanLevel(data.cavemanLevel || "full");
         setHeadroomEnabled(!!data.headroomEnabled);
-        fetchHeadroomStatus();
-        fetchCompressionStats();
+        setPassthroughCompression(!!data.passthroughCompression);
+        setCloudEnabled(!!data.cloudEnabled);
+        setCloudUrl(data.cloudUrl || "");
+        setCloudUrlDraft(data.cloudUrl || "");
+        fetchHeadroomStatus(!!data.headroomEnabled);
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
@@ -277,9 +284,10 @@ export default function APIPageClient({ machineId }) {
         updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
       }
     } catch (error) {
-      console.log("Error loading settings:", error);
+      notify.error(error.message || "Failed to load endpoint settings");
     } finally {
       setTunnelChecking(false);
+      fetchCompressionStats();
     }
   };
 
@@ -303,6 +311,45 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  const handleCloudEnabled = async (value) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cloudEnabled: value }),
+      });
+      if (res.ok) {
+        setCloudEnabled(value);
+        notify.success(value ? "Cloud endpoint enabled" : "Cloud endpoint disabled");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to update cloud endpoint");
+      }
+    } catch (error) {
+      notify.error(error.message || "Failed to update cloud endpoint");
+    }
+  };
+
+  const handleSaveCloudUrl = async () => {
+    const trimmed = cloudUrlDraft.trim();
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cloudUrl: trimmed }),
+      });
+      if (res.ok) {
+        setCloudUrl(trimmed);
+        notify.success("Cloud URL saved");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to save cloud URL");
+      }
+    } catch (error) {
+      notify.error(error.message || "Failed to save cloud URL");
+    }
+  };
+
   const handleRequireApiKey = async (value) => {
     try {
       const res = await fetch("/api/settings", {
@@ -311,8 +358,12 @@ export default function APIPageClient({ machineId }) {
         body: JSON.stringify({ requireApiKey: value }),
       });
       if (res.ok) setRequireApiKey(value);
+      else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to update API key requirement");
+      }
     } catch (error) {
-      console.log("Error updating requireApiKey:", error);
+      notify.error(error.message || "Failed to update API key requirement");
     }
   };
 
@@ -324,8 +375,9 @@ export default function APIPageClient({ machineId }) {
         body: JSON.stringify({ rtkEnabled: value }),
       });
       if (res.ok) setRtkEnabledState(value);
+      else notify.error("Failed to update RTK setting");
     } catch (error) {
-      console.log("Error updating rtkEnabled:", error);
+      notify.error(error.message || "Failed to update RTK setting");
     }
   };
 
@@ -337,7 +389,7 @@ export default function APIPageClient({ machineId }) {
         body: JSON.stringify(patch),
       });
     } catch (error) {
-      console.log("Error updating setting:", error);
+      notify.error(error.message || "Failed to update setting");
     }
   };
 
@@ -355,21 +407,56 @@ export default function APIPageClient({ machineId }) {
     setHeadroomEnabled(value);
     patchSetting({ headroomEnabled: value });
     if (value) fetchHeadroomStatus();
+    fetchCompressionStats();
   };
 
-  const fetchHeadroomStatus = async () => {
+  const fetchHeadroomStatus = async (enabled = headroomEnabled) => {
     try {
       const res = await fetch("/api/headroom/status");
-      if (res.ok) setHeadroomStatus(await res.json());
+      if (!res.ok) return;
+      const status = await res.json();
+      setHeadroomStatus(status);
+      // Auto-enable when cloud API key or local proxy is reachable
+      if (status.reachable && !enabled) {
+        const patchRes = await fetch("/api/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ headroomEnabled: true }),
+        });
+        if (patchRes.ok) setHeadroomEnabled(true);
+      }
     } catch { /* ignore */ }
   };
 
-  const fetchCompressionStats = async () => {
+  const handlePassthroughCompression = async (value) => {
+    setPassthroughCompression(value);
+    patchSetting({ passthroughCompression: value });
+    fetchCompressionStats();
+  };
+
+  const fetchCompressionStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/compression/stats");
+      const res = await fetch("/api/compression/stats", { cache: "no-store" });
       if (res.ok) setCompressionStats(await res.json());
     } catch { /* ignore */ }
-  };
+  }, []);
+
+  // Refresh compression stats while features are enabled (dashboard does not live-update on chat traffic otherwise).
+  useEffect(() => {
+    const anyCompression = headroomEnabled || rtkEnabled || cavemanEnabled;
+    if (!anyCompression) return;
+    const timer = setInterval(() => {
+      if (!document.hidden) fetchCompressionStats();
+    }, 30000);
+    const onVisible = () => {
+      if (!document.hidden) fetchCompressionStats();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [headroomEnabled, rtkEnabled, cavemanEnabled, fetchCompressionStats]);
 
   const fetchData = async () => {
     try {
@@ -379,7 +466,7 @@ export default function APIPageClient({ machineId }) {
         setKeys(keysData.keys || []);
       }
     } catch (error) {
-      console.log("Error fetching data:", error);
+      notify.error(error.message || "Failed to load API keys");
     } finally {
       setLoading(false);
     }
@@ -741,9 +828,12 @@ export default function APIPageClient({ machineId }) {
         await fetchData();
         setNewKeyName("");
         setShowAddModal(false);
+        notify.success("API key created");
+      } else {
+        notify.error(data.error || "Failed to create API key");
       }
     } catch (error) {
-      console.log("Error creating key:", error);
+      notify.error(error.message || "Failed to create API key");
     }
   };
 
@@ -762,9 +852,13 @@ export default function APIPageClient({ machineId }) {
               next.delete(id);
               return next;
             });
+            notify.success("API key deleted");
+          } else {
+            const data = await res.json().catch(() => ({}));
+            notify.error(data.error || "Failed to delete API key");
           }
         } catch (error) {
-          console.log("Error deleting key:", error);
+          notify.error(error.message || "Failed to delete API key");
         }
       }
     });
@@ -779,9 +873,12 @@ export default function APIPageClient({ machineId }) {
       });
       if (res.ok) {
         setKeys(prev => prev.map(k => k.id === id ? { ...k, isActive } : k));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to update API key");
       }
     } catch (error) {
-      console.log("Error toggling key:", error);
+      notify.error(error.message || "Failed to update API key");
     }
   };
 
@@ -862,6 +959,47 @@ export default function APIPageClient({ machineId }) {
             copied={copied}
             onCopy={copy}
           />
+          {/* Cloud endpoint — static public URL for remote CLI tools */}
+          <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Cloud endpoint</p>
+                <p className="text-xs text-text-muted">Use a stable public URL for Cursor and other remote-only CLI tools.</p>
+              </div>
+              <Toggle checked={cloudEnabled} onChange={handleCloudEnabled} />
+            </div>
+            {cloudEnabled && (
+              <>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    value={cloudUrlDraft}
+                    onChange={(e) => setCloudUrlDraft(e.target.value)}
+                    placeholder="https://your-public-host.example.com"
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleSaveCloudUrl}
+                    disabled={cloudUrlDraft.trim() === cloudUrl}
+                  >
+                    Save URL
+                  </Button>
+                </div>
+                {cloudUrl ? (
+                  <EndpointRow
+                    label="Cloud"
+                    url={`${cloudUrl.replace(/\/$/, "")}/v1`}
+                    copyId="cloud_url"
+                    copied={copied}
+                    onCopy={copy}
+                  />
+                ) : (
+                  <p className="text-xs text-warning">Set and save a cloud URL so CLI tools can use it as base URL.</p>
+                )}
+              </>
+            )}
+          </div>
           {/* Cloudflare Tunnel */}
           <div className="flex items-center gap-2">
             <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
@@ -1093,105 +1231,14 @@ export default function APIPageClient({ machineId }) {
         )}
       </Card>
 
-      {/* Token Saver (RTK + Caveman) */}
-      <Card id="rtk">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">bolt</span>
-            Token Saver
-          </h2>
-        </div>
-        <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Compress tool output{" "}
-              <a
-                href="https://github.com/rtk-ai/rtk"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (RTK)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              git/grep/ls/tree/logs → 60-90% fewer input tokens
-            </p>
-            <CompressionStatRow stats={compressionStats?.tools?.rtk} kind="bytes" />
-          </div>
-          <Toggle
-            checked={rtkEnabled}
-            onChange={() => handleRtkEnabled(!rtkEnabled)}
-          />
-        </div>
-        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Compress LLM output{" "}
-              <a
-                href="https://github.com/JuliusBrussee/caveman"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (Caveman)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              Terse-style system prompt → ~65% fewer output tokens (up to 87%)
-            </p>
-            <CompressionStatRow stats={compressionStats?.tools?.caveman} kind="injections" />
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {cavemanEnabled && (
-              <div className="flex items-center gap-1.5">
-                {CAVEMAN_LEVELS.map((lvl) => (
-                  <button
-                    key={lvl.id}
-                    onClick={() => handleCavemanLevel(lvl.id)}
-                    className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                      cavemanLevel === lvl.id
-                        ? "bg-primary text-white border-primary"
-                        : "bg-transparent border-border text-text-muted hover:bg-surface-2"
-                    }`}
-                    title={lvl.desc}
-                  >
-                    {lvl.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            <Toggle
-              checked={cavemanEnabled}
-              onChange={() => handleCavemanEnabled(!cavemanEnabled)}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Compress context history{" "}
-              <a
-                href="https://github.com/chopratejas/headroom"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (Headroom)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              Headroom is coming soon. Context-history compression stays disabled until the proxy/cloud path is ready.
-            </p>
-            <span className="mt-2 inline-flex rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">Coming soon</span>
-          </div>
-          <Toggle
-            checked={false}
-            onChange={() => {}}
-            disabled
-          />
-        </div>
-      </Card>
+      <CompressionSummaryCard
+        compressionStats={compressionStats}
+        headroomStatus={headroomStatus}
+        rtkEnabled={rtkEnabled}
+        cavemanEnabled={cavemanEnabled}
+        headroomEnabled={headroomEnabled}
+        passthroughCompression={passthroughCompression}
+      />
 
       {/* API Keys */}
       <Card id="require-api-key">
@@ -1543,33 +1590,6 @@ function EndpointRow({ label, url, copyId, copied, onCopy, badge, actions }) {
   );
 }
 
-function formatBytes(value) {
-  const bytes = Number(value) || 0;
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
-}
-
-function CompressionStatRow({ stats, kind }) {
-  if (!stats) return null;
-  const detail = stats.lastDetail ? ` · ${stats.lastDetail}` : "";
-  const savedLabel = kind === "injections"
-    ? `Prompt injections ${stats.hits || 0}`
-    : `Saved ${formatBytes(stats.bytesSaved)}`;
-  const tokenLabel = stats.tokenSavingsAvailable
-    ? `Est. tokens saved ${stats.estimatedTokensSaved || 0}`
-    : "Savings not measurable";
-
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
-      <span>{savedLabel}</span>
-      <span>{tokenLabel}</span>
-      <span>Hits {stats.hits || 0}</span>
-      <span>Requests {stats.requests || 0}{detail}</span>
-    </div>
-  );
-}
-
 /** Status alert with optional exposure-gate action link */
 function ExposureInlineAlert({ status, className = "", compact = false }) {
   const variantMap = {
@@ -1616,7 +1636,7 @@ function Tooltip({ text }) {
   return (
     <span className="relative group inline-flex items-center">
       <span className="material-symbols-outlined text-[14px] text-text-muted cursor-help">help</span>
-      <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 w-64 rounded bg-gray-900 dark:bg-gray-800 text-white text-xs px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+      <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 w-64 rounded bg-gray-900 text-white text-xs px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
         {text}
       </span>
     </span>

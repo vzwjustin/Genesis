@@ -2,16 +2,20 @@ import {
   getProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  isValidApiKey,
+  authenticateRequest,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
+import {
+  resolveProviderRetryLimits,
+  noActiveCredentialsResponse,
+  exhaustedAccountsResponse,
+} from "../utils/providerCredentialRetry.js";
 import * as log from "../utils/logger.js";
 
 // Providers that don't require credentials (noAuth)
@@ -35,18 +39,19 @@ export async function handleImageGeneration(request) {
   const binaryOutput = url.searchParams.get("response_format") === "binary";
   const modelStr = body.model;
 
-  const apiKey = extractApiKey(request);
-  const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-  }
+  const auth = await authenticateRequest(request, log);
+  if (!auth.ok) return auth.response;
+  const { apiKey, settings } = auth;
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.prompt) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
 
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
+  const brokenComboError = await getBrokenComboError(modelStr);
+  if (brokenComboError) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+  }
+
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
@@ -69,7 +74,16 @@ export async function handleImageGeneration(request) {
 
 async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId } = {}) {
   const modelInfo = await getModelInfo(modelStr);
-  if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
+  if (!modelInfo.provider) {
+    const brokenComboError = await getBrokenComboError(modelStr);
+    if (brokenComboError) {
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
+    }
+    return errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Failed to resolve model: "${modelStr}". Not a registered alias, combo name, or valid provider/model format.`
+    );
+  }
 
   const { provider, model } = modelInfo;
 
@@ -85,12 +99,24 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
   }
 
-  // Credentialed providers — fallback loop
+  const { isNoAuthProvider, maxRetries } = await resolveProviderRetryLimits(provider);
+  if (!isNoAuthProvider && maxRetries === 0) {
+    return noActiveCredentialsResponse(provider);
+  }
+
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let had5xx = false;
+  let retryCount = 0;
 
   while (true) {
+    if (retryCount >= maxRetries) {
+      log.warn("IMAGE", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
+    }
+    retryCount++;
+
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
 
     if (!credentials || credentials.allRateLimited) {
@@ -100,12 +126,22 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) {
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
+        return noActiveCredentialsResponse(provider);
       }
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+
+    // Requirement 3.6: If token refresh fails during pre-check, mark connection
+    // as unusable and proceed to Account_Fallback for the next available connection.
+    if (refreshedCredentials._tokenRefreshFailed) {
+      log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Token refresh failed";
+      lastStatus = 401;
+      continue;
+    }
 
     const result = await handleImageGenerationCore({
       body,
@@ -134,6 +170,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
+      if (result.status >= 500 && result.status < 600) had5xx = true;
       continue;
     }
 

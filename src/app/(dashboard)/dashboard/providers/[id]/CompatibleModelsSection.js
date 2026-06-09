@@ -3,6 +3,7 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
+import { useNotificationStore } from "@/store/notificationStore";
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
     ? "border-success/40"
@@ -71,6 +72,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
 }
 
 export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, copied, onCopy, onSetAlias, onDeleteAlias, connections, isAnthropic }) {
+  const notify = useNotificationStore();
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -126,7 +128,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     const modelId = newModel.trim();
     const resolvedAlias = resolveAlias(modelId);
     if (!resolvedAlias) {
-      alert("All suggested aliases already exist. Please choose a different model or remove conflicting aliases.");
+      notify.warning("All suggested aliases already exist. Choose a different model or remove conflicting aliases.");
       return;
     }
 
@@ -135,7 +137,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       await onSetAlias(modelId, resolvedAlias, providerStorageAlias);
       setNewModel("");
     } catch (error) {
-      console.log("Error adding model:", error);
+      notify.error(error?.message || "Failed to add model");
     } finally {
       setAdding(false);
     }
@@ -151,12 +153,12 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Failed to import models");
+        notify.error(data.error || "Failed to import models");
         return;
       }
       const models = data.models || [];
       if (models.length === 0) {
-        alert("No models returned from /models.");
+        notify.info("No models returned from /models.");
         return;
       }
       let importedCount = 0;
@@ -169,10 +171,10 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         importedCount += 1;
       }
       if (importedCount === 0) {
-        alert("No new models were added.");
+        notify.info("No new models were added.");
       }
     } catch (error) {
-      console.log("Error importing models:", error);
+      notify.error(error?.message || "Failed to import models");
     } finally {
       setImporting(false);
     }

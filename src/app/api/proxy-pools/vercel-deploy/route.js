@@ -1,49 +1,16 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { buildVercelRelayCode, generateRelayAuthSecret } from "@/lib/network/relayDeploy.js";
 
 const VERCEL_API = "https://api.vercel.com";
-
-// Relay function source code deployed to Vercel
-// Forwards requests to target URL specified in x-relay-target header
-const RELAY_FUNCTION_CODE = `
-export const config = { runtime: "edge" };
-
-export default async function handler(req) {
-  const target = req.headers.get("x-relay-target");
-  const relayPath = req.headers.get("x-relay-path") || "/";
-  if (!target) {
-    return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
-  }
-
-  const targetUrl = target.replace(/\\/$/, "") + relayPath;
-
-  const headers = new Headers(req.headers);
-  headers.delete("x-relay-target");
-  headers.delete("x-relay-path");
-  headers.delete("host");
-
-  const response = await fetch(targetUrl, {
-    method: req.method,
-    headers,
-    body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-    duplex: "half",
-  });
-
-  return new Response(response.body, {
-    status: response.status,
-    headers: response.headers,
-  });
-}
-`;
 
 async function pollDeployment(deploymentId, token, maxMs = 120000) {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
-    const res = await fetch(`${VERCEL_API}/v13/deployments/${deploymentId}`, {
+    const res = await proxyAwareFetch(`${VERCEL_API}/v13/deployments/${deploymentId}`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();
     if (data.readyState === "READY") return data;
@@ -66,8 +33,11 @@ export async function POST(request) {
       return NextResponse.json({ error: "Vercel API token is required" }, { status: 400 });
     }
 
+    const relayAuthSecret = generateRelayAuthSecret();
+    const RELAY_FUNCTION_CODE = buildVercelRelayCode(relayAuthSecret);
+
     // Deploy relay function to Vercel
-    const deployRes = await fetch(`${VERCEL_API}/v13/deployments`, {
+    const deployRes = await proxyAwareFetch(`${VERCEL_API}/v13/deployments`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${vercelToken}`,
@@ -111,7 +81,7 @@ export async function POST(request) {
 
     // Disable deployment protection (Vercel Authentication)
     const projectId = deployment.projectId || projectName;
-    await fetch(`${VERCEL_API}/v9/projects/${projectId}`, {
+    await proxyAwareFetch(`${VERCEL_API}/v9/projects/${projectId}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${vercelToken}`,
@@ -131,7 +101,8 @@ export async function POST(request) {
       type: "vercel",
       noProxy: "",
       isActive: true,
-      strictProxy: false,
+      strictProxy: true,
+      relayAuthSecret,
     });
 
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });

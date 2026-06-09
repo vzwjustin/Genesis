@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fsPromises from "fs/promises";
 
+const mockExecFile = vi.fn();
+
+vi.mock("child_process", () => ({
+  execFile: (...args) => mockExecFile(...args),
+}));
+
 vi.mock("next/server", () => ({
   NextResponse: {
     json: vi.fn((body, init) => ({
@@ -42,17 +48,19 @@ let GET;
 
 function mockTokenRows(rowsByKey) {
   mockDbInstance.prepare.mockImplementation((sql) => {
+    if (typeof sql === "string" && sql.includes("IN (")) {
+      return {
+        all: vi.fn((...keys) => keys
+          .filter((key) => rowsByKey[key] !== undefined)
+          .map((key) => ({ key, value: rowsByKey[key] }))),
+      };
+    }
     if (typeof sql === "string" && sql.includes("LIKE")) {
       return {
-        all: vi.fn(() => []),
+        all: vi.fn(() => Object.entries(rowsByKey).map(([key, value]) => ({ key, value }))),
       };
     }
     return {
-      all: vi.fn((...keys) =>
-        keys
-          .filter((key) => rowsByKey[key] !== undefined)
-          .map((key) => ({ key, value: rowsByKey[key] })),
-      ),
       get: vi.fn((key) => {
         const value = rowsByKey[key];
         return value === undefined ? undefined : { value };
@@ -67,6 +75,10 @@ describe("GET /api/oauth/cursor/auto-import", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockDbInstance.__throwOnConstruct = false;
+    mockExecFile.mockImplementation((file, args, options, callback) => {
+      const cb = typeof options === "function" ? options : callback;
+      process.nextTick(() => cb(new Error("sqlite3 unavailable")));
+    });
     Object.defineProperty(process, "platform", { value: "darwin", writable: true });
     const mod = await import("../../src/app/api/oauth/cursor/auto-import/route.js");
     GET = mod.GET;
@@ -92,7 +104,7 @@ describe("GET /api/oauth/cursor/auto-import", () => {
     const response = await GET();
 
     expect(response.body.found).toBe(false);
-    expect(response.body.windowsManual).toBe(true);
+    expect(response.body.error).toContain("Please login to Cursor IDE first");
     expect(response.body.dbPath).toBeUndefined();
   });
 

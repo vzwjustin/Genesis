@@ -1,5 +1,6 @@
 // OpenAI TTS — model format: "tts-model/voice"
 import { Buffer } from "node:buffer";
+import { ttsFetch } from "./_base.js";
 
 export default {
   async synthesize(text, model, credentials) {
@@ -15,11 +16,11 @@ export default {
     }
 
     const baseUrl = (credentials.baseUrl || "https://api.openai.com").replace(/\/+$/, "");
-    const res = await fetch(`${baseUrl}/v1/audio/speech`, {
+    const res = await ttsFetch(`${baseUrl}/v1/audio/speech`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${credentials.apiKey}` },
       body: JSON.stringify({ model: ttsModel, voice, input: text }),
-    });
+    }, credentials);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err?.error?.message || `OpenAI TTS failed: ${res.status}`);

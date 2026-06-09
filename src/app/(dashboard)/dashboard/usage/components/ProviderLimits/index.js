@@ -792,7 +792,7 @@ export default function ProviderLimits() {
                   aria-label="Close provider filter"
                   onClick={() => setProviderMenuOpen(false)}
                 />
-                <div role="menu" className="absolute left-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-border bg-surface/95 p-1.5 shadow-xl shadow-black/10 backdrop-blur border-border dark:bg-surface/95 sm:w-72">
+                <div role="menu" className="absolute left-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-border bg-surface/95 p-1.5 shadow-xl shadow-black/10 backdrop-blur sm:w-72">
                   <button
                     type="button"
                     role="menuitemradio"
