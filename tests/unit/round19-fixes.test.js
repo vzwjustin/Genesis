@@ -11,19 +11,34 @@ import {
   isProviderAccountsExhaustedResponse,
   isModelResolutionFailureResponse,
 } from "../../open-sse/services/combo.js";
+import { PROXY_EXHAUSTED_HEADER } from "../../open-sse/utils/error.js";
 
 const noopLog = { info() {}, warn() {}, error() {} };
 const root = dirname(fileURLToPath(import.meta.url));
 
 describe("isProviderAccountsExhaustedResponse", () => {
-  it("returns true for 401/403 with Retry-After header", async () => {
+  it("returns true for 401/403 with Retry-After and proxy exhaustion marker", async () => {
+    const withRetry = (status) =>
+      new Response(JSON.stringify({ error: { message: "unauthorized" } }), {
+        status,
+        headers: {
+          "Retry-After": "30",
+          [PROXY_EXHAUSTED_HEADER]: "1",
+          "Content-Type": "application/json",
+        },
+      });
+    expect(await isProviderAccountsExhaustedResponse(withRetry(401))).toBe(true);
+    expect(await isProviderAccountsExhaustedResponse(withRetry(403))).toBe(true);
+  });
+
+  it("returns false for 401/403 with Retry-After but no proxy marker", async () => {
     const withRetry = (status) =>
       new Response(JSON.stringify({ error: { message: "unauthorized" } }), {
         status,
         headers: { "Retry-After": "30", "Content-Type": "application/json" },
       });
-    expect(await isProviderAccountsExhaustedResponse(withRetry(401))).toBe(true);
-    expect(await isProviderAccountsExhaustedResponse(withRetry(403))).toBe(true);
+    expect(await isProviderAccountsExhaustedResponse(withRetry(401))).toBe(false);
+    expect(await isProviderAccountsExhaustedResponse(withRetry(403))).toBe(false);
   });
 
   it("returns true for known proxy exhaustion messages", async () => {
@@ -79,7 +94,11 @@ describe("handleComboChat — provider account exhaustion advances", () => {
       if (model === "openai/gpt-4o") {
         return new Response(JSON.stringify({ error: { message: "rate limited" } }), {
           status: 401,
-          headers: { "Retry-After": "60", "Content-Type": "application/json" },
+          headers: {
+            "Retry-After": "60",
+            [PROXY_EXHAUSTED_HEADER]: "1",
+            "Content-Type": "application/json",
+          },
         });
       }
       return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });

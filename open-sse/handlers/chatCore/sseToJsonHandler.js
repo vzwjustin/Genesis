@@ -349,15 +349,29 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
     const totalLatency = Date.now() - requestStartTime;
+    const isClaudeNative = passthrough && sourceFormat === FORMATS.CLAUDE;
+    const textFromClaudeContent = (content) => {
+      if (!Array.isArray(content)) return null;
+      return content
+        .filter((block) => block?.type === "text" && typeof block.text === "string")
+        .map((block) => block.text)
+        .join("") || null;
+    };
     saveRequestDetail(buildRequestDetail({
       ...ctx,
       latency: { ttft: totalLatency, total: totalLatency },
       tokens: usage,
-      response: {
-        content: parsed.choices?.[0]?.message?.content || null,
-        thinking: parsed.choices?.[0]?.message?.reasoning_content || null,
-        finish_reason: parsed.choices?.[0]?.finish_reason || "unknown"
-      },
+      response: isClaudeNative
+        ? {
+            content: textFromClaudeContent(parsed.content),
+            thinking: null,
+            finish_reason: parsed.stop_reason || "unknown",
+          }
+        : {
+            content: parsed.choices?.[0]?.message?.content || null,
+            thinking: parsed.choices?.[0]?.message?.reasoning_content || null,
+            finish_reason: parsed.choices?.[0]?.finish_reason || "unknown",
+          },
       status: "success"
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 

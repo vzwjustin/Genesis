@@ -3,6 +3,7 @@ import {
   isSafeFetchUrl,
   assertSafeFetchUrl,
   isBlockedHostname,
+  assertSafeResolvedHostname,
 } from "../../open-sse/utils/ssrfGuard.js";
 
 describe("ssrfGuard", () => {
@@ -22,5 +23,13 @@ describe("ssrfGuard", () => {
 
   it("rejects URLs with embedded credentials", () => {
     expect(() => assertSafeFetchUrl("https://user:pass@example.com")).toThrow();
+  });
+
+  it("assertSafeResolvedHostname blocks literal private IPs", async () => {
+    await expect(assertSafeResolvedHostname("10.0.0.1")).rejects.toThrow(/not allowed/);
+  });
+
+  it("assertSafeResolvedHostname allows loopback when configured", async () => {
+    await expect(assertSafeResolvedHostname("127.0.0.1", { allowLoopback: true })).resolves.toBeUndefined();
   });
 });

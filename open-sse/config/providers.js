@@ -1,4 +1,5 @@
 import { platform, arch } from "os";
+import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
 
 // === OS/Arch helpers ===
 function mapStainlessOs() {
@@ -441,7 +442,8 @@ export const OLLAMA_LOCAL_DEFAULT_HOST = "http://localhost:11434";
 
 export function resolveOllamaLocalHost(credentials) {
   const raw = credentials?.providerSpecificData?.baseUrl?.trim();
-  return (raw || OLLAMA_LOCAL_DEFAULT_HOST).replace(/\/$/, "");
+  if (!raw) return OLLAMA_LOCAL_DEFAULT_HOST.replace(/\/$/, "");
+  return validateProviderBaseUrl(raw, { requireHttps: false, allowHttp: true, allowLoopback: true });
 }
 
 export const XIAOMI_TOKENPLAN_REGIONS = {

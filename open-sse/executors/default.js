@@ -1,5 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "../config/providers.js";
+import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -39,13 +40,13 @@ export class DefaultExecutor extends BaseExecutor {
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
     if (this.provider?.startsWith?.("openai-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "https://api.openai.com/v1";
-      const normalized = baseUrl.replace(/\/$/, "");
+      const normalized = validateProviderBaseUrl(baseUrl);
       const path = this.provider.includes("responses") ? "/responses" : "/chat/completions";
       return `${normalized}${path}`;
     }
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "https://api.anthropic.com/v1";
-      const normalized = baseUrl.replace(/\/$/, "");
+      const normalized = validateProviderBaseUrl(baseUrl);
       return `${normalized}/messages`;
     }
     switch (this.provider) {

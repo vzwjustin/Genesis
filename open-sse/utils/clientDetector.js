@@ -33,7 +33,10 @@ export function detectClientTool(headers = {}, body = {}) {
   if (body.userAgent === "antigravity") return "antigravity";
 
   // GitHub Copilot / OAI compatible extension using Copilot chat headers
-  if (ua.includes("githubcopilotchat") || openaiIntent === "conversation-panel" || initiator === "user") {
+  if (ua.includes("githubcopilotchat") || openaiIntent === "conversation-panel") {
+    return "github-copilot";
+  }
+  if (initiator === "user" && (ua.includes("githubcopilot") || ua.includes("copilot"))) {
     return "github-copilot";
   }
 
