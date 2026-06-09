@@ -129,13 +129,11 @@ export function parseSSEToClaudeResponse(rawSSE) {
     }
   }
 
-  for (const index of [...openBlocks.keys()]) {
-    finalizeBlock(index);
-  }
+  if (openBlocks.size > 0) return null;
 
   if (invalidToolJson) return null;
   if (!message) return null;
-  if (!sawMessageStop && !stopReason) return null;
+  if (!sawMessageStop) return null;
 
   if (stopReason) message.stop_reason = stopReason;
   if (stopSequence !== undefined) message.stop_sequence = stopSequence;

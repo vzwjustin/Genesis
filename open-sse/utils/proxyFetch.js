@@ -266,6 +266,22 @@ async function createBypassRequest(parsedUrl, realIP, options) {
 
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
+    let settled = false;
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      try { socket.destroy(); } catch { /* noop */ }
+      reject(err);
+    };
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        fail(new Error("aborted"));
+        return;
+      }
+      options.signal.addEventListener("abort", () => fail(new Error("aborted")), { once: true });
+    }
 
     socket.connect(HTTPS_PORT, realIP, () => {
       const reqOptions = {
@@ -286,6 +302,8 @@ async function createBypassRequest(parsedUrl, realIP, options) {
       };
 
       const req = https.request(reqOptions, (res) => {
+        if (settled) return;
+        settled = true;
         const response = {
           ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
           status: res.statusCode,
@@ -302,14 +320,14 @@ async function createBypassRequest(parsedUrl, realIP, options) {
         resolve(response);
       });
 
-      req.on("error", reject);
+      req.on("error", fail);
       if (options.body != null) {
         req.write(serializeBypassRequestBody(options.body));
       }
       req.end();
     });
 
-    socket.on("error", reject);
+    socket.on("error", fail);
   });
 }
 
@@ -329,6 +347,8 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       "x-relay-target": `${parsed.protocol}//${parsed.host}`,
       "x-relay-path": `${parsed.pathname}${parsed.search}`,
     };
+    const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
+    if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
     return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
 
@@ -398,6 +418,7 @@ export function buildProxyOptionsFromCredentials(credentials) {
     connectionProxyUrl: psd.connectionProxyUrl || "",
     connectionNoProxy: psd.connectionNoProxy || "",
     vercelRelayUrl: psd.vercelRelayUrl || "",
+    relayAuthSecret: psd.relayAuthSecret || "",
     strictProxy: psd.strictProxy === true,
   };
 }

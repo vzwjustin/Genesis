@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { normalizeHostHeaderHostname } from "@/shared/utils/host";
+import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidCliToken } from "@/shared/auth/cliToken";
 import { verifyApiKeyCrc } from "@/shared/utils/apiKey";
 
@@ -29,28 +30,6 @@ const ALWAYS_PROTECTED = [
   "/api/version/update",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
-];
-
-// Require auth, but allow through if requireLogin is disabled
-const PROTECTED_API_PATHS = [
-  "/api/dashboard",
-  "/api/settings",
-  "/api/keys",
-  "/api/providers",
-  "/api/provider-nodes",
-  "/api/proxy-pools",
-  "/api/combos",
-  "/api/models",
-  "/api/usage",
-  "/api/oauth",
-  "/api/cloud",
-  "/api/media-providers",
-  "/api/pricing",
-  "/api/tags",
-  "/api/cli-tools",
-  "/api/mcp",
-  "/api/translator",
-  "/api/tunnel",
 ];
 
 // Routes that spawn child processes or read host secrets — restrict to localhost.
@@ -84,22 +63,7 @@ function isLoopbackIp(ip) {
 }
 
 function isLocalRequest(request) {
-  if (!isLoopbackHostname(request.headers.get("host"))) return false;
-  const origin = request.headers.get("origin");
-  if (origin) {
-    try {
-      if (!isLoopbackHostname(new URL(origin).hostname)) return false;
-    } catch { return false; }
-  }
-  // Reject remote clients spoofing loopback Host via proxy headers
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const clientIp = xff.split(",")[0].trim();
-    if (clientIp && !isLoopbackIp(clientIp)) return false;
-  }
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp && !isLoopbackIp(realIp.trim())) return false;
-  return true;
+  return isLoopbackRequest(request);
 }
 
 function isPublicLlmApi(pathname) {
@@ -131,7 +95,7 @@ async function canAccessPublicLlmApi(request) {
   }
 
   const settings = await loadSettings();
-  if (settings && settings.requireApiKey === false) return true;
+  if (settings && settings.requireApiKey === false && isLoopbackRequest(request)) return true;
 
   return false;
 }
@@ -167,9 +131,12 @@ async function isDashboardAccessAllowed(request) {
   return false;
 }
 
-/** Management API routes: JWT or CLI token only — never requireLogin=false. */
+/** Management API routes: JWT, CLI token, or loopback when requireLogin=false. */
 async function isApiAuthenticated(request) {
-  return await hasValidToken(request);
+  if (await hasValidToken(request)) return true;
+  const settings = await loadSettings();
+  if (settings && settings.requireLogin === false && isLoopbackRequest(request)) return true;
+  return false;
 }
 
 function isPublicApi(pathname) {

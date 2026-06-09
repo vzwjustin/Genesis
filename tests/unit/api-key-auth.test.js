@@ -3,6 +3,7 @@
  * Requirements: 13.1, 13.4, 13.7
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { makeTestApiKey, useTestApiKeySecret } from "../helpers/apiKeyTestUtils.js";
 
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
@@ -33,11 +34,22 @@ function makeRequest(headers = {}) {
   };
 }
 
+function makeLoopbackRequest(headers = {}) {
+  return makeRequest({
+    host: "localhost:20128",
+    origin: "http://localhost:20128",
+    ...headers,
+  });
+}
+
+const VALID_TEST_KEY = makeTestApiKey();
+
 describe("authenticateRequest (Task 18)", () => {
   beforeEach(() => {
+    useTestApiKeySecret();
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
-    mocks.validateApiKey.mockImplementation(async (key) => key === "sk-validkey");
+    mocks.validateApiKey.mockImplementation(async (key) => key === VALID_TEST_KEY);
     mocks.hasValidCliToken.mockResolvedValue(false);
   });
 
@@ -51,14 +63,14 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.response?.status).toBe(401);
   });
 
-  it("accepts no header when requireApiKey=false and logs bypass (Requirement 13.4)", async () => {
+  it("accepts no header on loopback when requireApiKey=false and logs bypass (Requirement 13.4)", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
-    const result = await authenticateRequest(makeRequest({}), log);
+    const result = await authenticateRequest(makeLoopbackRequest({}), log);
     expect(result.ok).toBe(true);
     expect(result.bypassed).toBe(true);
     expect(log.debug).toHaveBeenCalledWith(
       "AUTH",
-      "Authentication bypassed (requireApiKey=false, no credentials)"
+      "Authentication bypassed (requireApiKey=false, loopback, no credentials)"
     );
   });
 
@@ -73,11 +85,11 @@ describe("authenticateRequest (Task 18)", () => {
   it("accepts valid Bearer token", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeRequest({ Authorization: "Bearer sk-validkey" }),
+      makeRequest({ Authorization: `Bearer ${VALID_TEST_KEY}` }),
       log
     );
     expect(result.ok).toBe(true);
-    expect(result.apiKey).toBe("sk-validkey");
+    expect(result.apiKey).toBe(VALID_TEST_KEY);
   });
 
   it("rejects invalid x-api-key header", async () => {
@@ -100,10 +112,20 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.response?.status).toBe(401);
   });
 
-  it("treats whitespace-only Authorization header as absent (bypass allowed)", async () => {
+  it("rejects no header on remote host when requireApiKey=false", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeRequest({ Authorization: "   " }),
+      makeRequest({ host: "router.example.com" }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+  });
+
+  it("treats whitespace-only Authorization header as absent (bypass allowed on loopback)", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: "   " }),
       log
     );
     expect(result.ok).toBe(true);

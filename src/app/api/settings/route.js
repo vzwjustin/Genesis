@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
 import { getRemoteExposureBlockReason, isRemoteExposureRequest } from "@/lib/security/exposureGate";
+import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,6 +48,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "providerThinking",
   "requireApiKey",
   "requireLogin",
+  "resetPasswordToDefault",
   "rtkEnabled",
   "rtkFilterConfig",
   "stickyRoundRobinLimit",
@@ -89,7 +91,8 @@ export async function GET() {
 export async function PATCH(request) {
   try {
     const settings0 = await getSettings();
-    if (settings0.requireLogin !== false) {
+    const loopbackNoLogin = settings0.requireLogin === false && isLoopbackRequest(request);
+    if (!loopbackNoLogin) {
       const cookieStore = await cookies();
       const session = await getDashboardAuthSession(cookieStore.get("auth_token")?.value);
       if (!session) {
@@ -98,6 +101,11 @@ export async function PATCH(request) {
     }
 
     const body = await request.json();
+
+    if (body.resetPasswordToDefault === true) {
+      body.password = null;
+      delete body.resetPasswordToDefault;
+    }
 
     if (isRemoteExposureRequest(body)) {
       const current = await getSettings();
