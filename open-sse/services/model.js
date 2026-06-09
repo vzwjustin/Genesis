@@ -247,9 +247,9 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
     return resolved;
   }
 
-  // Fallback: infer provider from model name prefix
+  // Unresolved alias — fail closed (do not infer provider; callers must return HTTP 400)
   return {
-    provider: inferProviderFromModelName(parsed.model),
+    provider: null,
     model: parsed.model,
   };
 }

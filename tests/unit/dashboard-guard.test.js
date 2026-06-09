@@ -276,7 +276,10 @@ describe("dashboard guard local-only access", () => {
   it("allows local-only route on raw IPv6 loopback host when requireLogin=false", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
-    const localRequest = request("/api/cli-tools/antigravity-mitm", { host: "::1" });
+    const localRequest = request("/api/cli-tools/antigravity-mitm", {
+      host: "::1",
+      origin: "http://[::1]:20128",
+    });
 
     expect(__test__.isLocalRequest(localRequest)).toBe(true);
   });

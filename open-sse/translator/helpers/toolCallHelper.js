@@ -166,9 +166,52 @@ function collectRespondedToolIds(messages, startIndex, toolCallIds) {
   return { respondedIds, insertPosition };
 }
 
+function usesClaudeNativeToolFormat(messages) {
+  if (!Array.isArray(messages)) return false;
+  return messages.some((msg) =>
+    Array.isArray(msg.content) &&
+    msg.content.some((block) => block.type === "tool_use" || block.type === "tool_result")
+  );
+}
+
+// Fix missing tool responses for Claude-native threads (tool_use / tool_result in content arrays)
+export function fixMissingClaudeToolResponses(body) {
+  if (!body.messages || !Array.isArray(body.messages)) return body;
+
+  const messages = [...body.messages];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    const toolCallIds = getToolCallIds(msg);
+    if (toolCallIds.length === 0) continue;
+
+    const { respondedIds, insertPosition } = collectRespondedToolIds(messages, i, toolCallIds);
+    const missingIds = toolCallIds.filter((id) => !respondedIds.has(id));
+    if (missingIds.length === 0) continue;
+
+    const missingResponse = {
+      role: "user",
+      content: missingIds.map((id) => ({
+        type: "tool_result",
+        tool_use_id: id,
+        content: ""
+      }))
+    };
+    messages.splice(insertPosition, 0, missingResponse);
+    i = insertPosition;
+  }
+
+  body.messages = messages;
+  return body;
+}
+
 // Fix missing tool responses - insert empty tool_result if assistant has tool_use but next message has no tool_result
 export function fixMissingToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
+
+  if (usesClaudeNativeToolFormat(body.messages)) {
+    return fixMissingClaudeToolResponses(body);
+  }
 
   const messages = [...body.messages];
 

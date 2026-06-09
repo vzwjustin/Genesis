@@ -29,18 +29,17 @@ describe("getModelInfoCore — alias registry lookup integration (Requirement 2.
       expect(result).toEqual({ provider: "claude", model: "claude-opus-4-6" });
     });
 
-    it("falls back to provider inference when alias not found", async () => {
+    it("returns null provider when alias not found (fail-closed)", async () => {
       const aliases = { opus: "cc/claude-opus-4-6" };
       const result = await getModelInfoCore("claude-sonnet-4-20250514", aliases);
-      // Not in aliases, falls back to inferProviderFromModelName
-      expect(result.provider).toBe("anthropic");
+      expect(result.provider).toBeNull();
       expect(result.model).toBe("claude-sonnet-4-20250514");
     });
 
-    it("falls back to openai when alias not found and prefix unrecognized", async () => {
+    it("returns null provider when alias not found and prefix unrecognized", async () => {
       const aliases = {};
       const result = await getModelInfoCore("some-unknown-model", aliases);
-      expect(result.provider).toBe("openai");
+      expect(result.provider).toBeNull();
       expect(result.model).toBe("some-unknown-model");
     });
   });

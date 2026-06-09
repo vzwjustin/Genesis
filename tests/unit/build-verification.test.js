@@ -17,7 +17,8 @@ describe("build verification (Task 20)", () => {
 
   it("Anthropic built-in tool model-prefix fix exists in claudeHelper source", () => {
     const src = readFileSync(join(root, "open-sse/translator/helpers/claudeHelper.js"), "utf8");
-    expect(src).toMatch(/model\.slice\(.*indexOf\("\/"\)\s*\+\s*1\)/);
+    expect(src).toContain("stripProviderModelPrefix");
+    expect(src).toMatch(/KNOWN_TOOL_MODEL_PREFIXES/);
   });
 
   it("headless server entrypoint exists (built server.js or cli wrapper)", () => {

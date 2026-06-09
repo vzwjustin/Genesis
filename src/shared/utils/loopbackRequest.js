@@ -15,20 +15,24 @@ function isLoopbackIp(ip) {
   return false;
 }
 
+function getSocketRemoteIp(request) {
+  const socketIp = request.socket?.remoteAddress || request.ip;
+  if (!socketIp) return null;
+  return String(socketIp).replace(/^::ffff:/, "");
+}
+
 /**
  * True when the request appears to originate from the local machine (loopback host,
  * loopback origin, and no remote client IP in forwarding headers).
  */
 export function isLoopbackRequest(request) {
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
-  const origin = request.headers.get("origin");
-  if (origin) {
-    try {
-      if (!isLoopbackHostname(new URL(origin).hostname)) return false;
-    } catch {
-      return false;
-    }
+
+  const socketIp = getSocketRemoteIp(request);
+  if (socketIp) {
+    return isLoopbackIp(socketIp);
   }
+
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {
     const clientIp = xff.split(",")[0].trim();
@@ -36,5 +40,13 @@ export function isLoopbackRequest(request) {
   }
   const realIp = request.headers.get("x-real-ip");
   if (realIp && !isLoopbackIp(realIp.trim())) return false;
-  return true;
+
+  // No socket info: require loopback Origin to block remote Host-header spoofing
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  try {
+    return isLoopbackHostname(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
 }

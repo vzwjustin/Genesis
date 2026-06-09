@@ -6,14 +6,18 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-vi.mock("dns", () => ({
-  Resolver: class MockResolver {
-    setServers() {}
-    resolve4(_hostname, callback) {
-      process.nextTick(() => callback(new Error("ENOTFOUND")));
-    }
-  },
-}));
+vi.mock("dns", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    Resolver: class MockResolver {
+      setServers() {}
+      resolve4(_hostname, callback) {
+        process.nextTick(() => callback(new Error("ENOTFOUND")));
+      }
+    },
+  };
+});
 
 import {
   shouldBypassMitmDns,
