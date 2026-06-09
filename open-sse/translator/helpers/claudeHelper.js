@@ -33,6 +33,34 @@ export function hasAnthropicCacheBreakpoints(body) {
   return false;
 }
 
+const KNOWN_TOOL_MODEL_PREFIXES = ["cc/", "anthropic/", "claude/", "openrouter/"];
+
+/** Strip one or more provider prefixes from built-in tool model names (e.g. cc/claude-opus-4-6). */
+export function stripProviderModelPrefix(model) {
+  if (typeof model !== "string" || !model.includes("/")) return model;
+  let result = model;
+  for (let i = 0; i < 8; i++) {
+    const lowered = result.toLowerCase();
+    let stripped = false;
+    for (const prefix of KNOWN_TOOL_MODEL_PREFIXES) {
+      if (lowered.startsWith(prefix)) {
+        result = result.slice(prefix.length);
+        stripped = true;
+        break;
+      }
+    }
+    if (!stripped) {
+      const slash = result.indexOf("/");
+      if (slash > 0 && slash <= 32 && !result.slice(0, slash).includes(".")) {
+        result = result.slice(slash + 1);
+        stripped = true;
+      }
+    }
+    if (!stripped) break;
+  }
+  return result;
+}
+
 /**
  * Clean Anthropic tool definitions for upstream compatibility.
  * Client tools: strip model and type. Built-in tools: preserve properties but strip provider prefix from model.
@@ -53,8 +81,8 @@ export function cleanAnthropicToolDefinitions(tools, provider) {
     }
 
     const cleanedTool = { ...tool };
-    if (typeof cleanedTool.model === "string" && cleanedTool.model.includes("/")) {
-      cleanedTool.model = cleanedTool.model.slice(cleanedTool.model.indexOf("/") + 1);
+    if (typeof cleanedTool.model === "string") {
+      cleanedTool.model = stripProviderModelPrefix(cleanedTool.model);
     }
     return cleanedTool;
   });

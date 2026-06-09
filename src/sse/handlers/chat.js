@@ -45,7 +45,8 @@ export async function handleChat(request, clientRawRequest = null) {
     clientRawRequest = {
       endpoint: url.pathname,
       body,
-      headers: Object.fromEntries(request.headers.entries())
+      headers: Object.fromEntries(request.headers.entries()),
+      signal: request.signal,
     };
   }
   cacheClaudeHeaders(clientRawRequest.headers);

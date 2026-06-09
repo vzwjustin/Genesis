@@ -119,7 +119,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   let toolNameMap;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
-    translatedBody = structuredClone(body);
+    try {
+      translatedBody = structuredClone(body);
+    } catch (cloneError) {
+      const errMsg = cloneError?.message || "Passthrough body could not be cloned";
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, errMsg, undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
+    }
     translatedBody.model = model;
     // Anthropic compatibility: strip provider prefixes from built-in tool model fields.
     // Passthrough preserves request shape except for this known upstream rejection fix.
@@ -312,6 +317,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log, provider, model
   });
 
+  const clientSignal = clientRawRequest?.signal;
+  let upstreamSignal = streamController.signal;
+  if (clientSignal) {
+    if (typeof AbortSignal.any === "function") {
+      upstreamSignal = AbortSignal.any([clientSignal, streamController.signal]);
+    } else if (clientSignal.aborted) {
+      streamController.handleDisconnect("client_aborted");
+    } else {
+      clientSignal.addEventListener("abort", () => {
+        streamController.handleDisconnect("client_aborted");
+      }, { once: true });
+    }
+  }
+
   const proxyOptions = {
     connectionProxyEnabled: credentials?.providerSpecificData?.connectionProxyEnabled === true,
     connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
@@ -350,7 +369,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
   try {
-    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, passthrough });
+    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: upstreamSignal, log, proxyOptions, passthrough });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;

@@ -15,6 +15,7 @@ describe("ssrfGuard", () => {
     expect(isBlockedHostname("localhost")).toBe(true);
     expect(isBlockedHostname("127.0.0.1")).toBe(true);
     expect(isBlockedHostname("10.0.0.1")).toBe(true);
+    expect(isBlockedHostname("100.64.0.1")).toBe(true);
     expect(isBlockedHostname("192.168.1.1")).toBe(true);
     expect(isBlockedHostname("169.254.169.254")).toBe(true);
     expect(isSafeFetchUrl("http://127.0.0.1/secret")).toBe(false);

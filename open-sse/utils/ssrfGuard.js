@@ -10,6 +10,7 @@ const DNS_RESOLVE_CACHE_TTL_MS = 60_000;
 
 function isPrivateOrReservedIpv4(a, b) {
   if (a === 10) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // RFC 6598 CGNAT
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
   if (a === 127) return true;

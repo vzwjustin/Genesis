@@ -2,7 +2,7 @@ import { getProviderConnections, validateApiKey, updateProviderConnection, getSe
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, getEarliestRateLimitedUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { parseApiKey, verifyApiKeyCrc } from "@/shared/utils/apiKey.js";
@@ -111,6 +111,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           retryAfterHuman: formatRetryAfter(earliest),
           lastError: earliestConn?.lastError || null,
           lastErrorCode: earliestConn?.errorCode || null
+        };
+      }
+      const rateLimitedUntil = getEarliestRateLimitedUntil(connections);
+      if (rateLimitedUntil) {
+        const rateLimitedConn = connections.find((c) => c.rateLimitedUntil === rateLimitedUntil) || connections[0];
+        log.warn("AUTH", `${provider} | all ${connections.length} accounts rate-limited (${formatRetryAfter(rateLimitedUntil)}) | lastError=${rateLimitedConn?.lastError?.slice(0, 50)}`);
+        return {
+          allRateLimited: true,
+          retryAfter: rateLimitedUntil,
+          retryAfterHuman: formatRetryAfter(rateLimitedUntil),
+          lastError: rateLimitedConn?.lastError || null,
+          lastErrorCode: rateLimitedConn?.errorCode || null
         };
       }
       log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);

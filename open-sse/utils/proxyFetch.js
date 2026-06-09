@@ -321,6 +321,8 @@ async function createBypassRequest(parsedUrl, realIP, options) {
 
       req = https.request(reqOptions, (res) => {
         if (settled) return;
+        settled = true;
+        options.signal?.removeEventListener("abort", onAbort);
         activeRes = res;
         const response = {
           ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
