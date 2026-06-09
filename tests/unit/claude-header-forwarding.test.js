@@ -413,8 +413,10 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
 
   it("does NOT route non-Anthropic hosts through gotScraping", async () => {
     const gotScrapingMock = vi.fn();
+    gotScrapingMock.stream = vi.fn();
     vi.doMock("got-scraping", () => ({ gotScraping: gotScrapingMock }));
 
+    const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -435,5 +437,6 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
     });
 
     expect(gotScrapingMock).not.toHaveBeenCalled();
+    globalThis.fetch = originalFetch;
   });
 });
