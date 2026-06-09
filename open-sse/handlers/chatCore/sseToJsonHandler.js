@@ -141,6 +141,106 @@ export function parseSSEToClaudeResponse(rawSSE) {
   return message;
 }
 
+function unwrapGeminiStreamChunk(chunk) {
+  if (!chunk || typeof chunk !== "object") return null;
+  return chunk.response && typeof chunk.response === "object" ? chunk.response : chunk;
+}
+
+function mergeGeminiParts(existingParts, incomingParts) {
+  const parts = [...existingParts];
+  for (const part of incomingParts) {
+    if (typeof part.text === "string") {
+      const last = parts[parts.length - 1];
+      if (last && typeof last.text === "string" && !last.thought && !part.thought) {
+        last.text += part.text;
+      } else {
+        parts.push({ ...part });
+      }
+      continue;
+    }
+    if (part.functionCall) {
+      parts.push({ functionCall: { ...part.functionCall } });
+    }
+  }
+  return parts;
+}
+
+/**
+ * Assemble Gemini / Antigravity native SSE into a single JSON object.
+ */
+export function parseSSEToGeminiResponse(rawSSE, wrapInResponse = false) {
+  const chunks = [];
+  let sawTerminal = false;
+
+  for (const line of String(rawSSE || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) continue;
+    if (payload === "[DONE]") {
+      sawTerminal = true;
+      continue;
+    }
+    try {
+      chunks.push(JSON.parse(payload));
+    } catch {
+      return null;
+    }
+  }
+
+  if (chunks.length === 0) return null;
+
+  let mergedCandidate = null;
+  let usageMetadata = null;
+  let modelVersion = null;
+  let responseId = null;
+
+  for (const chunk of chunks) {
+    const body = unwrapGeminiStreamChunk(chunk);
+    if (!body) continue;
+    if (body.modelVersion) modelVersion = body.modelVersion;
+    if (body.responseId) responseId = body.responseId;
+    if (body.usageMetadata && typeof body.usageMetadata === "object") {
+      usageMetadata = { ...(usageMetadata || {}), ...body.usageMetadata };
+    }
+
+    const candidate = body.candidates?.[0];
+    if (!candidate) continue;
+    if (candidate.finishReason) sawTerminal = true;
+
+    if (!mergedCandidate) {
+      mergedCandidate = {
+        ...candidate,
+        content: candidate.content
+          ? { ...candidate.content, parts: [...(candidate.content.parts || [])] }
+          : { role: "model", parts: [] },
+      };
+      continue;
+    }
+
+    const incomingParts = candidate.content?.parts || [];
+    const existingParts = mergedCandidate.content?.parts || [];
+    mergedCandidate.content = {
+      role: mergedCandidate.content?.role || candidate.content?.role || "model",
+      parts: mergeGeminiParts(existingParts, incomingParts),
+    };
+    if (candidate.finishReason) mergedCandidate.finishReason = candidate.finishReason;
+    if (candidate.index !== undefined) mergedCandidate.index = candidate.index;
+  }
+
+  if (!mergedCandidate) return null;
+  if (!sawTerminal && !mergedCandidate.finishReason) return null;
+
+  const result = {
+    candidates: [mergedCandidate],
+    modelVersion: modelVersion || "unknown",
+    responseId: responseId || `resp_${Date.now()}`,
+  };
+  if (usageMetadata) result.usageMetadata = usageMetadata;
+
+  return wrapInResponse ? { response: result } : result;
+}
+
 /**
  * Assemble SSE into the client's native response format for passthrough mode.
  */
@@ -152,6 +252,12 @@ export async function parseSSEToNativeResponse(rawSSE, sourceFormat, fallbackMod
     const jsonResponse = await convertResponsesStreamToJson(sseTextToStream(rawSSE));
     if (jsonResponse.status !== "completed") return null;
     return jsonResponse;
+  }
+  if (sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {
+    return parseSSEToGeminiResponse(rawSSE, false);
+  }
+  if (sourceFormat === FORMATS.ANTIGRAVITY) {
+    return parseSSEToGeminiResponse(rawSSE, true);
   }
   return parseSSEToOpenAIResponse(rawSSE, fallbackModel);
 }

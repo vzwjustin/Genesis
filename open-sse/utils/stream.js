@@ -97,6 +97,27 @@ export function createSSEStream(options = {}) {
                 totalContentLength += delta.reasoning_content.length;
                 accumulatedThinking += delta.reasoning_content;
               }
+              if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta" && typeof parsed.delta.text === "string") {
+                totalContentLength += parsed.delta.text.length;
+                accumulatedContent += parsed.delta.text;
+              }
+              if (parsed.type === "content_block_delta" && parsed.delta?.type === "thinking_delta" && typeof parsed.delta.thinking === "string") {
+                totalContentLength += parsed.delta.thinking.length;
+                accumulatedThinking += parsed.delta.thinking;
+              }
+              const geminiBody = parsed.response || parsed;
+              if (geminiBody.candidates?.[0]?.content?.parts) {
+                for (const part of geminiBody.candidates[0].content.parts) {
+                  if (part.text && typeof part.text === "string") {
+                    totalContentLength += part.text.length;
+                    if (part.thought === true) {
+                      accumulatedThinking += part.text;
+                    } else {
+                      accumulatedContent += part.text;
+                    }
+                  }
+                }
+              }
               const extracted = extractUsage(parsed);
               if (extracted) usage = extracted;
             } catch { /* non-JSON passthrough lines are forwarded as-is */ }
@@ -228,7 +249,7 @@ export function createSSEStream(options = {}) {
           }
 
           if (!hasValidUsage(usage) && totalContentLength > 0) {
-            usage = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
+            usage = estimateUsage(body, totalContentLength, sourceFormat || FORMATS.OPENAI);
           }
 
           if (hasValidUsage(usage)) {

@@ -93,20 +93,23 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   if (sourceFormat !== targetFormat) {
     // Step 1: source -> openai (if source is not openai)
     if (sourceFormat !== FORMATS.OPENAI) {
-      const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
-      if (toOpenAI) {
-        result = toOpenAI(model, result, stream, credentials);
-        // Log OpenAI intermediate format
-        reqLogger?.logOpenAIRequest?.(result);
+      const toOpenAIKey = `${sourceFormat}:${FORMATS.OPENAI}`;
+      const toOpenAI = requestRegistry.get(toOpenAIKey);
+      if (!toOpenAI) {
+        throw new Error(`No request translator registered for ${toOpenAIKey}`);
       }
+      result = toOpenAI(model, result, stream, credentials);
+      reqLogger?.logOpenAIRequest?.(result);
     }
 
     // Step 2: openai -> target (if target is not openai)
     if (targetFormat !== FORMATS.OPENAI) {
-      const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
-      if (fromOpenAI) {
-        result = fromOpenAI(model, result, stream, credentials);
+      const fromOpenAIKey = `${FORMATS.OPENAI}:${targetFormat}`;
+      const fromOpenAI = requestRegistry.get(fromOpenAIKey);
+      if (!fromOpenAI) {
+        throw new Error(`No request translator registered for ${fromOpenAIKey}`);
       }
+      result = fromOpenAI(model, result, stream, credentials);
     }
   }
 

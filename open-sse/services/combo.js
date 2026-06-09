@@ -11,6 +11,29 @@ import { MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
  * @type {Map<string, { index: number, consecutiveUseCount: number }>}
  */
 const comboRotationState = new Map();
+/** @type {Map<string, Promise<void>>} */
+const comboRotationLocks = new Map();
+
+async function withComboRotationLock(comboName, fn) {
+  if (!comboName) return fn();
+
+  const previous = comboRotationLocks.get(comboName) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => {
+    release = resolve;
+  });
+  comboRotationLocks.set(comboName, previous.then(() => current));
+
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (comboRotationLocks.get(comboName) === current) {
+      comboRotationLocks.delete(comboName);
+    }
+  }
+}
 
 function normalizeStickyLimit(stickyLimit) {
   const parsed = Number.parseInt(stickyLimit, 10);
@@ -235,6 +258,7 @@ export async function isProviderAccountsExhaustedResponse(response) {
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1 }) {
+  return withComboRotationLock(comboName, async () => {
   // Apply rotation strategy if enabled
   const rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
   
@@ -358,4 +382,5 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   const retryHuman = formatRetryAfter(minRetryAt);
   log.warn("COMBO", `All models exhausted | ${msg} (${retryHuman})`);
   return unavailableResponse(finalStatus, msg, minRetryAt, retryHuman);
+  });
 }

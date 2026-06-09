@@ -410,11 +410,11 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       const dispatcher = await getDispatcher(proxyUrl);
       return await originalFetch(url, { ...options, dispatcher });
     } catch (proxyError) {
-      // Per-connection proxy and strictProxy fail closed — no direct fallback
-      if (proxyOptions?.strictProxy === true || connectionProxyUrl) {
+      // Configured proxy (per-connection or environment) must not silently fall back to direct
+      if (proxyOptions?.strictProxy !== false) {
         throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
       }
-      console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
+      console.warn(`[ProxyFetch] Proxy failed, falling back to direct (strictProxy=false): ${proxyError.message}`);
       return originalFetch(url, options);
     }
   }
