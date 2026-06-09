@@ -119,7 +119,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   let toolNameMap;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
-    translatedBody = { ...body, model };
+    translatedBody = structuredClone(body);
+    translatedBody.model = model;
     // Anthropic compatibility: strip provider prefixes from built-in tool model fields.
     // Passthrough preserves request shape except for this known upstream rejection fix.
     if ((provider === "claude" || provider?.startsWith("anthropic-compatible")) && Array.isArray(translatedBody.tools)) {
@@ -316,6 +317,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
     connectionNoProxy: credentials?.providerSpecificData?.connectionNoProxy || "",
     vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
+    relayAuthSecret: credentials?.providerSpecificData?.relayAuthSecret || "",
     strictProxy: credentials?.providerSpecificData?.strictProxy === true,
   };
 
@@ -503,7 +505,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Streaming response
   // Destructure streamDetailId so both the initial placeholder save and the
   // onStreamComplete update reference the same DB record.
-  const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
+  const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx, onRequestSuccess });
   return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId });
 }
 

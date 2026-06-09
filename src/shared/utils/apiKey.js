@@ -1,6 +1,5 @@
 import crypto from "crypto";
-
-const API_KEY_SECRET = process.env.API_KEY_SECRET || "endpoint-proxy-api-key-secret";
+import { getApiKeySecret } from "./apiKeySecret.js";
 
 /**
  * Generate 6-char random keyId
@@ -19,7 +18,7 @@ function generateKeyId() {
  */
 function generateCrc(machineId, keyId) {
   return crypto
-    .createHmac("sha256", API_KEY_SECRET)
+    .createHmac("sha256", getApiKeySecret())
     .update(machineId + keyId)
     .digest("hex")
     .slice(0, 8);
@@ -79,8 +78,8 @@ export function verifyApiKeyCrc(apiKey) {
   const parsed = parseApiKey(apiKey);
   if (!parsed) return false;
   
-  // Old format doesn't have CRC, always valid if parsed
-  if (!parsed.isNewFormat) return true;
+  // Legacy sk-{8} format is no longer accepted — migrate to sk-{machineId}-{keyId}-{crc}
+  if (!parsed.isNewFormat) return false;
   
   // New format already verified in parseApiKey
   return true;

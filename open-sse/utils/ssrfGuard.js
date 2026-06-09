@@ -118,30 +118,30 @@ export async function assertSafeResolvedHostname(hostname, options = {}) {
   }
 
   const cached = DNS_RESOLVE_CACHE.get(h);
+  let addresses;
   if (cached && Date.now() < cached.expiry) {
-    if (!cached.safe) throw new Error("URL host resolves to a blocked address");
-    return;
-  }
+    addresses = cached.addresses;
+  } else {
+    addresses = [];
+    try {
+      addresses.push(...await resolve4(h));
+    } catch (err) {
+      if (err?.code !== "ENOTFOUND" && err?.code !== "ENODATA") throw err;
+    }
+    try {
+      addresses.push(...await resolve6(h));
+    } catch (err) {
+      if (addresses.length === 0 && err?.code !== "ENOTFOUND" && err?.code !== "ENODATA") throw err;
+    }
 
-  const addresses = [];
-  try {
-    addresses.push(...await resolve4(h));
-  } catch (err) {
-    if (err?.code !== "ENOTFOUND" && err?.code !== "ENODATA") throw err;
+    if (addresses.length === 0) throw new Error("DNS resolution failed");
+    DNS_RESOLVE_CACHE.set(h, { addresses, expiry: Date.now() + DNS_RESOLVE_CACHE_TTL_MS });
   }
-  try {
-    addresses.push(...await resolve6(h));
-  } catch (err) {
-    if (addresses.length === 0 && err?.code !== "ENOTFOUND" && err?.code !== "ENODATA") throw err;
-  }
-
-  if (addresses.length === 0) throw new Error("DNS resolution failed");
 
   const safe = addresses.every((ip) => {
     if (allowLoopback && LOOPBACK_HOSTNAMES.has(ip.toLowerCase())) return true;
     return !isBlockedHostname(ip);
   });
-  DNS_RESOLVE_CACHE.set(h, { safe, expiry: Date.now() + DNS_RESOLVE_CACHE_TTL_MS });
   if (!safe) throw new Error("URL host resolves to a blocked address");
 }
 

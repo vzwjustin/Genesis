@@ -86,6 +86,12 @@ describe("SSRF — DNS rebinding guard", () => {
   it("validateProviderBaseUrl blocks literal private IPs", () => {
     expect(() => validateProviderBaseUrl("https://10.0.0.1")).toThrow(/not allowed/);
   });
+
+  it("DNS cache stores resolved addresses, not authorization decisions", () => {
+    const src = readFileSync(join(root, "../../open-sse/utils/ssrfGuard.js"), "utf8");
+    expect(src).toContain("{ addresses, expiry:");
+    expect(src).not.toMatch(/\{\s*safe,\s*expiry:/);
+  });
 });
 
 describe("clientDetector — Copilot heuristics", () => {
@@ -172,9 +178,11 @@ describe("stream error fail-closed", () => {
 });
 
 describe("proxyFetch hardening", () => {
-  it("createBypassRequest wires abort signal", () => {
+  it("createBypassRequest wires abort signal without removing listener on success", () => {
     const src = readFileSync(join(root, "../../open-sse/utils/proxyFetch.js"), "utf8");
     expect(src).toContain("addEventListener(\"abort\", onAbort");
+    expect(src).toContain("removeEventListener(\"abort\", onAbort)");
+    expect(src).not.toMatch(/finish\(\(res\)/);
     expect(src).toContain("assertSafeResolvedHostname");
   });
 

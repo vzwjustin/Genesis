@@ -6,6 +6,7 @@ import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLock
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { parseApiKey, verifyApiKeyCrc } from "@/shared/utils/apiKey.js";
+import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidCliToken } from "@/shared/auth/cliToken.js";
 import * as log from "../utils/logger.js";
 
@@ -52,6 +53,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           connectionNoProxy: resolvedProxy.connectionNoProxy,
           connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
           vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+          relayAuthSecret: resolvedProxy.relayAuthSecret || "",
           strictProxy: resolvedProxy.strictProxy === true,
         },
       };
@@ -201,6 +203,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         connectionNoProxy: resolvedProxy.connectionNoProxy,
         connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
         vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+        relayAuthSecret: resolvedProxy.relayAuthSecret || "",
         strictProxy: resolvedProxy.strictProxy === true,
       },
       connectionId: connection.id,
@@ -352,7 +355,15 @@ export async function authenticateRequest(request, log) {
     };
   }
 
-  log?.debug?.("AUTH", "Authentication bypassed (requireApiKey=false, no credentials)");
+  if (!isLoopbackRequest(request)) {
+    log?.warn?.("AUTH", "Missing API key (remote access requires key)");
+    return {
+      ok: false,
+      response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "API key required for remote API access"),
+    };
+  }
+
+  log?.debug?.("AUTH", "Authentication bypassed (requireApiKey=false, loopback, no credentials)");
   return { ok: true, apiKey: null, settings, bypassed: true };
 }
 

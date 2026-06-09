@@ -749,3 +749,41 @@ When runtime behavior does not match source:
 Default assumption:
 
 > If source looks right but behavior is wrong, the running server is probably stale, not using the fork, or taking a passthrough path instead of a translated path.
+
+---
+
+## Cursor Cloud specific instructions
+
+### First-time setup (once per VM)
+
+1. Copy env: `cp .env.example .env`
+2. Set a writable data dir in `.env` (default example uses `/var/lib/9router`): `DATA_DIR=/workspace/.data`
+3. Default login password is `INITIAL_PASSWORD` from `.env` (example: `change-me`; falls back to `123456` if unset)
+
+### Run the server (production mode recommended)
+
+`npm run dev` can hit a webpack + `better-sqlite3` bundling error on API routes that load `instrumentation.js` (symptom: `/api/health` returns 500, “Can't resolve 'fs'”). **Use production mode for full E2E verification:**
+
+```bash
+npm run build
+PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run start
+```
+
+Run in tmux for long-lived sessions. Do not use the `9router` CLI wrapper in headless/non-TTY environments; use `node cli/app/server.js` after `cd cli && npm run build` when testing the packaged CLI.
+
+### Tests and lint
+
+- Unit/integration tests (no live server): `cd tests && npm test` — 1300+ tests, mostly mocked
+- ESLint (no npm script): `npx eslint .` from repo root — repo has pre-existing warnings/errors
+- Opt-in live E2E: `RUN_E2E=1` with server on port 20128 (see `tests/README.md`)
+
+### Hello-world verification
+
+1. `curl http://localhost:20128/api/health` → `{"ok":true}`
+2. Login: `POST /api/auth/login` with `{"password":"<INITIAL_PASSWORD>"}`
+3. Create key: `POST /api/keys` with `{"name":"demo"}` (session cookie from login)
+4. `GET /v1/models` with `Authorization: Bearer <key>` → OpenAI-compatible model list
+
+### CLI fork workflow (Linux cloud VM)
+
+macOS global-install symlink notes in “Critical Build and Deploy Gotchas” do not apply here. After editing `open-sse/` or CLI sources: `rm -rf .next-cli-build` (or full `.next-cli-build`), then `cd cli && npm run build`, and verify fixes in `cli/app/.next-cli-build/server/chunks`.

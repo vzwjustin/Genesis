@@ -129,13 +129,11 @@ export function parseSSEToClaudeResponse(rawSSE) {
     }
   }
 
-  for (const index of [...openBlocks.keys()]) {
-    finalizeBlock(index);
-  }
+  if (openBlocks.size > 0) return null;
 
   if (invalidToolJson) return null;
   if (!message) return null;
-  if (!sawMessageStop && !stopReason) return null;
+  if (!sawMessageStop) return null;
 
   if (stopReason) message.stop_reason = stopReason;
   if (stopSequence !== undefined) message.stop_sequence = stopSequence;
@@ -357,6 +355,13 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
         .map((block) => block.text)
         .join("") || null;
     };
+    const thinkingFromClaudeContent = (content) => {
+      if (!Array.isArray(content)) return null;
+      return content
+        .filter((block) => block?.type === "thinking" && typeof block.thinking === "string")
+        .map((block) => block.thinking)
+        .join("") || null;
+    };
     saveRequestDetail(buildRequestDetail({
       ...ctx,
       latency: { ttft: totalLatency, total: totalLatency },
@@ -364,7 +369,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       response: isClaudeNative
         ? {
             content: textFromClaudeContent(parsed.content),
-            thinking: null,
+            thinking: thinkingFromClaudeContent(parsed.content),
             finish_reason: parsed.stop_reason || "unknown",
           }
         : {

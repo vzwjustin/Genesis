@@ -8,7 +8,7 @@ export const SECURITY_COPY = {
     "When ON, all /v1 and /api/v1 routes require a valid API key. Recommended before exposing a tunnel or Tailscale URL.",
 
   requireLoginOff:
-    "Dashboard pages are open without login. Anyone on your network (or tunnel, if enabled) can view settings and provider configuration in the browser.",
+    "Dashboard pages are open without login on this machine. Management APIs are available from loopback without a session; remote access still requires login.",
 
   defaultPassword:
     "No custom password is set. The default password (123456) is active until you set one in Profile.",

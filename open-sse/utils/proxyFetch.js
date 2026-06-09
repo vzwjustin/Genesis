@@ -266,35 +266,40 @@ async function createBypassRequest(parsedUrl, realIP, options) {
   const net = netModule.default ?? netModule;
 
   return new Promise((resolve, reject) => {
-    if (options.signal?.aborted) {
-      reject(options.signal.reason || new Error("aborted"));
-      return;
-    }
-
-    let settled = false;
-    let socket = null;
+    const socket = new net.Socket();
     let req = null;
-
-    const finish = (fn) => (...args) => {
-      if (settled) return;
-      settled = true;
-      options.signal?.removeEventListener("abort", onAbort);
-      fn(...args);
-    };
+    let settled = false;
+    let activeRes = null;
 
     const cleanup = () => {
       try { req?.destroy(); } catch { /* noop */ }
-      try { socket?.destroy(); } catch { /* noop */ }
+      try { activeRes?.destroy(); } catch { /* noop */ }
+      try { socket.destroy(); } catch { /* noop */ }
+    };
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      options.signal?.removeEventListener("abort", onAbort);
+      cleanup();
+      reject(err);
     };
 
     const onAbort = () => {
-      cleanup();
-      finish(reject)(options.signal.reason || new Error("aborted"));
+      if (settled) {
+        cleanup();
+        return;
+      }
+      fail(options.signal?.reason || new Error("aborted"));
     };
 
-    options.signal?.addEventListener("abort", onAbort, { once: true });
-
-    socket = new net.Socket();
+    if (options.signal) {
+      if (options.signal.aborted) {
+        fail(options.signal.reason || new Error("aborted"));
+        return;
+      }
+      options.signal.addEventListener("abort", onAbort);
+    }
 
     socket.connect(HTTPS_PORT, realIP, () => {
       const reqOptions = {
@@ -314,7 +319,9 @@ async function createBypassRequest(parsedUrl, realIP, options) {
         },
       };
 
-      req = https.request(reqOptions, finish((res) => {
+      req = https.request(reqOptions, (res) => {
+        if (settled) return;
+        activeRes = res;
         const response = {
           ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
           status: res.statusCode,
@@ -329,16 +336,16 @@ async function createBypassRequest(parsedUrl, realIP, options) {
           json: async () => JSON.parse(await response.text()),
         };
         resolve(response);
-      }));
+      });
 
-      req.on("error", finish(reject));
+      req.on("error", fail);
       if (options.body != null) {
         req.write(serializeBypassRequestBody(options.body));
       }
       req.end();
     });
 
-    socket.on("error", finish(reject));
+    socket.on("error", fail);
   });
 }
 
@@ -368,6 +375,8 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       "x-relay-target": `${parsed.protocol}//${parsed.host}`,
       "x-relay-path": `${parsed.pathname}${parsed.search}`,
     };
+    const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
+    if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
     return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
 
@@ -437,6 +446,7 @@ export function buildProxyOptionsFromCredentials(credentials) {
     connectionProxyUrl: psd.connectionProxyUrl || "",
     connectionNoProxy: psd.connectionNoProxy || "",
     vercelRelayUrl: psd.vercelRelayUrl || "",
+    relayAuthSecret: psd.relayAuthSecret || "",
     strictProxy: psd.strictProxy === true,
   };
 }
