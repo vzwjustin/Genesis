@@ -315,6 +315,11 @@ const server = https.createServer(sslOptions, async (req, res) => {
       return passthrough(req, res, bodyBuffer);
     }
 
+    if (tool === "kiro" && handlers.kiro.kiroRequiresPassthrough(bodyBuffer)) {
+      log(`kiro passthrough (tool round): host=${req.headers.host} url=${req.url} model=${model ?? "null"}`);
+      return passthrough(req, res, bodyBuffer);
+    }
+
     if (tool === "kiro") {
       log(`kiro intercept: ${model} → ${mappedModel}`);
     }
