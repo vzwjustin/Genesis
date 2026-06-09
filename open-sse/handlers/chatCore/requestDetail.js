@@ -43,12 +43,13 @@ export function extractUsageFromResponse(responseBody) {
     };
   }
 
-  // Gemini format
-  if (responseBody.usageMetadata) {
+  // Gemini format (including Antigravity { response: { usageMetadata } } wrapper)
+  const usageMetadata = responseBody.usageMetadata || responseBody.response?.usageMetadata;
+  if (usageMetadata) {
     return {
-      prompt_tokens: responseBody.usageMetadata.promptTokenCount || 0,
-      completion_tokens: responseBody.usageMetadata.candidatesTokenCount || 0,
-      reasoning_tokens: responseBody.usageMetadata.thoughtsTokenCount
+      prompt_tokens: usageMetadata.promptTokenCount || 0,
+      completion_tokens: usageMetadata.candidatesTokenCount || 0,
+      reasoning_tokens: usageMetadata.thoughtsTokenCount
     };
   }
 
