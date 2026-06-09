@@ -44,9 +44,12 @@ export async function POST(request) {
       return Response.json({ success: false, error: `Provider error: ${response.status}`, details: errorText }, { status: response.status });
     }
 
+    const contentType = response.headers.get("content-type")
+      || (stream ? "text/event-stream" : "application/json");
+
     return new Response(response.body, {
       headers: {
-        "Content-Type": "text/event-stream",
+        "Content-Type": contentType,
         "Cache-Control": "no-cache",
         "Connection": "keep-alive"
       }

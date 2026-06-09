@@ -118,6 +118,13 @@ if (appPkg.version !== cliPkg.version) {
   console.log(`✅ Version already synced: ${cliPkg.version}\n`);
 }
 
+// Purge stale webpack cache so open-sse/ and other out-of-src edits are picked up
+const webpackCacheDir = path.join(buildDistDir, "cache", "webpack");
+if (fs.existsSync(webpackCacheDir)) {
+  fs.rmSync(webpackCacheDir, { recursive: true, force: true });
+  console.log("✅ Purged stale webpack cache\n");
+}
+
 // Step 1: Build app with Next.js (workspace tracing root → traced node_modules in standalone).
 console.log("1️⃣  Building Next.js app...");
 try {

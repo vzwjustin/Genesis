@@ -54,8 +54,6 @@ export async function handleChat(request, clientRawRequest = null) {
       headers: Object.fromEntries(request.headers.entries())
     };
   }
-  cacheClaudeHeaders(clientRawRequest.headers);
-
   // Log request endpoint and model
   const url = new URL(request.url);
   const modelStr = body.model;
@@ -197,6 +195,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+
+    if (clientRawRequest?.headers) {
+      const normalizedHeaders = Object.fromEntries(
+        Object.entries(clientRawRequest.headers).map(([k, v]) => [k.toLowerCase(), String(v)])
+      );
+      cacheClaudeHeaders(normalizedHeaders, credentials.connectionId);
+      refreshedCredentials._requestHeaders = normalizedHeaders;
+    }
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
     if ((provider === "antigravity" || provider === "gemini-cli") && !refreshedCredentials.projectId) {

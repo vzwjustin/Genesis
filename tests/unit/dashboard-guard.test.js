@@ -35,13 +35,15 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
 
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
-function request(pathname, headers = {}) {
+function request(pathname, headers = {}, options = {}) {
   const normalizedHeaders = new Headers(headers);
   return {
     nextUrl: { pathname },
     headers: normalizedHeaders,
     cookies: { get: vi.fn(() => undefined) },
     url: `http://localhost${pathname}`,
+    ip: options.ip,
+    socket: options.socket,
   };
 }
 
@@ -205,7 +207,7 @@ describe("dashboard guard local-only access", () => {
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
-    }));
+    }, { ip: "127.0.0.1" }));
 
     expect(response).toBe(mocks.nextResponse);
   });
@@ -216,7 +218,7 @@ describe("dashboard guard local-only access", () => {
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
       host: "[::1]:20128",
       origin: "http://[::1]:20128",
-    }));
+    }, { ip: "::1" }));
 
     expect(response).toBe(mocks.nextResponse);
   });
@@ -224,9 +226,32 @@ describe("dashboard guard local-only access", () => {
   it("allows local-only route on raw IPv6 loopback host when requireLogin=false", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
-    const localRequest = request("/api/cli-tools/antigravity-mitm", { host: "::1" });
+    const localRequest = request("/api/cli-tools/antigravity-mitm", { host: "::1" }, { ip: "::1" });
 
     expect(__test__.isLocalRequest(localRequest)).toBe(true);
+  });
+
+  it("rejects local-only route when loopback host is spoofed without verified socket IP", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Local only: CLI token required");
+  });
+
+  it("rejects local-only route when verified socket IP is remote", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }, { ip: "203.0.113.9" }));
+
+    expect(response.status).toBe(403);
   });
 
   it("rejects local-only route from tunnel host even when requireLogin=false", async () => {

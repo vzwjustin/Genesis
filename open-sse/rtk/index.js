@@ -1,11 +1,13 @@
 // RTK port: compress tool_result content in LLM request bodies
-// Injected at the top of translateRequest (before any format translation)
-import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
+// Applied in chatCore.js after format translation
+import { RAW_CAP, MIN_COMPRESS_SIZE, SMART_TRUNCATE_MIN_LINES } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
+import { smartTruncate } from "./filters/smartTruncate.js";
 
 let rtkEnabled = false;
 
+// Legacy global toggle; chatCore passes enabled explicitly to compressMessages.
 export function setRtkEnabled(enabled) {
   rtkEnabled = enabled === true;
 }
@@ -120,15 +122,37 @@ export function compressMessages(body, enabled = rtkEnabled) {
   return stats;
 }
 
+// Kiro/AWS CodeWhisperer conversationState has no native cache_control field.
+// If a proxy injected cache markers on history items, respect them like messages[].
+export function findLastCacheBoundaryKiro(history, currentMessage) {
+  const items = [...(Array.isArray(history) ? history : [])];
+  if (currentMessage) items.push(currentMessage);
+  for (let i = items.length - 1; i >= 0; i--) {
+    const msg = items[i];
+    if (!msg) continue;
+    if (msg.cache_control) return i;
+    const uim = msg.userInputMessage;
+    if (uim?.cache_control) return i;
+    if (uim?.userInputMessageContext?.cache_control) return i;
+  }
+  return -1;
+}
+
 // Compress Kiro format: conversationState.history[].userInputMessage.userInputMessageContext.toolResults[].content[].text
 function compressKiroFormat(body, enabled) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
   try {
     const state = body.conversationState;
-    const allMessages = [...(Array.isArray(state?.history) ? state.history : [])];
-    if (state?.currentMessage) allMessages.push(state.currentMessage);
+    const history = Array.isArray(state?.history) ? state.history : [];
+    const cacheFloor = findLastCacheBoundaryKiro(history, state?.currentMessage);
 
-    for (const msg of allMessages) {
+    const indexed = history.map((msg, index) => ({ msg, index }));
+    if (state?.currentMessage) {
+      indexed.push({ msg: state.currentMessage, index: history.length });
+    }
+
+    for (const { msg, index } of indexed) {
+      if (index <= cacheFloor) continue; // protected by cache boundary
       const toolResults = msg?.userInputMessage?.userInputMessageContext?.toolResults;
       if (!Array.isArray(toolResults)) continue;
 
@@ -165,10 +189,18 @@ function compressText(text, stats, shape) {
     return text;
   }
 
-  const out = safeApply(fn, text);
+  let out = safeApply(fn, text);
 
   // Safety: never return empty, never grow the input
   if (!out || out.length === 0 || out.length >= bytesIn) {
+    if (text.split("\n").length >= SMART_TRUNCATE_MIN_LINES) {
+      const truncated = safeApply(smartTruncate, text);
+      if (truncated && truncated.length > 0 && truncated.length < bytesIn) {
+        stats.bytesAfter += truncated.length;
+        stats.hits.push({ shape, filter: "smart-truncate", saved: bytesIn - truncated.length });
+        return truncated;
+      }
+    }
     stats.bytesAfter += bytesIn;
     return text;
   }

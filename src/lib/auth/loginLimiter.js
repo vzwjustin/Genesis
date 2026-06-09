@@ -1,5 +1,7 @@
 // In-memory progressive lockout for dashboard login. Resets on process restart.
 
+import crypto from "crypto";
+
 const MAX_FAILS_BEFORE_LOCK = 5;
 const LOCK_STEPS_MS = [30_000, 120_000, 600_000, 1_800_000]; // 30s, 2m, 10m, 30m
 const FAIL_WINDOW_MS = 60 * 60 * 1000; // 1h since last fail → auto reset
@@ -45,9 +47,37 @@ export function recordSuccess(ip) {
   attempts.delete(ip);
 }
 
+function normalizeConnectionIp(ip) {
+  if (!ip || typeof ip !== "string") return null;
+  const trimmed = ip.trim();
+  if (!trimmed) return null;
+  return trimmed.startsWith("::ffff:") ? trimmed.slice(7) : trimmed;
+}
+
+function getConnectionRemoteAddress(request) {
+  if (typeof request?.ip === "string" && request.ip) {
+    return normalizeConnectionIp(request.ip);
+  }
+  return normalizeConnectionIp(request?.socket?.remoteAddress);
+}
+
+function getFallbackClientKey(request) {
+  const auth = request.headers.get("authorization") || "";
+  const ua = request.headers.get("user-agent") || "";
+  const hash = crypto.createHash("sha256").update(`${auth}\0${ua}`).digest("hex").slice(0, 16);
+  return `fp:${hash}`;
+}
+
 export function getClientIp(request) {
-  if (process.env.TRUST_PROXY_HEADERS !== "true") return "unknown";
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return request.headers.get("x-real-ip") || "unknown";
+  if (process.env.TRUST_PROXY_HEADERS === "true") {
+    const xff = request.headers.get("x-forwarded-for");
+    if (xff) return xff.split(",")[0].trim();
+    const realIp = request.headers.get("x-real-ip");
+    if (realIp) return realIp.trim();
+  }
+
+  const connectionIp = getConnectionRemoteAddress(request);
+  if (connectionIp) return connectionIp;
+
+  return getFallbackClientKey(request);
 }

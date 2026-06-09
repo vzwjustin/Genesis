@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { openaiToClaudeRequest } from "../../open-sse/translator/request/openai-to-claude.js";
 import { openaiToClaudeResponse } from "../../open-sse/translator/response/openai-to-claude.js";
+import { prepareClaudeRequest } from "../../open-sse/translator/helpers/claudeHelper.js";
 
 describe("openaiToClaudeRequest", () => {
   it("maps OpenAI function tool_choice to Claude tool format", () => {
@@ -132,6 +133,34 @@ describe("openaiToClaudeRequest", () => {
       expect(systemText).toContain("You are a helpful math tutor");
       expect(systemText).toContain("You must respond with valid JSON");
     });
+  });
+});
+
+describe("prepareClaudeRequest", () => {
+  it("strips provider prefix from built-in tool model", () => {
+    const body = {
+      messages: [{ role: "user", content: "search the web" }],
+      tools: [
+        { type: "function", function: { name: "my_tool", parameters: {} } },
+        { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6" }
+      ]
+    };
+
+    prepareClaudeRequest(body, "claude");
+
+    const builtin = body.tools.find((t) => t.type === "web_search_20250305");
+    expect(builtin.model).toBe("claude-opus-4-6");
+  });
+
+  it("strips model from client function tools", () => {
+    const body = {
+      messages: [{ role: "user", content: "run tool" }],
+      tools: [{ type: "function", function: { name: "my_tool" }, model: "cc/claude-sonnet-4.5" }]
+    };
+
+    prepareClaudeRequest(body, "claude");
+
+    expect(body.tools[0].model).toBeUndefined();
   });
 });
 

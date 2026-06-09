@@ -41,12 +41,24 @@ vi.mock("better-sqlite3", () => ({
 let GET;
 
 function mockTokenRows(rowsByKey) {
-  mockDbInstance.prepare.mockImplementation(() => ({
-    get: vi.fn((key) => {
-      const value = rowsByKey[key];
-      return value === undefined ? undefined : { value };
-    }),
-  }));
+  mockDbInstance.prepare.mockImplementation((sql) => {
+    if (typeof sql === "string" && sql.includes("LIKE")) {
+      return {
+        all: vi.fn(() => []),
+      };
+    }
+    return {
+      all: vi.fn((...keys) =>
+        keys
+          .filter((key) => rowsByKey[key] !== undefined)
+          .map((key) => ({ key, value: rowsByKey[key] })),
+      ),
+      get: vi.fn((key) => {
+        const value = rowsByKey[key];
+        return value === undefined ? undefined : { value };
+      }),
+    };
+  });
 }
 
 describe("GET /api/oauth/cursor/auto-import", () => {
@@ -81,7 +93,7 @@ describe("GET /api/oauth/cursor/auto-import", () => {
 
     expect(response.body.found).toBe(false);
     expect(response.body.windowsManual).toBe(true);
-    expect(response.body.dbPath).toBeTruthy();
+    expect(response.body.dbPath).toBeUndefined();
   });
 
   it("extracts tokens using exact keys", async () => {

@@ -56,7 +56,8 @@ function getCandidatePaths(platform) {
     ];
   }
 
-  if (platform === "linux") {
+  // Linux and other Unix-like platforms share the XDG config layout.
+  if (platform !== "darwin" && platform !== "win32") {
     return [join(home, ".config/Cursor/User/globalStorage/state.vscdb")];
   }
 
@@ -187,14 +188,6 @@ export async function GET() {
       return NextResponse.json({ found: false, error: "Unsupported platform" }, { status: 400 });
     }
 
-    if (platform === "linux") {
-      const dbPath = candidates[0];
-      return NextResponse.json({
-        found: false,
-        error: "Cursor database not found. Make sure Cursor IDE is installed and you are logged in.",
-      });
-    }
-
     let dbPath = null;
     for (const candidate of candidates) {
       try {
@@ -274,15 +267,16 @@ export async function GET() {
       // sqlite3 CLI not available either
     }
 
-    // Strategy 3: ask user to paste manually
+    // Strategy 3: ask user to paste manually (dbPath logged server-side only)
+    console.log("Cursor auto-import: manual fallback, dbPath:", dbPath);
+    const manualFallback = {
+      found: false,
+      windowsManual: true,
+    };
     if (platform === "darwin") {
-      return NextResponse.json({
-        found: false,
-        error: "Please login to Cursor IDE first, then retry auto-import.",
-        dbPath,
-      });
+      manualFallback.error = "Please login to Cursor IDE first, then retry auto-import.";
     }
-    return NextResponse.json({ found: false, windowsManual: true, dbPath });
+    return NextResponse.json(manualFallback);
   } catch (error) {
     console.log("Cursor auto-import error:", error);
     return NextResponse.json(

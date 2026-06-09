@@ -96,6 +96,20 @@ function isLoopbackIp(ip) {
   return false;
 }
 
+function normalizeConnectionIp(ip) {
+  if (!ip || typeof ip !== "string") return null;
+  const trimmed = ip.trim();
+  if (!trimmed) return null;
+  return trimmed.startsWith("::ffff:") ? trimmed.slice(7) : trimmed;
+}
+
+function getConnectionRemoteAddress(request) {
+  if (typeof request?.ip === "string" && request.ip) {
+    return normalizeConnectionIp(request.ip);
+  }
+  return normalizeConnectionIp(request?.socket?.remoteAddress);
+}
+
 function isLocalRequest(request) {
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
   const origin = request.headers.get("origin");
@@ -104,15 +118,20 @@ function isLocalRequest(request) {
       if (!isLoopbackHostname(new URL(origin).hostname)) return false;
     } catch { return false; }
   }
-  // Reject remote clients spoofing loopback Host via proxy headers
+
+  const connectionIp = getConnectionRemoteAddress(request);
+  if (connectionIp) return isLoopbackIp(connectionIp);
+
+  // Without a verified socket address, do not trust loopback Host alone.
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {
     const clientIp = xff.split(",")[0].trim();
-    if (clientIp && !isLoopbackIp(clientIp)) return false;
+    return clientIp ? isLoopbackIp(clientIp) : false;
   }
   const realIp = request.headers.get("x-real-ip");
-  if (realIp && !isLoopbackIp(realIp.trim())) return false;
-  return true;
+  if (realIp) return isLoopbackIp(realIp.trim());
+
+  return false;
 }
 
 function isPublicLlmApi(pathname) {
@@ -138,8 +157,12 @@ async function canAccessPublicLlmApi(request) {
 
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + dashboard session
-  if (isLocalRequest(request) && await isDashboardAccessAllowed(request)) return true;
+  if (await hasValidToken(request)) return true;
+  // Verified loopback socket only; requireLogin=false is not enough without proof of locality.
+  if (isLocalRequest(request)) {
+    const settings = await loadSettings();
+    if (settings && settings.requireLogin === false) return true;
+  }
   return false;
 }
 

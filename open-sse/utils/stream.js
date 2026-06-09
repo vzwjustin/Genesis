@@ -369,6 +369,19 @@ export function createSSEStream(options = {}) {
         }
       } catch (error) {
         console.log("Error in flush:", error);
+        try {
+          const doneOutput = "data: [DONE]\n\n";
+          reqLogger?.appendConvertedChunk?.(doneOutput);
+          controller.enqueue(sharedEncoder.encode(doneOutput));
+          if (onStreamComplete) {
+            onStreamComplete({
+              content: accumulatedContent,
+              thinking: accumulatedThinking
+            }, state?.usage, ttftAt);
+          }
+        } catch (cleanupError) {
+          console.log("Error in flush cleanup:", cleanupError);
+        }
       }
     }
   });

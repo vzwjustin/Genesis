@@ -61,7 +61,6 @@ const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
 const DEFAULT_PORT = 20128;
 const DEFAULT_HOST = "0.0.0.0";
-const MAX_PORT_ATTEMPTS = 10;
 // Identifiers for killAllAppProcesses - only kill 9router specifically
 const PROCESS_IDENTIFIERS = [
   '9router'  // Only package name - avoid killing other apps
@@ -112,8 +111,8 @@ Options:
   }
 }
 
-// Auto-relaunch after update: detached process has no TTY → fallback to tray
-if (skipUpdate && !trayMode && !process.stdin.isTTY) {
+// Non-interactive stdin (detached/headless): default to tray mode
+if (!trayMode && !process.stdin.isTTY) {
   trayMode = true;
   process.env.TRAY_MODE = "1";
 }
@@ -337,7 +336,31 @@ function killProxyByPidFile() {
   } catch { }
 }
 
-// Kill any process on specific port
+// True when cmdline looks like our Node server (9router CLI or Next standalone)
+function isAppProcessCmdline(cmdline) {
+  if (!cmdline) return false;
+  const cmd = cmdline.toLowerCase();
+  return (
+    (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router") || cmd.includes("\\9router")))
+    || cmd.includes("next-server")
+  );
+}
+
+function getProcessCommandline(pid) {
+  if (!pid) return null;
+  try {
+    if (process.platform === "win32") {
+      const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine"`;
+      const output = execSync(psCmd, { encoding: "utf8", windowsHide: true, timeout: 5000 }).trim();
+      return output || null;
+    }
+    return execSync(`ps -p ${pid} -o command= 2>/dev/null`, { encoding: "utf8", timeout: 3000 }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// Kill any process on specific port (only if it looks like 9router/next-server)
 function killProcessOnPort(port) {
   return new Promise((resolve) => {
     try {
@@ -355,7 +378,10 @@ function killProcessOnPort(port) {
           const lines = output.split('\n').filter(l => l.includes('LISTENING'));
           if (lines.length > 0) {
             pid = lines[0].trim().split(/\s+/).pop();
-            execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
+            const cmdline = getProcessCommandline(pid);
+            if (isAppProcessCmdline(cmdline)) {
+              execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
+            }
           }
         } catch (e) {
           // Port is free or error
@@ -369,7 +395,10 @@ function killProcessOnPort(port) {
           }).trim();
           if (pidOutput) {
             pid = pidOutput.split('\n')[0];
-            execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
+            const cmdline = getProcessCommandline(pid);
+            if (isAppProcessCmdline(cmdline)) {
+              execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
+            }
           }
         } catch (e) {
           // Port is free or error
@@ -625,6 +654,60 @@ function startServer(latestVersion) {
     setTimeout(() => process.exit(0), 100);
   });
 
+  function attachServerEvents() {
+    server.on("error", (err) => {
+      console.error("Failed to start server:", err.message);
+      if (!isShuttingDown) tryRestart();
+      else { cleanup(); process.exit(1); }
+    });
+
+    server.on("close", (code) => {
+      if (isShuttingDown || code === 0) {
+        process.exit(code || 0);
+        return;
+      }
+      tryRestart(code);
+    });
+  }
+
+  function tryRestart(code) {
+    const aliveMs = Date.now() - serverStartTime;
+    // Reset counter if last run was stable
+    if (aliveMs >= RESTART_RESET_MS) restartCount = 0;
+
+    if (restartCount >= MAX_RESTARTS) {
+      console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);
+      try {
+        const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "9router", "db.json") : path.join(".9router", "db.json"));
+        if (fs.existsSync(dbPath)) {
+          const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
+          if (db.settings) db.settings.mitmEnabled = false;
+          fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+        }
+      } catch { /* best effort */ }
+      restartCount = 0;
+      server = spawnServer();
+      attachServerEvents();
+      return;
+    }
+
+    restartCount++;
+    const delay = Math.min(1000 * restartCount, 10000);
+    console.error(`\n⚠️  Server exited (code=${code ?? "unknown"}). Restarting in ${delay / 1000}s... (${restartCount}/${MAX_RESTARTS})`);
+    if (crashLog.length) {
+      console.error("\n--- Server crash log ---");
+      crashLog.forEach(l => console.error(l));
+      console.error("--- End crash log ---\n");
+    }
+
+    setTimeout(() => {
+      server = spawnServer();
+      attachServerEvents();
+    }, delay);
+  }
+
+  attachServerEvents();
+
   // Initialize tray icon (runs alongside TUI)
   const initTrayIcon = () => {
     try {
@@ -721,7 +804,11 @@ function startServer(latestVersion) {
           // Windows/Linux: spawn detached bgProcess (systray works fine in child)
           console.log(`\n⏳ Starting background process... (tray icon will appear in ~3s)`);
 
-          const bgProcess = spawn(process.execPath, [__filename, "--tray", "--skip-update", "-p", port.toString()], {
+          const bgArgs = [__filename, "--tray", "--skip-update", "-p", port.toString()];
+          if (host !== DEFAULT_HOST) {
+            bgArgs.push("-H", host);
+          }
+          const bgProcess = spawn(process.execPath, bgArgs, {
             detached: true,
             stdio: "ignore",
             windowsHide: true,
@@ -750,57 +837,4 @@ function startServer(latestVersion) {
     }
   }, 3000);
 
-  function attachServerEvents() {
-    server.on("error", (err) => {
-      console.error("Failed to start server:", err.message);
-      if (!isShuttingDown) tryRestart();
-      else { cleanup(); process.exit(1); }
-    });
-
-    server.on("close", (code) => {
-      if (isShuttingDown || code === 0) {
-        process.exit(code || 0);
-        return;
-      }
-      tryRestart(code);
-    });
-  }
-
-  function tryRestart(code) {
-    const aliveMs = Date.now() - serverStartTime;
-    // Reset counter if last run was stable
-    if (aliveMs >= RESTART_RESET_MS) restartCount = 0;
-
-    if (restartCount >= MAX_RESTARTS) {
-      console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);
-      try {
-        const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "9router", "db.json") : path.join(".9router", "db.json"));
-        if (fs.existsSync(dbPath)) {
-          const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
-          if (db.settings) db.settings.mitmEnabled = false;
-          fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
-        }
-      } catch { /* best effort */ }
-      restartCount = 0;
-      server = spawnServer();
-      attachServerEvents();
-      return;
-    }
-
-    restartCount++;
-    const delay = Math.min(1000 * restartCount, 10000);
-    console.error(`\n⚠️  Server exited (code=${code ?? "unknown"}). Restarting in ${delay / 1000}s... (${restartCount}/${MAX_RESTARTS})`);
-    if (crashLog.length) {
-      console.error("\n--- Server crash log ---");
-      crashLog.forEach(l => console.error(l));
-      console.error("--- End crash log ---\n");
-    }
-
-    setTimeout(() => {
-      server = spawnServer();
-      attachServerEvents();
-    }, delay);
-  }
-
-  attachServerEvents();
 }

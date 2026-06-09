@@ -18,11 +18,26 @@ import {
   registerXaiSession,
   getXaiSessionStatus,
   clearXaiSession,
+  isAllowedAppPort,
 } from "@/lib/oauth/utils/server";
 
 // Upstream OAuth provider errors can embed raw response bodies containing
 // client_secret / code / code_verifier / tokens. Log the full diagnostic
 // server-side, but only return a redacted, generic message to the browser.
+function isExpiredJwt(token) {
+  try {
+    if (!token || typeof token !== "string") return false;
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    return typeof payload.exp === "number" && payload.exp < Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeOAuthError(error) {
   let msg = String(error?.message || error || "");
   msg = msg
@@ -101,6 +116,9 @@ export async function GET(request, { params }) {
       const appPort = searchParams.get("app_port");
       if (!appPort) {
         return NextResponse.json({ error: "Missing app_port" }, { status: 400 });
+      }
+      if (!isAllowedAppPort(appPort)) {
+        return NextResponse.json({ error: "Invalid app_port" }, { status: 400 });
       }
       const state = searchParams.get("state");
       const codeVerifier = searchParams.get("code_verifier");
@@ -205,6 +223,10 @@ export async function POST(request, { params }) {
 
       // Detect if "code" is actually a raw JWT access token (starts with eyJ)
       if (code && code.startsWith("eyJ") && code.includes(".")) {
+        if (isExpiredJwt(code)) {
+          return NextResponse.json({ error: "Token has expired" }, { status: 400 });
+        }
+
         const { extractCodexAccountInfo } = await import("@/lib/oauth/providers");
         const info = extractCodexAccountInfo(code);
 

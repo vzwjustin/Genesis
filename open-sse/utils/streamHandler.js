@@ -2,6 +2,8 @@
 import { STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
+const SSE_DONE_BYTES = new TextEncoder().encode("data: [DONE]\n\n");
+
 // Get HH:MM:SS timestamp
 function getTimeString() {
   return new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -173,8 +175,46 @@ export function createDisconnectAwareStream(transformStream, streamController) {
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
  */
+function wrapWithStallTerminal(innerStream, stallTimedOut) {
+  const reader = innerStream.getReader();
+
+  const enqueueTerminal = (controller) => {
+    if (!stallTimedOut()) return;
+    try {
+      controller.enqueue(SSE_DONE_BYTES);
+    } catch {
+      // Stream may already be closed.
+    }
+  };
+
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          enqueueTerminal(controller);
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+      } catch {
+        enqueueTerminal(controller);
+        try {
+          controller.close();
+        } catch {
+          // Stream may already be closed.
+        }
+      }
+    },
+    cancel(reason) {
+      reader.cancel(reason).catch(() => {});
+    }
+  });
+}
+
 export function pipeWithDisconnect(providerResponse, transformStream, streamController) {
   let stallTimer = null;
+  let stallTimedOut = false;
   let chunkCount = 0;
   let totalBytes = 0;
   let lastChunkAt = Date.now();
@@ -187,6 +227,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     clearStall();
     stallTimer = setTimeout(() => {
       stallTimer = null;
+      stallTimedOut = true;
       dbg(tag, `STALL TIMEOUT ${STREAM_STALL_TIMEOUT_MS}ms | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${Date.now() - lastChunkAt}ms`);
       streamController.handleError?.(new Error("stream stall timeout"));
       streamController.abort?.();
@@ -227,13 +268,16 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   });
 
   if (!providerResponse.body) {
-    return createDisconnectAwareStream(
-      new ReadableStream({
-        start(controller) {
-          controller.close();
-        },
-      }),
-      wrappedController
+    return wrapWithStallTerminal(
+      createDisconnectAwareStream(
+        new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        wrappedController
+      ),
+      () => stallTimedOut
     );
   }
 
@@ -241,9 +285,12 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     .pipeThrough(upstreamTap)
     .pipeThrough(transformStream);
 
-  return createDisconnectAwareStream(
-    { readable: transformedBody, writable: { getWriter: () => ({ abort: () => Promise.resolve() }) } },
-    wrappedController
+  return wrapWithStallTerminal(
+    createDisconnectAwareStream(
+      { readable: transformedBody, writable: { getWriter: () => ({ abort: () => Promise.resolve() }) } },
+      wrappedController
+    ),
+    () => stallTimedOut
   );
 }
 

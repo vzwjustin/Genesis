@@ -1,11 +1,11 @@
 // Port of auto_detect_filter (rtk/src/cmds/system/pipe_cmd.rs:132-188) + JS extras
 // Order: git-diff → git-status → build-output → grep → find → tree → ls → search-list
-//        → read-numbered → dedup-log → smart-truncate → null
+//        → read-numbered → smart-truncate → dedup-log → null
 import { DETECT_WINDOW, READ_NUMBERED_MIN_HIT_RATIO, SMART_TRUNCATE_MIN_LINES } from "./constants.js";
 import { gitDiff } from "./filters/gitDiff.js";
 import { gitStatus } from "./filters/gitStatus.js";
 import { buildOutput } from "./filters/buildOutput.js";
-import { grep } from "./filters/grep.js";
+import { grep, parseGrepLine } from "./filters/grep.js";
 import { find } from "./filters/find.js";
 import { dedupLog } from "./filters/dedupLog.js";
 import { ls } from "./filters/ls.js";
@@ -59,23 +59,18 @@ export function autoDetectFilter(text) {
     return readNumbered;
   }
 
-  // Fallback: dedupLog for generic multi-line noise with duplicates
-  if (nonEmpty.length >= 5) return dedupLog;
+  // Large blob with no structure — smart truncate before dedupLog
+  const lineCount = text.split("\n").length;
+  if (lineCount >= SMART_TRUNCATE_MIN_LINES) return smartTruncate;
 
-  // Last resort: big blob with no structure — smart truncate
-  if (text.split("\n").length >= SMART_TRUNCATE_MIN_LINES) return smartTruncate;
+  // Fallback: dedupLog for generic multi-line noise with duplicates (5–249 lines)
+  if (nonEmpty.length >= 5) return dedupLog;
 
   return null;
 }
 
 function isGrepLine(line) {
-  // Rust: splitn(3, ':') → parts.len()==3 && parts[1].parse::<usize>().is_ok()
-  const first = line.indexOf(":");
-  if (first === -1) return false;
-  const second = line.indexOf(":", first + 1);
-  if (second === -1) return false;
-  const lineno = line.slice(first + 1, second);
-  return /^\d+$/.test(lineno);
+  return parseGrepLine(line) !== null;
 }
 
 function isPathLike(line) {

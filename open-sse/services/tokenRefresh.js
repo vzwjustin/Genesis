@@ -38,8 +38,40 @@ export const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 const REFRESH_RESULT_TTL_MS = process.env.NODE_ENV === "test" ? 0 : 10_000;
 const refreshDedupCache = new Map();
 
+// Back off refresh retries after failure to avoid refresh storms
+const REFRESH_FAILURE_BACKOFF_MS = 60_000;
+const refreshFailureAt = new Map();
+
 export function __clearRefreshDedupCacheForTests() {
   refreshDedupCache.clear();
+  refreshFailureAt.clear();
+}
+
+function getRefreshBackoffKey(provider, credentials) {
+  if (credentials?.connectionId) return `${provider}:${credentials.connectionId}`;
+  if (credentials?.refreshToken) return `${provider}:${credentials.refreshToken}`;
+  return provider;
+}
+
+function isInRefreshBackoff(provider, credentials, log) {
+  const key = getRefreshBackoffKey(provider, credentials);
+  const failedAt = refreshFailureAt.get(key);
+  if (failedAt && Date.now() - failedAt < REFRESH_FAILURE_BACKOFF_MS) {
+    log?.info?.("TOKEN_REFRESH", `Skipping refresh for ${provider} — backoff active`, {
+      retryInSec: Math.ceil((REFRESH_FAILURE_BACKOFF_MS - (Date.now() - failedAt)) / 1000),
+    });
+    return true;
+  }
+  if (failedAt) refreshFailureAt.delete(key);
+  return false;
+}
+
+function recordRefreshFailure(provider, credentials) {
+  refreshFailureAt.set(getRefreshBackoffKey(provider, credentials), Date.now());
+}
+
+function clearRefreshFailure(provider, credentials) {
+  refreshFailureAt.delete(getRefreshBackoffKey(provider, credentials));
 }
 
 async function dedupRefresh(provider, oldToken, fn, log) {
@@ -607,8 +639,14 @@ export async function getAccessToken(provider, credentials, log) {
     log?.warn?.("TOKEN_REFRESH", `No valid refresh token available for provider: ${provider}`);
     return null;
   }
-  // Dedup is handled inside each refreshXxxToken function
-  return _getAccessTokenInternal(provider, credentials, log);
+  if (isInRefreshBackoff(provider, credentials, log)) return null;
+  const result = await _getAccessTokenInternal(provider, credentials, log);
+  if (result?.accessToken) {
+    clearRefreshFailure(provider, credentials);
+  } else if (result !== undefined) {
+    recordRefreshFailure(provider, credentials);
+  }
+  return result;
 }
 
 async function _getAccessTokenInternal(provider, credentials, log) {
@@ -666,43 +704,61 @@ async function _getAccessTokenInternal(provider, credentials, log) {
  */
 export async function refreshTokenByProvider(provider, credentials, log) {
   if (!credentials.refreshToken) return null;
+  if (isInRefreshBackoff(provider, credentials, log)) return null;
 
+  let result;
   switch (provider) {
     case "gemini-cli":
     case "antigravity":
-      return refreshGoogleToken(
+      result = await refreshGoogleToken(
         credentials.refreshToken,
         PROVIDERS[provider].clientId,
         PROVIDERS[provider].clientSecret,
         log
       );
+      break;
     case "claude":
-      return refreshClaudeOAuthToken(credentials.refreshToken, log);
+      result = await refreshClaudeOAuthToken(credentials.refreshToken, log);
+      break;
     case "codex":
-      return refreshCodexToken(credentials.refreshToken, log);
+      result = await refreshCodexToken(credentials.refreshToken, log);
+      break;
     case "qwen":
-      return refreshQwenToken(credentials.refreshToken, log);
+      result = await refreshQwenToken(credentials.refreshToken, log);
+      break;
     case "iflow":
-      return refreshIflowToken(credentials.refreshToken, log);
+      result = await refreshIflowToken(credentials.refreshToken, log);
+      break;
     case "github":
-      return refreshGitHubToken(credentials.refreshToken, log);
+      result = await refreshGitHubToken(credentials.refreshToken, log);
+      break;
     case "kiro":
-      return refreshKiroToken(
+      result = await refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
         log
       );
+      break;
     case "xai":
-      return refreshXaiToken(credentials.refreshToken, log);
+      result = await refreshXaiToken(credentials.refreshToken, log);
+      break;
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);
-      if (!saJson) return null;
-      return refreshVertexToken(saJson, log);
+      result = saJson ? await refreshVertexToken(saJson, log) : null;
+      break;
     }
     default:
-      return refreshAccessToken(provider, credentials.refreshToken, credentials, log);
+      result = await refreshAccessToken(provider, credentials.refreshToken, credentials, log);
+      break;
   }
+
+  if (result?.accessToken) {
+    clearRefreshFailure(provider, credentials);
+  } else {
+    recordRefreshFailure(provider, credentials);
+  }
+  return result;
 }
 
 /**
