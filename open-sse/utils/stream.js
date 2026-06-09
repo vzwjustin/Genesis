@@ -336,7 +336,15 @@ export function createSSEStream(options = {}) {
       } catch (error) {
         console.error("Error in flush:", error);
         try {
-          controller.error(error);
+          const doneOutput = "data: [DONE]\n\n";
+          reqLogger?.appendConvertedChunk?.(doneOutput);
+          controller.enqueue(sharedEncoder.encode(doneOutput));
+          if (onStreamComplete) {
+            onStreamComplete({
+              content: accumulatedContent,
+              thinking: accumulatedThinking
+            }, state?.usage, ttftAt);
+          }
         } catch {
           // stream may already be closed
         }

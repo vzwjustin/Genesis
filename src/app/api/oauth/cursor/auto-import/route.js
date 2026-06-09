@@ -271,15 +271,16 @@ export async function GET() {
       // sqlite3 CLI not available either
     }
 
-    // Strategy 3: ask user to paste manually
+    // Strategy 3: ask user to paste manually (dbPath logged server-side only)
+    console.log("Cursor auto-import: manual fallback, dbPath:", dbPath);
+    const manualFallback = {
+      found: false,
+      windowsManual: true,
+    };
     if (platform === "darwin") {
-      return NextResponse.json({
-        found: false,
-        error: "Please login to Cursor IDE first, then retry auto-import.",
-        dbPath,
-      });
+      manualFallback.error = "Please login to Cursor IDE first, then retry auto-import.";
     }
-    return NextResponse.json({ found: false, windowsManual: true, dbPath });
+    return NextResponse.json(manualFallback);
   } catch (error) {
     console.log("Cursor auto-import error:", error);
     return NextResponse.json(

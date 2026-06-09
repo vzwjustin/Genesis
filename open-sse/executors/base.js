@@ -119,8 +119,9 @@ export class BaseExecutor {
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex, credentials);
       // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
-      // Only model name + auth header are swapped (Requirement 1.2).
-      const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
+      const transformedBody = passthrough
+        ? body
+        : await Promise.resolve(this.transformRequest(model, body, stream, credentials));
       const headers = this.buildHeaders(credentials, stream);
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;

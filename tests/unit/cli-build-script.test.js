@@ -12,4 +12,11 @@ describe("CLI build script", () => {
     expect(script).toContain("fs.readdirSync(standaloneRootToUse");
     expect(script).toContain('path.join(standaloneRootToUse, entry.name)');
   });
+
+  it("purges stale webpack cache before Next.js build", () => {
+    const script = readFileSync(join(root, "cli/scripts/build-cli.js"), "utf8");
+
+    expect(script).toContain('path.join(buildDistDir, "cache", "webpack")');
+    expect(script).toContain("fs.rmSync(webpackCacheDir");
+  });
 });

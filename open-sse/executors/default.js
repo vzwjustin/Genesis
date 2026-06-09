@@ -85,7 +85,7 @@ export class DefaultExecutor extends BaseExecutor {
       case "claude": {
         // Overlay live cached headers from real Claude Code client over static defaults.
         // Static headers (Title-Case) remain as cold-start fallback.
-        const cached = getCachedClaudeHeaders();
+        const cached = getCachedClaudeHeaders(credentials?.connectionId, credentials?._requestHeaders);
         if (cached) {
           // Remove Title-Case static keys that conflict with incoming lowercase cached keys
           for (const lcKey of Object.keys(cached)) {

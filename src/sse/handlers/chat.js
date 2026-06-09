@@ -49,8 +49,6 @@ export async function handleChat(request, clientRawRequest = null) {
       signal: request.signal,
     };
   }
-  cacheClaudeHeaders(clientRawRequest.headers);
-
   // Log request endpoint and model
   const url = new URL(request.url);
   const modelStr = body.model;
@@ -210,6 +208,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       lastError = "Token refresh failed";
       lastStatus = 401;
       continue;
+    }
+
+    if (clientRawRequest?.headers) {
+      const normalizedHeaders = Object.fromEntries(
+        Object.entries(clientRawRequest.headers).map(([k, v]) => [k.toLowerCase(), String(v)])
+      );
+      cacheClaudeHeaders(normalizedHeaders, credentials.connectionId);
+      refreshedCredentials._requestHeaders = normalizedHeaders;
     }
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)

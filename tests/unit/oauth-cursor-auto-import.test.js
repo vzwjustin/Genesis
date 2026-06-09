@@ -105,7 +105,7 @@ describe("GET /api/oauth/cursor/auto-import", () => {
 
     expect(response.body.found).toBe(false);
     expect(response.body.error).toContain("Please login to Cursor IDE first");
-    expect(response.body.dbPath).toBeTruthy();
+    expect(response.body.dbPath).toBeUndefined();
   });
 
   it("extracts tokens using exact keys", async () => {

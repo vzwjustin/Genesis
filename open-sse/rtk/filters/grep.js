@@ -2,21 +2,23 @@
 // Input format: "file:lineno:content" — splitn(3, ':') in Rust
 import { GREP_PER_FILE_MAX } from "../constants.js";
 
+// Greedy .+ anchors on the last :digits: segment so Windows paths (C:\...) work.
+const GREP_LINE_RE = /^(.+):(\d+):(.*)$/;
+
+export function parseGrepLine(line) {
+  const m = line.match(GREP_LINE_RE);
+  if (!m) return null;
+  return { file: m[1], lineNum: m[2], content: m[3] };
+}
+
 export function grep(input) {
   const byFile = new Map();
   let total = 0;
 
   for (const line of input.split("\n")) {
-    // splitn(3, ':') — only split on first 2 colons
-    const first = line.indexOf(":");
-    if (first === -1) continue;
-    const second = line.indexOf(":", first + 1);
-    if (second === -1) continue;
-    const file = line.slice(0, first);
-    const lineNumStr = line.slice(first + 1, second);
-    const content = line.slice(second + 1);
-    // Rust: parts[1].parse::<usize>().is_ok()
-    if (!/^\d+$/.test(lineNumStr)) continue;
+    const parsed = parseGrepLine(line);
+    if (!parsed) continue;
+    const { file, lineNum: lineNumStr, content } = parsed;
     total++;
     if (!byFile.has(file)) byFile.set(file, []);
     byFile.get(file).push([lineNumStr, content]);

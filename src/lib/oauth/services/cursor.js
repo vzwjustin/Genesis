@@ -116,12 +116,36 @@ export class CursorService {
     // Note: We don't validate against API because Cursor uses complex protobuf.
     // Token will be validated when used for actual requests.
 
+    const expiresIn = this.getJwtExpiresIn(accessToken) ?? 86400;
+
     return {
       accessToken,
       machineId,
-      expiresIn: 86400, // Cursor tokens typically last 24 hours
+      expiresIn,
       authMethod: "imported",
     };
+  }
+
+  /**
+   * Parse JWT exp claim when token looks like a JWT; returns seconds until expiry.
+   * @param {string} accessToken
+   * @returns {number|null}
+   */
+  getJwtExpiresIn(accessToken) {
+    const parts = accessToken.split(".");
+    if (parts.length !== 3) return null;
+    try {
+      let payload = parts[1];
+      while (payload.length % 4) payload += "=";
+      const decoded = JSON.parse(
+        Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString()
+      );
+      if (typeof decoded.exp !== "number") return null;
+      const remaining = decoded.exp - Math.floor(Date.now() / 1000);
+      return remaining > 0 ? remaining : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

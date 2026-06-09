@@ -24,7 +24,7 @@ describe("claudeHeaderCache", () => {
   });
 
   it("returns null before any headers are cached (cold start)", () => {
-    expect(cacheModule.getCachedClaudeHeaders()).toBeNull();
+    expect(cacheModule.getCachedClaudeHeaders("conn-1")).toBeNull();
   });
 
   it("caches headers when user-agent contains 'claude-code'", () => {
@@ -45,9 +45,9 @@ describe("claudeHeaderCache", () => {
       "anthropic-dangerous-direct-browser-access": "true",
       // Non-identity header — should NOT be captured
       "content-type": "application/json",
-    });
+    }, "conn-1");
 
-    const cached = cacheModule.getCachedClaudeHeaders();
+    const cached = cacheModule.getCachedClaudeHeaders("conn-1");
     expect(cached).not.toBeNull();
     expect(cached["user-agent"]).toBe("claude-code/2.1.63 node/24.3.0");
     expect(cached["anthropic-beta"]).toBe("claude-code-20250219,oauth-2025-04-20");
@@ -61,9 +61,9 @@ describe("claudeHeaderCache", () => {
     cacheModule.cacheClaudeHeaders({
       "user-agent": "claude-cli/1.0.0",
       "anthropic-version": "2023-06-01",
-    });
-    expect(cacheModule.getCachedClaudeHeaders()).not.toBeNull();
-    expect(cacheModule.getCachedClaudeHeaders()["user-agent"]).toBe("claude-cli/1.0.0");
+    }, "conn-1");
+    expect(cacheModule.getCachedClaudeHeaders("conn-1")).not.toBeNull();
+    expect(cacheModule.getCachedClaudeHeaders("conn-1")["user-agent"]).toBe("claude-cli/1.0.0");
   });
 
   it("caches headers when x-app is 'cli' (regardless of user-agent)", () => {
@@ -71,45 +71,67 @@ describe("claudeHeaderCache", () => {
       "user-agent": "axios/1.7.0",
       "x-app": "cli",
       "anthropic-version": "2023-06-01",
-    });
-    expect(cacheModule.getCachedClaudeHeaders()).not.toBeNull();
+    }, "conn-1");
+    expect(cacheModule.getCachedClaudeHeaders("conn-1")).not.toBeNull();
   });
 
   it("does NOT cache headers for non-Claude clients", () => {
     cacheModule.cacheClaudeHeaders({
       "user-agent": "PostmanRuntime/7.43.0",
       "anthropic-version": "2023-06-01",
-    });
-    expect(cacheModule.getCachedClaudeHeaders()).toBeNull();
+    }, "conn-1");
+    expect(cacheModule.getCachedClaudeHeaders("conn-1")).toBeNull();
+  });
+
+  it("scopes cache per connectionId", () => {
+    cacheModule.cacheClaudeHeaders({
+      "user-agent": "claude-code/2.0.0",
+      "x-stainless-package-version": "0.70.0",
+    }, "conn-a");
+    cacheModule.cacheClaudeHeaders({
+      "user-agent": "claude-code/2.1.63",
+      "x-stainless-package-version": "0.74.0",
+    }, "conn-b");
+    expect(cacheModule.getCachedClaudeHeaders("conn-a")["user-agent"]).toBe("claude-code/2.0.0");
+    expect(cacheModule.getCachedClaudeHeaders("conn-b")["user-agent"]).toBe("claude-code/2.1.63");
   });
 
   it("refreshes cache on each matching request", () => {
     cacheModule.cacheClaudeHeaders({
       "user-agent": "claude-code/2.0.0",
       "x-stainless-package-version": "0.70.0",
-    });
+    }, "conn-1");
     cacheModule.cacheClaudeHeaders({
       "user-agent": "claude-code/2.1.63",
       "x-stainless-package-version": "0.74.0",
-    });
-    const cached = cacheModule.getCachedClaudeHeaders();
+    }, "conn-1");
+    const cached = cacheModule.getCachedClaudeHeaders("conn-1");
     expect(cached["user-agent"]).toBe("claude-code/2.1.63");
     expect(cached["x-stainless-package-version"]).toBe("0.74.0");
   });
 
   it("ignores calls with null or non-object headers", () => {
-    cacheModule.cacheClaudeHeaders(null);
-    cacheModule.cacheClaudeHeaders(undefined);
-    cacheModule.cacheClaudeHeaders("string");
-    expect(cacheModule.getCachedClaudeHeaders()).toBeNull();
+    cacheModule.cacheClaudeHeaders(null, "conn-1");
+    cacheModule.cacheClaudeHeaders(undefined, "conn-1");
+    cacheModule.cacheClaudeHeaders("string", "conn-1");
+    expect(cacheModule.getCachedClaudeHeaders("conn-1")).toBeNull();
+  });
+
+  it("falls back to per-request headers when connection cache is empty", () => {
+    const requestHeaders = {
+      "user-agent": "claude-code/2.1.63",
+      "anthropic-version": "2023-06-01",
+    };
+    const cached = cacheModule.getCachedClaudeHeaders(undefined, requestHeaders);
+    expect(cached["user-agent"]).toBe("claude-code/2.1.63");
   });
 
   it("only stores keys that are actually present in the headers object", () => {
     cacheModule.cacheClaudeHeaders({
       "user-agent": "claude-code/2.1.63",
       // Most stainless headers absent
-    });
-    const cached = cacheModule.getCachedClaudeHeaders();
+    }, "conn-1");
+    const cached = cacheModule.getCachedClaudeHeaders("conn-1");
     expect(cached["x-stainless-os"]).toBeUndefined();
     expect(cached["user-agent"]).toBe("claude-code/2.1.63");
   });
@@ -139,14 +161,14 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
       "x-stainless-helper-method": "stream",
       "x-stainless-retry-count": "0",
       "x-stainless-timeout": "600",
-    });
+    }, "test-conn");
     const mod = await import("open-sse/executors/default.js");
     DefaultExecutor = mod.DefaultExecutor || mod.default;
   });
 
   it("overlays live cached headers over static provider defaults", () => {
     const executor = new DefaultExecutor("claude");
-    const headers = executor.buildHeaders({ apiKey: "sk-test" }, true);
+    const headers = executor.buildHeaders({ apiKey: "sk-test", connectionId: "test-conn" }, true);
 
     // Live values should win over static providers.js values
     expect(headers["user-agent"]).toBe("claude-code/2.1.63 node/24.3.0");
@@ -161,7 +183,7 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
 
   it("removes conflicting Title-Case static keys when cached lowercase keys exist", () => {
     const executor = new DefaultExecutor("claude");
-    const headers = executor.buildHeaders({ apiKey: "sk-test" }, true);
+    const headers = executor.buildHeaders({ apiKey: "sk-test", connectionId: "test-conn" }, true);
 
     // Title-Case variants from providers.js must be gone
     expect(headers["Anthropic-Version"]).toBeUndefined();
@@ -175,27 +197,27 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
 
   it("sets x-api-key auth when apiKey is provided", () => {
     const executor = new DefaultExecutor("claude");
-    const headers = executor.buildHeaders({ apiKey: "sk-live-key" }, true);
+    const headers = executor.buildHeaders({ apiKey: "sk-live-key", connectionId: "test-conn" }, true);
     expect(headers["x-api-key"]).toBe("sk-live-key");
     expect(headers["Authorization"]).toBeUndefined();
   });
 
   it("sets Bearer Authorization when only accessToken is provided", () => {
     const executor = new DefaultExecutor("claude");
-    const headers = executor.buildHeaders({ accessToken: "tok-abc" }, true);
+    const headers = executor.buildHeaders({ accessToken: "tok-abc", connectionId: "test-conn" }, true);
     expect(headers["Authorization"]).toBe("Bearer tok-abc");
     expect(headers["x-api-key"]).toBeUndefined();
   });
 
   it("includes Accept: text/event-stream when stream=true", () => {
     const executor = new DefaultExecutor("claude");
-    const headers = executor.buildHeaders({ apiKey: "k" }, true);
+    const headers = executor.buildHeaders({ apiKey: "k", connectionId: "test-conn" }, true);
     expect(headers["Accept"]).toBe("text/event-stream");
   });
 
   it("omits Accept: text/event-stream when stream=false", () => {
     const executor = new DefaultExecutor("claude");
-    const headers = executor.buildHeaders({ apiKey: "k" }, false);
+    const headers = executor.buildHeaders({ apiKey: "k", connectionId: "test-conn" }, false);
     expect(headers["Accept"]).toBeUndefined();
   });
 });
@@ -391,8 +413,10 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
 
   it("does NOT route non-Anthropic hosts through gotScraping", async () => {
     const gotScrapingMock = vi.fn();
+    gotScrapingMock.stream = vi.fn();
     vi.doMock("got-scraping", () => ({ gotScraping: gotScrapingMock }));
 
+    const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -413,5 +437,6 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
     });
 
     expect(gotScrapingMock).not.toHaveBeenCalled();
+    globalThis.fetch = originalFetch;
   });
 });

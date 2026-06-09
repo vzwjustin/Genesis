@@ -45,6 +45,14 @@ function makeGrepOutput() {
   return lines.join("\n");
 }
 
+function makeWindowsGrepOutput() {
+  return [
+    "C:\\Users\\foo\\bar.js:10:const x = 1",
+    "C:\\Users\\foo\\baz.js:20:const y = 2",
+    "C:\\Users\\foo\\qux.js:30:const z = 3",
+  ].join("\n");
+}
+
 function makeFindOutput() {
   const lines = [];
   for (let i = 0; i < 30; i++) lines.push(`./src/a/${i}.js`);
@@ -53,11 +61,91 @@ function makeFindOutput() {
   return lines.join("\n");
 }
 
+function makeUniqueLines(count) {
+  return Array.from({ length: count }, (_, i) => `unique line ${i} ${"x".repeat(20)}`).join("\n");
+}
+
+function makeDuplicateHeavyLog() {
+  const lines = [];
+  for (let i = 0; i < 30; i++) lines.push("repeated log line with padding text padding text padding");
+  lines.push("one unique line at the end");
+  return lines.join("\n");
+}
+
 describe("RTK flag", () => {
   it("compressMessages respects enabled flag", () => {
     const body = { messages: [{ role: "tool", tool_call_id: "x", content: "x".repeat(600) }] };
     expect(compressMessages(body, false)).toBeNull();
     expect(compressMessages(structuredClone(body), true)).not.toBeNull();
+  });
+});
+
+describe("findLastCacheBoundary", () => {
+  it("finds cache_control on message", () => {
+    const messages = [
+      { role: "user", content: "hi" },
+      { role: "user", content: "hello", cache_control: { type: "ephemeral" } },
+      { role: "user", content: "later" },
+    ];
+    expect(findLastCacheBoundary(messages)).toBe(1);
+  });
+
+  it("finds cache_control on content block", () => {
+    const messages = [
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      { role: "user", content: [{ type: "text", text: "cached", cache_control: { type: "ephemeral" } }] },
+      { role: "user", content: [{ type: "text", text: "later" }] },
+    ];
+    expect(findLastCacheBoundary(messages)).toBe(1);
+  });
+
+  it("returns -1 when no cache boundary", () => {
+    const messages = [{ role: "user", content: "hi" }];
+    expect(findLastCacheBoundary(messages)).toBe(-1);
+  });
+});
+
+describe("compressMessages cache boundary", () => {
+  it("skips tool results at or before cache boundary", () => {
+    const big = makeLongDiff();
+    const body = {
+      messages: [
+        { role: "tool", tool_call_id: "c1", content: big, cache_control: { type: "ephemeral" } },
+        { role: "user", content: "next" },
+      ]
+    };
+    const stats = compressMessages(body, true);
+    expect(body.messages[0].content.length).toBe(big.length);
+    expect(stats.hits.length).toBe(0);
+  });
+
+  it("skips tool results before cache boundary message", () => {
+    const bigBefore = makeLongDiff();
+    const bigAfter = makeGrepOutput();
+    const body = {
+      messages: [
+        { role: "tool", tool_call_id: "c1", content: bigBefore },
+        { role: "user", content: [{ type: "text", text: "cached", cache_control: { type: "ephemeral" } }] },
+        { role: "tool", tool_call_id: "c2", content: bigAfter },
+      ]
+    };
+    const stats = compressMessages(body, true);
+    expect(body.messages[0].content.length).toBe(bigBefore.length);
+    expect(body.messages[2].content.length).toBeLessThan(bigAfter.length);
+    expect(stats.hits.length).toBeGreaterThan(0);
+  });
+
+  it("still compresses tool results AFTER cache boundary", () => {
+    const big = makeLongDiff();
+    const body = {
+      messages: [
+        { role: "user", content: [{ type: "text", text: "cached", cache_control: { type: "ephemeral" } }] },
+        { role: "tool", tool_call_id: "c1", content: big },
+      ]
+    };
+    const stats = compressMessages(body, true);
+    expect(stats.hits.length).toBeGreaterThan(0);
+    expect(body.messages[1].content.length).toBeLessThan(big.length);
   });
 });
 
@@ -89,6 +177,16 @@ describe("RTK filters", () => {
     expect(out.length).toBeLessThan(input.length);
   });
 
+  it("grep() correctly groups Windows paths", () => {
+    const input = makeWindowsGrepOutput();
+    const out = grep(input);
+    expect(out).toContain("3 matches in 3F:");
+    expect(out).toContain("[file] C:\\Users\\foo\\bar.js (1):");
+    expect(out).toContain("  10: const x = 1");
+    expect(out).toContain("[file] C:\\Users\\foo\\baz.js (1):");
+    expect(out).toContain("  20: const y = 2");
+  });
+
   it("find groups paths by parent dir, shows basenames (Rust format)", () => {
     const input = makeFindOutput();
     const out = find(input);
@@ -118,12 +216,19 @@ describe("autoDetectFilter", () => {
   it("detects grep", () => {
     expect(autoDetectFilter("a.js:1:hello\nb.js:2:world\nc.js:3:foo").filterName).toBe("grep");
   });
+  it("autoDetectFilter detects Windows grep output", () => {
+    expect(autoDetectFilter(makeWindowsGrepOutput()).filterName).toBe("grep");
+  });
   it("detects find", () => {
     expect(autoDetectFilter("./a/b.js\n./a/c.js\n./a/d.js").filterName).toBe("find");
   });
   it("falls back to dedupLog for generic text", () => {
     const txt = "line1\nline2\nline3\nline4\nline5\nline6\n";
     expect(autoDetectFilter(txt).filterName).toBe("dedup-log");
+  });
+  it("prefers smartTruncate over dedupLog for 250+ unique lines", () => {
+    const txt = makeUniqueLines(400);
+    expect(autoDetectFilter(txt).filterName).toBe("smart-truncate");
   });
 });
 
@@ -341,6 +446,82 @@ describe("compressMessages (enabled)", () => {
     expect(stats).not.toBeNull();
     expect(stats.hits.length).toBeGreaterThan(0);
   });
+
+  it("compresses 400 unique lines via smart-truncate", () => {
+    const big = makeUniqueLines(400);
+    const body = { messages: [{ role: "tool", tool_call_id: "x", content: big }] };
+    const stats = compressMessages(body, true);
+    expect(stats.hits.length).toBeGreaterThan(0);
+    expect(stats.hits[0].filter).toBe("smart-truncate");
+    expect(stats.bytesAfter).toBeLessThan(stats.bytesBefore);
+    expect(body.messages[0].content.length).toBeLessThan(big.length);
+  });
+
+  it("compresses duplicate-heavy smaller payloads via dedup-log", () => {
+    const big = makeDuplicateHeavyLog();
+    const body = { messages: [{ role: "tool", tool_call_id: "x", content: big }] };
+    const stats = compressMessages(body, true);
+    expect(stats.hits.length).toBeGreaterThan(0);
+    expect(stats.hits[0].filter).toBe("dedup-log");
+    expect(stats.bytesAfter).toBeLessThan(stats.bytesBefore);
+    expect(body.messages[0].content.length).toBeLessThan(big.length);
+  });
+});
+
+describe("compressMessages Kiro format cache boundary", () => {
+  function makeKiroBody(toolText, { cacheOnHistoryIndex = -1 } = {}) {
+    const big = toolText ?? makeLongDiff();
+    const history = [
+      {
+        userInputMessage: {
+          content: "earlier",
+          userInputMessageContext: {
+            toolResults: [{ content: [{ text: big }] }]
+          }
+        }
+      },
+      {
+        userInputMessage: {
+          content: "cached turn",
+          ...(cacheOnHistoryIndex === 1 ? { cache_control: { type: "ephemeral" } } : {}),
+          userInputMessageContext: {
+            toolResults: [{ content: [{ text: big }] }]
+          }
+        }
+      }
+    ];
+    return {
+      conversationState: {
+        history,
+        currentMessage: {
+          userInputMessage: {
+            content: "current",
+            userInputMessageContext: {
+              toolResults: [{ content: [{ text: makeGrepOutput() }] }]
+            }
+          }
+        }
+      }
+    };
+  }
+
+  it("compresses Kiro tool results when no cache boundary", () => {
+    const body = makeKiroBody();
+    const stats = compressMessages(body, true);
+    expect(stats.hits.length).toBeGreaterThan(0);
+  });
+
+  it("skips Kiro tool results at or before cache boundary in history", () => {
+    const big = makeLongDiff();
+    const body = makeKiroBody(big, { cacheOnHistoryIndex: 1 });
+    const beforeLen = body.conversationState.history[0].userInputMessage.userInputMessageContext.toolResults[0].content[0].text.length;
+    const atCacheLen = body.conversationState.history[1].userInputMessage.userInputMessageContext.toolResults[0].content[0].text.length;
+    const stats = compressMessages(body, true);
+    expect(body.conversationState.history[0].userInputMessage.userInputMessageContext.toolResults[0].content[0].text.length).toBe(beforeLen);
+    expect(body.conversationState.history[1].userInputMessage.userInputMessageContext.toolResults[0].content[0].text.length).toBe(atCacheLen);
+    expect(stats.hits.length).toBeGreaterThan(0); // currentMessage after boundary
+  });
+
 });
 
 describe("cache boundary preservation (Task 11.1)", () => {

@@ -102,9 +102,14 @@ function normalizeCodexTools(body) {
   }
 }
 
-// Cache machine ID at module level (resolved once)
-let cachedMachineId = null;
-getConsistentMachineId().then(id => { cachedMachineId = id; });
+// Memoized machine ID promise — awaited in transformRequest to avoid race
+let machineIdPromise = null;
+function getMachineId() {
+  if (!machineIdPromise) {
+    machineIdPromise = getConsistentMachineId();
+  }
+  return machineIdPromise;
+}
 
 function hashContent(text) {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
@@ -388,11 +393,12 @@ export class CodexExecutor extends BaseExecutor {
    * Transform request before sending - inject default instructions if missing.
    * Image fetching is handled separately in prefetchImages() so this stays sync.
    */
-  transformRequest(model, body, stream, credentials) {
+  async transformRequest(model, body, stream, credentials) {
     this._isCompact = !!body._compact;
     delete body._compact;
+    const machineId = await getMachineId();
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
-    this._currentSessionId = resolveCacheSessionId(body, credentials, cachedMachineId);
+    this._currentSessionId = resolveCacheSessionId(body, credentials, machineId);
     // Convert string input to array format (Codex API requires input as array)
     const normalized = normalizeResponsesInput(body.input);
     if (normalized) body.input = normalized;

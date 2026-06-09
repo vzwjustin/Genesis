@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { DATA_DIR } from "@/lib/dataDir";
 
+import crypto from "crypto";
+
 const MAX_FAILS_BEFORE_LOCK = 5;
 const LOCK_STEPS_MS = [30_000, 120_000, 600_000, 1_800_000]; // 30s, 2m, 10m, 30m
 const FAIL_WINDOW_MS = 60 * 60 * 1000; // 1h since last fail → auto reset
@@ -80,6 +82,13 @@ export function recordSuccess(ip) {
   persistAttempts();
 }
 
+function getFallbackClientKey(request) {
+  const auth = request.headers.get("authorization") || "";
+  const ua = request.headers.get("user-agent") || "";
+  const hash = crypto.createHash("sha256").update(`${auth}\0${ua}`).digest("hex").slice(0, 16);
+  return `fp:${hash}`;
+}
+
 export function getClientIp(request) {
   if (process.env.TRUST_PROXY_HEADERS === "true") {
     const xff = request.headers.get("x-forwarded-for");
@@ -91,5 +100,5 @@ export function getClientIp(request) {
   const socketIp = request.socket?.remoteAddress || request.ip;
   if (socketIp) return String(socketIp).replace(/^::ffff:/, "");
 
-  return "unknown";
+  return getFallbackClientKey(request);
 }

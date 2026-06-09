@@ -1,5 +1,5 @@
 /**
- * Singleton cache for real Claude Code client headers.
+ * Per-connection cache for real Claude Code client headers.
  * Captures headers from authentic Claude Code requests and makes them available
  * for forwarding to api.anthropic.com, replacing static hardcoded values.
  */
@@ -26,7 +26,8 @@ const CLAUDE_IDENTITY_HEADERS = [
   "arch",
 ];
 
-let cachedHeaders = null;
+/** @type {Map<string, object>} */
+const cacheByConnection = new Map();
 
 /**
  * Detect if request headers look like a real Claude Code client.
@@ -38,33 +39,50 @@ function isClaudeCodeClient(headers) {
   return ua.includes("claude-cli") || ua.includes("claude-code") || xApp === "cli";
 }
 
-/**
- * Store Claude Code identity headers if this looks like a real client request.
- * Called at the entry point before any translation/forwarding.
- * @param {object} headers - Lowercase header key/value object (from request.headers.entries())
- */
-export function cacheClaudeHeaders(headers) {
-  if (!headers || typeof headers !== "object") return;
-  if (!isClaudeCodeClient(headers)) return;
-
+function extractIdentityHeaders(headers) {
   const captured = {};
   for (const key of CLAUDE_IDENTITY_HEADERS) {
     if (headers[key] !== undefined && headers[key] !== null) {
       captured[key] = headers[key];
     }
   }
+  return Object.keys(captured).length > 0 ? captured : null;
+}
 
-  if (Object.keys(captured).length > 0) {
-    cachedHeaders = captured;
-    console.log(`[ClaudeHeaders] Cached ${Object.keys(captured).length} identity headers from Claude Code client`);
+/**
+ * Store Claude Code identity headers scoped to a connection.
+ * @param {object} headers - Lowercase header key/value object
+ * @param {string} [connectionId]
+ */
+export function cacheClaudeHeaders(headers, connectionId) {
+  if (!headers || typeof headers !== "object" || !connectionId) return;
+  if (!isClaudeCodeClient(headers)) return;
+
+  const captured = extractIdentityHeaders(headers);
+  if (captured) {
+    cacheByConnection.set(connectionId, captured);
+    console.log(`[ClaudeHeaders] Cached ${Object.keys(captured).length} identity headers for connection ${connectionId}`);
   }
 }
 
 /**
- * Get the most recently cached Claude Code identity headers.
- * Returns null if no authentic client request has been seen yet (cold start).
+ * Get Claude Code identity headers for a connection, or per-request fallback.
+ * Without connectionId, returns headers extracted from the current request only.
+ * @param {string} [connectionId]
+ * @param {object} [requestHeaders] - Lowercase header key/value object from current request
  * @returns {object|null}
  */
-export function getCachedClaudeHeaders() {
-  return cachedHeaders;
+export function getCachedClaudeHeaders(connectionId, requestHeaders) {
+  if (connectionId && cacheByConnection.has(connectionId)) {
+    return cacheByConnection.get(connectionId);
+  }
+  if (requestHeaders && isClaudeCodeClient(requestHeaders)) {
+    return extractIdentityHeaders(requestHeaders);
+  }
+  return null;
+}
+
+/** @internal test helper */
+export function __clearClaudeHeaderCacheForTests() {
+  cacheByConnection.clear();
 }
