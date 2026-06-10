@@ -9,6 +9,7 @@ const { isKiroMitmHost } = require("../../src/shared/constants/mitmToolHosts.js"
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
+const SUPPORTED_PROXY_PROTOCOLS = new Set(["http:", "https:"]);
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -213,14 +214,20 @@ function normalizeProxyUrl(proxyUrl) {
   const normalizedInput = normalizeString(proxyUrl);
   if (!normalizedInput) return null;
 
-  try {
-
-    new URL(normalizedInput);
-    return normalizedInput;
-  } catch {
-    // Allow "127.0.0.1:7890" style values
-    return `http://${normalizedInput}`;
+  const withProtocol = /^[a-z][a-z\d+\-.]*:\/\//i.test(normalizedInput)
+    ? normalizedInput
+    : `http://${normalizedInput}`;
+  const parsed = new URL(withProtocol);
+  if (!SUPPORTED_PROXY_PROTOCOLS.has(parsed.protocol)) {
+    throw new Error("Proxy URL must use http or https");
   }
+  if (!parsed.hostname) {
+    throw new Error("Proxy URL host is required");
+  }
+  const normalized = parsed.toString();
+  return parsed.pathname === "/" && !parsed.search && !parsed.hash
+    ? normalized.replace(/\/$/, "")
+    : normalized;
 }
 
 function resolveConnectionProxyUrl(targetUrl, proxyOptions) {

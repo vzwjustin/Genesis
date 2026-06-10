@@ -120,7 +120,7 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.log("Error fetching providers for client:", error);
+    console.error("Error fetching providers for client:", error?.message);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
   }
 }
