@@ -19,6 +19,11 @@ const { LSOF_BIN } = require("./config");
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
+function isLoopbackRouterHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  return h === "localhost" || h === "::1" || h.startsWith("127.");
+}
+
 function shellQuoteSingle(str) {
   if (str == null || str === "") return "''";
   return `'${String(str).replace(/'/g, "'\\''")}'`;
@@ -32,6 +37,7 @@ async function resolveMitmRouterBaseUrl() {
     if (!raw) return DEFAULT_MITM_ROUTER_BASE;
     const u = new URL(raw);
     if (u.protocol !== "http:" && u.protocol !== "https:") return DEFAULT_MITM_ROUTER_BASE;
+    if (!isLoopbackRouterHost(u.hostname)) return DEFAULT_MITM_ROUTER_BASE;
     return raw.replace(/\/+$/, "");
   } catch {
     return DEFAULT_MITM_ROUTER_BASE;

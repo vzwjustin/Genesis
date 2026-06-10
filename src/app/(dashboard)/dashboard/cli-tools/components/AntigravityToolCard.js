@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, Badge, Modal, Input, ModelSelectModal } from "@/shared/components";
+import InlineAlert from "@/shared/components/InlineAlert";
 import { revealApiKey } from "@/shared/utils/revealApiKey";
 import Image from "next/image";
 
@@ -81,7 +82,7 @@ useEffect(() => {
       loadSavedMappings();
       fetchModelAliases();
     }
-  }, [isExpanded]);
+  }, [isExpanded, status]);
 
 
 

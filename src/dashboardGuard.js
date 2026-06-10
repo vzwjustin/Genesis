@@ -58,7 +58,7 @@ function isLoopbackIp(ip) {
   const trimmed = ip.trim();
   if (LOOPBACK_HOSTS.has(trimmed.toLowerCase())) return true;
   if (trimmed.startsWith("127.")) return true;
-  if (trimmed === "::1" || trimmed.startsWith("fe80:")) return true;
+  if (trimmed === "::1") return true;
   return false;
 }
 

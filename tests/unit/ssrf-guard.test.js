@@ -33,4 +33,14 @@ describe("ssrfGuard", () => {
   it("assertSafeResolvedHostname allows loopback when configured", async () => {
     await expect(assertSafeResolvedHostname("127.0.0.1", { allowLoopback: true })).resolves.toBeUndefined();
   });
+
+  it("does not allow 0.0.0.0 when loopback URLs are enabled", () => {
+    expect(() =>
+      assertSafeFetchUrl("http://0.0.0.0:20128", {
+        requireHttps: false,
+        allowHttp: true,
+        allowLoopback: true,
+      })
+    ).toThrow(/not allowed/);
+  });
 });

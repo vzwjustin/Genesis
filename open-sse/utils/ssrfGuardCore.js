@@ -2,7 +2,7 @@
 // pull into the webpack client bundle (providers.js → ModelSelectModal imports it).
 // DNS-resolution guards (which need node:dns) live in ssrfGuard.js.
 
-export const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+export const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isPrivateOrReservedIpv4(a, b) {
   if (a === 10) return true;

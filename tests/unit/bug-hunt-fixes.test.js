@@ -92,6 +92,79 @@ describe("Headroom — skip messages[] tails with tool history", () => {
   });
 });
 
+describe("ChatCore — compression failure remains optional", () => {
+  it("does not turn compression failures into request errors", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(root, "../../open-sse/handlers/chatCore.js"), "utf8");
+
+    expect(src).not.toContain("Request compression failed");
+    expect(src).toContain("continuing with original content");
+  });
+});
+
+describe("MITM router base URL stays local", () => {
+  it("rejects remote router bases at save time and ignores stale remote settings at runtime", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const routeSrc = readFileSync(join(root, "../../src/app/api/cli-tools/antigravity-mitm/route.js"), "utf8");
+    const managerSrc = readFileSync(join(root, "../../src/mitm/manager.js"), "utf8");
+
+    expect(routeSrc).toContain("function isLoopbackRouterHost");
+    expect(routeSrc).toContain("MITM router URL must point to localhost");
+    expect(managerSrc).toContain("function isLoopbackRouterHost");
+    expect(managerSrc).toContain("!isLoopbackRouterHost(u.hostname)");
+  });
+});
+
+describe("Usage stats — API keys are not exposed", () => {
+  it("does not place raw API keys in usage stats response fields or keys", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(root, "../../src/lib/db/repos/usageRepo.js"), "utf8");
+
+    expect(src).toContain("safeApiKeyInfo");
+    expect(src).not.toMatch(/apiKey:\s*r\.apiKey/);
+    expect(src).not.toMatch(/apiKey:\s*apiKeyVal/);
+    expect(src).not.toMatch(/\$\{r\.apiKey\}\|/);
+    expect(src).not.toMatch(/\$\{e\.apiKey\}\|/);
+  });
+});
+
+describe("OAuth routes — error logs do not dump raw error objects", () => {
+  it("logs sanitized error messages in token-bearing OAuth routes", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const files = [
+      "../../src/app/api/oauth/[provider]/[action]/route.js",
+      "../../src/app/api/oauth/codex/import-token/route.js",
+      "../../src/app/api/oauth/cursor/auto-import/route.js",
+      "../../src/app/api/oauth/cursor/import/route.js",
+      "../../src/app/api/oauth/gitlab/pat/route.js",
+      "../../src/app/api/oauth/iflow/cookie/route.js",
+      "../../src/app/api/oauth/kiro/auto-import/route.js",
+      "../../src/app/api/oauth/kiro/import/route.js",
+      "../../src/app/api/oauth/kiro/social-authorize/route.js",
+      "../../src/app/api/oauth/kiro/social-exchange/route.js",
+    ];
+
+    for (const file of files) {
+      const src = readFileSync(join(root, file), "utf8");
+      expect(src).not.toMatch(/console\.error\([^)]*,\s*error\)/);
+      expect(src).not.toMatch(/NextResponse\.json\(\{\s*error:\s*error\.message\s*\}/);
+      expect(src).toContain("error?.message");
+    }
+  });
+});
+
 describe("RTK — Gemini contents rollback on error", () => {
   let callCount = 0;
 
@@ -350,4 +423,3 @@ describe("search handler — apiKey ReferenceError fix", () => {
     expect(src).not.toMatch(/[^.\w]apiKey[^:]/);
   });
 });
-

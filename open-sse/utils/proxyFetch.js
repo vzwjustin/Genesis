@@ -387,7 +387,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   if (!shouldBypassMitmDns(targetUrl)) {
     try {
       const hostname = new URL(targetUrl).hostname;
-      const allowLoopback = ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(hostname.toLowerCase());
+      const allowLoopback = ["localhost", "127.0.0.1", "::1"].includes(hostname.toLowerCase());
       await assertSafeResolvedHostname(hostname, { allowLoopback });
     } catch (dnsError) {
       throw new Error(`[ProxyFetch] DNS safety check failed: ${dnsError.message}`);

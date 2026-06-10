@@ -162,7 +162,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
-    console.error("OAuth GET error:", error);
+    console.error("OAuth GET error:", error?.message);
     return NextResponse.json({ error: sanitizeOAuthError(error) }, { status: 500 });
   }
 }
@@ -380,7 +380,7 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
-    console.error("OAuth POST error:", error);
+    console.error("OAuth POST error:", error?.message);
     return NextResponse.json({ error: sanitizeOAuthError(error) }, { status: 500 });
   }
 }

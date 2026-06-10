@@ -90,7 +90,7 @@ export async function POST(request) {
       },
     });
   } catch (error) {
-    console.error("Codex access token import error:", error);
+    console.error("Codex access token import error:", error?.message);
     return NextResponse.json({ error: "Failed to import token" }, { status: 500 });
   }
 }
