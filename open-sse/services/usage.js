@@ -210,10 +210,12 @@ async function getGitHubUsage(accessToken, providerSpecificData, proxyOptions = 
 function formatGitHubQuotaSnapshot(quota) {
   if (!quota) return { used: 0, total: 0, unlimited: true };
 
+  const entitlement = Number(quota.entitlement) || 0;
+  const remaining = Number(quota.remaining) || 0;
   return {
-    used: quota.entitlement - quota.remaining,
-    total: quota.entitlement,
-    remaining: quota.remaining,
+    used: Math.max(0, entitlement - remaining),
+    total: entitlement,
+    remaining,
     unlimited: quota.unlimited || false,
   };
 }

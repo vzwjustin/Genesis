@@ -298,7 +298,13 @@ export async function getUsageHistory(filter = {}) {
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id ASC`, params);
+  // Bound the scan to avoid loading the entire history table into memory.
+  // ORDER BY id DESC + LIMIT grabs the most recent N, then re-sort ASC for callers.
+  const limit = Number.isFinite(filter.limit) && filter.limit > 0 ? filter.limit : 10000;
+  const rows = db.all(
+    `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id DESC LIMIT ?`,
+    [...params, limit]
+  ).reverse();
 
   return rows.map((r) => ({
     timestamp: r.timestamp, provider: r.provider, model: r.model,

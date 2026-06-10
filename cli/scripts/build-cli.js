@@ -254,7 +254,11 @@ const staticSrc = path.join(appDir, ".next", "static");
 const staticSrcResolved = path.join(buildDistDir, "static");
 const staticDest = path.join(cliAppDir, buildDistDirName, "static");
 if (fs.existsSync(staticSrcResolved) || fs.existsSync(staticSrc)) {
-  copyRecursive(fs.existsSync(staticSrcResolved) ? staticSrcResolved : staticSrc, staticDest);
+  const staticActual = fs.existsSync(staticSrcResolved) ? staticSrcResolved : staticSrc;
+  copyRecursive(staticActual, staticDest);
+  // Also copy to standalone/.next/static so cli.js server can serve /_next/static/
+  const standaloneStaticDest = path.join(standaloneRootToUse, ".next", "static");
+  copyRecursive(staticActual, standaloneStaticDest);
   console.log("✅ Copied static files\n");
 } else {
   console.log("⏭️  No static files found\n");
@@ -266,6 +270,9 @@ const publicSrc = path.join(appDir, "public");
 const publicDest = path.join(cliAppDir, "public");
 if (fs.existsSync(publicSrc)) {
   copyRecursive(publicSrc, publicDest);
+  // Also copy to standalone/public so cli.js server can serve public assets
+  const standalonePublicDest = path.join(standaloneRootToUse, "public");
+  copyRecursive(publicSrc, standalonePublicDest);
   console.log("✅ Copied public folder\n");
 } else {
   console.log("⏭️  No public folder found\n");
@@ -283,12 +290,21 @@ if (fs.existsSync(vendorChunksSrcResolved) || fs.existsSync(vendorChunksSrc)) {
   console.log("⏭️  No vendor-chunks found\n");
 }
 
-// Step 7: Copy MITM server files (not bundled by Next.js standalone)
+// Step 7: Copy MITM server files + shared constants (not bundled by Next.js standalone)
 console.log("7️⃣  Copying MITM server files...");
+const sharedSrc = path.join(appDir, "src", "shared");
+if (fs.existsSync(sharedSrc)) {
+  const standaloneSharedDest = path.join(standaloneRootToUse, "src", "shared");
+  copyRecursive(sharedSrc, standaloneSharedDest);
+  copyRecursive(sharedSrc, path.join(cliAppDir, "src", "shared"));
+}
 const mitmSrc = path.join(appDir, "src", "mitm");
 const mitmDest = path.join(cliAppDir, "src", "mitm");
 if (fs.existsSync(mitmSrc)) {
   copyRecursive(mitmSrc, mitmDest);
+  // Also copy to standalone/src/mitm so cli.js server can load all mitm modules
+  const standaloneMitmDest = path.join(standaloneRootToUse, "src", "mitm");
+  copyRecursive(mitmSrc, standaloneMitmDest);
   console.log("✅ Copied MITM files\n");
 } else {
   console.log("⏭️  No MITM files found\n");

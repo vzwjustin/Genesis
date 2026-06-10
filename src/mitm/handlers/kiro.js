@@ -63,16 +63,19 @@ function encodeHeader(name, value) {
  *   :event-type    = e.g. "assistantResponseEvent"
  *   :content-type  = "application/json"
  */
-function buildEventStreamFrame(eventType, payload) {
+function buildEventStreamFrame(eventType, payload, opts = {}) {
   const payloadBuf = Buffer.from(
     typeof payload === "string" ? payload : JSON.stringify(payload),
     "utf8"
   );
 
-  // All three Smithy system headers are required
+  // Exceptions use :message-type "exception" + :exception-type (not :event-type),
+  // so Kiro's Smithy decoder routes them to error handling instead of treating
+  // the frame as a normal event.
+  const isException = opts.messageType === "exception";
   const headersBuf = Buffer.concat([
-    encodeHeader(":message-type", "event"),
-    encodeHeader(":event-type", eventType),
+    encodeHeader(":message-type", isException ? "exception" : "event"),
+    encodeHeader(isException ? ":exception-type" : ":event-type", eventType),
     encodeHeader(":content-type", "application/json"),
   ]);
   const headersLen = headersBuf.length;
@@ -116,9 +119,19 @@ function convertUserInputMessage(uim) {
   const out = [];
   const toolResults = uim.userInputMessageContext?.toolResults || [];
 
-  // Emit one "tool" message per tool result (OpenAI multi-tool format)
+  // Emit one "tool" message per tool result (OpenAI multi-tool format).
+  // Content blocks may be { text } OR { json } (structured tool output) —
+  // dropping json blocks would send the model an empty tool result.
   for (const tr of toolResults) {
-    const text = (tr.content || []).map(c => c.text || "").join("\n");
+    const text = (tr.content || [])
+      .map(c => {
+        if (typeof c?.text === "string") return c.text;
+        if (c?.json !== undefined) {
+          try { return JSON.stringify(c.json); } catch { return ""; }
+        }
+        return "";
+      })
+      .join("\n");
     out.push({
       role: "tool",
       tool_call_id: tr.toolUseId || "",
@@ -149,8 +162,9 @@ function convertAssistantResponseMessage(arm) {
     return {
       role: "assistant",
       content: arm.content || null,
-      tool_calls: toolUses.map(tu => ({
-        id: tu.toolUseId || `call_${Date.now()}`,
+      tool_calls: toolUses.map((tu, i) => ({
+        // index suffix avoids duplicate ids when several toolUses lack toolUseId
+        id: tu.toolUseId || `call_${Date.now()}_${i}`,
         type: "function",
         function: {
           name: tu.name || "",
@@ -261,10 +275,15 @@ async function pipeOpenAIasEventStream(routerRes, res) {
 
   const emitToolUseEvents = (toolCalls) => {
     for (const tc of toolCalls) {
+      // input must be a serialized JSON STRING; stop:true tells Kiro's Smithy
+      // decoder this ToolUse is complete so it parses input → object. Without
+      // stop, toolUse.input stays undefined → agentic controller crashes on
+      // `toolUse.input.explanation`.
       res.write(buildEventStreamFrame("toolUseEvent", {
         toolUseId: contentProcessor.nextToolUseId(),
         name: tc.name,
-        input: tc.input,
+        input: safeArgsString(tc.input),
+        stop: true,
       }));
     }
   };
@@ -273,6 +292,31 @@ async function pipeOpenAIasEventStream(routerRes, res) {
     if (!stopSent) {
       stopSent = true;
       res.write(buildEventStreamFrame("messageStopEvent", {}));
+    }
+  };
+
+  // Flush natively-streamed (OpenAI tool_calls delta) accumulated tool calls.
+  // Must run regardless of finish_reason value AND on stream end — some providers
+  // send finish_reason "stop" (not "tool_calls") or omit it entirely, which would
+  // otherwise drop the tool calls. Guarded so finish + finally don't double-emit.
+  let nativeFlushed = false;
+  const flushNativeToolCalls = () => {
+    if (nativeFlushed) return;
+    const accs = Object.values(toolCallAccum);
+    if (accs.length === 0) return;
+    nativeFlushed = true;
+    for (const acc of accs) {
+      const inputStr = acc.args || "{}";
+      dbg(`  toolUseEvent: id=${acc.id} name=${acc.name} inputStr=${inputStr.slice(0, 200)}`);
+      res.write(buildEventStreamFrame("toolUseEvent", {
+        // Fall back to a synthetic id when the provider streams tool_calls
+        // without an id — empty toolUseId breaks toolResult correlation.
+        toolUseId: acc.id || contentProcessor.nextToolUseId(),
+        name: acc.name,
+        input: inputStr,  // Must be a JSON STRING, not a parsed object
+        stop: true,       // Marks input complete → Kiro parses it; without this
+                          // toolUse.input stays undefined → ".explanation" crash
+      }));
     }
   };
 
@@ -337,28 +381,19 @@ async function pipeOpenAIasEventStream(routerRes, res) {
         const finish = chunk?.choices?.[0]?.finish_reason;
         if (finish) {
           dbg(`FINISH finish_reason=${finish} toolCallKeys=${JSON.stringify(Object.keys(toolCallAccum))}`);
-          // Flush accumulated tool calls before stop
-          if (finish === "tool_calls") {
-            for (const acc of Object.values(toolCallAccum)) {
-              // IMPORTANT: Kiro's internal tool dispatcher expects `input` to be a JSON string
-              // (not a parsed object). The real CodeWhisperer server sends:
-              //   { toolUseId, name, input: "{\"key\":\"value\"}" }  ← input is a string
-              // Kiro then JSON.parses that string to get the tool arguments.
-              // If we send input as a parsed object, Kiro does String(obj) → "[object Object]".
-              const inputStr = acc.args || "{}";
-              dbg(`  toolUseEvent: id=${acc.id} name=${acc.name} inputStr=${inputStr.slice(0, 200)}`);
-              res.write(buildEventStreamFrame("toolUseEvent", {
-                toolUseId: acc.id,
-                name: acc.name,
-                input: inputStr,  // Must be a JSON STRING, not a parsed object
-              }));
-            }
-          }
+          // Flush accumulated tool calls before stop. Kiro's tool dispatcher expects
+          // `input` as a JSON STRING (it JSON.parses it); a parsed object would become
+          // String(obj) → "[object Object]". Flush on ANY finish, not just
+          // finish_reason === "tool_calls" — some providers end with "stop".
+          flushNativeToolCalls();
           sendStop();
         }
       }
     }
   } finally {
+    // Stream may have ended without a finish chunk — flush any accumulated
+    // native tool calls so they aren't dropped (no-op if already flushed).
+    flushNativeToolCalls();
     const flushed = contentProcessor.flush();
     if (flushed.text) {
       res.write(buildEventStreamFrame("assistantResponseEvent", { content: flushed.text }));
@@ -431,6 +466,14 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
     // 3: Forward to 9router
     const routerRes = await fetchRouter(openaiBody, "/v1/chat/completions", req.headers);
 
+    // Router error (non-2xx) bodies are JSON, not SSE — piping them yields an
+    // empty eventstream. Surface as an exception frame instead.
+    if (routerRes.status >= 400) {
+      let detail = "";
+      try { detail = await routerRes.text(); } catch {}
+      throw new Error(`router ${routerRes.status}: ${detail.slice(0, 500)}`);
+    }
+
     // 4 + 5: Re-encode response as AWS EventStream binary
     res.writeHead(routerRes.status, {
       "Content-Type": "application/vnd.amazon.eventstream",
@@ -443,9 +486,18 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
   } catch (error) {
     err(`[Kiro] ${error.message}`);
     if (!res.headersSent) {
-      res.writeHead(500, { "Content-Type": "application/json" });
+      res.writeHead(200, {
+        "Content-Type": "application/vnd.amazon.eventstream",
+        "x-amzn-requestid": `mitm-${Date.now()}`,
+        "x-amz-id-2": "mitm",
+        "Transfer-Encoding": "chunked",
+      });
     }
-    res.end(JSON.stringify({ error: { message: error.message, type: "mitm_error" } }));
+    try {
+      res.write(buildEventStreamFrame("internalServerException", JSON.stringify({ message: error.message }), { messageType: "exception" }));
+      res.write(buildEventStreamFrame("messageStopEvent", {}));
+    } catch {}
+    res.end();
   }
 }
 

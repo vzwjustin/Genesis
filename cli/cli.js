@@ -499,8 +499,12 @@ function openBrowser(url) {
   });
 }
 
-// Find standalone server (bundled in bin/app for published package)
-const standaloneDir = path.join(__dirname, "app");
+// Find standalone server. Dev/symlinked run uses repo .next/standalone;
+// published package ships the server under cli/app — fall back to it.
+let standaloneDir = path.join(__dirname, "../.next/standalone");
+if (!fs.existsSync(path.join(standaloneDir, "server.js"))) {
+  standaloneDir = path.join(__dirname, "app");
+}
 const serverPath = path.join(standaloneDir, "server.js");
 
 if (!fs.existsSync(serverPath)) {
@@ -566,6 +570,50 @@ async function showInterfaceMenu(latestVersion) {
 const MAX_RESTARTS = 2;
 const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 
+// Crash-loop recovery: settings live in SQLite (settings table, id=1, JSON `data`
+// column) since the db.json→SQLite migration. Writing the old db.json no longer
+// affects runtime (migration marker blocks re-import), so disable mitm directly in
+// SQLite. Falls back to db.json only when better-sqlite3 is unavailable.
+function disableMitmInStore() {
+  const dataDir = process.env.DATA_DIR
+    || (process.platform === "win32"
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router")
+      : path.join(os.homedir(), ".9router"));
+  const sqlitePath = path.join(dataDir, "db", "data.sqlite");
+
+  // Primary: SQLite settings table (current backend)
+  try {
+    if (fs.existsSync(sqlitePath)) {
+      const Database = require("better-sqlite3");
+      const db = new Database(sqlitePath);
+      try {
+        const row = db.prepare("SELECT data FROM settings WHERE id = 1").get();
+        const settings = row?.data ? JSON.parse(row.data) : {};
+        settings.mitmEnabled = false;
+        db.prepare(
+          "INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data"
+        ).run(JSON.stringify(settings));
+        console.error("   → mitmEnabled=false written to SQLite settings");
+        return;
+      } finally {
+        db.close();
+      }
+    }
+  } catch (e) {
+    console.error(`   → SQLite settings write failed (${e.message}), trying legacy db.json`);
+  }
+
+  // Fallback: legacy db.json (pre-migration installs / better-sqlite3 missing)
+  try {
+    const dbPath = path.join(dataDir, "db.json");
+    if (fs.existsSync(dbPath)) {
+      const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
+      if (db.settings) db.settings.mitmEnabled = false;
+      fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+    }
+  } catch { /* best effort */ }
+}
+
 function startServer(latestVersion) {
   const displayHost = host === DEFAULT_HOST ? "localhost" : host;
   const url = `http://${displayHost}:${port}/dashboard`;
@@ -617,12 +665,12 @@ function startServer(latestVersion) {
       killProxyByPidFile();
       // Kill cloudflared/tailscale via PID file (only this app's tunnel)
       killTunnelByPidFile();
-      // Kill server process directly
+      // Kill server process directly + its process group (detached spawn).
+      // Both guarded on pid — process.kill(-undefined) would throw.
       if (server.pid) {
         process.kill(server.pid, "SIGKILL");
+        process.kill(-server.pid, "SIGKILL");
       }
-      // Also try to kill process group
-      process.kill(-server.pid, "SIGKILL");
     } catch (e) { }
   }
 
@@ -677,14 +725,7 @@ function startServer(latestVersion) {
 
     if (restartCount >= MAX_RESTARTS) {
       console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);
-      try {
-        const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "9router", "db.json") : path.join(".9router", "db.json"));
-        if (fs.existsSync(dbPath)) {
-          const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
-          if (db.settings) db.settings.mitmEnabled = false;
-          fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
-        }
-      } catch { /* best effort */ }
+      disableMitmInStore();
       restartCount = 0;
       server = spawnServer();
       attachServerEvents();
@@ -836,5 +877,4 @@ function startServer(latestVersion) {
       process.exit(1);
     }
   }, 3000);
-
 }

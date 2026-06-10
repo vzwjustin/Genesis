@@ -22,6 +22,10 @@ const BLOCK_RES = [
 const CALL_RES = [
   /<\|redacted_tool_call_begin\|>\s*([\s\S]*?)<\|redacted_tool_call_end\|>/g,
   /<\|redacted_tool_call_begin_kimi\|>\s*([\s\S]*?)<\|redacted_tool_call_end_kimi\|>/g,
+  // Plain (non-redacted) variant — DeepSeek/Kimi/Composer emit this inside a
+  // <|tool_calls_begin|> block (see header examples). The "redacted_" prefixed
+  // patterns above don't match it, so without this the call is silently dropped.
+  /<\|tool_call_begin\|>\s*([\s\S]*?)<\|tool_call_end\|>/g,
 ];
 
 const TOOL_SEP_RE = /<\|(?:redacted_)?tool_sep\|>/g;
@@ -113,22 +117,50 @@ class RedactedToolContentProcessor {
 
   processChunk(chunk) {
     this.buffer += chunk;
+    // Normalize once. normalizeRedactedMarkers is length-preserving (\uFF5C\u2192|, \u2581\u2192_),
+    // so indices into `normalized` are valid offsets into the stored buffer too.
     const normalized = normalizeRedactedMarkers(this.buffer);
     const toolCalls = extractRedactedToolCalls(normalized);
-    let clean = removeToolBlocks(normalized);
 
-    const partialIdx = Math.max(clean.lastIndexOf("<|"), clean.lastIndexOf("<\uFF5C"));
-    let emitText = clean;
-    const suffix = partialIdx >= 0 ? clean.slice(partialIdx) : "";
-    if (partialIdx >= 0 && (/^<\|(?:redacted|tool)/i.test(suffix) || PARTIAL_MARKER_RE.test(suffix))) {
-      emitText = clean.slice(0, partialIdx);
-      this.buffer = this.buffer.slice(partialIdx);
-    } else {
-      this.buffer = "";
-      emitText = clean;
-    }
+    // Hold back any unfinished trailing region for the next chunk. Must split at
+    // the OUTER block opener (`<|tool_calls_begin|>`) of an unclosed block \u2014 not at
+    // an inner `<|tool_call_begin|>` \u2014 otherwise the orphaned outer opener leaks
+    // into text and the block never re-parses once completed.
+    const splitIdx = this._pendingStart(normalized);
+    const consumed = splitIdx >= 0 ? normalized.slice(0, splitIdx) : normalized;
+    this.buffer = splitIdx >= 0 ? normalized.slice(splitIdx) : "";
+
+    // Strip complete tool blocks from the emitted text.
+    const emitText = removeToolBlocks(consumed);
 
     return { text: emitText, toolCalls };
+  }
+
+  /**
+   * Index where the unconsumed tail begins, or -1 if the buffer is fully consumable.
+   * The tail is either an unclosed outer tool-calls block or a trailing partial marker.
+   */
+  _pendingStart(s) {
+    // Count outer begin/end markers. If more begins than ends, the first unmatched
+    // begin (the closeCount-th, 0-based) starts an unclosed block \u2192 hold from there.
+    const OPEN_RE = /<\|(?:redacted_)?tool_calls_begin\|>/gi;
+    const opens = [];
+    let m;
+    while ((m = OPEN_RE.exec(s)) !== null) opens.push(m.index);
+    const closeCount = (s.match(/<\|(?:redacted_)?tool_calls_end\|>/gi) || []).length;
+    if (opens.length > closeCount) return opens[closeCount];
+
+    // All blocks closed \u2014 hold only a trailing bare/partial marker (an opener that
+    // hasn't reached its `|>` yet), not a completed marker mid-buffer.
+    const idx = s.lastIndexOf("<|");
+    if (idx >= 0) {
+      const suf = s.slice(idx);
+      const incomplete =
+        /^<\|[a-z_]*$/i.test(suf) ||
+        (/^<\|(?:redacted|tool)/i.test(suf) && !suf.slice(2).includes("|>"));
+      if (incomplete) return idx;
+    }
+    return -1;
   }
 
   flush() {
