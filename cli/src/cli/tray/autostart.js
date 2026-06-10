@@ -282,7 +282,7 @@ function enableLinux(cliPath) {
 Type=Application
 Name=9Router
 Comment=9Router API Proxy
-Exec=${nodePath} ${routerScript} --tray --skip-update
+Exec="${nodePath}" "${routerScript}" --tray --skip-update
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true

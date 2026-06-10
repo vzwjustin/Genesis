@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
-import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
+import { assertSafeFetchUrlWithDns } from "open-sse/utils/ssrfGuard.js";
 import { oauthFetch } from "@/lib/oauth/utils/oauthFetch.js";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";
@@ -25,7 +25,7 @@ export async function POST(request) {
 
     const base = (baseUrl?.trim() || GITLAB_DEFAULT_BASE).replace(/\/$/, "");
     try {
-      assertSafeFetchUrl(base);
+    await assertSafeFetchUrlWithDns(base);
     } catch {
       return NextResponse.json({ error: "Invalid or blocked GitLab base URL" }, { status: 400 });
     }
@@ -63,7 +63,7 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("GitLab PAT auth error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("GitLab PAT auth error:", error?.message);
+    return NextResponse.json({ error: "Failed to authenticate GitLab token" }, { status: 500 });
   }
 }

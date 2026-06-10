@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, ManualConfigModal, ComboFormModal, McpMarketplaceModal, ModelSelectModal } from "@/shared/components";
+import InlineAlert from "@/shared/components/InlineAlert";
 import ConfigStatusBadge from "@/shared/components/ConfigStatusBadge";
 import { revealApiKey } from "@/shared/utils/revealApiKey";
 import Image from "next/image";
@@ -71,7 +72,7 @@ useEffect(() => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isExpanded && !status) checkStatus();
-  }, [isExpanded]);
+  }, [isExpanded, status]);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -103,7 +104,7 @@ useEffect(() => {
     if (Array.isArray(status?.cowork?.customPlugins) && status.cowork.customPlugins.length > 0) {
       queueMicrotask(() => setCustomPlugins(status.cowork.customPlugins));
     }
-  }, [status]);
+  }, [status, customBaseUrl, plugins.length]);
 
 
   const getEffectiveBaseUrl = () => ensureV1(customBaseUrl);

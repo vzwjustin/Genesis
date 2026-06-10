@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const forge = require("node-forge");
 const { MITM_DIR } = require("../paths");
 
@@ -119,7 +120,11 @@ function generateLeafCert(domain, rootCA) {
   // Create leaf certificate
   const cert = forge.pki.createCertificate();
   cert.publicKey = keys.publicKey;
-  cert.serialNumber = Math.floor(Math.random() * 1000000).toString();
+  // 16 random bytes → unique serial (high bit cleared so forge encodes it positive).
+  // Math.random()*1e6 produced collisions; NSS/Firefox reject duplicate issuer+serial.
+  const serialBytes = crypto.randomBytes(16);
+  serialBytes[0] &= 0x7f;
+  cert.serialNumber = serialBytes.toString("hex");
   cert.validity.notBefore = new Date();
   cert.validity.notAfter = new Date();
   cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);

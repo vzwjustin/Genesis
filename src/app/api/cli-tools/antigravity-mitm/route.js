@@ -18,6 +18,11 @@ initDbHooks(getSettings, updateSettings);
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
+function isLoopbackRouterHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  return h === "localhost" || h === "::1" || h.startsWith("127.");
+}
+
 function normalizeMitmRouterBaseUrlInput(input) {
   if (input == null || String(input).trim() === "") {
     return DEFAULT_MITM_ROUTER_BASE;
@@ -31,6 +36,9 @@ function normalizeMitmRouterBaseUrlInput(input) {
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") {
     throw new Error("MITM router URL must use http or https");
+  }
+  if (!isLoopbackRouterHost(u.hostname)) {
+    throw new Error("MITM router URL must point to localhost");
   }
   return t;
 }

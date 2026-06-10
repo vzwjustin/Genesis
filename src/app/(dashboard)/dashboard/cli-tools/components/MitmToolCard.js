@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Badge, Input, ModelSelectModal } from "@/shared/components";
+import InlineAlert from "@/shared/components/InlineAlert";
 import { TOOL_HOSTS } from "@/shared/constants/mitmToolHosts";
 import Image from "next/image";
 
@@ -41,7 +42,7 @@ export default function MitmToolCard({
   const mitmHosts = TOOL_HOSTS[tool.id] ?? [];
   const canRunWithoutPassword = isWin || hasCachedPassword || needsSudoPassword === false;
 
-  const loadSavedMappings = async () => {
+  const loadSavedMappings = useCallback(async () => {
     try {
       const res = await fetch(`/api/cli-tools/antigravity-mitm/alias?tool=${tool.id}`);
       if (res.ok) {
@@ -49,12 +50,12 @@ export default function MitmToolCard({
         if (Object.keys(data.aliases || {}).length > 0) setModelMappings(data.aliases);
       }
     } catch { /* ignore */ }
-  };
+  }, [tool.id]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isExpanded) loadSavedMappings();
-  }, [isExpanded]);
+  }, [isExpanded, loadSavedMappings]);
 
 
   const saveMappings = useCallback(async (mappings) => {

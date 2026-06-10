@@ -11,7 +11,7 @@ function isLoopbackIp(ip) {
   const trimmed = ip.trim();
   if (LOOPBACK_HOSTS.has(trimmed.toLowerCase())) return true;
   if (trimmed.startsWith("127.")) return true;
-  if (trimmed === "::1" || trimmed.startsWith("fe80:")) return true;
+  if (trimmed === "::1") return true;
   return false;
 }
 
@@ -28,11 +28,10 @@ function getSocketRemoteIp(request) {
 export function isLoopbackRequest(request) {
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
 
-  const socketIp = getSocketRemoteIp(request);
-  if (socketIp) {
-    return isLoopbackIp(socketIp);
-  }
-
+  // Check forwarding headers BEFORE socket IP: when a tunnel daemon (cloudflared,
+  // tailscaled) forwards remote traffic, socket IP is loopback (local daemon) but
+  // XFF carries the real client IP. Checking socket IP first lets a remote caller
+  // bypass auth by routing through any local tunnel.
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {
     const clientIp = xff.split(",")[0].trim();
@@ -40,6 +39,11 @@ export function isLoopbackRequest(request) {
   }
   const realIp = request.headers.get("x-real-ip");
   if (realIp && !isLoopbackIp(realIp.trim())) return false;
+
+  const socketIp = getSocketRemoteIp(request);
+  if (socketIp) {
+    return isLoopbackIp(socketIp);
+  }
 
   // No socket info: require loopback Origin to block remote Host-header spoofing
   const origin = request.headers.get("origin");

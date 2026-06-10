@@ -21,8 +21,8 @@ describe("OIDC uses oauthFetch for proxy parity", () => {
     const src = readFileSync(join(root, "../../src/lib/auth/oidc.js"), "utf8");
     const exchangeBlock = src.slice(src.indexOf("export async function exchangeOidcCode"));
     const probeBlock = src.slice(src.indexOf("export async function probeOidcClientSecret"));
-    expect(exchangeBlock).toContain("assertSafeFetchUrl(tokenEndpoint)");
-    expect(probeBlock).toContain("assertSafeFetchUrl(tokenEndpoint)");
+    expect(exchangeBlock).toContain("assertSafeFetchUrlWithDns(tokenEndpoint)");
+    expect(probeBlock).toContain("assertSafeFetchUrlWithDns(tokenEndpoint)");
   });
 });
 

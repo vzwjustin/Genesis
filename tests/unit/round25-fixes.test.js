@@ -128,6 +128,12 @@ describe("Round 25 — loopback Host spoofing blocked", () => {
   });
 });
 
+describe("Round 25 — link-local IPv6 is not loopback", () => {
+  it("rejects fe80 link-local socket IPs for loopback-only access", () => {
+    expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }, "fe80::1"))).toBe(false);
+  });
+});
+
 describe("Round 25 — SSRF blocks CGNAT range", () => {
   it("blocks 100.64.0.0/10 hostnames", () => {
     expect(isBlockedHostname("100.64.0.1")).toBe(true);

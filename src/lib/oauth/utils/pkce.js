@@ -5,7 +5,7 @@ import crypto from "crypto";
  *
  * @param {number} [bytes=32] number of random bytes (xAI uses 96)
  */
-export function generateCodeVerifier(bytes = 32) {
+export function generateCodeVerifier(bytes = 48) {
   return crypto.randomBytes(bytes).toString("base64url");
 }
 
@@ -26,7 +26,7 @@ export function generateState() {
 /**
  * Generate complete PKCE pair
  */
-export function generatePKCE(bytes = 32) {
+export function generatePKCE(bytes = 48) {
   const codeVerifier = generateCodeVerifier(bytes);
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const state = generateState();

@@ -73,7 +73,7 @@ export async function POST(request) {
       mitm,
     });
   } catch (error) {
-    console.error("Kiro import token error:", error);
+    console.error("Kiro import token error:", error?.message);
     return NextResponse.json({ error: "Failed to import token" }, { status: 500 });
   }
 }

@@ -37,6 +37,15 @@ const handlers = {
 const certCache = new Map();
 let rootCAPem;
 
+// Bounded insert: evict oldest entry when full so per-servername caches can't grow unbounded.
+const MAX_CACHE_ENTRIES = 1000;
+function cacheSet(map, key, value) {
+  if (!map.has(key) && map.size >= MAX_CACHE_ENTRIES) {
+    map.delete(map.keys().next().value);
+  }
+  map.set(key, value);
+}
+
 function sniCallback(servername, cb) {
   try {
     if (certCache.has(servername)) return cb(null, certCache.get(servername));
@@ -46,7 +55,7 @@ function sniCallback(servername, cb) {
       key: certData.key,
       cert: `${certData.cert}\n${rootCAPem}`
     });
-    certCache.set(servername, ctx);
+    cacheSet(certCache, servername, ctx);
     cb(null, ctx);
   } catch (e) {
     err(`SNI error for ${servername}: ${e.message}`);
@@ -77,6 +86,10 @@ async function resolveTargetIP(hostname) {
   resolver.setServers(["8.8.8.8"]);
   const resolve4 = promisify(resolver.resolve4.bind(resolver));
   const addresses = await resolve4(hostname);
+  // Guard empty result: don't cache an undefined IP (poisons cache + crashes downstream tls.connect)
+  if (!addresses || addresses.length === 0) {
+    throw new Error(`DNS resolve4 returned no addresses for ${hostname}`);
+  }
   cachedTargetIPs[hostname] = { ip: addresses[0], ts: Date.now() };
   return cachedTargetIPs[hostname].ip;
 }
@@ -151,7 +164,7 @@ async function negotiateAlpn(host) {
       ALPNProtocols: ["h2", "http/1.1"], rejectUnauthorized: false,
     }, () => {
       const proto = socket.alpnProtocol || "http/1.1";
-      alpnCache.set(host, proto);
+      cacheSet(alpnCache, host, proto);
       log(`🔗 [mitm] ALPN ${host} → ${proto}`);
       socket.end();
       resolve(proto);
@@ -245,6 +258,13 @@ async function passthroughHttps(req, res, bodyBuffer, headers, targetHost, onRes
     servername: targetHost,
     rejectUnauthorized: false
   }, (forwardRes) => {
+    // Without this, a mid-stream upstream error rejects unhandled → crashes server
+    forwardRes.on("error", (e) => {
+      err(`Passthrough response error: ${e.message}`);
+      if (dumper) { dumper.writeChunk(`\n[ERROR res] ${e.message}\n`); dumper.end(); }
+      if (!res.headersSent) res.writeHead(502);
+      if (!res.writableEnded) res.end("Bad Gateway");
+    });
     res.writeHead(forwardRes.statusCode, forwardRes.headers);
     if (dumper) dumper.writeHeader(forwardRes.statusCode, forwardRes.headers);
 
@@ -291,19 +311,21 @@ const server = https.createServer(sslOptions, async (req, res) => {
     if (ENABLE_FILE_LOG) dumpRequest(req, bodyBuffer, "raw");
 
     // Anti-loop: skip requests from 9Router
+    // NOTE: passthrough()/intercept() are awaited so their rejections are caught
+    // by this try/catch instead of escaping as an unhandledRejection (kills server).
     if (req.headers[INTERNAL_REQUEST_HEADER.name] === INTERNAL_REQUEST_HEADER.value) {
-      return passthrough(req, res, bodyBuffer);
+      return await passthrough(req, res, bodyBuffer);
     }
 
     const tool = getToolForHost(req.headers.host);
-    if (!tool) return passthrough(req, res, bodyBuffer);
+    if (!tool) return await passthrough(req, res, bodyBuffer);
 
-    if (!isMitmChatRequest(tool, req, bodyBuffer)) return passthrough(req, res, bodyBuffer);
+    if (!isMitmChatRequest(tool, req, bodyBuffer)) return await passthrough(req, res, bodyBuffer);
 
     // Cursor uses binary proto — model extraction not possible at this layer.
     // Delegate directly to handler which decodes proto internally.
     if (tool === "cursor") {
-      return handlers[tool].intercept(req, res, bodyBuffer, null, passthrough);
+      return await handlers[tool].intercept(req, res, bodyBuffer, null, passthrough);
     }
 
     const model = extractModel(req.url, bodyBuffer);
@@ -312,19 +334,19 @@ const server = https.createServer(sslOptions, async (req, res) => {
       if (tool === "kiro") {
         log(`kiro passthrough (no alias): host=${req.headers.host} url=${req.url} model=${model ?? "null"}`);
       }
-      return passthrough(req, res, bodyBuffer);
+      return await passthrough(req, res, bodyBuffer);
     }
 
     if (tool === "kiro" && handlers.kiro.kiroRequiresPassthrough(bodyBuffer)) {
       log(`kiro passthrough (tool round): host=${req.headers.host} url=${req.url} model=${model ?? "null"}`);
-      return passthrough(req, res, bodyBuffer);
+      return await passthrough(req, res, bodyBuffer);
     }
 
     if (tool === "kiro") {
       log(`kiro intercept: ${model} → ${mappedModel}`);
     }
 
-    return handlers[tool].intercept(req, res, bodyBuffer, mappedModel, passthrough);
+    return await handlers[tool].intercept(req, res, bodyBuffer, mappedModel, passthrough);
   } catch (e) {
     err(`Unhandled error: ${e.message}`);
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });
@@ -376,6 +398,15 @@ server.on("error", (e) => {
   else if (e.code === "EACCES") err(`Permission denied for port ${LOCAL_PORT}`);
   else err(e.message);
   process.exit(1);
+});
+
+// Safety net: a stray rejection/throw outside the request try/catch must NOT
+// terminate the MITM server (Node ≥15 exits on unhandledRejection by default).
+process.on("unhandledRejection", (reason) => {
+  err(`Unhandled rejection: ${reason instanceof Error ? reason.message : reason}`);
+});
+process.on("uncaughtException", (e) => {
+  err(`Uncaught exception: ${e.message}`);
 });
 
 const { removeAllDNSEntriesSync } = require("./dns/dnsConfig");

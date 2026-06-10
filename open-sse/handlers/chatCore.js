@@ -173,7 +173,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Passthrough compression guard: do NOT compress unless passthrough compression
   // is explicitly enabled. This preserves provider-native message arrays in passthrough
   // mode per AGENTS.md and Requirements 1.2, 7.3.
-  const compressionAllowed = !passthrough || passthroughCompression === true;
+  let compressionAllowed = !passthrough || passthroughCompression === true;
 
   // Snapshot original body for recovery if compression fails
   let originalBodySnapshot = null;
@@ -182,6 +182,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       originalBodySnapshot = JSON.stringify(translatedBody);
     } catch (snapshotError) {
       console.warn(`[COMPRESSION] Could not snapshot body for restore: ${snapshotError.message}`);
+      compressionAllowed = false;
     }
   }
 
@@ -278,24 +279,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         Object.assign(translatedBody, restored);
       } catch (restoreError) {
         console.error(`[COMPRESSION] Failed to restore body after compression error: ${restoreError.message}`);
-        trackPendingRequest(model, provider, connectionId, false, true);
-        return createErrorResult(
-          HTTP_STATUS.BAD_REQUEST,
-          "Request compression failed and could not be restored",
-          undefined,
-          { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED }
-        );
       }
       console.warn(`[COMPRESSION] Compression failed, continuing with original content: ${compressionError.message}`);
     } else if (compressionAllowed) {
-      console.error(`[COMPRESSION] Error during compression with no body snapshot: ${compressionError.message}`);
-      trackPendingRequest(model, provider, connectionId, false, true);
-      return createErrorResult(
-        HTTP_STATUS.BAD_REQUEST,
-        "Request compression failed",
-        undefined,
-        { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED }
-      );
+      console.warn(`[COMPRESSION] Error during compression with no body snapshot, continuing with current body: ${compressionError.message}`);
     } else {
       console.warn(`[COMPRESSION] Error during compression, continuing: ${compressionError.message}`);
     }

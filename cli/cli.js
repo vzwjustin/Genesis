@@ -76,10 +76,21 @@ let trayMode = false;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--port" || args[i] === "-p") {
-    port = parseInt(args[i + 1], 10) || DEFAULT_PORT;
+    const val = args[i + 1];
+    const n = parseInt(val, 10);
+    if (val === undefined || val.startsWith("-") || Number.isNaN(n) || n < 0 || n > 65535) {
+      console.error(`Error: --port requires a number 0-65535`);
+      process.exit(1);
+    }
+    port = n; // 0 = OS-assigned ephemeral port (valid, must not fall back to default)
     i++;
   } else if (args[i] === "--host" || args[i] === "-H") {
-    host = args[i + 1] || DEFAULT_HOST;
+    const val = args[i + 1];
+    if (val === undefined || val.startsWith("-")) {
+      console.error(`Error: --host requires a value`);
+      process.exit(1);
+    }
+    host = val;
     i++;
   } else if (args[i] === "--no-browser" || args[i] === "-n") {
     noBrowser = true;

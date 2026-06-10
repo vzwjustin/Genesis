@@ -251,7 +251,7 @@ export async function GET() {
       if (platform === "darwin") {
         return NextResponse.json({
           found: false,
-          error: `Cursor database exists but 9Router could not open it: ${error.message}`,
+          error: "Cursor database exists but 9Router could not open it. Please use manual import.",
         });
       }
       // Native bindings unavailable — try CLI fallback
@@ -282,9 +282,9 @@ export async function GET() {
     }
     return NextResponse.json(manualFallback);
   } catch (error) {
-    console.log("Cursor auto-import error:", error);
+    console.error("Cursor auto-import error:", error?.message);
     return NextResponse.json(
-      { found: false, error: error.message },
+      { found: false, error: "Cursor auto-import failed" },
       { status: 500 },
     );
   }

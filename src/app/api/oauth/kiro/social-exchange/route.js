@@ -65,7 +65,7 @@ export async function POST(request) {
       mitm,
     });
   } catch (error) {
-    console.log("Kiro social exchange error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Kiro social exchange error:", error?.message);
+    return NextResponse.json({ error: "Failed to complete Kiro social exchange" }, { status: 500 });
   }
 }

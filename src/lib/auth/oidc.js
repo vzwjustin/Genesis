@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
 import { getSettings } from "@/lib/localDb";
-import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
+import { assertSafeFetchUrlWithDns } from "open-sse/utils/ssrfGuard.js";
 import { oauthFetch } from "@/lib/oauth/utils/oauthFetch.js";
 
 export const OIDC_COOKIE_NAMES = {
@@ -71,7 +71,7 @@ export async function getOidcRuntimeConfig() {
 
 export async function fetchOidcDiscovery(issuerUrl) {
   const discoveryUrl = `${trimTrailingSlashes(issuerUrl)}/.well-known/openid-configuration`;
-  assertSafeFetchUrl(discoveryUrl);
+  await assertSafeFetchUrlWithDns(discoveryUrl);
   const res = await oauthFetch(discoveryUrl, { cache: "no-store" });
   if (!res.ok) {
     throw new Error("Failed to load OIDC discovery document");
@@ -148,7 +148,7 @@ export async function exchangeOidcCode({
     body.set("client_secret", clientSecret);
   }
 
-  assertSafeFetchUrl(tokenEndpoint);
+  await assertSafeFetchUrlWithDns(tokenEndpoint);
   const res = await oauthFetch(tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -187,7 +187,7 @@ export async function probeOidcClientSecret({
     code_verifier: "__oidc_test_invalid_verifier__",
   });
 
-  assertSafeFetchUrl(tokenEndpoint);
+  await assertSafeFetchUrlWithDns(tokenEndpoint);
   const res = await oauthFetch(tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -240,7 +240,10 @@ export async function verifyOidcIdToken({
   jwksUri,
   nonce,
 }) {
-  const jwks = createRemoteJWKSet(new URL(jwksUri));
+  await assertSafeFetchUrlWithDns(jwksUri);
+  const jwks = createRemoteJWKSet(new URL(jwksUri), {
+    [customFetch]: (url, options) => oauthFetch(url, options),
+  });
   const { payload } = await jwtVerify(idToken, jwks, {
     issuer,
     audience,

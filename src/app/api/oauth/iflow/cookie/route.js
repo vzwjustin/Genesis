@@ -132,7 +132,7 @@ export async function POST(request) {
       },
     });
   } catch (error) {
-    console.error("iFlow cookie auth error:", error);
+    console.error("iFlow cookie auth error:", error?.message);
     return NextResponse.json({ error: "Failed to authenticate with cookie" }, { status: 500 });
   }
 }

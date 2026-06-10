@@ -37,7 +37,7 @@ export async function GET(request) {
       provider,
     });
   } catch (error) {
-    console.log("Kiro social authorize error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Kiro social authorize error:", error?.message);
+    return NextResponse.json({ error: "Failed to start Kiro social authorization" }, { status: 500 });
   }
 }

@@ -78,7 +78,9 @@ describe("oidc.js network routing (source)", () => {
     expect(src).toContain('from "@/lib/oauth/utils/oauthFetch.js"');
     expect(src).toContain("oauthFetch");
     expect(src).not.toMatch(/\bfetch\s*\(/);
-    expect(src).toContain("assertSafeFetchUrl(tokenEndpoint)");
+    expect(src).toContain("assertSafeFetchUrlWithDns(tokenEndpoint)");
+    expect(src).toContain("[customFetch]");
+    expect(src).toContain("oauthFetch(url, options)");
   });
 
   it("discovery failure uses generic error without embedding URL", () => {

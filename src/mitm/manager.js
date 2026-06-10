@@ -19,6 +19,11 @@ const { LSOF_BIN } = require("./config");
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
+function isLoopbackRouterHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  return h === "localhost" || h === "::1" || h.startsWith("127.");
+}
+
 function shellQuoteSingle(str) {
   if (str == null || str === "") return "''";
   return `'${String(str).replace(/'/g, "'\\''")}'`;
@@ -32,6 +37,7 @@ async function resolveMitmRouterBaseUrl() {
     if (!raw) return DEFAULT_MITM_ROUTER_BASE;
     const u = new URL(raw);
     if (u.protocol !== "http:" && u.protocol !== "https:") return DEFAULT_MITM_ROUTER_BASE;
+    if (!isLoopbackRouterHost(u.hostname)) return DEFAULT_MITM_ROUTER_BASE;
     return raw.replace(/\/+$/, "");
   } catch {
     return DEFAULT_MITM_ROUTER_BASE;
@@ -121,6 +127,10 @@ function getProcessUsingPort443() {
 
 let serverProcess = null;
 let serverPid = null;
+// Set before an intentional kill (e.g. health-check failure) so the exit
+// handler does NOT schedule an auto-restart — prevents a restart storm where
+// the caller both throws AND a background restart fires for the same failure.
+let intentionalKill = false;
 
 const SUDO_CACHE_TTL_MS = 5 * 60 * 1000;
 let _cachedSudoPassword = null;
@@ -724,14 +734,15 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       serverProcess = null;
       serverPid = null;
       try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
-      // Auto-restart on unexpected exit
-      if (code !== 0 && !mitmIsRestarting) scheduleMitmRestart(apiKey);
+      // Auto-restart on unexpected exit (skip intentional kills, e.g. health-fail)
+      if (code !== 0 && !mitmIsRestarting && !intentionalKill) scheduleMitmRestart(apiKey);
+      intentionalKill = false;
     });
   }
 
   const health = await pollMitmHealth(8000, MITM_PORT);
   if (!health) {
-    if (serverProcess && !serverProcess.killed) { try { serverProcess.kill(); } catch { /* ignore */ } serverProcess = null; }
+    if (serverProcess && !serverProcess.killed) { intentionalKill = true; try { serverProcess.kill(); } catch { /* ignore */ } serverProcess = null; }
     const processUsing443 = getProcessUsingPort443();
     const portInfo = processUsing443 ? ` Port 443 already in use by ${processUsing443}.` : "";
     const reason = startError || `Check sudo password or port 443 access.${portInfo}`;
