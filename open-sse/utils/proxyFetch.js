@@ -351,7 +351,37 @@ async function createBypassRequest(parsedUrl, realIP, options) {
   });
 }
 
+// Bound the time-to-first-byte (connect → response headers) of an upstream call.
+// Without this a stalled upstream hangs the request forever, surfacing as the
+// client's own "API timeout" (e.g. Claude Code) instead of a clean 5xx here.
+// Cleared the moment headers arrive, so it never aborts a long-running stream body.
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 120000; // 2 min to first byte
+
+function withUpstreamTimeout(options) {
+  const ms = Number(options.timeoutMs ?? process.env.UPSTREAM_TIMEOUT_MS ?? DEFAULT_UPSTREAM_TIMEOUT_MS);
+  if (!Number.isFinite(ms) || ms <= 0 || typeof AbortSignal?.any !== "function") {
+    return { fetchOptions: options, done: () => {} };
+  }
+  const tc = new AbortController();
+  const timer = setTimeout(
+    () => tc.abort(new DOMException(`Upstream timeout: no response headers after ${ms}ms`, "TimeoutError")),
+    ms
+  );
+  if (typeof timer.unref === "function") timer.unref();
+  const signal = options.signal ? AbortSignal.any([options.signal, tc.signal]) : tc.signal;
+  return { fetchOptions: { ...options, signal }, done: () => clearTimeout(timer) };
+}
+
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  const { fetchOptions, done } = withUpstreamTimeout(options);
+  try {
+    return await _proxyAwareFetch(url, fetchOptions, proxyOptions);
+  } finally {
+    done(); // clear the TTFB timer once headers resolve (or on error) — stream body is unbounded
+  }
+}
+
+async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
 
   if (!shouldBypassMitmDns(targetUrl)) {

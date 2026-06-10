@@ -169,7 +169,9 @@ async function addDNSEntry(tool, sudoPassword) {
       const next = `${trimmed}\n${toAppend}\n`;
       // Use tee via sudo to overwrite atomically — escape single quotes in content
       const escaped = next.replace(/'/g, "'\\''");
-      await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE} > /dev/null`, sudoPassword);
+      // Write to a temp file then atomically rename — a `tee` straight onto
+      // HOSTS_FILE truncates first, so an interrupt mid-write leaves it empty/partial.
+      await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE}.9router.tmp > /dev/null && chmod 644 ${HOSTS_FILE}.9router.tmp && mv -f ${HOSTS_FILE}.9router.tmp ${HOSTS_FILE}`, sudoPassword);
       await flushDNS(sudoPassword);
     }
     log(`🌐 DNS ${tool}: ✅ added ${entriesToAdd.join(", ")}`);
@@ -204,7 +206,9 @@ async function removeDNSEntry(tool, sudoPassword) {
       const filtered = current.split(/\r?\n/).filter(l => !entriesToRemove.some(h => l.includes(h))).join("\n");
       const next = filtered.replace(/[\r\n\s]+$/g, "") + "\n";
       const escaped = next.replace(/'/g, "'\\''");
-      await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE} > /dev/null`, sudoPassword);
+      // Write to a temp file then atomically rename — a `tee` straight onto
+      // HOSTS_FILE truncates first, so an interrupt mid-write leaves it empty/partial.
+      await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE}.9router.tmp > /dev/null && chmod 644 ${HOSTS_FILE}.9router.tmp && mv -f ${HOSTS_FILE}.9router.tmp ${HOSTS_FILE}`, sudoPassword);
       await flushDNS(sudoPassword);
     }
     log(`🌐 DNS ${tool}: ✅ removed ${entriesToRemove.join(", ")}`);
