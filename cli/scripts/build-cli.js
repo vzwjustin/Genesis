@@ -151,16 +151,10 @@ if (cliChanged || appChanged) {
   console.log(`✅ Version already synced: ${targetVersion}\n`);
 }
 
-// Clear stale webpack cache after open-sse/ edits (see AGENTS.md).
+// Clear stale webpack cache so open-sse/ and other out-of-src edits are picked up.
 const webpackCacheDir = path.join(buildDistDir, "cache", "webpack");
 if (fs.existsSync(webpackCacheDir)) {
   console.log("🧹 Clearing stale CLI webpack cache (.next-cli-build/cache/webpack)...");
-  fs.rmSync(webpackCacheDir, { recursive: true, force: true });
-}
-
-// Purge stale webpack cache so open-sse/ and other out-of-src edits are picked up
-const webpackCacheDir = path.join(buildDistDir, "cache", "webpack");
-if (fs.existsSync(webpackCacheDir)) {
   fs.rmSync(webpackCacheDir, { recursive: true, force: true });
   console.log("✅ Purged stale webpack cache\n");
 }

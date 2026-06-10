@@ -1,5 +1,5 @@
 import { platform, arch } from "os";
-import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
+import { validateProviderBaseUrl } from "../utils/ssrfGuardCore.js";
 
 // === OS/Arch helpers ===
 function mapStainlessOs() {
