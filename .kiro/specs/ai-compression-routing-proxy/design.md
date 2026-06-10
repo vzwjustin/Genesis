@@ -1211,6 +1211,145 @@ sequenceDiagram
 
 **Validates: Requirements 12.10**
 
+### Property 25: Built-In Tool Model Prefix Stripping
+
+*For any* tool definition object passed to `prepareClaudeRequest`, the cleaning logic SHALL satisfy: (a) when `type` is absent or equals `"function"` (client tool), both `model` and `type` fields SHALL be stripped from the output; (b) when `type` is present and not equal to `"function"` (built-in tool), all other properties SHALL be preserved AND if `model` is a string containing `"/"`, `model` SHALL be replaced with the substring after the last `"/"`. The provider prefix (e.g. `cc/`, `anthropic/`) SHALL be removed; the model name SHALL be preserved. This property must hold for all generated combinations of `type` values and `model` strings (with/without prefix, undefined, empty).
+
+**Validates: Requirements 1.6, 19.8**
+
+## Build, Deploy, Verify, and Debug Operational Procedures
+
+This section documents the deterministic operational procedures required to ensure the running server reflects fork source edits. Most confusing runtime bugs in this fork arise from stale compiled output or a non-symlinked global install — not from application logic errors. These procedures are **not optional** and must be followed in order.
+
+### Build Process (Req 19.1, 19.2)
+
+When any source file under `open-sse/` or anywhere outside `src/` is modified, the webpack cache **must** be cleared before rebuilding. The Next.js webpack cache can retain stale compiled code across rebuilds.
+
+**Minimum cache clear (fast):**
+```bash
+rm -rf .next-cli-build/cache/webpack
+```
+
+**Full clean (safest — recommended after significant changes):**
+```bash
+rm -rf .next-cli-build
+```
+
+**Rebuild:**
+```bash
+cd cli && npm run build
+```
+
+**Rules:**
+- A rebuild MUST NOT be trusted unless the cache was cleared first.
+- Clear cache especially after editing files under `open-sse/`.
+- The globally installed package MUST NOT be trusted until this rebuild completes successfully.
+- If behavior does not match source after rebuild, assume stale compiled output first — not application logic.
+
+### Install Process (Req 19.3)
+
+The global install MUST be a symlink to the fork's `cli/` directory during active development. A tarball-based global install (`npm install -g`) creates a standalone copy — fork edits are then invisible to the running server.
+
+**Correct symlink setup:**
+```bash
+rm -rf /opt/homebrew/lib/node_modules/9router
+ln -s /Users/justinadams/9router-fork/cli /opt/homebrew/lib/node_modules/9router
+```
+
+**Expected symlink state:**
+```
+/opt/homebrew/lib/node_modules/9router -> /Users/justinadams/9router-fork/cli
+```
+
+Verify before debugging any runtime behavior:
+```bash
+ls -la /opt/homebrew/lib/node_modules/9router
+```
+
+### Deploy Process — Headless Server (Req 19.4)
+
+The `cli.js` wrapper detects non-interactive TTY and may auto-exit with a tray-mode fallback. For headless (non-interactive) deployment, the server MUST be launched directly via `server.js`:
+
+```bash
+PORT=3456 HOSTNAME=0.0.0.0 node /opt/homebrew/lib/node_modules/9router/app/server.js
+```
+
+**Rules:**
+- Do NOT use `cli.js` for headless server deployment or debugging.
+- Only use the CLI wrapper when specifically testing interactive/tray-mode wrapper behavior.
+- `PORT` and `HOSTNAME` environment variables must be set appropriately for the deployment environment.
+
+### Verify Process — Post-Build Chunk Inspection (Req 19.5, 19.6)
+
+After rebuilding, verify that critical fixes are present in the compiled output chunks. Chunk filenames change between builds — never grep for a specific filename; always use recursive search across the entire chunks directory.
+
+**Verify Anthropic built-in tool model-prefix fix:**
+```bash
+grep -R "model.slice.*indexOf.*+1" cli/app/.next-cli-build/server/chunks
+```
+
+**Expected:** at least one match. If the grep returns no matches, the running server is **not** using the intended source. Do not proceed until resolved — repeat the build process (clear cache → rebuild → re-verify).
+
+**General verification pattern:**
+```bash
+grep -R "<expected_pattern>" cli/app/.next-cli-build/server/chunks
+```
+
+### Debug Process — Ordered Investigation Sequence (Req 19.7)
+
+When runtime behavior does not match expected source behavior, follow this ordered sequence before investigating application logic:
+
+1. **Confirm edited file is in the fork** — verify the file path is under the fork directory, not a cached node_modules copy.
+2. **Clear the build cache** — `rm -rf .next-cli-build` (full clean) or `rm -rf .next-cli-build/cache/webpack` (minimum).
+3. **Rebuild** — `cd cli && npm run build`.
+4. **Confirm symlink** — verify `/opt/homebrew/lib/node_modules/9router` is a symlink pointing to `cli/`.
+5. **Launch directly** — `PORT=3456 HOSTNAME=0.0.0.0 node /opt/homebrew/lib/node_modules/9router/app/server.js`.
+6. **Grep compiled chunks** — verify the expected fix pattern is present in the compiled output.
+7. **Confirm translated vs passthrough path** — determine whether the request is taking the translation path or passthrough path before attributing behavior to translation logic.
+8. **Then investigate application logic.**
+
+**Default assumption:**
+> If source looks right but behavior is wrong, the running server is probably stale, not using the fork, or taking a passthrough path instead of a translated path.
+
+### Anthropic Built-In Tool Model-Prefix Fix (Req 19.8)
+
+**Background:** Anthropic rejects `400 invalid_request_error` when built-in tool definitions include a provider-prefixed `model` field (e.g. `cc/claude-opus-4-6`). The `prepareClaudeRequest` function in `open-sse/translator/helpers/claudeHelper.js` (around lines 196–208) must clean tool definitions before dispatch.
+
+**Fix location:**
+```
+open-sse/translator/helpers/claudeHelper.js  (~lines 196–208)
+```
+
+**Required logic:**
+
+```javascript
+if (!tool.type || tool.type === "function") {
+  // Client tools — strip model and type entirely
+  const { model, type, ...clientRest } = rest;
+  cleanedTool = { ...clientRest };
+} else {
+  // Built-in tools — preserve all properties, but strip provider prefix from model
+  cleanedTool = { ...rest };
+  if (typeof cleanedTool.model === "string" && cleanedTool.model.includes("/")) {
+    cleanedTool.model = cleanedTool.model.slice(cleanedTool.model.indexOf("/") + 1);
+  }
+}
+```
+
+**Behavior summary:**
+
+| Tool type | `type` field | `model` field with prefix | `model` field without prefix |
+|-----------|-------------|--------------------------|------------------------------|
+| Client tool | `type` missing or `"function"` | stripped | stripped |
+| Built-in tool | present, not `"function"` | prefix stripped (e.g. `cc/claude-opus-4-6` → `claude-opus-4-6`) | preserved as-is |
+
+**This fix applies in both translated mode and passthrough mode** — it is a known compatibility fix required to prevent upstream Anthropic rejection (Req 16.5). Passthrough mode does not bypass this fix.
+
+**Post-build verification:**
+```bash
+grep -R "model.slice.*indexOf.*+1" cli/app/.next-cli-build/server/chunks
+```
+
 ## Error Handling
 
 ### Error Classification
@@ -1377,6 +1516,15 @@ Unit tests verify specific examples and edge cases:
 - **Passthrough logging (Req 12.9)**: passthrough logs preserve raw request/response shape with secrets redacted
 - **Failed/partial logging (Req 12.10)**: failed request log clearly marked as failed
 - **Failed/partial logging (Req 12.10)**: partially completed request log marked as incomplete, not successful
+- **Anthropic tool cleaning — client tool (Req 19.8)**: tool with `type` missing → both `model` and `type` stripped from output
+- **Anthropic tool cleaning — client tool (Req 19.8)**: tool with `type === "function"` → both `model` and `type` stripped from output
+- **Anthropic tool cleaning — built-in tool (Req 19.8)**: tool with `type === "web_search"` and `model === "cc/claude-opus-4-6"` → all fields preserved, `model` becomes `"claude-opus-4-6"`
+- **Anthropic tool cleaning — built-in tool (Req 19.8)**: tool with `type === "computer_use"` and `model` without `/` → all fields preserved, `model` unchanged
+- **Anthropic tool cleaning — built-in tool (Req 19.8)**: tool with `type === "bash"` and `model` undefined → all fields preserved, no error
+- **Anthropic tool cleaning — prefix not stripped for client tools (Req 19.8)**: client tool with prefixed `model` → `model` stripped entirely (not just prefix)
+- **Anthropic tool cleaning — passthrough (Reqs 16.5, 19.8)**: passthrough mode still applies built-in tool cleaning to prevent Anthropic 400 rejection
+- **Build/verify (Req 19.5, 19.6)**: post-build grep for `model.slice.*indexOf.*+1` in `.next-cli-build/server/chunks` returns at least one match
+- **Build/verify (Req 19.5)**: grep does not target a specific chunk filename — uses recursive directory search
 
 ### Property-Based Tests
 
@@ -1554,6 +1702,15 @@ For any passthrough request that is logged (when `ENABLE_REQUEST_LOGS` is enable
 
 For any request that fails or partially completes while logging is enabled, the log entry SHALL be clearly marked as failed or incomplete; partial logs MUST NOT appear as successful requests. Generate: requests that fail at various pipeline stages (pre-dispatch, mid-stream, post-partial-response). Verify log entries are marked as failed/incomplete and cannot be confused with successful logs.
 
+---
+
+**Property 25: Built-In Tool Model Prefix Stripping**
+*Feature: ai-compression-routing-proxy, Property 25: prepareClaudeRequest correctly cleans tool model fields — client tools stripped, built-in tools prefix-cleaned*
+
+For any tool definition object, `prepareClaudeRequest` SHALL satisfy: when `type` is absent or `"function"` (client tool), both `model` and `type` are stripped from the output; when `type` is present and not `"function"` (built-in tool), all properties are preserved and if `model` contains `"/"`, `model` is replaced with the substring after the last `"/"`.
+
+Generates: random tool objects with `type` in `[undefined, "function", "web_search", "computer_use", "bash", "text_editor"]` and `model` in `[undefined, "claude-opus-4-6", "cc/claude-opus-4-6", "anthropic/claude-3-5-sonnet-20241022", "x/y/z"]`. For each generated input, verifies: (a) client tools have `model` and `type` absent in output, (b) built-in tools have all non-model fields preserved, (c) built-in tools with prefixed model have prefix stripped, (d) built-in tools with unprefixed model are unchanged, (e) `undefined` model on built-in tool produces no error.
+
 ### Integration Tests
 
 Integration tests verify external service wiring with 1–3 representative executions each:
@@ -1576,13 +1733,17 @@ Smoke tests verify one-time setup and configuration:
 - SQLite database file is created and all tables are initialized on first run
 - Headroom proxy health endpoint is reachable (if installed)
 - Required environment variables produce expected behavior (e.g. `ENABLE_REQUEST_LOGS=true` creates log directory)
+- **Build/deploy (Req 19.1, 19.2)**: clear `.next-cli-build/cache/webpack` → `cd cli && npm run build` → build succeeds without error
+- **Build/deploy (Req 19.3)**: `/opt/homebrew/lib/node_modules/9router` is a symlink pointing to the fork's `cli/` directory (not a standalone copy)
+- **Build/deploy (Req 19.4)**: `server.js` exists at the expected path and the server binds the configured PORT when launched directly (not via `cli.js` wrapper)
+- **Build/verify (Req 19.5, 19.6)**: after clean rebuild, `grep -R "model.slice.*indexOf.*+1" cli/app/.next-cli-build/server/chunks` returns at least one match; if it returns zero matches, the build is stale or the fix is absent
 
 ### Test Configuration
 
 **Property-based tests:**
 - Minimum **100 iterations** per property test
 - Each test tagged with: `Feature: ai-compression-routing-proxy, Property {N}: {property_text}`
-- One property-based test per design correctness property (24 properties total)
+- One property-based test per design correctness property (25 properties total)
 - Generators cover edge cases: empty arrays, single-element arrays, max-length strings, boundary values, passthrough/translated mode pairs
 
 **Unit tests:**

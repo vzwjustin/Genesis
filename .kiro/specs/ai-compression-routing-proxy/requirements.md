@@ -30,6 +30,11 @@ The two core subsystems are:
 - **Executor**: A provider-specific module responsible for constructing and sending the upstream HTTP request and handling streaming/binary response protocols.
 - **Account_Fallback**: The mechanism that marks a Connection as temporarily unavailable and retries with the next available Connection for the same provider.
 - **Cooldown**: A time window during which a Connection is excluded from account selection after a rate-limit or transient error.
+- **Build_Process**: The sequence of steps (cache clear → rebuild → verify) required to produce a correct compiled output from fork source changes.
+- **Install_Process**: The procedure for installing the CLI globally such that the running binary reflects fork source edits (symlink-based install required during active development).
+- **Deploy_Process**: The procedure for launching the Proxy server in production or headless environments.
+- **Verify_Process**: The post-build step that confirms critical fixes are present in compiled output by grepping chunks.
+- **Debug_Process**: The ordered investigation sequence to follow when runtime behavior does not match expected source behavior.
 
 ---
 
@@ -73,7 +78,7 @@ The two core subsystems are:
 1. WHEN a provider is resolved for a request, THE Proxy SHALL select an active Connection for that provider that is not currently in Cooldown.
 2. WHEN multiple active Connections exist for a provider, THE Proxy SHALL select among them according to the configured priority and sticky round-robin limit.
 3. IF no active Connection with valid credentials exists for a provider (including the case where all Connections exist but none have valid credentials due to failed token refresh), THEN THE Proxy SHALL return HTTP 404 with the message "No active credentials for provider: {provider}".
-4. IF all Connections for a provider are in Cooldown, THEN THE Proxy SHALL wait until the earliest Cooldown reset time AND retry; THE Proxy SHALL enforce a minimum retry delay of 1 second regardless of calculated Cooldown reset times.
+4. IF all Connections for a provider are in Cooldown, THEN THE Proxy SHALL wait until the earliest Cooldown reset time AND retry; THE Proxy SHALL enforce a minimum retry delay of 1 second regardless of calculated Cooldown reset times; WHEN returning a `Retry-After` response header, THE Proxy SHALL use the earliest positive reset time AND SHALL enforce a minimum value of 1 second — `Retry-After: 0` MUST NEVER be returned for a no-capacity state; if the computed reset time is zero or negative while no connection is available, THE Proxy SHALL use 1 as the `Retry-After` value.
 5. WHEN a pre-check detects that an OAuth access token is within 5 minutes of expiry, THE Proxy SHALL refresh the token before dispatching the request.
 6. IF the token refresh fails during pre-check, THEN THE Proxy SHALL mark the Connection as unusable AND proceed to Account_Fallback for the next available Connection.
 
@@ -104,10 +109,11 @@ The two core subsystems are:
 
 1. WHEN a request targets a Combo, THE Proxy SHALL advance through the Combo's ordered list in response to upstream errors and failures, retrying with the next model until success or exhaustion; THE Proxy SHALL NOT advance the Combo position for requests that do not target a Combo.
 2. WHEN a model in the Combo returns HTTP 200, THE Proxy SHALL return the response to the Client AND SHALL NOT advance the Combo position.
-3. WHEN a model in the Combo returns HTTP 4xx, THE Proxy SHALL return the response to the Client AND SHALL NOT advance the Combo position.
-4. WHEN a model in the Combo returns HTTP 429, THE Proxy SHALL advance the Combo position to the next model AND treat the failed Connection according to Cooldown rules.
+3. WHEN a model in the Combo returns HTTP 4xx that is NOT HTTP 429 (including HTTP 400, 401, 403, 404, and other 4xx codes), THE Proxy SHALL return the 4xx response to the Client AND SHALL NOT advance the Combo position; 4xx-specific combo advancement behavior MUST NOT be applied to HTTP 200, HTTP 5xx, network errors, or proxy-internal errors.
+4. WHEN a model in the Combo returns HTTP 429, THE Proxy SHALL advance the Combo position to the next model AND treat the failed Connection according to Cooldown rules; HTTP 429 is the ONLY 4xx status that triggers Combo advancement.
 5. WHEN a model in the Combo returns HTTP 5xx, THE Proxy SHALL advance the Combo position to the next model AND place the failed Connection into transient Cooldown.
 6. IF all models in the Combo have been attempted AND all returned 5xx, THEN THE Proxy SHALL return HTTP 503 with the last error message.
+7. WHEN a Combo model returns a network error or proxy-internal error, THE Proxy SHALL advance the Combo position AND SHALL NOT apply 4xx-advancement logic to those error types.
 
 ---
 
@@ -316,3 +322,20 @@ The two core subsystems are:
 9. A combo match succeeds only when it resolves to a valid actionable provider/model target; a Model_String matching a registered combo name is not enough to count as successful resolution if combo resolution ultimately fails.
 10. THE Proxy SHALL NEVER return: partial JSON as success, malformed JSON with `application/json` Content-Type, incomplete SSE assembly as a normal response, a translated-but-invalid upstream body, a successful HTTP status for failed combo/model resolution, or a successful HTTP status for failed passthrough provider resolution.
 11. IF the Proxy cannot guarantee response validity, THEN THE Proxy SHALL return an error rather than a potentially invalid response.
+
+---
+
+### Requirement 19: Build, Deploy, and Runtime Operational Correctness
+
+**User Story:** As a developer maintaining the 9Router fork, I want the build and deployment process to be deterministic and verifiable, so that stale compiled output or incorrectly installed copies never silently run wrong behavior.
+
+#### Acceptance Criteria
+
+1. WHEN source files under `open-sse/` or anywhere outside `src/` are modified, THE Build_Process SHALL clear the webpack cache directory (`.next-cli-build/cache/webpack` at minimum, or `.next-cli-build` entirely) before rebuilding the CLI; a rebuild MUST NOT be trusted unless the cache was cleared.
+2. THE Build_Process SHALL rebuild the CLI using `cd cli && npm run build` after clearing the cache; the globally installed package MUST NOT be trusted until this rebuild completes successfully.
+3. WHEN the CLI is installed globally for active development, THE Install_Process SHALL configure the global package path (`/opt/homebrew/lib/node_modules/9router`) as a symlink pointing directly to the fork's `cli/` directory; a tarball-based global install creates a standalone copy that is invisible to fork edits and MUST NOT be used during active development.
+4. WHEN the Proxy is deployed in a headless (non-interactive TTY) environment, THE Deploy_Process SHALL launch the server directly via `node /opt/homebrew/lib/node_modules/9router/app/server.js` with the environment variables `PORT` and `HOSTNAME` set appropriately; THE Deploy_Process SHALL NOT use the `cli.js` wrapper for headless deployment because the wrapper may auto-exit with a tray-mode fallback when a non-interactive TTY is detected.
+5. AFTER rebuilding the CLI, THE Verify_Process SHALL confirm that critical compiled fixes are present in the compiled output chunks by grepping the `.next-cli-build/server/chunks` directory; THE Verify_Process SHALL NOT rely on a specific chunk filename because chunk filenames change between builds.
+6. WHEN verifying the Anthropic built-in tool model-prefix fix is present in compiled output, THE Verify_Process SHALL search for the pattern `model.slice.*indexOf.*+1` in the compiled chunks; IF the pattern is not found after rebuild, THE Verify_Process SHALL treat this as evidence that the running server is not using the intended source and SHALL NOT proceed until resolved.
+7. IF runtime behavior does not match the expected source behavior, THE Debug_Process SHALL assume stale compiled output or a non-symlinked global install as the first hypothesis before investigating application logic; THE Debug_Process SHALL follow this sequence: confirm edited file is in the fork → clear build cache → rebuild → confirm symlink → launch directly via `server.js` → grep compiled chunks → confirm translated vs passthrough path → then investigate application logic.
+8. THE Translator (specifically `prepareClaudeRequest` in `open-sse/translator/helpers/claudeHelper.js`) SHALL strip provider prefixes (e.g., `cc/`) from the `model` field of built-in tool definitions WHEN the tool's `type` property is present AND not equal to `"function"`; for client tools (`type` missing or `type === "function"`), THE Translator SHALL strip both `model` and `type` fields entirely; for built-in tools, THE Translator SHALL preserve all other properties and ONLY strip the provider prefix from `model`.

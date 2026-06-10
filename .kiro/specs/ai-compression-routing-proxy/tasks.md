@@ -267,7 +267,16 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - Built-in tool `model` strips provider prefixes like `cc/`
     - Prefixed built-in tool models do not reach Anthropic
     - Passthrough mode still applies this fix only when required to prevent Anthropic rejection
-    - _Requirements: 1.6, 16.5_
+    - Tool with `type` missing → both `model` and `type` stripped from output
+    - Tool with `type === "function"` → both `model` and `type` stripped from output
+    - Tool with `type === "web_search"` and `model === "cc/claude-opus-4-6"` → all fields preserved, `model` becomes `"claude-opus-4-6"`
+    - Tool with `type === "computer_use"` and `model` without `/` → all fields preserved, `model` unchanged
+    - Tool with `type === "bash"` and `model` undefined → all fields preserved, no error
+    - Client tool with prefixed `model` → `model` stripped entirely (not just prefix)
+    - Passthrough mode still applies built-in tool cleaning to prevent Anthropic 400 rejection
+    - Post-build grep for `model.slice.*indexOf.*+1` in `.next-cli-build/server/chunks` returns at least one match
+    - Post-build grep does not target a specific chunk filename — uses recursive directory search
+    - _Requirements: 1.6, 16.5, 19.8_
 
 - [x] 10. Checkpoint - Ensure routing and streaming pass
   - Ensure all tests pass, ask the user if questions arise.
@@ -547,18 +556,65 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     - **Validates: Requirements 18.10, 18.11**
 
 - [x] 22. Build and Runtime Verification
-  - [x] 22.1 Implement build verification: confirm compiled chunk contains expected critical fixes after rebuild
-    - Verify Anthropic tool model-prefix fix in compiled output: `grep -R "model.slice.*indexOf.*+1" cli/app/.next-cli-build/server/chunks`
-    - _Requirements: 1.6_
-  - [x] 22.2 Document cache clearing requirement for `open-sse/` edits in build scripts or README
-    - Clear `.next-cli-build/cache/webpack` (or entire `.next-cli-build`) before rebuilding
-    - _Requirements: 1.6_
-  - [x]* 22.3 Write build verification tests
-    - Cache clearing documented for `open-sse/` edits
-    - Compiled chunk contains expected critical fix
-    - Global install path is a symlink during development
-    - Headless server launches directly through `app/server.js`
-    - _Requirements: 1.6_
+  - [x] 22.1 Document webpack cache clearing procedure for `open-sse/` edits
+    - Clear `.next-cli-build/cache/webpack` (minimum) or entire `.next-cli-build` (safest) before rebuilding
+    - A rebuild MUST NOT be trusted unless the cache was cleared first
+    - _Requirements: 19.1_
+  - [x] 22.2 Document rebuild command and rules
+    - Rebuild command: `cd cli && npm run build`
+    - Run only after cache clear; globally installed package MUST NOT be trusted until rebuild completes
+    - _Requirements: 19.2_
+  - [x] 22.3 Document global symlink install procedure for active development
+    - Remove tarball-based install: `rm -rf /opt/homebrew/lib/node_modules/9router`
+    - Create symlink: `ln -s /Users/justinadams/9router-fork/cli /opt/homebrew/lib/node_modules/9router`
+    - Expected: `/opt/homebrew/lib/node_modules/9router -> /Users/justinadams/9router-fork/cli`
+    - Verify before debugging: `ls -la /opt/homebrew/lib/node_modules/9router`
+    - _Requirements: 19.3_
+  - [x] 22.4 Document headless server launch via `server.js` (not `cli.js`)
+    - Launch: `PORT=3456 HOSTNAME=0.0.0.0 node /opt/homebrew/lib/node_modules/9router/app/server.js`
+    - Do NOT use `cli.js` wrapper for headless deployment — it may auto-exit in non-interactive TTY
+    - _Requirements: 19.4_
+  - [x] 22.5 Implement post-build chunk verification via recursive grep
+    - Verify fix present: `grep -R "model.slice.*indexOf.*+1" cli/app/.next-cli-build/server/chunks`
+    - Must use recursive directory search — never grep a specific chunk filename (filenames change between builds)
+    - If grep returns zero matches, build is stale or fix is absent; repeat clear → rebuild → re-verify
+    - _Requirements: 19.5, 19.6_
+  - [x] 22.6 Document 8-step debug process for stale/non-fork runtime behavior
+    - Step 1: Confirm edited file is in the fork
+    - Step 2: Clear `.next-cli-build` (full) or `.next-cli-build/cache/webpack` (minimum)
+    - Step 3: Rebuild — `cd cli && npm run build`
+    - Step 4: Confirm `/opt/homebrew/lib/node_modules/9router` is a symlink pointing to `cli/`
+    - Step 5: Launch directly — `PORT=3456 HOSTNAME=0.0.0.0 node .../app/server.js`
+    - Step 6: Grep compiled chunks for expected fix pattern
+    - Step 7: Confirm translated vs passthrough path for the request under test
+    - Step 8: Then investigate application logic
+    - Default assumption: if source looks right but behavior is wrong, the running server is probably stale
+    - _Requirements: 19.7_
+  - [x] 22.7 Implement Anthropic built-in tool model-prefix fix in `prepareClaudeRequest`
+    - File: `open-sse/translator/helpers/claudeHelper.js` (~lines 196–208)
+    - Client tools (`type` missing or `type === "function"`): strip both `model` and `type` entirely
+    - Built-in tools (all other `type` values): preserve all properties; strip provider prefix from `model` if `model` contains `"/"`
+    - This fix applies in both translated mode and passthrough mode (Req 16.5)
+    - _Requirements: 19.8_
+  - [x]* 22.8 Write unit and smoke tests covering build/deploy verification
+    - Cache clearing documented for `open-sse/` edits (Req 19.1)
+    - Rebuild command documented (Req 19.2)
+    - Global install path is a symlink to fork (not standalone tarball copy) (Req 19.3)
+    - Headless server launches directly through `app/server.js`, not `cli.js` (Req 19.4)
+    - Post-build grep for `model.slice.*indexOf.*+1` in `server/chunks` returns at least one match (Req 19.5, 19.6)
+    - Grep uses recursive directory search, not a specific chunk filename (Req 19.6)
+    - _Requirements: 19_
+
+- [ ] 24. Property Test for Built-In Tool Model Prefix Stripping
+  - [ ]* 24.1 Write property test for built-in tool model prefix stripping
+    - **Property 25: Built-In Tool Model Prefix Stripping**
+    - For any tool definition with `type` in `[undefined, "function", "web_search", "computer_use", "bash", "text_editor"]` and `model` in `[undefined, "claude-opus-4-6", "cc/claude-opus-4-6", "anthropic/claude-3-5-sonnet-20241022", "x/y/z"]`:
+      - (a) client tools (`type` absent or `"function"`): `model` and `type` absent in output
+      - (b) built-in tools: all non-model fields preserved
+      - (c) built-in tools with prefixed model: prefix stripped, model name preserved
+      - (d) built-in tools with unprefixed model: unchanged
+      - (e) built-in tool with `undefined` model: no error thrown
+    - **Validates: Requirements 1.6, 19.8**
 
 - [x] 23. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
@@ -617,7 +673,8 @@ Passthrough mode is a first-class behavior in this fork. It gets its own dedicat
     { "id": 18, "tasks": ["19.5", "19.6", "19.7", "20.1", "20.2"] },
     { "id": 19, "tasks": ["20.3", "20.4", "21.1", "21.2"] },
     { "id": 20, "tasks": ["21.3", "21.4", "21.5", "21.6", "22.1", "22.2"] },
-    { "id": 21, "tasks": ["22.3"] }
+    { "id": 21, "tasks": ["22.3", "22.4", "22.5", "22.6", "22.7"] },
+    { "id": 22, "tasks": ["22.8", "24.1"] }
   ]
 }
 ```
