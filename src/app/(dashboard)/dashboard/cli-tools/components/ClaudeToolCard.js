@@ -12,6 +12,11 @@ import CliNotDetectedPanel from "./CliNotDetectedPanel";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
+// Claude Code aborts a request after its built-in default timeout. Routing through
+// 9router to a slow-first-token model (Opus/extended thinking) can exceed it, surfacing
+// as "API timeout" in the CC terminal. Write a generous value so CC waits for the stream.
+const CC_API_TIMEOUT_MS = 600000; // 10 min
+
 export default function ClaudeToolCard({
   tool,
   isExpanded,
@@ -139,7 +144,11 @@ useEffect(() => {
     setApplying(true);
     setMessage(null);
     try {
-      const env = { ANTHROPIC_BASE_URL: getEffectiveBaseUrl() };
+      const env = {
+        ANTHROPIC_BASE_URL: getEffectiveBaseUrl(),
+        // Prevent CC aborting slow-first-token streams routed through 9router
+        API_TIMEOUT_MS: String(CC_API_TIMEOUT_MS),
+      };
 
       // Get key from dropdown, fallback to first key or sk_9router for localhost
       const keyToUse = selectedApiKey?.trim()
@@ -207,7 +216,7 @@ useEffect(() => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
       : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
-    const env = { ANTHROPIC_BASE_URL: getEffectiveBaseUrl(), ANTHROPIC_AUTH_TOKEN: keyToUse };
+    const env = { ANTHROPIC_BASE_URL: getEffectiveBaseUrl(), ANTHROPIC_AUTH_TOKEN: keyToUse, API_TIMEOUT_MS: String(CC_API_TIMEOUT_MS) };
     tool.defaultModels.forEach((model) => {
       const targetModel = modelMappings[model.alias];
       if (targetModel && model.envKey) env[model.envKey] = targetModel;
