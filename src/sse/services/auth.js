@@ -267,13 +267,20 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
   const lockUpdate = buildModelLockUpdate(model, cooldownMs);
 
+  // Round-robin bumps consecutiveUseCount at selection, before the request is
+  // known to succeed. If this connection just failed and we're falling back,
+  // roll that bump back so a failed attempt doesn't consume a sticky slot and
+  // starve healthy accounts (rotation counts successes, not attempts).
+  const rolledBackUseCount = Math.max(0, (conn?.consecutiveUseCount || 0) - 1);
+
   await updateProviderConnection(connectionId, {
     ...lockUpdate,
     testStatus: "unavailable",
     lastError: reason,
     errorCode: status,
     lastErrorAt: new Date().toISOString(),
-    backoffLevel: newBackoffLevel ?? backoffLevel
+    backoffLevel: newBackoffLevel ?? backoffLevel,
+    consecutiveUseCount: rolledBackUseCount
   });
 
   const lockKey = Object.keys(lockUpdate)[0];
