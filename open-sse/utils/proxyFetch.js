@@ -342,6 +342,15 @@ async function createBypassRequest(parsedUrl, realIP, options) {
             for await (const chunk of res) chunks.push(chunk);
             return Buffer.concat(chunks).toString();
           },
+          // Cursor executor (and any binary-response caller on the MITM-bypass path)
+          // expects a fetch-like arrayBuffer(). Without it: "f.arrayBuffer is not a
+          // function". text()/body/arrayBuffer are mutually-exclusive consumers of res.
+          arrayBuffer: async () => {
+            const chunks = [];
+            for await (const chunk of res) chunks.push(chunk);
+            const buf = Buffer.concat(chunks);
+            return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+          },
           json: async () => JSON.parse(await response.text()),
         };
         resolve(response);

@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { getApiKeySecret } from "./apiKeySecret.js";
+import { getApiKeySecret, LEGACY_API_KEY_SECRET } from "./apiKeySecret.js";
 
 /**
  * Generate 6-char random keyId
@@ -13,15 +13,24 @@ function generateKeyId() {
   return result;
 }
 
-/**
- * Generate CRC (8-char HMAC)
- */
-function generateCrc(machineId, keyId) {
+function crcForSecret(machineId, keyId, secret) {
   return crypto
-    .createHmac("sha256", getApiKeySecret())
+    .createHmac("sha256", secret)
     .update(machineId + keyId)
     .digest("hex")
     .slice(0, 8);
+}
+
+/** Generate CRC (8-char HMAC) using the current install secret. */
+function generateCrc(machineId, keyId) {
+  return crcForSecret(machineId, keyId, getApiKeySecret());
+}
+
+/** Accept keys signed with the current or legacy default secret. */
+function verifyCrc(machineId, keyId, crc) {
+  const secrets = [getApiKeySecret()];
+  if (!secrets.includes(LEGACY_API_KEY_SECRET)) secrets.push(LEGACY_API_KEY_SECRET);
+  return secrets.some((secret) => crcForSecret(machineId, keyId, secret) === crc);
 }
 
 /**
@@ -54,9 +63,7 @@ export function parseApiKey(apiKey) {
   if (parts.length === 4) {
     const [, machineId, keyId, crc] = parts;
     
-    // Validate CRC
-    const expectedCrc = generateCrc(machineId, keyId);
-    if (crc !== expectedCrc) return null;
+    if (!verifyCrc(machineId, keyId, crc)) return null;
     
     return { machineId, keyId, isNewFormat: true };
   }

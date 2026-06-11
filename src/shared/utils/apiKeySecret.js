@@ -1,6 +1,6 @@
 import crypto from "crypto";
-import fs from "node:fs";
-import path from "node:path";
+import fs from "fs";
+import path from "path";
 import { DATA_DIR } from "@/lib/dataDir";
 
 const SECRET_FILE = path.join(DATA_DIR, "auth", "api-key-secret");

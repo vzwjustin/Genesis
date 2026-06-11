@@ -128,7 +128,11 @@ function decompressPayload(payload, flags) {
             `[DECOMPRESS ERROR] First 50 bytes (hex):`,
             payload.slice(0, 50).toString("hex")
           );
-          return payload;
+          // Frame claimed compression but no codec decoded it. Returning the raw
+          // compressed bytes here leaks gzip into the protobuf parser → garbage
+          // content (mojibake) reaches the client. Drop the frame instead; callers
+          // guard with `if (!payload) continue`.
+          return null;
         }
       }
     }
