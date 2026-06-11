@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
+import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -24,8 +25,14 @@ function normalizeProxyPoolInput(body = {}) {
   if (!proxyUrl) {
     return { error: "Proxy URL is required" };
   }
+  let normalizedProxyUrl;
+  try {
+    normalizedProxyUrl = normalizeProxyUrl(proxyUrl);
+  } catch (error) {
+    return { error: error?.message || "Invalid proxy URL" };
+  }
 
-  return { name, proxyUrl, noProxy, isActive, strictProxy, type };
+  return { name, proxyUrl: normalizedProxyUrl, noProxy, isActive, strictProxy, type };
 }
 
 function buildUsageMap(connections = []) {
@@ -69,7 +76,7 @@ export async function GET(request) {
 
     return NextResponse.json({ proxyPools: enrichedProxyPools });
   } catch (error) {
-    console.log("Error fetching proxy pools:", error);
+    console.error("Error fetching proxy pools:", error?.message);
     return NextResponse.json({ error: "Failed to fetch proxy pools" }, { status: 500 });
   }
 }
@@ -87,7 +94,7 @@ export async function POST(request) {
     const proxyPool = await createProxyPool(normalized);
     return NextResponse.json({ proxyPool }, { status: 201 });
   } catch (error) {
-    console.log("Error creating proxy pool:", error);
+    console.error("Error creating proxy pool:", error?.message);
     return NextResponse.json({ error: "Failed to create proxy pool" }, { status: 500 });
   }
 }

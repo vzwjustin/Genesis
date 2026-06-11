@@ -100,7 +100,7 @@ export async function POST(request) {
 
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
   } catch (error) {
-    console.log("Error deploying Cloudflare relay:", error);
-    return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });
+    console.error("Error deploying Cloudflare relay:", error?.message);
+    return NextResponse.json({ error: "Cloudflare relay deployment failed" }, { status: 500 });
   }
 }

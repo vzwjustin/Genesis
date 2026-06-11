@@ -345,8 +345,19 @@ describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", ()
 // ─── proxyFetch anthropicFetch routing ────────────────────────────────────────
 
 describe("proxyAwareFetch — api.anthropic.com routing", () => {
+  beforeEach(() => {
+    vi.doMock("../../open-sse/utils/ssrfGuard.js", async () => {
+      const actual = await vi.importActual("../../open-sse/utils/ssrfGuard.js");
+      return {
+        ...actual,
+        assertSafeResolvedHostname: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.doUnmock("../../open-sse/utils/ssrfGuard.js");
   });
 
   it("routes api.anthropic.com through native fetch (non-streaming) and returns ok response", async () => {

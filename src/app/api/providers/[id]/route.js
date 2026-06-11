@@ -5,6 +5,7 @@ import {
   updateProviderConnection,
   deleteProviderConnection,
 } from "@/models";
+import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -24,11 +25,19 @@ function normalizeProxyConfig(body = {}) {
       error: "Connection proxy URL is required when connection proxy is enabled",
     };
   }
+  let normalizedUrl = url;
+  if (url) {
+    try {
+      normalizedUrl = normalizeProxyUrl(url);
+    } catch (error) {
+      return { hasAnyProxyField: true, error: error?.message || "Invalid proxy URL" };
+    }
+  }
 
   return {
     hasAnyProxyField: true,
     connectionProxyEnabled: enabled,
-    connectionProxyUrl: url,
+    connectionProxyUrl: normalizedUrl,
     connectionNoProxy: noProxy,
   };
 }
@@ -78,7 +87,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ connection: result });
   } catch (error) {
-    console.log("Error fetching connection:", error);
+    console.error("Error fetching connection:", error?.message);
     return NextResponse.json({ error: "Failed to fetch connection" }, { status: 500 });
   }
 }
@@ -161,7 +170,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({ connection: result });
   } catch (error) {
-    console.log("Error updating connection:", error);
+    console.error("Error updating connection:", error?.message);
     return NextResponse.json({ error: "Failed to update connection" }, { status: 500 });
   }
 }
@@ -178,7 +187,7 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ message: "Connection deleted successfully" });
   } catch (error) {
-    console.log("Error deleting connection:", error);
+    console.error("Error deleting connection:", error?.message);
     return NextResponse.json({ error: "Failed to delete connection" }, { status: 500 });
   }
 }

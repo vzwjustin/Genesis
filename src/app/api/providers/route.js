@@ -9,6 +9,7 @@ import {
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
+import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,18 @@ function normalizeProxyConfig(body = {}) {
   if (enabled && !url) {
     return { error: "Connection proxy URL is required when connection proxy is enabled" };
   }
+  let normalizedUrl = url;
+  if (url) {
+    try {
+      normalizedUrl = normalizeProxyUrl(url);
+    } catch (error) {
+      return { error: error?.message || "Invalid proxy URL" };
+    }
+  }
 
   return {
     connectionProxyEnabled: enabled,
-    connectionProxyUrl: url,
+    connectionProxyUrl: normalizedUrl,
     connectionNoProxy: noProxy,
   };
 }
@@ -78,7 +87,7 @@ export async function GET() {
 
     return NextResponse.json({ connections: safeConnections });
   } catch (error) {
-    console.log("Error fetching providers:", error);
+    console.error("Error fetching providers:", error?.message);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
   }
 }
@@ -205,7 +214,7 @@ export async function POST(request) {
 
     return NextResponse.json({ connection: result }, { status: 201 });
   } catch (error) {
-    console.log("Error creating provider:", error);
+    console.error("Error creating provider:", error?.message);
     return NextResponse.json({ error: "Failed to create provider" }, { status: 500 });
   }
 }

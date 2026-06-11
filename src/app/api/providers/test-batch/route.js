@@ -125,7 +125,7 @@ export async function POST(request) {
       },
     });
   } catch (error) {
-    console.log("Error in batch test:", error);
+    console.error("Error in batch test:", error?.message);
     return NextResponse.json({ error: "Batch test failed" }, { status: 500 });
   }
 }

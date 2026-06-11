@@ -5,6 +5,7 @@ import {
   getProxyPoolById,
   updateProxyPool,
 } from "@/models";
+import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
@@ -22,7 +23,11 @@ function normalizeProxyPoolUpdate(body = {}) {
     if (!proxyUrl) {
       return { error: "Proxy URL is required" };
     }
-    updates.proxyUrl = proxyUrl;
+    try {
+      updates.proxyUrl = normalizeProxyUrl(proxyUrl);
+    } catch (error) {
+      return { error: error?.message || "Invalid proxy URL" };
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "noProxy")) {
@@ -61,7 +66,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ proxyPool });
   } catch (error) {
-    console.log("Error fetching proxy pool:", error);
+    console.error("Error fetching proxy pool:", error?.message);
     return NextResponse.json({ error: "Failed to fetch proxy pool" }, { status: 500 });
   }
 }
@@ -86,7 +91,7 @@ export async function PUT(request, { params }) {
     const updated = await updateProxyPool(id, normalized.updates);
     return NextResponse.json({ proxyPool: updated });
   } catch (error) {
-    console.log("Error updating proxy pool:", error);
+    console.error("Error updating proxy pool:", error?.message);
     return NextResponse.json({ error: "Failed to update proxy pool" }, { status: 500 });
   }
 }
@@ -117,7 +122,7 @@ export async function DELETE(request, { params }) {
     await deleteProxyPool(id);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.log("Error deleting proxy pool:", error);
+    console.error("Error deleting proxy pool:", error?.message);
     return NextResponse.json({ error: "Failed to delete proxy pool" }, { status: 500 });
   }
 }
