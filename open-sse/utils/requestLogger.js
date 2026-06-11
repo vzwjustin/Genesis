@@ -1,3 +1,9 @@
+import {
+  maskSensitiveHeaders,
+  redactSensitiveText,
+  sanitizeValue as sanitizeLogValue,
+} from "../../src/shared/utils/redaction.js";
+
 // Check if running in Node.js environment (has fs module)
 const isNode = typeof process !== "undefined" && process.versions?.node && typeof window === "undefined";
 
@@ -72,77 +78,6 @@ function writeJsonFile(sessionPath, filename, data) {
   } catch (err) {
     console.log(`[LOG] Failed to write ${filename}:`, err.message);
   }
-}
-
-function maskSensitiveHeaders(headers) {
-  if (!headers) return {};
-  const masked = { ...headers };
-  const sensitiveKeys = ["authorization", "x-api-key", "cookie", "set-cookie", "token", "api-key", "api_key", "secret", "password"];
-
-  for (const key of Object.keys(masked)) {
-    const lowerKey = key.toLowerCase();
-    if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
-      const value = masked[key];
-      if (value) {
-        masked[key] = value.length > 20
-          ? value.slice(0, 4) + "..." + value.slice(-4)
-          : "[redacted]";
-      }
-    }
-  }
-  return masked;
-}
-
-function redactSensitiveText(value) {
-  return String(value)
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/\bsk-[A-Za-z0-9_-]+/g, "sk-[redacted]")
-    .replace(/\b(access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)=([^&\s]+)/gi, "$1=[redacted]")
-    .replace(/("(?:authorization|x-api-key|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)"/gi, '$1[redacted]"')
-    .replace(/('(?:authorization|x-api-key|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)'\s*:\s*')([^'\\]*(?:\\.[^'\\]*)*)'/gi, "$1[redacted]'")
-    .replace(/\b(authorization|x-api-key|cookie|set-cookie)\s*:\s*([^\r\n]+)/gi, "$1: [redacted]");
-}
-
-function isSensitiveKey(key) {
-  const lowerKey = String(key || "").toLowerCase();
-  const compactKey = lowerKey.replace(/[^a-z0-9]/g, "");
-  return [
-    "authorization",
-    "x-api-key",
-    "cookie",
-    "set-cookie",
-    "api-key",
-    "api_key",
-    "apikey",
-    "access_token",
-    "refresh_token",
-    "id_token",
-    "client_secret",
-    "clientsecret",
-    "token",
-    "secret",
-    "password",
-  ].includes(lowerKey)
-    || ["apikey", "xapikey", "setcookie", "clientsecret", "accesstoken", "refreshtoken", "idtoken"].includes(compactKey)
-    || lowerKey.endsWith("authorization")
-    || lowerKey.endsWith("cookie")
-    || (lowerKey.endsWith("token") && !lowerKey.endsWith("tokens"))
-    || lowerKey.endsWith("secret")
-    || lowerKey.endsWith("password");
-}
-
-function sanitizeLogValue(value) {
-  if (value == null) return value;
-  if (typeof value === "string") return redactSensitiveText(value);
-  if (Array.isArray(value)) return value.map((item) => sanitizeLogValue(item));
-  if (typeof value !== "object") return value;
-
-  const sanitized = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (isSensitiveKey(key)) continue;
-    sanitized[key] = sanitizeLogValue(item);
-  }
-  return sanitized;
 }
 
 // No-op logger when logging is disabled
