@@ -38,11 +38,7 @@ const LOCAL_ONLY_PATHS = [
   "/api/cli-tools/antigravity-mitm",
   "/api/mcp/",
   "/api/tunnel/tailscale-install",
-  "/api/tunnel/tailscale-enable",
-  "/api/tunnel/tailscale-disable",
   "/api/tunnel/tailscale-check",
-  "/api/tunnel/enable",
-  "/api/tunnel/disable",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
 ];

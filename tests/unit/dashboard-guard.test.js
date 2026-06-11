@@ -313,6 +313,20 @@ describe("dashboard guard local-only access", () => {
 
     expect(response).toBe(mocks.nextResponse);
   });
+
+  it("allows tunnel enable on LAN host with valid JWT (not local-only)", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/tunnel/enable" },
+      headers: new Headers({ host: "192.168.8.201:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://192.168.8.201:20128/api/tunnel/enable",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
 });
 
 describe("dashboard guard helpers", () => {

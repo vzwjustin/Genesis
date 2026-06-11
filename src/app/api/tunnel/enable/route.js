@@ -2,10 +2,16 @@ import { NextResponse } from "next/server";
 import { enableTunnel } from "@/lib/tunnel";
 import { getSettings } from "@/lib/localDb";
 import { getRemoteExposureBlockReason } from "@/lib/security/exposureGate";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 const DNS_WARMUP_DELAY_MS = 8000;
 
-export async function POST() {
+export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   try {
     const settings = await getSettings();
     const blockReason = getRemoteExposureBlockReason(settings);
