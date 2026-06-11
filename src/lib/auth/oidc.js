@@ -100,11 +100,11 @@ export function createPkcePair() {
 }
 
 export function createOidcState() {
-  return crypto.randomBytes(16).toString("base64url");
+  return crypto.randomBytes(32).toString("base64url");
 }
 
 export function createOidcNonce() {
-  return crypto.randomBytes(16).toString("base64url");
+  return crypto.randomBytes(32).toString("base64url");
 }
 
 export function buildOidcAuthorizationUrl({

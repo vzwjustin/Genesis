@@ -118,7 +118,9 @@ function isMitmChatRequest(tool, req, bodyBuffer) {
 }
 
 /**
- * Forward request to real upstream.
+ * MITM passthrough — forward intercepted IDE traffic to the real upstream host.
+ * Not the same as provider passthrough mode in open-sse/handlers/chatCore.js
+ * (native CLI→provider lossless routing with minimal body mutation).
  * Optional onResponse(rawBuffer) callback — if provided, tees the response
  * so it's both forwarded to client AND passed to the callback for inspection.
  * Also tees full stream into a dump file when ENABLE_FILE_LOG is on.

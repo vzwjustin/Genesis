@@ -83,9 +83,15 @@ After rebuilding, verify that important fixes actually made it into the compiled
 
 Example verification for the Anthropic built-in tool model-prefix fix:
 
-    grep -R "model.slice.*indexOf.*+1" cli/app/.next-cli-build/server/chunks
+    bash scripts/verify-compiled-anthropic-fix.sh
+
+Or manually (minified bundles omit spaces around `+`):
+
+    grep -R 'indexOf("/")+1' cli/app/.next-cli-build/server/chunks
 
 The generated chunk filename can change between builds. Do not rely only on a specific chunk such as `7540.js`.
+
+**Lockfile:** root `package.json` has no `package-lock.json` in this fork; use `npm install` in `cli/` and `tests/` for reproducible CI. Pin versions when cutting releases.
 
 ---
 

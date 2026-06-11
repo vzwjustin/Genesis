@@ -97,10 +97,13 @@ describe("frontend accessibility regressions", () => {
   it("exposes Headroom controls tied to live proxy reachability", () => {
     const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
     const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
+    const headroomHint = read("src/shared/utils/headroomStatusHint.js");
 
     expect(endpoint).toContain("fetch(\"/api/headroom/status\")");
     expect(endpoint).toContain("headroomEnabled");
-    expect(caching).toContain("disabled={!headroomStatus?.reachable}");
+    expect(headroomHint).toContain("headroomCanEnable");
+    expect(caching).toContain("headroomCanEnable(headroomStatus)");
+    expect(caching).toContain('disabled={!headroomCanEnable(headroomStatus)}');
   });
 
   it("uses toast notifications instead of blocking alerts in key dashboard flows", () => {

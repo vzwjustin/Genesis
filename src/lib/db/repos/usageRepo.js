@@ -119,9 +119,13 @@ async function calculateCost(provider, model, tokens) {
     if (!pricing) return 0;
 
     let cost = 0;
-    const inputTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
     const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
-    const nonCachedInput = Math.max(0, inputTokens - cachedTokens);
+    // OpenAI `prompt_tokens` is inclusive of cache reads, so subtract to get fresh input.
+    // Anthropic `input_tokens` already excludes cache reads (disjoint), so use it as-is —
+    // subtracting again would zero out genuinely-billed fresh input on every cached turn.
+    const nonCachedInput = tokens.prompt_tokens != null
+      ? Math.max(0, tokens.prompt_tokens - cachedTokens)
+      : (tokens.input_tokens || 0);
     cost += nonCachedInput * (pricing.input / 1000000);
 
     if (cachedTokens > 0) {

@@ -1,6 +1,6 @@
 # 9Router Architecture
 
-_Last updated: 2026-02-06_
+_Last updated: 2026-06-10_
 
 ## Executive Summary
 
@@ -56,8 +56,7 @@ flowchart LR
         API[V1 Compatibility API\n/v1/*]
         DASH[Dashboard + Management API\n/api/*]
         CORE[SSE + Translation Core\nopen-sse + src/sse]
-        DB[(db.json)]
-        UDB[(usage.json + log.txt)]
+        DB[(data.sqlite)]
     end
 
     subgraph Upstreams[Upstream Providers]
@@ -79,7 +78,6 @@ flowchart LR
     API --> CORE
     DASH --> DB
     CORE --> DB
-    CORE --> UDB
 
     CORE --> P1
     CORE --> P2
@@ -135,17 +133,18 @@ Main flow modules:
 
 ## 3) Persistence Layer
 
-Primary state DB:
+All runtime state lives in SQLite under `DATA_DIR` (default `~/.9router`):
 
-- `src/lib/localDb.js`
-- file: `${DATA_DIR}/db.json` (or `~/.9router/db.json` when `DATA_DIR` is unset)
-- entities: providerConnections, providerNodes, modelAliases, combos, apiKeys, settings, pricing
+- **Database file:** `${DATA_DIR}/db/data.sqlite`
+- **Backups:** `${DATA_DIR}/db/backups/`
+- **Implementation:** `src/lib/db/*` (driver chain: better-sqlite3 → node:sqlite → sql.js)
+- **Shims (backward-compatible imports):** `src/lib/localDb.js`, `src/lib/usageDb.js` → `@/lib/db/index.js`
 
-Usage DB:
+Tables include provider connections, provider nodes, model aliases, combos, API keys, settings, pricing, usage history (`usageHistory`), compression stats, and request-detail metadata.
 
-- `src/lib/usageDb.js`
-- files: `~/.9router/usage.json`, `~/.9router/log.txt`
-- note: currently independent from `DATA_DIR`
+Legacy JSON files (`db.json`, `usage.json`, `request-details.json`) are imported once on first run via `src/lib/db/migrate.js`, then retired.
+
+Optional debug logs (not SQLite): `<repo>/logs/...` when `ENABLE_REQUEST_LOGS=true`.
 
 ## 4) Auth + Security Surfaces
 
@@ -377,10 +376,9 @@ erDiagram
 
 Physical storage files:
 
-- main state: `${DATA_DIR}/db.json` (or `~/.9router/db.json`)
-- usage stats: `~/.9router/usage.json`
-- request log lines: `~/.9router/log.txt`
-- optional translator/request debug sessions: `<repo>/logs/...`
+- main state + usage: `${DATA_DIR}/db/data.sqlite`
+- auto backups: `${DATA_DIR}/db/backups/`
+- optional translator/request debug sessions: `<repo>/logs/...` when `ENABLE_REQUEST_LOGS=true`
 
 ## Deployment Topology
 
@@ -394,8 +392,7 @@ flowchart LR
     subgraph ContainerOrProcess[9Router Runtime]
         Next[Next.js Server\nPORT=20128]
         Core[SSE Core + Executors]
-        MainDB[(db.json)]
-        UsageDB[(usage.json/log.txt)]
+        MainDB[(data.sqlite)]
     end
 
     subgraph External[External Services]
@@ -408,7 +405,6 @@ flowchart LR
     Next --> Core
     Next --> MainDB
     Core --> MainDB
-    Core --> UsageDB
     Core --> Providers
     Next --> SyncCloud
 ```
@@ -444,8 +440,8 @@ flowchart LR
 
 ### Persistence
 
-- `src/lib/localDb.js`: persistent config/state
-- `src/lib/usageDb.js`: usage history and rolling request logs
+- `src/lib/db/index.js`: SQLite access layer (config, usage, request details)
+- `src/lib/localDb.js` / `src/lib/usageDb.js`: thin re-export shims for older imports
 
 ## Provider Executor Coverage
 
@@ -507,16 +503,17 @@ Translations are selected dynamically based on source payload shape and provider
 
 ## 5) Data Integrity
 
-- DB shape migration/repair for missing keys
-- corrupt JSON reset safeguards for localDb and usageDb
+- SQLite schema migrations in `src/lib/db/schema.js`
+- one-time legacy JSON import via `src/lib/db/migrate.js`
+- automatic `data.sqlite` backup on app version bumps
 
 ## Observability and Operational Signals
 
 Runtime visibility sources:
 
 - console logs from `src/sse/utils/logger.js`
-- per-request usage aggregates in `usage.json`
-- textual request status log in `log.txt`
+- per-request usage aggregates in `usageHistory` (SQLite)
+- recent request log lines derived from `usageHistory` on read (`getRecentLogs`)
 - optional deep request/translation logs under `logs/` when `ENABLE_REQUEST_LOGS=true`
 - dashboard usage endpoints (`/api/usage/*`) for UI consumption
 
@@ -540,12 +537,23 @@ Environment variables actively used by code:
 - Outbound proxy: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` and lowercase variants
 - Platform/runtime helpers (not app-specific config): `APPDATA`, `NODE_ENV`, `PORT`, `HOSTNAME`
 
+## Passthrough Terminology
+
+Two different concepts share the word “passthrough”:
+
+| Term | Location | Behavior |
+|------|----------|----------|
+| **Provider passthrough mode** | `open-sse/utils/clientDetector.js`, `open-sse/handlers/chatCore.js` | Native CLI→provider routing: skip translation, swap model/auth only; optional Anthropic tool `model` prefix strip |
+| **MITM passthrough** | `src/mitm/server.js` | Forward intercepted IDE HTTPS traffic to real upstream hosts (Kiro, Antigravity, Copilot) |
+
+Search both spellings in comments: `passthrough` and `passthru`.
+
 ## Known Architectural Notes
 
-1. `usageDb` currently stores under `~/.9router` and does not follow `DATA_DIR`.
-2. `/api/v1/route.js` returns a static model list and is not the main models source used by `/v1/models`.
-3. Request logger writes full headers/body when enabled; treat log directory as sensitive.
-4. Cloud behavior depends on correct `NEXT_PUBLIC_BASE_URL` and cloud endpoint reachability.
+1. `/api/v1/route.js` returns a static model list and is not the main models source used by `/v1/models`.
+2. Request logger writes full headers/body when enabled; treat log directory as sensitive.
+3. Cloud behavior depends on correct `BASE_URL` / `CLOUD_URL` (or `NEXT_PUBLIC_*` fallbacks) and cloud endpoint reachability.
+4. After editing `open-sse/`, clear `.next-cli-build` before `cd cli && npm run build`; verify critical fixes with `scripts/verify-compiled-anthropic-fix.sh`.
 
 ## Operational Verification Checklist
 

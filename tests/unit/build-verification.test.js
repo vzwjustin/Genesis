@@ -3,7 +3,7 @@
  * Requirements: 1.6
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..", "..");
@@ -37,5 +37,16 @@ describe("build verification (Task 20)", () => {
     const script = readFileSync(join(root, "cli/scripts/build-cli.js"), "utf8");
     expect(script).toContain("cache/webpack");
     expect(script).toMatch(/rmSync|rm\(/);
+  });
+
+  it("compiled CLI chunks contain Anthropic tool model-prefix strip when build exists", () => {
+    const chunksDir = join(root, "cli/app/.next-cli-build/server/chunks");
+    if (!existsSync(chunksDir)) return;
+
+    const hit = readdirSync(chunksDir)
+      .filter((name) => name.endsWith(".js"))
+      .some((name) => readFileSync(join(chunksDir, name), "utf8").includes('indexOf("/")+1'));
+
+    expect(hit).toBe(true);
   });
 });
