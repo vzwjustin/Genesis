@@ -56,7 +56,7 @@ describe("authenticateRequest (Task 18)", () => {
   it("rejects invalid Bearer even when requireApiKey=false (Requirement 13.7)", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeRequest({ Authorization: "Bearer sk-badkeyyy" }),
+      makeLoopbackRequest({ Authorization: "Bearer sk-badkeyyy" }),
       log
     );
     expect(result.ok).toBe(false);
@@ -90,6 +90,30 @@ describe("authenticateRequest (Task 18)", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.apiKey).toBe(VALID_TEST_KEY);
+  });
+
+  it("accepts valid Bearer token with lowercase bearer scheme", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({ Authorization: `bearer ${VALID_TEST_KEY}` }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.apiKey).toBe(VALID_TEST_KEY);
+  });
+
+  it("prefers x-api-key gateway key over OAuth Bearer on loopback", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        Authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+        "x-api-key": VALID_TEST_KEY,
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.apiKey).toBe(VALID_TEST_KEY);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
   it("rejects invalid x-api-key header", async () => {
@@ -153,5 +177,73 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.ok).toBe(false);
     expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("accepts sk_9router sentinel on loopback without DB lookup", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: "Bearer sk_9router" }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("accepts sk_9router sentinel with extra Bearer whitespace on loopback", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: "Bearer  sk_9router" }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("ignores Anthropic sk-ant-* x-api-key for gateway auth on loopback when requireApiKey=false", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ "x-api-key": "sk-ant-api03-real-anthropic-key" }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("ignores OpenAI sk-proj-* bearer for gateway auth on loopback when requireApiKey=false", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: "Bearer sk-proj-provider-key-not-gateway" }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("ignores OAuth bearer token for gateway auth on loopback when requireApiKey=false", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        Authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects sk_9router sentinel from remote host", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({
+        host: "router.example.com",
+        Authorization: "Bearer sk_9router",
+      }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
   });
 });

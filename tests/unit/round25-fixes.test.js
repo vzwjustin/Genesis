@@ -108,8 +108,8 @@ describe("Round 25 — nested built-in tool model prefix strip", () => {
 });
 
 describe("Round 25 — loopback Host spoofing blocked", () => {
-  it("rejects loopback Host without Origin when socket IP is unavailable", () => {
-    expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(false);
+  it("allows loopback Host without Origin when socket IP is unavailable (CLI direct connect)", () => {
+    expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(true);
   });
 
   it("allows loopback Host with loopback Origin when socket IP is unavailable", () => {
@@ -117,6 +117,35 @@ describe("Round 25 — loopback Host spoofing blocked", () => {
       host: "localhost:20128",
       origin: "http://localhost:20128",
     }))).toBe(true);
+  });
+
+  it("rejects loopback Host without Origin when proxy headers indicate remote client", () => {
+    expect(isLoopbackRequest(makeRequest({
+      host: "localhost:20128",
+      "x-forwarded-for": "203.0.113.9",
+    }))).toBe(false);
+  });
+
+  it("rejects loopback Host when XFF spoofs loopback IP without loopback socket", () => {
+    expect(isLoopbackRequest(makeRequest({
+      host: "localhost:20128",
+      "x-forwarded-for": "127.0.0.1",
+      origin: "http://localhost:20128",
+    }))).toBe(false);
+  });
+
+  it("rejects loopback Host when cf-connecting-ip is remote", () => {
+    expect(isLoopbackRequest(makeRequest({
+      host: "localhost:20128",
+      "cf-connecting-ip": "203.0.113.9",
+    }))).toBe(false);
+  });
+
+  it("allows loopback Host when XFF is loopback and socket IP is loopback (local proxy)", () => {
+    expect(isLoopbackRequest(makeRequest({
+      host: "localhost:20128",
+      "x-forwarded-for": "127.0.0.1",
+    }, "127.0.0.1"))).toBe(true);
   });
 
   it("allows loopback Host when socket IP is loopback", () => {

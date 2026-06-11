@@ -4,7 +4,13 @@ import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { normalizeHostHeaderHostname } from "@/shared/utils/host";
 import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidCliToken } from "@/shared/auth/cliToken";
-import { verifyApiKeyCrc } from "@/shared/utils/apiKey";
+import {
+  verifyApiKeyCrc,
+  isLocalhostSentinelKey,
+  has9routerCredentialAttempt,
+  extractApiKey,
+  extractGatewayApiKey,
+} from "@/shared/utils/apiKey";
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
 const PUBLIC_API_PATHS = [
@@ -66,27 +72,24 @@ function isPublicLlmApi(pathname) {
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-function extractApiKey(request) {
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
-  return request.headers.get("x-api-key");
-}
-
 async function hasValidApiKey(request) {
-  const apiKey = extractApiKey(request);
+  const apiKey = extractGatewayApiKey(request);
   if (!apiKey) return false;
+  if (isLocalhostSentinelKey(apiKey)) return isLoopbackRequest(request);
   if (!verifyApiKeyCrc(apiKey)) return false;
   return await validateApiKey(apiKey);
+}
+
+async function getPublicLlmApiAuthError(request) {
+  if (has9routerCredentialAttempt(request)) return "Invalid API key";
+  if (isLoopbackRequest(request)) return "Missing API key";
+  return "API key required for remote API access";
 }
 
 async function canAccessPublicLlmApi(request) {
   if (await hasValidCliToken(request)) return true;
 
-  const authHeader = request.headers.get("Authorization");
-  const xApiKeyHeader = request.headers.get("x-api-key");
-  const hasCredentialHeader = !!(authHeader?.trim() || xApiKeyHeader?.trim());
-
-  if (hasCredentialHeader) {
+  if (has9routerCredentialAttempt(request)) {
     return await hasValidApiKey(request);
   }
 
@@ -173,7 +176,8 @@ export async function proxy(request) {
 
   if (isPublicLlmApi(pathname)) {
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
-    return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
+    const error = await getPublicLlmApiAuthError(request);
+    return NextResponse.json({ error }, { status: 401 });
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.

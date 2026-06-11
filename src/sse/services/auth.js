@@ -5,7 +5,13 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, getEarliestRateLimitedUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
-import { parseApiKey, verifyApiKeyCrc } from "@/shared/utils/apiKey.js";
+import {
+  parseApiKey,
+  verifyApiKeyCrc,
+  isLocalhostSentinelKey,
+  has9routerCredentialAttempt,
+  extractGatewayApiKey,
+} from "@/shared/utils/apiKey.js";
 import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidCliToken } from "@/shared/auth/cliToken.js";
 import * as log from "../utils/logger.js";
@@ -337,16 +343,14 @@ export async function authenticateRequest(request, log) {
     return { ok: true, apiKey: null, settings, cliToken: true };
   }
 
-  const authHeader = request.headers.get("Authorization");
-  const xApiKeyHeader = request.headers.get("x-api-key");
-  // Any present, non-empty credential header counts — a present-but-malformed
-  // Authorization header must fail closed (401), not bypass. Bypass is allowed
-  // only when NO credential header is present (whitespace-only treated as absent).
-  const hasCredentialHeader = !!(authHeader?.trim() || xApiKeyHeader?.trim());
-  const apiKey = extractApiKey(request);
+  const hasCredentialHeader = has9routerCredentialAttempt(request);
+  const apiKey = hasCredentialHeader ? extractGatewayApiKey(request) : null;
 
   if (hasCredentialHeader) {
-    if (!apiKey || !(await isValidApiKey(apiKey))) {
+    if (
+      !apiKey
+      || !(await isValidApiKey(apiKey, request))
+    ) {
       log?.warn?.("AUTH", "Invalid API key (credential header present)");
       return {
         ok: false,
@@ -379,30 +383,16 @@ export async function authenticateRequest(request, log) {
   return { ok: true, apiKey: null, settings, bypassed: true };
 }
 
-/**
- * Extract API key from request headers
- */
-export function extractApiKey(request) {
-  // Check Authorization header first
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    return authHeader.slice(7);
-  }
-
-  // Check Anthropic x-api-key header
-  const xApiKey = request.headers.get("x-api-key");
-  if (xApiKey) {
-    return xApiKey;
-  }
-
-  return null;
-}
+export { extractApiKey } from "@/shared/utils/apiKey.js";
 
 /**
  * Validate API key (optional - for local use can skip)
  */
-export async function isValidApiKey(apiKey) {
+export async function isValidApiKey(apiKey, request = null) {
   if (!apiKey) return false;
+  if (isLocalhostSentinelKey(apiKey)) {
+    return request ? isLoopbackRequest(request) : false;
+  }
   if (!verifyApiKeyCrc(apiKey)) return false;
   return await validateApiKey(apiKey);
 }

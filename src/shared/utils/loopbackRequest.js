@@ -21,6 +21,22 @@ function getSocketRemoteIp(request) {
   return String(socketIp).replace(/^::ffff:/, "");
 }
 
+/** First client IP from common reverse-proxy / CDN forwarding headers. */
+function getForwardedClientIp(request) {
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    const clientIp = xff.split(",")[0].trim();
+    if (clientIp) return clientIp;
+  }
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  const cfConnecting = request.headers.get("cf-connecting-ip")?.trim();
+  if (cfConnecting) return cfConnecting;
+  const trueClient = request.headers.get("true-client-ip")?.trim();
+  if (trueClient) return trueClient;
+  return null;
+}
+
 /**
  * True when the request appears to originate from the local machine (loopback host,
  * loopback origin, and no remote client IP in forwarding headers).
@@ -28,29 +44,22 @@ function getSocketRemoteIp(request) {
 export function isLoopbackRequest(request) {
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
 
-  // Check forwarding headers BEFORE socket IP: when a tunnel daemon (cloudflared,
-  // tailscaled) forwards remote traffic, socket IP is loopback (local daemon) but
-  // XFF carries the real client IP. Checking socket IP first lets a remote caller
-  // bypass auth by routing through any local tunnel.
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const clientIp = xff.split(",")[0].trim();
-    if (clientIp && !isLoopbackIp(clientIp)) return false;
+  const forwardedIp = getForwardedClientIp(request);
+  if (forwardedIp) {
+    // Remote client IP in a forwarding header — never loopback (tunnel case).
+    if (!isLoopbackIp(forwardedIp)) return false;
+    // Loopback claimed in forwarding header — require loopback socket (local proxy).
+    // Without socket info, fail closed: Origin is spoofable by non-browser clients.
+    const socketIp = getSocketRemoteIp(request);
+    if (socketIp) return isLoopbackIp(socketIp);
+    return false;
   }
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp && !isLoopbackIp(realIp.trim())) return false;
 
   const socketIp = getSocketRemoteIp(request);
   if (socketIp) {
     return isLoopbackIp(socketIp);
   }
 
-  // No socket info: require loopback Origin to block remote Host-header spoofing
-  const origin = request.headers.get("origin");
-  if (!origin) return false;
-  try {
-    return isLoopbackHostname(new URL(origin).hostname);
-  } catch {
-    return false;
-  }
+  // Direct local connection: loopback Host, no forwarding headers (CLI clients omit Origin).
+  return true;
 }

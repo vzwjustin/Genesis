@@ -501,4 +501,8 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
   }
 }
 
-module.exports = { intercept, kiroRequiresPassthrough };
+module.exports = {
+  intercept,
+  kiroRequiresPassthrough,
+  __test__: { convertUserInputMessage },
+};

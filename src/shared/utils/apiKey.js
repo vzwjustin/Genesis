@@ -102,10 +102,86 @@ export function isNewFormatKey(apiKey) {
   return parsed?.isNewFormat === true;
 }
 
-/** Mask API key for list display — never expose full secret in GET responses. */
-export function maskApiKeyForDisplay(apiKey) {
-  if (!apiKey || typeof apiKey !== "string") return "";
-  if (apiKey.length <= 16) return `${apiKey.slice(0, 4)}…`;
-  return `${apiKey.slice(0, 12)}…${apiKey.slice(-4)}`;
+/** Localhost-only sentinel used by CLI tools when no real key is configured. */
+export const LOCALHOST_SENTINEL_API_KEY = "sk_9router";
+
+export function isLocalhostSentinelKey(apiKey) {
+  return apiKey === LOCALHOST_SENTINEL_API_KEY;
 }
+
+const PROVIDER_API_KEY_PREFIXES = ["sk-ant-", "sk-proj-", "sk-or-"];
+
+function isProviderApiKeyPrefix(token) {
+  return PROVIDER_API_KEY_PREFIXES.some((prefix) => token.startsWith(prefix));
+}
+
+/** sk-{machineId}-{keyId}-{crc8} or legacy sk-{id} — gateway-managed keys only. */
+export function is9routerKeyShape(token) {
+  if (!token || typeof token !== "string" || !token.startsWith("sk-")) return false;
+  if (isProviderApiKeyPrefix(token)) return false;
+  const parts = token.split("-");
+  if (parts.length === 4 && /^[0-9a-f]{8}$/i.test(parts[3])) return true;
+  if (parts.length === 2 && parts[1].length >= 4) return true;
+  return false;
+}
+
+function extractBearerToken(authHeader) {
+  if (!authHeader || typeof authHeader !== "string") return null;
+  const trimmed = authHeader.trim();
+  const match = trimmed.match(/^Bearer\s+/i);
+  if (!match) return null;
+  const token = trimmed.slice(match[0].length).trim();
+  return token || null;
+}
+
+/** Prefer gateway-shaped credentials (x-api-key wins over non-gateway Bearer). */
+export function extractGatewayApiKey(request) {
+  const xApiKey = request.headers.get("x-api-key")?.trim();
+  if (xApiKey && looksLike9routerApiKey(xApiKey)) return xApiKey;
+
+  const bearer = extractBearerToken(request.headers.get("Authorization"));
+  if (bearer && looksLike9routerApiKey(bearer)) return bearer;
+
+  return null;
+}
+
+/** Extract Bearer or x-api-key credential token (trimmed, Bearer first). */
+export function extractApiKey(request) {
+  const bearer = extractBearerToken(request.headers.get("Authorization"));
+  if (bearer) return bearer;
+  const xApiKey = request.headers.get("x-api-key")?.trim();
+  return xApiKey || null;
+}
+
+/**
+ * True when a header value is intended as 9router gateway auth (not provider OAuth/JWT).
+ * OAuth/JWT and provider keys (sk-ant-*, sk-proj-*, etc.) are ignored for gateway auth.
+ */
+export function looksLike9routerApiKey(token) {
+  if (!token || typeof token !== "string") return false;
+  const trimmed = token.trim();
+  if (isLocalhostSentinelKey(trimmed)) return true;
+  return is9routerKeyShape(trimmed);
+}
+
+/**
+ * True when the request presents a 9router API key credential attempt.
+ * Malformed Authorization (non-Bearer) still counts as a credential attempt.
+ */
+export function has9routerCredentialAttempt(request) {
+  const xApiKey = request.headers.get("x-api-key")?.trim();
+  if (xApiKey && looksLike9routerApiKey(xApiKey)) return true;
+
+  const auth = request.headers.get("Authorization")?.trim();
+  if (!auth) return false;
+
+  if (/^Bearer\s+/i.test(auth)) {
+    const token = extractBearerToken(auth);
+    return !!token && looksLike9routerApiKey(token);
+  }
+
+  return true;
+}
+
+export { maskApiKeyForDisplay } from "./apiKeyDisplay.js";
 

@@ -9,7 +9,7 @@ import InlineAlert from "@/shared/components/InlineAlert";
 import CompressionSummaryCard from "@/shared/components/CompressionSummaryCard";
 import { useNotificationStore } from "@/store/notificationStore";
 import { revealApiKey } from "@/shared/utils/revealApiKey";
-import { maskApiKeyForDisplay } from "@/shared/utils/apiKey";
+import { maskApiKeyForDisplay } from "@/shared/utils/apiKeyDisplay";
 import { getExposureErrorAction } from "@/shared/utils/exposureErrorAction";
 
 function exposureStatus(type, message) {

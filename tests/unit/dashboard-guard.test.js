@@ -61,7 +61,7 @@ describe("dashboard guard public LLM API access", () => {
     const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }));
 
     expect(response.status).toBe(401);
-    expect(response.body.error).toBe("API key required for remote API access");
+    expect(response.body.error).toBe("Missing API key");
   });
 
   it("rejects public LLM API when remote client spoofs loopback host", async () => {
@@ -85,7 +85,7 @@ describe("dashboard guard public LLM API access", () => {
     const response = await proxy(request("/api/v1/chat/completions", { host: "localhost:20128" }));
 
     expect(response.status).toBe(401);
-    expect(response.body.error).toBe("API key required for remote API access");
+    expect(response.body.error).toBe("Missing API key");
   });
 
   it("rejects codex rewrite endpoint without API key", async () => {
@@ -175,7 +175,53 @@ describe("dashboard guard public LLM API access", () => {
     }));
 
     expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API with sk_9router sentinel without DB lookup", async () => {
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      authorization: "Bearer sk_9router",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API with OAuth bearer when requireApiKey=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API when x-api-key gateway key accompanies OAuth Bearer", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+      "x-api-key": VALID_TEST_KEY,
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
+  it("returns Invalid API key when credential header present but invalid on loopback", async () => {
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      authorization: "Bearer sk-deadbeef-test01-00000000",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
   });
 });
 
@@ -377,6 +423,15 @@ describe("dashboard guard CLI token timing-safe comparison", () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
       host: "router.example.com",
       "x-9r-cli-token": CACHED_TOKEN,
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("accepts CLI token with surrounding whitespace", async () => {
+    const response = await proxy(request("/api/mcp/filesystem/sse", {
+      host: "router.example.com",
+      "x-9r-cli-token": `  ${CACHED_TOKEN}  `,
     }));
 
     expect(response).toBe(mocks.nextResponse);
