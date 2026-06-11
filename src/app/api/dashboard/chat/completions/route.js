@@ -1,10 +1,12 @@
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
-import { getApiKeys, getSettings, validateApiKey } from "@/lib/localDb";
+import { getApiKeys, getSettingsSafe, validateApiKey } from "@/lib/localDb";
+import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import {
   getGatewayApiKeyCandidates,
   isLocalhostSentinelKey,
   looksLike9routerApiKey,
+  PROVIDER_API_KEY_HEADER_NAMES,
   verifyApiKeyCrc,
 } from "@/shared/utils/apiKey.js";
 
@@ -19,15 +21,20 @@ async function ensureInitialized() {
 
 async function getUsableGatewayKey(request) {
   for (const token of getGatewayApiKeyCandidates(request)) {
-    if (isLocalhostSentinelKey(token)) return token;
+    if (isLocalhostSentinelKey(token)) {
+      if (isLoopbackRequest(request)) return token;
+      continue;
+    }
     if (verifyApiKeyCrc(token) && await validateApiKey(token)) return token;
   }
   return null;
 }
 
 async function shouldInjectGatewayKey(request, settings) {
-  if (settings.requireApiKey !== true) return false;
-  return !(await getUsableGatewayKey(request));
+  if (await getUsableGatewayKey(request)) return false;
+  if (settings?.requireApiKey === true) return true;
+  // Remote/tunnel dashboard sessions cannot use loopback no-auth bypass in handleChat.
+  return !isLoopbackRequest(request);
 }
 
 /** Remove stale gateway credentials; keep the usable key and sentinel values. */
@@ -45,7 +52,11 @@ function stripStaleGatewayHeaders(headers, preserveToken = null) {
   if (auth) {
     const bearerMatch = auth.match(/^Bearer\s+(.+)$/i);
     const apiKeyMatch = auth.match(/^Api-?Key\s+(.+)$/i);
-    const token = bearerMatch?.[1]?.trim() ?? apiKeyMatch?.[1]?.trim() ?? auth;
+    const tokenSchemeMatch = auth.match(/^Token\s+(.+)$/i);
+    const token = bearerMatch?.[1]?.trim()
+      ?? apiKeyMatch?.[1]?.trim()
+      ?? tokenSchemeMatch?.[1]?.trim()
+      ?? (/^sk[-_]/i.test(auth) ? auth : null);
     if (
       token
       && looksLike9routerApiKey(token)
@@ -53,6 +64,17 @@ function stripStaleGatewayHeaders(headers, preserveToken = null) {
       && token !== preserveToken
     ) {
       headers.delete("Authorization");
+    }
+  }
+  for (const name of PROVIDER_API_KEY_HEADER_NAMES) {
+    const value = headers.get(name)?.trim();
+    if (
+      value
+      && looksLike9routerApiKey(value)
+      && !isLocalhostSentinelKey(value)
+      && value !== preserveToken
+    ) {
+      headers.delete(name);
     }
   }
 }
@@ -65,7 +87,7 @@ function stripStaleGatewayHeaders(headers, preserveToken = null) {
 export async function POST(request) {
   await ensureInitialized();
 
-  const settings = await getSettings();
+  const settings = await getSettingsSafe();
   const headers = new Headers(request.headers);
 
   const needsInject = await shouldInjectGatewayKey(request, settings);

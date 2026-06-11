@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { isVerifiableLoopbackRequest, isPrivateLanAccessRequest } from "@/shared/utils/loopbackRequest.js";
 
 export const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
@@ -23,4 +24,10 @@ export async function hasValidCliToken(request) {
   } catch {
     return false;
   }
+}
+
+/** CLI token valid only from verifiable loopback or private LAN socket. */
+export async function hasValidLocalCliToken(request) {
+  if (!(await hasValidCliToken(request))) return false;
+  return isVerifiableLoopbackRequest(request) || isPrivateLanAccessRequest(request);
 }

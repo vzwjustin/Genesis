@@ -17,6 +17,7 @@ vi.mock("@/lib/localDb", () => ({
   updateProviderConnection: vi.fn().mockResolvedValue(undefined),
   validateApiKey: vi.fn(),
   getSettings: vi.fn().mockResolvedValue({}),
+  getSettingsSafe: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock("@/lib/network/connectionProxy", () => ({

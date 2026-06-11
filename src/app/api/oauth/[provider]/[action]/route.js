@@ -8,6 +8,7 @@ import {
 } from "@/lib/oauth/providers";
 import { createProviderConnection } from "@/models";
 import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import {
   startCodexProxy,
   stopCodexProxy,
@@ -177,6 +178,13 @@ export async function POST(request, { params }) {
       body = await request.json();
     } catch {
       return NextResponse.json({ error: "Invalid or empty request body" }, { status: 400 });
+    }
+
+    if (action === "start-proxy" || action === "stop-proxy") {
+      const spawnAuth = await requireSpawnRouteAuth(request);
+      if (!spawnAuth.ok) {
+        return NextResponse.json({ error: spawnAuth.error }, { status: spawnAuth.status });
+      }
     }
 
     if (action === "start-proxy") {

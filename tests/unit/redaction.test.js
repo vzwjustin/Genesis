@@ -23,6 +23,12 @@ describe("redactSensitiveText", () => {
     expect(out).toContain("[redacted]");
   });
 
+  it("redacts Token authorization scheme in free text", () => {
+    const out = redactSensitiveText("upstream rejected Token deepgram-secret-key-value");
+    expect(out).not.toContain("deepgram-secret");
+    expect(out).toContain("Token [redacted]");
+  });
+
   it("redacts Api-Key and ApiKey authorization schemes in free text", () => {
     const out = redactSensitiveText("upstream rejected Api-Key sk-deadbeef-cafebabe-abcd1234 and ApiKey sk-proj-secret");
     expect(out).not.toContain("deadbeef");

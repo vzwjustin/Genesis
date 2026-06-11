@@ -48,6 +48,10 @@ vi.mock("next/server", () => ({
   NextResponse: { json: mocks.jsonResponse },
 }));
 
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 const { GET, POST } = await import("../../src/app/api/oauth/[provider]/[action]/route.js");
 
 function makeGETRequest(provider, action, searchParams = {}) {

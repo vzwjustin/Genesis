@@ -21,6 +21,10 @@ vi.mock("@/lib/localDb", () => ({
     fallbackStrategy: "fill-first",
     providerStrategies: {},
   }),
+  getSettingsSafe: vi.fn().mockResolvedValue({
+    fallbackStrategy: "fill-first",
+    providerStrategies: {},
+  }),
 }));
 
 vi.mock("@/lib/network/connectionProxy", () => ({

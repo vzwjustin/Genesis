@@ -1,4 +1,4 @@
-import { normalizeHostHeaderHostname } from "@/shared/utils/host";
+import { normalizeHostHeaderHostname, isPrivateLanHostname, isPrivateLanIp } from "@/shared/utils/host";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -15,7 +15,7 @@ function isLoopbackIp(ip) {
   return false;
 }
 
-function getSocketRemoteIp(request) {
+export function getSocketRemoteIp(request) {
   const socketIp = request.socket?.remoteAddress || request.ip;
   if (!socketIp) return null;
   return String(socketIp).replace(/^::ffff:/, "");
@@ -84,6 +84,14 @@ export function isLoopbackRequest(request) {
  * Unlike isLoopbackRequest, never grants access from loopback Host alone when
  * socket IP is unavailable — Host is trivially spoofable by remote clients.
  */
+/** Private LAN Host plus matching RFC1918 socket (Host alone is spoofable). */
+export function isPrivateLanAccessRequest(request) {
+  const host = normalizeHostHeaderHostname(request.headers.get("host"));
+  if (!isPrivateLanHostname(host)) return false;
+  const socketIp = getSocketRemoteIp(request);
+  return socketIp ? isPrivateLanIp(socketIp) : false;
+}
+
 export function isVerifiableLoopbackRequest(request) {
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
 

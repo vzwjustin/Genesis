@@ -11,6 +11,8 @@ import {
   verifyOidcIdToken,
 } from "@/lib/auth/oidc";
 import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import { getSettingsSafe } from "@/lib/localDb";
+import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
 
 function clearOidcCookies(cookieStore) {
   cookieStore.delete("oidc_state");
@@ -43,6 +45,12 @@ export async function GET(request) {
   }
 
   try {
+    const settings = await getSettingsSafe();
+    if (isTunnelDashboardAccessDenied(request, settings)) {
+      clearOidcCookies(cookieStore);
+      return NextResponse.redirect(new URL("/login?error=tunnel_dashboard_disabled", getPublicOrigin(request)));
+    }
+
     const config = await getOidcRuntimeConfig();
     if (!config) {
       clearOidcCookies(cookieStore);

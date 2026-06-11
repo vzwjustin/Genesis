@@ -23,6 +23,13 @@ vi.mock("next/server", () => ({
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
+  getSettingsSafe: vi.fn(async () => {
+    try {
+      return await mocks.getSettings();
+    } catch {
+      return { requireApiKey: false, requireLogin: true };
+    }
+  }),
   validateApiKey: mocks.validateApiKey,
 }));
 
@@ -37,10 +44,11 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
 const VALID_TEST_KEY = makeTestApiKey();
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
-function request(pathname, headers = {}, socketIp = null) {
+function request(pathname, headers = {}, socketIp = null, method = "GET") {
   const normalizedHeaders = new Headers(headers);
   return {
     nextUrl: { pathname },
+    method,
     headers: normalizedHeaders,
     cookies: { get: vi.fn(() => undefined) },
     url: `http://localhost${pathname}`,
@@ -176,6 +184,29 @@ describe("dashboard guard public LLM API access", () => {
     const response = await proxy(request("/v1/models", { host: "router.example.com" }));
 
     expect(response.status).toBe(401);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API with valid local CLI token", async () => {
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      "x-9r-cli-token": "cli-token",
+    }, "127.0.0.1"));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects remote public LLM API with stolen CLI token", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: true });
+
+    const response = await proxy(request("/v1/models", {
+      host: "router.example.com",
+      "x-9r-cli-token": "cli-token",
+    }, "203.0.113.9"));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -474,7 +505,7 @@ describe("dashboard guard local-only access", () => {
     }));
 
     expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Local only: CLI token required");
+    expect(response.body.error).toBe("CLI token or login required");
   });
 
   it("rejects local-only route on loopback when requireLogin=true and no JWT", async () => {
@@ -484,7 +515,7 @@ describe("dashboard guard local-only access", () => {
     }));
 
     expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Local only: CLI token required");
+    expect(response.body.error).toBe("CLI token or login required");
   });
 
   it("rejects local-only route on loopback when requireLogin=false and no JWT (host-spoofing protection)", async () => {
@@ -496,7 +527,7 @@ describe("dashboard guard local-only access", () => {
     }));
 
     expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Local only: CLI token required");
+    expect(response.body.error).toBe("CLI token or login required");
   });
 
   it("rejects local-only route on bracketed IPv6 loopback when requireLogin=false and no JWT", async () => {
@@ -574,27 +605,77 @@ describe("dashboard guard local-only access", () => {
     expect(response.status).toBe(403);
   });
 
-  it("allows local-only route with valid CLI token", async () => {
+  it("allows local-only route with valid CLI token from verifiable loopback", async () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
-      host: "router.example.com",
+      host: "localhost:20128",
       "x-9r-cli-token": "cli-token",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
   });
 
-  it("allows tunnel enable on LAN host with valid JWT (not local-only)", async () => {
+  it("allows tunnel enable on LAN host with valid JWT and private socket", async () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(true);
 
     const cookieReq = {
       nextUrl: { pathname: "/api/tunnel/enable" },
+      method: "POST",
       headers: new Headers({ host: "192.168.8.201:20128" }),
       cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
       url: "http://192.168.8.201:20128/api/tunnel/enable",
+      socket: { remoteAddress: "192.168.8.50" },
+      ip: "192.168.8.50",
     };
 
     const response = await proxy(cookieReq);
     expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("allows local-only route on private LAN with valid JWT and matching socket", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/cowork-settings" },
+      headers: new Headers({ host: "192.168.8.201:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://192.168.8.201:20128/api/cli-tools/cowork-settings",
+      socket: { remoteAddress: "192.168.8.50" },
+      ip: "192.168.8.50",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects local-only route when LAN Host is spoofed by public socket", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/cowork-settings" },
+      headers: new Headers({ host: "192.168.8.201:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://192.168.8.201:20128/api/cli-tools/cowork-settings",
+      socket: { remoteAddress: "203.0.113.9" },
+      ip: "203.0.113.9",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects local-only route from tunnel host even with valid JWT", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/antigravity-mitm" },
+      headers: new Headers({ host: "router.example.com" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://router.example.com/api/cli-tools/antigravity-mitm",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("CLI token or login required");
   });
 });
 
@@ -642,41 +723,226 @@ describe("dashboard guard CLI token timing-safe comparison", () => {
     expect(response.status).toBe(403);
   });
 
-  it("accepts exact correct CLI token on local-only route", async () => {
+  it("accepts exact correct CLI token on local-only route from verifiable loopback", async () => {
+    const response = await proxy(request("/api/mcp/filesystem/sse", {
+      host: "localhost:20128",
+      "x-9r-cli-token": CACHED_TOKEN,
+    }, "127.0.0.1"));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects CLI token on local-only route from public host", async () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
       host: "router.example.com",
       "x-9r-cli-token": CACHED_TOKEN,
     }));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(403);
   });
 
-  it("accepts CLI token with surrounding whitespace", async () => {
+  it("accepts CLI token with surrounding whitespace on private LAN socket", async () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
-      host: "router.example.com",
+      host: "192.168.8.201:20128",
       "x-9r-cli-token": `  ${CACHED_TOKEN}  `,
-    }));
+    }, "192.168.8.50"));
 
     expect(response).toBe(mocks.nextResponse);
   });
 });
 
 describe("dashboard guard tunnel dashboard access", () => {
+  const tunnelSettings = {
+    requireLogin: true,
+    tunnelDashboardAccess: false,
+    tunnelUrl: "http://[::1]:20128",
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSettings.mockResolvedValue({
-      requireLogin: true,
-      tunnelDashboardAccess: false,
-      tunnelUrl: "http://[::1]:20128",
-    });
+    mocks.getSettings.mockResolvedValue(tunnelSettings);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
   it("blocks disabled tunnel dashboard access for bracketed IPv6 host", async () => {
-    const response = await proxy(request("/dashboard", { host: "[::1]:20128" }));
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
 
+    const cookieReq = {
+      nextUrl: { pathname: "/dashboard" },
+      headers: new Headers({ host: "[::1]:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://[::1]:20128/dashboard",
+    };
+
+    const response = await proxy(cookieReq);
     expect(response.status).toBe(307);
     expect(String(response.url)).toContain("/login");
+  });
+
+  it("blocks management API on tunnel host when tunnel dashboard access is disabled", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/settings" },
+      headers: new Headers({ host: "[::1]:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://[::1]:20128/api/settings",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Dashboard access via tunnel is disabled");
+  });
+
+  it("allows management API on tunnel host with local CLI token when dashboard access is disabled", async () => {
+    const response = await proxy(request("/api/settings", {
+      host: "[::1]:20128",
+      "x-9r-cli-token": "cli-token",
+    }, "::1"));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("blocks management API on tunnel host with CLI token from public socket", async () => {
+    const response = await proxy(request("/api/settings", {
+      host: "[::1]:20128",
+      "x-9r-cli-token": "cli-token",
+    }, "203.0.113.9"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Dashboard access via tunnel is disabled");
+  });
+
+  it("allows management API on LAN host with JWT when tunnel dashboard access is disabled", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/settings" },
+      headers: new Headers({ host: "192.168.8.201:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://192.168.8.201:20128/api/settings",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("blocks always-protected API on tunnel host when tunnel dashboard access is disabled", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/shutdown" },
+      method: "POST",
+      headers: new Headers({ host: "[::1]:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://[::1]:20128/api/shutdown",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Dashboard access via tunnel is disabled");
+  });
+
+  it("blocks password login POST on tunnel host when tunnel dashboard access is disabled", async () => {
+    const response = await proxy(request("/api/auth/login", { host: "[::1]:20128" }, null, "POST"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Dashboard access via tunnel is disabled");
+  });
+
+  it("redirects OIDC start on tunnel host when tunnel dashboard access is disabled", async () => {
+    const response = await proxy(request("/api/auth/oidc/start", { host: "[::1]:20128" }));
+
+    expect(response.status).toBe(307);
+    expect(String(response.url)).toContain("/login?error=tunnel_dashboard_disabled");
+  });
+
+  it("redirects OIDC callback on tunnel host when tunnel dashboard access is disabled", async () => {
+    const response = await proxy(request("/api/auth/oidc/callback", { host: "[::1]:20128" }));
+
+    expect(response.status).toBe(307);
+    expect(String(response.url)).toContain("/login?error=tunnel_dashboard_disabled");
+  });
+
+  it("allows OIDC start on LAN host when tunnel dashboard access is disabled", async () => {
+    const response = await proxy(request("/api/auth/oidc/start", { host: "192.168.8.201:20128" }));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("returns safe auth status defaults on tunnel host when dashboard access is disabled", async () => {
+    const response = await proxy(request("/api/auth/status", { host: "[::1]:20128" }));
+
+    expect(response.status).toBe(200);
+    expect(response.body.requireLogin).toBe(true);
+    expect(response.body.hasPassword).toBe(false);
+    expect(response.body.oidcConfigured).toBe(false);
+  });
+
+  it("hides tunnel dashboard exposure on require-login for tunnel host when disabled", async () => {
+    const response = await proxy(request("/api/settings/require-login", { host: "[::1]:20128" }));
+
+    expect(response.status).toBe(200);
+    expect(response.body.tunnelDashboardAccess).toBe(false);
+  });
+});
+
+describe("dashboard guard cli-tools local-only coverage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+  });
+
+  it("blocks cli-tools settings harvest from public host with JWT only", async () => {
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/claude-settings" },
+      method: "GET",
+      headers: new Headers({ host: "router.example.com" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://router.example.com/api/cli-tools/claude-settings",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("CLI token or login required");
+  });
+
+  it("allows cli-tools settings on private LAN with JWT and matching socket", async () => {
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/codex-settings" },
+      method: "GET",
+      headers: new Headers({ host: "192.168.8.201:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://192.168.8.201:20128/api/cli-tools/codex-settings",
+      socket: { remoteAddress: "192.168.8.50" },
+      ip: "192.168.8.50",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("blocks tunnel enable from tunnel host with JWT even when dashboard access is enabled", async () => {
+    mocks.getSettings.mockResolvedValue({
+      requireLogin: true,
+      tunnelDashboardAccess: true,
+      tunnelUrl: "http://router.example.com",
+    });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/tunnel/enable" },
+      method: "POST",
+      headers: new Headers({ host: "router.example.com" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://router.example.com/api/tunnel/enable",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
   });
 });

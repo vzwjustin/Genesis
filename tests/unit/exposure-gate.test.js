@@ -34,16 +34,18 @@ describe("exposureGate", () => {
     ).toBeNull();
   });
 
-  it("detects active remote exposure from tunnel or tailscale settings", () => {
+  it("detects active remote exposure from tunnel, tailscale, or cloud settings", () => {
     expect(isRemoteExposureActive({ tunnelEnabled: true })).toBe(true);
     expect(isRemoteExposureActive({ tunnelDashboardAccess: true })).toBe(true);
     expect(isRemoteExposureActive({ tailscaleEnabled: true })).toBe(true);
+    expect(isRemoteExposureActive({ cloudEnabled: true })).toBe(true);
     expect(isRemoteExposureActive({ tunnelEnabled: false })).toBe(false);
   });
 
   it("detects remote exposure settings updates", () => {
     expect(isRemoteExposureRequest({ tunnelEnabled: true })).toBe(true);
     expect(isRemoteExposureRequest({ tunnelDashboardAccess: true })).toBe(true);
+    expect(isRemoteExposureRequest({ cloudEnabled: true })).toBe(true);
     expect(isRemoteExposureRequest({ requireLogin: false })).toBe(false);
   });
 });

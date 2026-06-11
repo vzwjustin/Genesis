@@ -4,7 +4,7 @@ import {
   clearAccountError,
   authenticateRequest,
 } from "../services/auth.js";
-import { getSettings } from "@/lib/localDb";
+import { getSettingsSafe } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -88,7 +88,7 @@ async function handleSingleModelEmbeddings(body, modelStr) {
     }
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
-      const settings = await getSettings();
+      const settings = await getSettingsSafe();
       const comboStrategies = settings.comboStrategies || {};
       const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
       const comboStickyLimit = settings.comboStickyRoundRobinLimit;
