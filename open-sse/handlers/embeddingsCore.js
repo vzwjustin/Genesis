@@ -63,13 +63,18 @@ export async function handleEmbeddingsCore({
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
   }
 
-  // Handle 401/403 — try token refresh (skip for noAuth providers)
+  // Handle 401/403 — try token refresh (skip for noAuth / non-refreshable providers)
   const executor = getExecutor(provider);
   if (
     !executor?.noAuth &&
     (providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
       providerResponse.status === HTTP_STATUS.FORBIDDEN)
   ) {
+    if (executor.supportsTokenRefresh === false) {
+      const { statusCode, message } = await parseUpstreamError(providerResponse, executor);
+      const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
+      return createErrorResult(statusCode, errMsg);
+    }
     const newCredentials = await refreshWithRetry(
       () => executor.refreshCredentials(credentials, log, proxyOptions),
       3,
@@ -96,11 +101,14 @@ export async function handleEmbeddingsCore({
       }
     } else {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
+      const { statusCode, message } = await parseUpstreamError(providerResponse, executor);
+      const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
+      return createErrorResult(statusCode, errMsg);
     }
   }
 
   if (!providerResponse.ok) {
-    const { statusCode, message } = await parseUpstreamError(providerResponse);
+    const { statusCode, message } = await parseUpstreamError(providerResponse, executor);
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     log?.debug?.("EMBEDDINGS", `Provider error: ${errMsg}`);
     return createErrorResult(statusCode, errMsg);

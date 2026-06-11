@@ -447,7 +447,7 @@ export function encodeMcpTool(tool) {
 
 // ==================== REQUEST BUILDING ====================
 
-export function encodeRequest(messages, modelName, tools = [], reasoningEffort = null, forceAgentMode = false) {
+export function encodeRequest(messages, modelName, tools = [], reasoningEffort = null, forceAgentMode = false, instruction = "") {
   const hasTools = tools?.length > 0;
   const isAgentic = hasTools || forceAgentMode;
   const formattedMessages = [];
@@ -546,7 +546,7 @@ export function encodeRequest(messages, modelName, tools = [], reasoningEffort =
     
     // Static fields
     encodeField(FIELD.UNKNOWN_2, WIRE_TYPE.VARINT, 1),
-    encodeField(FIELD.INSTRUCTION, WIRE_TYPE.LEN, encodeInstruction("")),
+    encodeField(FIELD.INSTRUCTION, WIRE_TYPE.LEN, encodeInstruction(instruction)),
     encodeField(FIELD.UNKNOWN_4, WIRE_TYPE.VARINT, 1),
     encodeField(FIELD.MODEL, WIRE_TYPE.LEN, encodeModel(modelName)),
     encodeField(FIELD.WEB_TOOL, WIRE_TYPE.LEN, ""),
@@ -583,8 +583,8 @@ export function encodeRequest(messages, modelName, tools = [], reasoningEffort =
   );
 }
 
-export function buildChatRequest(messages, modelName, tools = [], reasoningEffort = null, forceAgentMode = false) {
-  return encodeField(FIELD.REQUEST, WIRE_TYPE.LEN, encodeRequest(messages, modelName, tools, reasoningEffort, forceAgentMode));
+export function buildChatRequest(messages, modelName, tools = [], reasoningEffort = null, forceAgentMode = false, instruction = "") {
+  return encodeField(FIELD.REQUEST, WIRE_TYPE.LEN, encodeRequest(messages, modelName, tools, reasoningEffort, forceAgentMode, instruction));
 }
 
 /**
@@ -646,10 +646,10 @@ export function wrapConnectRPCFrame(payload, compress = false) {
   return frame;
 }
 
-export function generateCursorBody(messages, modelName, tools = [], reasoningEffort = null, forceAgentMode = false) {
+export function generateCursorBody(messages, modelName, tools = [], reasoningEffort = null, forceAgentMode = false, instruction = "") {
   log("BODY", `Generating: ${messages.length} msgs, model=${modelName}, tools=${tools.length}, reasoning=${reasoningEffort || "none"}, forceAgentMode=${forceAgentMode}`);
-  
-  const protobuf = buildChatRequest(messages, modelName, tools, reasoningEffort, forceAgentMode);
+
+  const protobuf = buildChatRequest(messages, modelName, tools, reasoningEffort, forceAgentMode, instruction);
   const framed = wrapConnectRPCFrame(protobuf, false); // Cursor doesn't support compressed requests
   
   log("BODY", `Protobuf=${protobuf.length}B, Framed=${framed.length}B`);
@@ -887,6 +887,85 @@ export function extractTextFromResponse(payload) {
   }
 }
 
+// ==================== MITM REQUEST DECODE / RESPONSE ENCODE ====================
+
+/**
+ * Decode Cursor StreamUnifiedChatRequestWithTools from a ConnectRPC frame.
+ * Returns { kind: "chat"|"tool_result"|"tool_round"|"unknown", model?, messages? }.
+ */
+export function decodeCursorRequest(bodyBuffer) {
+  const buf = Buffer.isBuffer(bodyBuffer) ? bodyBuffer : Buffer.from(bodyBuffer);
+  const frame = parseConnectRPCFrame(buf);
+  if (!frame) return { kind: "unknown" };
+
+  const top = decodeMessage(new Uint8Array(frame.payload));
+
+  if (top.has(2) && !top.has(1)) {
+    return { kind: "tool_result" };
+  }
+
+  if (!top.has(1)) return { kind: "unknown" };
+
+  const reqFields = decodeMessage(top.get(1)[0].value);
+
+  let model = null;
+  if (reqFields.has(FIELD.MODEL)) {
+    const modelMsg = decodeMessage(reqFields.get(FIELD.MODEL)[0].value);
+    if (modelMsg.has(FIELD.MODEL_NAME)) {
+      model = textDecoder.decode(modelMsg.get(FIELD.MODEL_NAME)[0].value);
+    }
+  }
+
+  let instruction = null;
+  if (reqFields.has(FIELD.INSTRUCTION)) {
+    const instrMsg = decodeMessage(reqFields.get(FIELD.INSTRUCTION)[0].value);
+    if (instrMsg.has(FIELD.INSTRUCTION_TEXT)) {
+      const text = textDecoder.decode(instrMsg.get(FIELD.INSTRUCTION_TEXT)[0].value);
+      if (text) instruction = text;
+    }
+  }
+
+  const messages = [];
+  if (reqFields.has(FIELD.MESSAGES)) {
+    for (const msgField of reqFields.get(FIELD.MESSAGES)) {
+      const msg = decodeMessage(msgField.value);
+      if (msg.has(FIELD.MSG_TOOL_RESULTS)) {
+        return { kind: "tool_round" };
+      }
+      let role = "user";
+      if (msg.has(FIELD.MSG_ROLE)) {
+        role = msg.get(FIELD.MSG_ROLE)[0].value === ROLE.ASSISTANT ? "assistant" : "user";
+      }
+      let content = "";
+      if (msg.has(FIELD.MSG_CONTENT)) {
+        content = textDecoder.decode(msg.get(FIELD.MSG_CONTENT)[0].value);
+      }
+      if (content) messages.push({ role, content });
+    }
+  }
+
+  return { kind: "chat", model, messages, instruction };
+}
+
+/** Encode a single text delta as a ConnectRPC response frame. */
+export function encodeTextResponseFrame(text) {
+  const innerText = encodeField(FIELD.RESPONSE_TEXT, WIRE_TYPE.LEN, text);
+  const response = encodeField(FIELD.RESPONSE, WIRE_TYPE.LEN, innerText);
+  return wrapConnectRPCFrame(response, false);
+}
+
+/** Encode a tool-call delta as a ConnectRPC response frame. */
+export function encodeToolCallResponseFrame({ id, name, args = "{}", isLast = false }) {
+  const toolCallPayload = concatArrays(
+    encodeField(FIELD.TOOL_ID, WIRE_TYPE.LEN, id),
+    encodeField(FIELD.TOOL_NAME, WIRE_TYPE.LEN, name),
+    encodeField(FIELD.TOOL_RAW_ARGS, WIRE_TYPE.LEN, args),
+    encodeField(FIELD.TOOL_IS_LAST, WIRE_TYPE.VARINT, isLast ? 1 : 0),
+  );
+  const outer = encodeField(FIELD.TOOL_CALL, WIRE_TYPE.LEN, toolCallPayload);
+  return wrapConnectRPCFrame(outer, false);
+}
+
 // ==================== EXPORTS ====================
 
 export default {
@@ -900,5 +979,8 @@ export default {
   decodeField,
   decodeMessage,
   parseConnectRPCFrame,
-  extractTextFromResponse
+  extractTextFromResponse,
+  decodeCursorRequest,
+  encodeTextResponseFrame,
+  encodeToolCallResponseFrame,
 };

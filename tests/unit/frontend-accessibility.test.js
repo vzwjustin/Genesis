@@ -139,12 +139,12 @@ describe("frontend accessibility regressions", () => {
     expect(endpoint).toContain("handleSaveCloudUrl");
   });
 
-  it("does not register cursor in MITM host routing until implemented", () => {
+  it("registers cursor in MITM host routing", () => {
     const hosts = read("src/shared/constants/mitmToolHosts.js");
     const config = read("src/mitm/config.js");
 
-    expect(hosts).not.toContain('cursor: ["api2.cursor.sh"]');
-    expect(config).not.toContain('return "cursor"');
+    expect(hosts).toContain('cursor: ["api2.cursor.sh"]');
+    expect(config).toContain('return "cursor"');
   });
 
   it("registers Cmd+K command palette in dashboard layout", () => {

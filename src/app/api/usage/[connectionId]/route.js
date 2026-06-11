@@ -34,6 +34,10 @@ async function refreshAndUpdateCredentials(connection, force = false, proxyOptio
     copilotTokenExpiresAt: connection.providerSpecificData?.copilotTokenExpiresAt,
   };
 
+  if (!force && executor.supportsTokenRefresh === false) {
+    return { connection, refreshed: false };
+  }
+
   // Check if refresh is needed (skip when force=true)
   const needsRefresh = force || executor.needsRefresh(credentials);
 

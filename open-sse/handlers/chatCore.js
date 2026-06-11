@@ -384,8 +384,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
   }
 
-  // Handle 401/403 - try token refresh (skip for noAuth providers)
+  // Handle 401/403 - try token refresh (skip for noAuth / non-refreshable providers)
   if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
+    if (executor.supportsTokenRefresh === false) {
+      trackPendingRequest(model, provider, connectionId, false, true);
+      const { message } = await parseUpstreamError(providerResponse, executor);
+      return createErrorResult(providerResponse.status, message);
+    }
     try {
       const newCredentials = await refreshWithRetry(() => executor.refreshCredentials(credentials, log, proxyOptions), 3, log);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
@@ -410,9 +415,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         }
       } else {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
+        trackPendingRequest(model, provider, connectionId, false, true);
+        const { message } = await parseUpstreamError(providerResponse, executor);
+        return createErrorResult(providerResponse.status, message);
       }
     } catch (e) {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh threw: ${e.message}`);
+      trackPendingRequest(model, provider, connectionId, false, true);
+      const { message } = await parseUpstreamError(providerResponse, executor);
+      return createErrorResult(providerResponse.status, message);
     }
   }
 

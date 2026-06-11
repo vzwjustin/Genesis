@@ -195,6 +195,11 @@ describe("imageGenerationCore proxy routing (source)", () => {
     expect(src).toContain("buildProxyOptionsFromCredentials");
     expect(src).not.toMatch(/\bfetch\s*\(/);
   });
+
+  it("skips refresh loop when executor.supportsTokenRefresh is false", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/imageGenerationCore.js"), "utf8");
+    expect(src).toContain("supportsTokenRefresh === false");
+  });
 });
 
 describe("image provider registry", () => {

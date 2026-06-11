@@ -66,7 +66,7 @@ const TOOL_HOSTS = {
   antigravity: ["daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com"],
   copilot: ["api.individual.githubcopilot.com"],
   kiro: KIRO_MITM_HOSTS,
-  // cursor: not implemented — do not add hosts until handler exists
+  cursor: ["api2.cursor.sh"],
 };
 
 module.exports = {

@@ -323,6 +323,7 @@ function wrapQoderSSE(response, model) {
 export class QoderExecutor extends BaseExecutor {
   constructor() {
     super("qoder", PROVIDERS.qoder);
+    this.supportsTokenRefresh = false;
   }
 
   buildUrl() {

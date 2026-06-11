@@ -215,7 +215,7 @@ export async function checkAndRefreshToken(provider, credentials) {
   let creds = { ...credentials };
 
   // ── 1. Regular access-token expiry ────────────────────────────────────────
-  if (creds.expiresAt) {
+  if (creds.expiresAt && creds.refreshToken) {
     const expiresAt = new Date(creds.expiresAt).getTime();
     const now       = Date.now();
     const remaining = expiresAt - now;

@@ -160,9 +160,24 @@ function createErrorResponse(jsonError) {
   });
 }
 
+const CURSOR_REIMPORT_MSG =
+  "Cursor token expired — re-import from Cursor IDE (Providers → Cursor → Import).";
+
 export class CursorExecutor extends BaseExecutor {
   constructor() {
     super("cursor", PROVIDERS.cursor);
+    this.supportsTokenRefresh = false;
+  }
+
+  parseError(response, bodyText) {
+    if (response.status === HTTP_STATUS.UNAUTHORIZED || response.status === HTTP_STATUS.FORBIDDEN) {
+      return {
+        status: response.status,
+        message: CURSOR_REIMPORT_MSG,
+        code: "cursor_reimport_required",
+      };
+    }
+    return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
   buildUrl() {
@@ -303,12 +318,12 @@ export class CursorExecutor extends BaseExecutor {
           };
         }
 
-        const errorText = response.body?.toString() || "Unknown error";
+        const isAuthError = status === HTTP_STATUS.UNAUTHORIZED || status === HTTP_STATUS.FORBIDDEN;
         const errorResponse = new Response(JSON.stringify({
           error: {
-            message: `[${status}]: ${errorText}`,
-            type: "invalid_request_error",
-            code: ""
+            message: isAuthError ? CURSOR_REIMPORT_MSG : `[${status}]: ${response.body?.toString() || "Unknown error"}`,
+            type: isAuthError ? "authentication_error" : "invalid_request_error",
+            code: isAuthError ? "cursor_reimport_required" : "",
           }
         }), {
           status,
@@ -877,12 +892,14 @@ export class CursorExecutor extends BaseExecutor {
     });
   }
 
+  needsRefresh() {
+    return false;
+  }
+
   async refreshCredentials() {
     // Cursor OAuth tokens are long-lived and are managed exclusively by the Cursor
     // application. Programmatic refresh is not supported via the API. If a 401/403 is
     // returned, the user must re-authenticate through the Cursor application.
-    // Returning null lets the base chatCore flow log a "refresh failed" warning and
-    // continue — no retry attempt is made.
     return null;
   }
 }

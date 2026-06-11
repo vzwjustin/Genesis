@@ -45,9 +45,17 @@ function extractModel(url, body) {
 
 function getKiroFallbackAlias(aliases) {
   if (!aliases) return null;
+  if (aliases["claude-sonnet-4.6"]) return aliases["claude-sonnet-4.6"];
   if (aliases["claude-sonnet-4.5"]) return aliases["claude-sonnet-4.5"];
   const first = Object.values(aliases).find(Boolean);
   return first || null;
+}
+
+function getCursorFallbackAlias(aliases) {
+  if (!aliases) return null;
+  if (aliases["composer-2.5-fast"]) return aliases["composer-2.5-fast"];
+  if (aliases.auto) return aliases.auto;
+  return Object.values(aliases).find(Boolean) || null;
 }
 
 function getMappedModel(tool, model) {
@@ -57,6 +65,8 @@ function getMappedModel(tool, model) {
   let lookup = model;
   if (tool === "kiro") {
     lookup = normalizeKiroModelId(model) || (model ? String(model).trim() : null) || "auto";
+  } else if (tool === "cursor") {
+    lookup = (model != null && String(model).trim()) || "auto";
   } else if (!lookup) {
     return null;
   }
@@ -75,6 +85,7 @@ function getMappedModel(tool, model) {
   }
 
   if (tool === "kiro") return getKiroFallbackAlias(aliases);
+  if (tool === "cursor") return getCursorFallbackAlias(aliases);
   return null;
 }
 
@@ -83,4 +94,5 @@ module.exports = {
   getMappedModel,
   normalizeKiroModelId,
   getKiroFallbackAlias,
+  getCursorFallbackAlias,
 };

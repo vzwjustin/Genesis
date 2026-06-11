@@ -322,6 +322,31 @@ describe("CursorExecutor — bug fixes", () => {
         executor.refreshCredentials({ accessToken: "tok" }, console, null)
       ).resolves.toBeNull();
     });
+
+    it("does not support programmatic token refresh", () => {
+      expect(executor.supportsTokenRefresh).toBe(false);
+    });
+
+    it("needsRefresh is always false (JWT expiry does not imply refreshable token)", () => {
+      expect(executor.needsRefresh({ expiresAt: new Date(Date.now() + 60_000).toISOString() })).toBe(false);
+    });
+  });
+
+  describe("execute — auth errors", () => {
+    it("parseError returns re-import message for 401", () => {
+      const parsed = executor.parseError({ status: 401 }, "binary garbage");
+      expect(parsed.message).toContain("re-import");
+      expect(parsed.code).toBe("cursor_reimport_required");
+      expect(parsed.message).not.toContain("binary garbage");
+    });
+
+    it("parseUpstreamError uses Cursor parseError on passthrough 401 bodies", async () => {
+      const { parseUpstreamError } = await import("../../open-sse/utils/error.js");
+      const response = new Response("\x00\x01protobuf-garbage", { status: 401 });
+      const { message } = await parseUpstreamError(response, executor);
+      expect(message).toContain("re-import");
+      expect(message).not.toContain("protobuf");
+    });
   });
 
   // -------------------------------------------------------------------------
