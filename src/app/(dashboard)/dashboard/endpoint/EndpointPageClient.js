@@ -266,7 +266,7 @@ export default function APIPageClient({ machineId }) {
         setCloudEnabled(!!data.cloudEnabled);
         setCloudUrl(data.cloudUrl || "");
         setCloudUrlDraft(data.cloudUrl || "");
-        fetchHeadroomStatus(!!data.headroomEnabled);
+        fetchHeadroomStatus();
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
@@ -410,21 +410,12 @@ export default function APIPageClient({ machineId }) {
     fetchCompressionStats();
   };
 
-  const fetchHeadroomStatus = async (enabled = headroomEnabled) => {
+  const fetchHeadroomStatus = async () => {
     try {
       const res = await fetch("/api/headroom/status");
       if (!res.ok) return;
       const status = await res.json();
       setHeadroomStatus(status);
-      // Auto-enable when cloud API key or local proxy is reachable
-      if (status.reachable && !enabled) {
-        const patchRes = await fetch("/api/settings", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ headroomEnabled: true }),
-        });
-        if (patchRes.ok) setHeadroomEnabled(true);
-      }
     } catch { /* ignore */ }
   };
 

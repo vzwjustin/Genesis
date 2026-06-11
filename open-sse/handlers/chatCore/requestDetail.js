@@ -81,14 +81,25 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
 
   if (inTokens === 0 && outTokens === 0) return;
 
+  const cacheRead = tokens.cache_read_input_tokens ?? tokens.cached_tokens;
+  const cacheCreate = tokens.cache_creation_input_tokens;
+  const reasoning = tokens.reasoning_tokens;
+
   const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
-  console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
+  let logLine = `${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}`;
+  if (cacheRead) logLine += ` | cache_read=${cacheRead}`;
+  if (cacheCreate) logLine += ` | cache_create=${cacheCreate}`;
+  if (reasoning) logLine += ` | reasoning=${reasoning}`;
+  console.log(`${logLine}${COLORS.reset}`);
 
-  // Normalize to OpenAI token shape for storage
+  // Normalize to OpenAI token shape for storage (preserve cache fields for hit-rate stats)
   const normalized = {
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
-    completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
+    completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0,
+    cache_read_input_tokens: cacheRead || 0,
+    cache_creation_input_tokens: cacheCreate || 0,
+    reasoning_tokens: reasoning || 0,
   };
 
   saveRequestUsage({

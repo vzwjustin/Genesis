@@ -329,15 +329,15 @@ useEffect(() => {
                   </div>
                 ))}
 
-                {/* CC Filter Naming */}
+                {/* CC topic naming bypass (not RTK / not compression) */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
-                  <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Filter naming</span>
+                  <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Topic naming bypass</span>
                   <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                   <label className="flex items-center gap-1.5 cursor-pointer select-none">
                     <input type="checkbox" checked={ccFilterNaming} onChange={handleCcFilterNamingToggle} className="w-3.5 h-3.5 accent-primary cursor-pointer" />
-                    <span className="text-xs text-text-muted">Filter naming requests</span>
+                    <span className="text-xs text-text-muted">Answer isNewTopic locally (no API call)</span>
                   </label>
-                  <Tooltip text="Intercepts Claude Code's topic-naming requests and returns a fake response locally, saving API tokens.">
+                  <Tooltip text="Intercepts Claude Code housekeeping topic-title requests (system contains isNewTopic) and returns a fake JSON title locally. Does not affect normal coding requests or RTK.">
                     <span className="material-symbols-outlined text-text-muted text-[14px] cursor-help">info</span>
                   </Tooltip>
                 </div>

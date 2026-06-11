@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Card, Button, Badge } from "@/shared/components";
 import CompressionStatRow, { formatBytes } from "@/shared/components/CompressionStatRow";
+import { formatHeadroomSetupHint } from "@/shared/utils/headroomStatusHint";
 
 export default function CompressionSummaryCard({
   compressionStats,
@@ -30,7 +31,7 @@ export default function CompressionSummaryCard({
             Token Saver
           </h2>
           <p className="text-sm text-text-muted mb-3">
-            RTK, Headroom, and Caveman compression — configure on the Caching page.
+            RTK tool-output filters, Headroom history compression, and Caveman system injection — configure on the Caching page.
           </p>
           <div className="flex flex-wrap gap-2 mb-3">
             <Badge variant={rtkEnabled ? "success" : "default"} size="sm">RTK {rtkEnabled ? "on" : "off"}</Badge>
@@ -63,7 +64,11 @@ export default function CompressionSummaryCard({
             proxyStats={compressionStats?.headroomProxy}
             kind="bytes"
             dashboardUrl={headroomDashboardUrl}
-            emptyHint={headroomStatus?.reachable ? "No Headroom savings yet" : "Headroom proxy not reachable"}
+            emptyHint={
+              headroomStatus?.installed && headroomStatus?.reachable
+                ? "No Headroom savings yet"
+                : formatHeadroomSetupHint(headroomStatus)
+            }
           />
         </div>
         <div>

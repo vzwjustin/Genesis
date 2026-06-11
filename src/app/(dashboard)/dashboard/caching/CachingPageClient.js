@@ -18,6 +18,7 @@ import CompressionStatRow, {
 import InlineAlert from "@/shared/components/InlineAlert";
 import RequestLogSessionModal from "@/shared/components/RequestLogSessionModal";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import { formatHeadroomSetupHint, headroomCanEnable } from "@/shared/utils/headroomStatusHint";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -46,7 +47,7 @@ const SUBSYSTEMS = [
   { value: "caveman", label: "Caveman" },
 ];
 
-function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl }) {
+function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl, emptyHint }) {
   const s = stats || {};
   const { headline: primary, subline: secondary } = formatCompressionDisplay(s, kind);
 
@@ -70,7 +71,7 @@ function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl })
         proxyStats={proxyStats}
         kind={kind}
         dashboardUrl={dashboardUrl}
-        emptyHint="No activity yet — send chat traffic through 9router"
+        emptyHint={emptyHint || "No activity yet — send chat traffic through 9router"}
       />
     </Card>
   );
@@ -145,7 +146,6 @@ export default function CachingPageClient() {
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [passthroughCompression, setPassthroughCompression] = useState(false);
-  const [ccFilterNaming, setCcFilterNaming] = useState(false);
   const [mitmAutoSetupOnImport, setMitmAutoSetupOnImport] = useState(true);
   const [providerCache, setProviderCache] = useState(null);
   const [providerCompression, setProviderCompression] = useState(null);
@@ -195,7 +195,6 @@ export default function CachingPageClient() {
       setCavemanLevel(data.cavemanLevel || "full");
       setHeadroomEnabled(data.headroomEnabled === true);
       setPassthroughCompression(data.passthroughCompression === true);
-      setCcFilterNaming(data.ccFilterNaming === true);
       setMitmAutoSetupOnImport(data.mitmAutoSetupOnImport !== false);
       setEnableRequestLogs(data.enableRequestLogs === true);
     } catch { /* ignore */ }
@@ -385,6 +384,11 @@ export default function CachingPageClient() {
               kind="bytes"
               proxyStats={compressionStats?.headroomProxy}
               dashboardUrl={headroomDashboardUrl}
+              emptyHint={
+                headroomStatus?.installed && headroomStatus?.reachable
+                  ? "No activity yet — send chat traffic through 9router"
+                  : formatHeadroomSetupHint(headroomStatus)
+              }
             />
             <StatCard
               title="Caveman"
@@ -477,8 +481,10 @@ export default function CachingPageClient() {
               )}
               <div className="flex items-center justify-between py-4 gap-4 flex-wrap">
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">Caveman output compression</p>
-                  <p className="text-sm text-text-muted">Terse system prompts — preserves cached prefix blocks</p>
+                  <p className="font-medium">Caveman system prompt injection</p>
+                  <p className="text-sm text-text-muted">
+                    Server-side terse style for clients without their own hooks — inserts after cache blocks; skip if Claude Code already uses /caveman
+                  </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   {cavemanEnabled && CAVEMAN_LEVELS.map((lvl) => (
@@ -505,11 +511,7 @@ export default function CachingPageClient() {
               <div className="flex items-center justify-between py-4 gap-4">
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">Headroom history compression</p>
-                  <p className="text-sm text-text-muted">
-                    {headroomStatus?.reachable
-                      ? `Proxy reachable at ${headroomStatus.proxyUrl}`
-                      : "Install headroom-ai[proxy] or set HEADROOM_API_KEY for cloud"}
-                  </p>
+                  <p className="text-sm text-text-muted">{formatHeadroomSetupHint(headroomStatus)}</p>
                 </div>
                 <Toggle
                   checked={headroomEnabled}
@@ -519,7 +521,7 @@ export default function CachingPageClient() {
                     if (v) fetchHeadroomStatus();
                     fetchCompressionStats();
                   }}
-                  disabled={!headroomStatus?.reachable}
+                  disabled={!headroomCanEnable(headroomStatus)}
                 />
               </div>
               <div className="flex items-center justify-between py-4 gap-4">
@@ -534,16 +536,6 @@ export default function CachingPageClient() {
                     patchSetting({ passthroughCompression: v });
                     fetchCompressionStats();
                   }}
-                />
-              </div>
-              <div className="flex items-center justify-between py-4 gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">Claude Code filter naming</p>
-                  <p className="text-sm text-text-muted">Bypass RTK when tool names match CC filter patterns</p>
-                </div>
-                <Toggle
-                  checked={ccFilterNaming}
-                  onChange={(v) => { setCcFilterNaming(v); patchSetting({ ccFilterNaming: v }); }}
                 />
               </div>
               <div className="flex items-center justify-between py-4 gap-4">
@@ -594,6 +586,8 @@ export default function CachingPageClient() {
                 Tunnel and endpoint settings live on the{" "}
                 <Link href="/dashboard/endpoint#rtk" className="text-primary underline">Endpoint</Link> page.
                 Compression chain order: RTK → Headroom → Caveman.
+                Claude Code topic-naming bypass (not compression) is under{" "}
+                <Link href="/dashboard/cli-tools" className="text-primary underline">CLI Tools → Claude Code</Link>.
               </>
             }
           />
@@ -685,7 +679,7 @@ export default function CachingPageClient() {
             <InlineAlert
               variant="info"
               className="flex-1"
-              message="Upstream prompt-cache tokens are tracked in usage logs. Web search responses are cached locally per provider cacheTTLMs."
+              message="Upstream prompt-cache tokens come from usage logs (cache_read / cache_creation). Hit rate is per logged request with cache stats — not the same as RTK or Caveman savings."
             />
             <SegmentedControl
               options={CACHE_PERIODS}
