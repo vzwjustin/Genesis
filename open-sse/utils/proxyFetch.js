@@ -10,6 +10,7 @@ const { isKiroMitmHost } = require("../../src/shared/constants/mitmToolHosts.js"
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
 const SUPPORTED_PROXY_PROTOCOLS = new Set(["http:", "https:"]);
+const MAX_UPSTREAM_REDIRECTS = 5;
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -400,6 +401,56 @@ function withUpstreamTimeout(options) {
   return { fetchOptions: { ...options, signal }, done: () => clearTimeout(timer) };
 }
 
+/**
+ * Fetch that follows redirects manually, re-validating each hop's hostname
+ * against the SSRF guard. Without this, a validated initial host can 30x-redirect
+ * to a private/metadata address (e.g. 169.254.169.254) and the default
+ * redirect:"follow" would chase it, defeating assertSafeResolvedHostname.
+ */
+async function safeRedirectFetch(url, options, fetchImpl) {
+  let currentUrl = typeof url === "string" ? url : url.toString();
+  let currentOptions = { ...options, redirect: "manual" };
+
+  for (let hop = 0; hop <= MAX_UPSTREAM_REDIRECTS; hop++) {
+    const res = await fetchImpl(currentUrl, currentOptions);
+    // Only 3xx is a redirect; anything else (incl. undefined status from
+    // non-standard Response-likes) is handed back untouched.
+    const status = Number(res?.status);
+    if (!(status >= 300 && status < 400)) return res;
+
+    const location = res.headers?.get?.("location");
+    if (!location) return res; // 3xx without Location — hand back as-is
+
+    let nextUrl;
+    try {
+      nextUrl = new URL(location, currentUrl).toString();
+    } catch {
+      throw new Error("[ProxyFetch] Redirect to invalid URL blocked");
+    }
+
+    const nextHost = new URL(nextUrl).hostname;
+    const allowLoopback = ["localhost", "127.0.0.1", "::1"].includes(nextHost.toLowerCase());
+    try {
+      await assertSafeResolvedHostname(nextHost, { allowLoopback });
+    } catch (dnsError) {
+      throw new Error(`[ProxyFetch] Redirect blocked by SSRF guard: ${dnsError.message}`);
+    }
+
+    // Drain the redirect response body to free the socket before re-issuing.
+    try { await res.body?.cancel(); } catch { /* noop */ }
+
+    // Per fetch spec, 303 (and 301/302 for non-GET/HEAD) downgrade to GET and drop the body.
+    const method = (currentOptions.method || "GET").toUpperCase();
+    if (res.status === 303 || ((res.status === 301 || res.status === 302) && method !== "GET" && method !== "HEAD")) {
+      const { body, ...rest } = currentOptions;
+      currentOptions = { ...rest, method: "GET" };
+    }
+    currentUrl = nextUrl;
+  }
+
+  throw new Error(`[ProxyFetch] Too many redirects (>${MAX_UPSTREAM_REDIRECTS})`);
+}
+
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const { fetchOptions, done } = withUpstreamTimeout(options);
   try {
@@ -466,20 +517,20 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   if (proxyUrl) {
     try {
       const dispatcher = await getDispatcher(proxyUrl);
-      return await originalFetch(url, { ...options, dispatcher });
+      return await safeRedirectFetch(url, options, (u, o) => originalFetch(u, { ...o, dispatcher }));
     } catch (proxyError) {
       // Configured proxy (per-connection or environment) must not silently fall back to direct
       if (proxyOptions?.strictProxy !== false) {
         throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
       }
       console.warn(`[ProxyFetch] Proxy failed, falling back to direct (strictProxy=false): ${proxyError.message}`);
-      return originalFetch(url, options);
+      return safeRedirectFetch(url, options, originalFetch);
     }
   }
 
   // got-scraping disabled — use native fetch directly
   // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
-  return originalFetch(url, options);
+  return safeRedirectFetch(url, options, originalFetch);
 }
 
 /**

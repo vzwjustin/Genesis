@@ -90,10 +90,16 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       const content = msg.content;
 
       if (role === "system" && body.messages.length > 1) {
-        result.systemInstruction = {
-          role: "user",
-          parts: [{ text: typeof content === "string" ? content : extractTextContent(content) }]
-        };
+        const text = typeof content === "string" ? content : extractTextContent(content);
+        if (text) {
+          // Merge multiple system messages instead of letting the last one
+          // overwrite the rest (Gemini takes a single systemInstruction).
+          if (result.systemInstruction) {
+            result.systemInstruction.parts.push({ text });
+          } else {
+            result.systemInstruction = { role: "user", parts: [{ text }] };
+          }
+        }
       } else if (role === "user" || (role === "system" && body.messages.length === 1)) {
         const parts = convertOpenAIContentToParts(content);
         if (parts.length > 0) {

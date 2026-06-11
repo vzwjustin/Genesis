@@ -427,7 +427,7 @@ async function getAntigravityUsage(accessToken, providerSpecificData, proxyOptio
         // Convert percentage to used/total for UI compatibility
         const total = 1000; // Normalized base
         const remaining = Math.round(total * remainingFraction);
-        const used = total - remaining;
+        const used = Math.max(0, total - remaining);
 
         // Use modelKey as key (matches PROVIDER_MODELS id)
         quotas[modelKey] = {
@@ -1186,10 +1186,17 @@ async function getQoderUsage(accessToken, proxyOptions = null) {
     // Qoder publishes a single absolute reset timestamp (`expiresAt` in ms);
     // surface it on every quota record as ISO so the table can render
     // "resets at" alongside used/total.
-    const expiresAtMs = Number.isFinite(Number(body.expiresAt)) && Number(body.expiresAt) > 0
-      ? Number(body.expiresAt)
+    // Accept only plausible millisecond timestamps (year 2020–2065). Rejects
+    // second-resolution values (10 digits) that would render as 1970, and
+    // far-future values that would make new Date().toISOString() throw RangeError.
+    const expiresAtRaw = Number(body.expiresAt);
+    const expiresAtMs = Number.isFinite(expiresAtRaw) && expiresAtRaw > 1.6e12 && expiresAtRaw < 3e12
+      ? expiresAtRaw
       : null;
-    const resetAt = expiresAtMs ? new Date(expiresAtMs).toISOString() : null;
+    let resetAt = null;
+    if (expiresAtMs) {
+      try { resetAt = new Date(expiresAtMs).toISOString(); } catch { resetAt = null; }
+    }
     const quotas = {
       user: {
         total: Number(userQuota.total) || 0,

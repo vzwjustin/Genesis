@@ -703,9 +703,11 @@ export function decodeField(buffer, offset) {
     value = buffer.slice(pos2, pos2 + length);
     pos = pos2 + length;
   } else if (wireType === WIRE_TYPE.FIXED64) {
+    if (pos + 8 > buffer.length) return [null, null, null, offset];
     value = buffer.slice(pos, pos + 8);
     pos += 8;
   } else if (wireType === WIRE_TYPE.FIXED32) {
+    if (pos + 4 > buffer.length) return [null, null, null, offset];
     value = buffer.slice(pos, pos + 4);
     pos += 4;
   } else {
