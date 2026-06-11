@@ -200,11 +200,33 @@ function buildQuery(parsed, followUpUuid, tools) {
   if (toolsHint) instr.push(toolsHint);
   instr.push("You have built-in web search. Answer questions directly using search results.");
   obj.instructions = instr;
-  if (parsed.history.length > 0) obj.history = parsed.history;
+  const history = parsed.history.length > 0 ? [...parsed.history] : null;
+  if (history) obj.history = history;
   if (parsed.currentMsg) obj.query = parsed.currentMsg;
   else if (parsed.history.length === 0) obj.query = "";
-  const json = JSON.stringify(obj);
-  return json.length > 96000 ? json.slice(-96000) : json;
+  // Drop oldest history entries until the serialized payload fits the budget,
+  // keeping valid JSON instead of truncating the serialized string.
+  while (JSON.stringify(obj).length > 96000 && history && history.length > 0) {
+    history.shift();
+    if (history.length === 0) delete obj.history;
+  }
+  // Still over budget (e.g. an oversized system prompt with no history to drop):
+  // clamp the longest instruction entry, then the query, until it fits. Trimming
+  // a single string field preserves valid JSON.
+  const BUDGET = 96000;
+  while (JSON.stringify(obj).length > BUDGET && Array.isArray(obj.instructions) && obj.instructions.some((s) => s.length > 0)) {
+    let idx = 0;
+    for (let i = 1; i < obj.instructions.length; i++) {
+      if (obj.instructions[i].length > obj.instructions[idx].length) idx = i;
+    }
+    const over = JSON.stringify(obj).length - BUDGET;
+    obj.instructions[idx] = obj.instructions[idx].slice(0, Math.max(0, obj.instructions[idx].length - over));
+  }
+  while (JSON.stringify(obj).length > BUDGET && typeof obj.query === "string" && obj.query.length > 0) {
+    const over = JSON.stringify(obj).length - BUDGET;
+    obj.query = obj.query.slice(0, Math.max(0, obj.query.length - over));
+  }
+  return JSON.stringify(obj);
 }
 
 async function* extractContent(eventStream, signal) {

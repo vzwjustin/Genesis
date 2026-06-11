@@ -28,7 +28,17 @@ function isPrivateOrReservedIpv6(host) {
   }
   if (lower.startsWith("::ffff:")) {
     const mapped = lower.slice(7);
-    return isIpv4Literal(mapped) && isPrivateOrReservedIpv4(...mapped.split(".").map(Number));
+    // Dotted-decimal form: ::ffff:127.0.0.1
+    if (mapped.includes(".")) {
+      return isIpv4Literal(mapped) && isPrivateOrReservedIpv4(...mapped.split(".").map(Number));
+    }
+    // Hex form: new URL normalizes IPv4-mapped IPv6 to two hextets (::ffff:7f00:1)
+    const hextets = mapped.split(":");
+    if (hextets.length === 2 && hextets.every((p) => /^[0-9a-f]{1,4}$/.test(p))) {
+      const hi = parseInt(hextets[0], 16);
+      const lo = parseInt(hextets[1], 16);
+      return isPrivateOrReservedIpv4(hi >> 8, hi & 0xff, lo >> 8, lo & 0xff);
+    }
   }
   return false;
 }

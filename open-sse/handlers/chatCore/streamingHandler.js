@@ -48,7 +48,22 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
  * and the final onStreamComplete update share the same record identifier, preventing
  * duplicate DB records for the same streaming request.
  */
-export function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, streamController, onStreamComplete, passthrough, streamDetailId }) {
+export function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, streamController, onStreamComplete, fireRequestSuccess, passthrough, streamDetailId }) {
+  // Ensure billing/rotation accounting runs once even when the client
+  // disconnects or the stream errors before clean completion. onStreamComplete
+  // already fires fireRequestSuccess on the happy path; the once-guard inside
+  // it prevents a double-fire when both paths trigger.
+  if (fireRequestSuccess && streamController) {
+    const origDisconnect = streamController.handleDisconnect?.bind(streamController);
+    const origError = streamController.handleError?.bind(streamController);
+    if (origDisconnect) {
+      streamController.handleDisconnect = (reason) => { try { origDisconnect(reason); } finally { fireRequestSuccess(); } };
+    }
+    if (origError) {
+      streamController.handleError = (err) => { try { origError(err); } finally { fireRequestSuccess(); } };
+    }
+  }
+
   const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, passthrough });
   const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController);
 
@@ -80,12 +95,25 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
 export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, onRequestSuccess }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
+  // Fire accounting/rotation at most once — on clean completion OR early
+  // client disconnect/abort. Guards against double-fire across both paths.
+  let accountingFired = false;
+  const fireRequestSuccess = () => {
+    if (accountingFired) return;
+    accountingFired = true;
+    if (onRequestSuccess) {
+      Promise.resolve(onRequestSuccess()).catch((err) => {
+        console.error("[Streaming] onRequestSuccess failed:", err.message);
+      });
+    }
+  };
+
   const onStreamComplete = (contentObj, usage, ttftAt) => {
     const latency = {
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
       total: Date.now() - requestStartTime
     };
-    const safeContent = contentObj?.content || "[Empty streaming response]";
+    const safeContent = contentObj?.content ?? "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
     saveRequestDetail(buildRequestDetail({
@@ -103,12 +131,8 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
 
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE" });
 
-    if (onRequestSuccess) {
-      Promise.resolve(onRequestSuccess()).catch((err) => {
-        console.error("[Streaming] onRequestSuccess failed:", err.message);
-      });
-    }
+    fireRequestSuccess();
   };
 
-  return { onStreamComplete, streamDetailId };
+  return { onStreamComplete, streamDetailId, fireRequestSuccess };
 }

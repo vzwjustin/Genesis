@@ -206,8 +206,28 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
       resolve();
     });
 
-    const stream = client.request(h2Headers, { endStream: bodyBuffer.length === 0 });
-    if (bodyBuffer.length > 0) stream.end(bodyBuffer);
+    if (client.destroyed) {
+      if (!res.headersSent) res.writeHead(502);
+      if (!res.writableEnded) res.end("Bad Gateway");
+      resolve();
+      return;
+    }
+
+    let stream;
+    try {
+      // client.request / stream.end can throw synchronously (e.g. ERR_HTTP2_INVALID_STREAM)
+      // when the session is closing — handle here so we don't leak client + res.
+      stream = client.request(h2Headers, { endStream: bodyBuffer.length === 0 });
+      if (bodyBuffer.length > 0) stream.end(bodyBuffer);
+    } catch (e) {
+      err(`[mitm] http2 request error: ${e.message}`);
+      if (dumper) { dumper.writeChunk(`\n[ERROR h2-request] ${e.message}\n`); dumper.end(); }
+      if (!res.headersSent) res.writeHead(502);
+      if (!res.writableEnded) res.end("Bad Gateway");
+      try { client.destroy(); } catch {}
+      resolve();
+      return;
+    }
 
     stream.once("response", (responseHeaders) => {
       const status = responseHeaders[":status"];
@@ -221,16 +241,28 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
       res.writeHead(status, outHeaders);
       if (dumper) dumper.writeHeader(status, outHeaders);
 
+      const RESPONSE_INSPECT_CAP = 10 * 1024 * 1024; // 10MB: cap buffering for onResponse inspection
       const chunks = [];
+      let bufferedBytes = 0;
+      let inspectOverflow = false;
       stream.on("data", chunk => {
         if (dumper) dumper.writeChunk(chunk);
-        if (onResponse) chunks.push(chunk);
+        if (onResponse && !inspectOverflow) {
+          if (bufferedBytes + chunk.length > RESPONSE_INSPECT_CAP) {
+            // Too large to inspect — stop accumulating and skip inspection (still streams to res).
+            inspectOverflow = true;
+            chunks.length = 0;
+          } else {
+            chunks.push(chunk);
+            bufferedBytes += chunk.length;
+          }
+        }
         res.write(chunk);
       });
       stream.on("end", () => {
         if (dumper) dumper.end();
         if (!res.writableEnded) res.end();
-        if (onResponse) try { onResponse(Buffer.concat(chunks), outHeaders); } catch {}
+        if (onResponse && !inspectOverflow) try { onResponse(Buffer.concat(chunks), outHeaders); } catch {}
         try { client.close(); } catch {}
         resolve();
       });

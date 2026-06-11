@@ -6,6 +6,26 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
+// Validate a proxy URL. The undici-based dispatcher only supports http/https
+// proxies, so reject anything else. Returns "" (treat as no-proxy) on invalid.
+const SUPPORTED_PROXY_SCHEMES = new Set(["http:", "https:", "socks5:", "socks4:"]);
+function validateProxyUrl(value) {
+  const raw = normalizeString(value);
+  if (!raw) return "";
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    console.warn("[resolveConnectionProxyConfig] Invalid proxy URL, ignoring:", raw);
+    return "";
+  }
+  if (!SUPPORTED_PROXY_SCHEMES.has(parsed.protocol)) {
+    console.warn("[resolveConnectionProxyConfig] Unsupported proxy scheme, ignoring:", parsed.protocol);
+    return "";
+  }
+  return raw;
+}
+
 /**
  * Normalize legacy proxy configuration.
  */
@@ -13,7 +33,7 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
   const connectionProxyEnabled =
     providerSpecificData?.connectionProxyEnabled === true;
 
-  const connectionProxyUrl = normalizeString(
+  const connectionProxyUrl = validateProxyUrl(
     providerSpecificData?.connectionProxyUrl
   );
 
@@ -58,7 +78,7 @@ export async function resolveConnectionProxyConfig(
     if (proxyPoolId) {
       const proxyPool = await getProxyPoolById(proxyPoolId);
 
-      const proxyUrl = normalizeString(proxyPool?.proxyUrl);
+      const proxyUrl = validateProxyUrl(proxyPool?.proxyUrl);
       const noProxy = normalizeString(proxyPool?.noProxy);
 
       const isValidPool =

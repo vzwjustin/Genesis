@@ -58,8 +58,8 @@ export async function handleFetch(request) {
 
   // Validate URL format and block private/metadata hosts
   try {
-    const { assertSafeFetchUrl } = await import("open-sse/utils/ssrfGuard.js");
-    assertSafeFetchUrl(targetUrl, { requireHttps: false, allowHttp: true });
+    const { assertSafeFetchUrlWithDns } = await import("open-sse/utils/ssrfGuard.js");
+    await assertSafeFetchUrlWithDns(targetUrl, { allowHttp: true });
   } catch {
     log.warn("FETCH", "Invalid or blocked URL", { url: targetUrl });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid or blocked URL");

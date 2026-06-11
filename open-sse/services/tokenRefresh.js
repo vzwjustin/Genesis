@@ -891,7 +891,15 @@ export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
 
     try {
       const result = await refreshFn();
-      if (result) return result;
+      if (result) {
+        // Unrecoverable errors (invalid_grant, refresh_token_reused, etc.) won't
+        // succeed on retry — return immediately instead of burning all attempts.
+        if (isUnrecoverableRefreshError(result)) {
+          log?.warn?.("TOKEN_REFRESH", `Unrecoverable refresh error (${result.error}); not retrying`);
+          return result;
+        }
+        return result;
+      }
     } catch (error) {
       log?.warn?.("TOKEN_REFRESH", `Attempt ${attempt + 1}/${maxRetries} failed: ${error.message}`);
     }
