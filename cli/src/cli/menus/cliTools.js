@@ -105,16 +105,6 @@ async function claudeSelectModel(modelType, port) {
 
   const env = { [modelType.envKey]: selected };
 
-  // Also set base URL if not configured yet
-  const settingsResult = await api.getCliToolSettings("claude");
-  if (!settingsResult.data?.settings?.env?.ANTHROPIC_BASE_URL) {
-    const { endpoint } = await getEndpoint(port);
-    const apiKey = await getFirstApiKey();
-    env.ANTHROPIC_BASE_URL = endpoint;
-    env.API_TIMEOUT_MS = "600000";
-    if (apiKey) env.ANTHROPIC_AUTH_TOKEN = apiKey;
-  }
-
   const result = await api.applyCliToolSettings("claude", { env });
   showStatus(result.success ? `${modelType.name} → ${selected} saved!` : `Failed: ${result.error}`, result.success ? "success" : "error");
   await pause();

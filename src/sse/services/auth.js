@@ -5,7 +5,14 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, getEarliestRateLimitedUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
-import { parseApiKey, verifyApiKeyCrc } from "@/shared/utils/apiKey.js";
+import {
+  parseApiKey,
+  verifyApiKeyCrc,
+  isLocalhostSentinelKey,
+  has9routerCredentialAttempt,
+  getGatewayApiKeyCandidates,
+  allowsStaleGatewayBypass,
+} from "@/shared/utils/apiKey.js";
 import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidCliToken } from "@/shared/auth/cliToken.js";
 import * as log from "../utils/logger.js";
@@ -326,8 +333,9 @@ export async function clearAccountError(connectionId, currentConnection, model =
 
 /**
  * Enforce API key rules for SSE handlers.
- * - Invalid/expired credentials are NEVER accepted (even when requireApiKey=false)
- * - No-auth bypass only when no Authorization/x-api-key header is present
+ * - Invalid gateway credentials are rejected (or bypassed on loopback when a provider
+ *   credential is also present and requireApiKey=false)
+ * - No-auth bypass when no gateway credential attempt is present
  */
 export async function authenticateRequest(request, log) {
   const settings = await getSettings();
@@ -337,16 +345,26 @@ export async function authenticateRequest(request, log) {
     return { ok: true, apiKey: null, settings, cliToken: true };
   }
 
-  const authHeader = request.headers.get("Authorization");
-  const xApiKeyHeader = request.headers.get("x-api-key");
-  // Any present, non-empty credential header counts — a present-but-malformed
-  // Authorization header must fail closed (401), not bypass. Bypass is allowed
-  // only when NO credential header is present (whitespace-only treated as absent).
-  const hasCredentialHeader = !!(authHeader?.trim() || xApiKeyHeader?.trim());
-  const apiKey = extractApiKey(request);
+  const hasCredentialHeader = has9routerCredentialAttempt(request);
+  const candidates = hasCredentialHeader ? getGatewayApiKeyCandidates(request) : [];
+  let apiKey = null;
+  for (const candidate of candidates) {
+    if (await isValidApiKey(candidate, request)) {
+      apiKey = candidate;
+      break;
+    }
+  }
 
   if (hasCredentialHeader) {
-    if (!apiKey || !(await isValidApiKey(apiKey))) {
+    if (!apiKey) {
+      if (
+        settings.requireApiKey !== true
+        && isLoopbackRequest(request)
+        && allowsStaleGatewayBypass(request)
+      ) {
+        log?.debug?.("AUTH", "Ignoring stale gateway header; provider bearer on loopback");
+        return { ok: true, apiKey: null, settings, bypassed: true };
+      }
       log?.warn?.("AUTH", "Invalid API key (credential header present)");
       return {
         ok: false,
@@ -359,7 +377,7 @@ export async function authenticateRequest(request, log) {
     return { ok: true, apiKey, settings, keyId: parsedKey?.keyId || null };
   }
 
-  if (settings.requireApiKey) {
+  if (settings.requireApiKey === true) {
     log?.warn?.("AUTH", "Missing API key (requireApiKey=true)");
     return {
       ok: false,
@@ -379,30 +397,16 @@ export async function authenticateRequest(request, log) {
   return { ok: true, apiKey: null, settings, bypassed: true };
 }
 
-/**
- * Extract API key from request headers
- */
-export function extractApiKey(request) {
-  // Check Authorization header first
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    return authHeader.slice(7);
-  }
-
-  // Check Anthropic x-api-key header
-  const xApiKey = request.headers.get("x-api-key");
-  if (xApiKey) {
-    return xApiKey;
-  }
-
-  return null;
-}
+export { extractApiKey } from "@/shared/utils/apiKey.js";
 
 /**
  * Validate API key (optional - for local use can skip)
  */
-export async function isValidApiKey(apiKey) {
+export async function isValidApiKey(apiKey, request = null) {
   if (!apiKey) return false;
+  if (isLocalhostSentinelKey(apiKey)) {
+    return request ? isLoopbackRequest(request) : false;
+  }
   if (!verifyApiKeyCrc(apiKey)) return false;
   return await validateApiKey(apiKey);
 }

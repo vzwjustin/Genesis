@@ -48,18 +48,21 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
 
 vi.mock("@/lib/security/exposureGate", () => ({
   isRemoteExposureRequest: () => false,
+  isRemoteExposureActive: () => false,
   getRemoteExposureBlockReason: () => null,
 }));
 
-const { PATCH } = await import("../../src/app/api/settings/route.js");
+let PATCH;
 
 function request(body) {
   return { json: vi.fn(async () => body) };
 }
 
 describe("settings API patch validation", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     vi.clearAllMocks();
+    ({ PATCH } = await import("../../src/app/api/settings/route.js"));
     mocks.getSettings.mockResolvedValue({ password: "$2a$hash", requireLogin: true });
     mocks.updateSettings.mockImplementation(async (body) => body);
     mocks.genSalt.mockResolvedValue("salt");

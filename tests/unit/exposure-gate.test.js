@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getRemoteExposureBlockReason,
   hasCustomPassword,
+  isRemoteExposureActive,
   isRemoteExposureRequest,
 } from "../../src/lib/security/exposureGate.js";
 
@@ -17,10 +18,27 @@ describe("exposureGate", () => {
     ).toContain("dashboard login");
   });
 
-  it("allows exposure when password is set and login is required", () => {
+  it("requires API key before remote exposure when requireApiKey is not enabled", () => {
     expect(
       getRemoteExposureBlockReason({ password: "hashed", requireLogin: true })
+    ).toContain("API key");
+  });
+
+  it("allows exposure when password, login, and API key requirement are enabled", () => {
+    expect(
+      getRemoteExposureBlockReason({
+        password: "hashed",
+        requireLogin: true,
+        requireApiKey: true,
+      })
     ).toBeNull();
+  });
+
+  it("detects active remote exposure from tunnel or tailscale settings", () => {
+    expect(isRemoteExposureActive({ tunnelEnabled: true })).toBe(true);
+    expect(isRemoteExposureActive({ tunnelDashboardAccess: true })).toBe(true);
+    expect(isRemoteExposureActive({ tailscaleEnabled: true })).toBe(true);
+    expect(isRemoteExposureActive({ tunnelEnabled: false })).toBe(false);
   });
 
   it("detects remote exposure settings updates", () => {

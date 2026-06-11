@@ -272,24 +272,16 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   async refreshCline(refreshToken, proxyOptions = null) {
-    console.log('[DEBUG] Refreshing Cline token, refreshToken length:', refreshToken?.length);
     const response = await proxyAwareFetch("https://api.cline.bot/api/v1/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
       body: JSON.stringify({ refreshToken, grantType: "refresh_token", clientType: "extension" })
     }, proxyOptions);
-    console.log('[DEBUG] Cline refresh response status:', response.status);
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.log('[DEBUG] Cline refresh error:', errorText);
-      return null;
-    }
+    if (!response.ok) return null;
     const payload = await response.json();
-    console.log('[DEBUG] Cline refresh payload:', JSON.stringify(payload).substring(0, 200));
     const data = payload?.data || payload;
     const expiresAtIso = data?.expiresAt;
     const expiresIn = expiresAtIso ? Math.max(1, Math.floor((new Date(expiresAtIso).getTime() - Date.now()) / 1000)) : undefined;
-    console.log('[DEBUG] Cline refresh success, expiresIn:', expiresIn);
     return { accessToken: data?.accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
   }
 

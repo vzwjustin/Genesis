@@ -51,7 +51,15 @@ describe("require-login route — no sensitive URLs in unauthenticated response"
     await GET();
     const [body] = mocks.jsonResponse.mock.calls[0];
     expect(body.requireLogin).toBe(true);
+    expect(body.tunnelDashboardAccess).toBe(false);
     expect(body).not.toHaveProperty("tunnelUrl");
     expect(body).not.toHaveProperty("tailscaleUrl");
+  });
+
+  it("reports tunnelDashboardAccess false when unset or null", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, tunnelDashboardAccess: null });
+    await GET();
+    const [body] = mocks.jsonResponse.mock.calls[0];
+    expect(body.tunnelDashboardAccess).toBe(false);
   });
 });

@@ -12,7 +12,7 @@ async function getCliToken() {
 }
 
 export async function hasValidCliToken(request) {
-  const token = request.headers.get(CLI_TOKEN_HEADER);
+  const token = request.headers.get(CLI_TOKEN_HEADER)?.trim();
   if (!token) return false;
   const expected = await getCliToken();
   try {

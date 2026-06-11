@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
   requireLogin: true,
+  requireApiKey: false,
   tunnelDashboardAccess: false,
   authMode: "password",
   oidcIssuerUrl: "",
@@ -66,7 +67,7 @@ async function readRaw() {
 function mergeWithDefaults(raw) {
   const merged = { ...DEFAULT_SETTINGS, ...(raw || {}) };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
-    if (merged[key] === undefined) {
+    if (merged[key] === undefined || merged[key] === null) {
       if (
         key === "outboundProxyEnabled" &&
         typeof merged.outboundProxyUrl === "string" &&

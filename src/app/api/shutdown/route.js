@@ -7,9 +7,11 @@ export async function POST() {
   }
 
   const secret = process.env.SHUTDOWN_SECRET;
-  const authorization = headers().get("authorization");
+  const authorization = (await headers()).get("authorization");
+  const bearerMatch = authorization?.trim().match(/^Bearer\s+(.+)$/i);
+  const bearerToken = bearerMatch?.[1]?.trim();
 
-  if (!secret || authorization !== `Bearer ${secret}`) {
+  if (!secret || bearerToken !== secret) {
     return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
   }
 
