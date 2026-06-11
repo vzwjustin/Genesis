@@ -2,7 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
-import { normalizeCacheTokens } from "@/lib/cacheTokenUtils.js";
+import { normalizeCacheTokens, computeTokenWeightedCacheHitRate } from "@/lib/cacheTokenUtils.js";
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
@@ -767,10 +767,36 @@ export async function getProviderCacheStats(period = "7d", filter = {}) {
     params,
   );
 
-  const seen = new Set();
+  const deduped = new Map();
+
+  for (const row of rows) {
+    const tokens = parseJson(row.tokens, {});
+    const norm = normalizeCacheTokens(tokens);
+    if (norm.input === 0 && norm.output === 0 && !norm.hasCache) continue;
+
+    // Collapse duplicate usage logs for the same turn (stream + handler) — keep richest cache telemetry.
+    const minute = row.timestamp ? row.timestamp.slice(0, 16) : "";
+    const dedupeKey = `${row.provider}|${row.model}|${norm.input}|${norm.output}|${minute}`;
+    const cacheScore = norm.cacheRead + norm.cacheCreate + (norm.hasCacheTelemetry ? 1 : 0);
+    const existing = deduped.get(dedupeKey);
+    if (existing && existing.cacheScore >= cacheScore) continue;
+    deduped.set(dedupeKey, { row, norm, cacheScore });
+  }
+
+  const emptyBucket = () => ({
+    requests: 0,
+    requestsWithTelemetry: 0,
+    requestsExcluded: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+  });
+
   const totals = {
     requests: 0,
-    requestsWithCache: 0,
+    requestsWithTelemetry: 0,
+    requestsExcluded: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
     inputTokens: 0,
@@ -778,52 +804,45 @@ export async function getProviderCacheStats(period = "7d", filter = {}) {
     byProvider: {},
   };
 
-  for (const row of rows) {
-    const tokens = parseJson(row.tokens, {});
-    const norm = normalizeCacheTokens(tokens);
-    if (norm.input === 0 && norm.output === 0 && !norm.hasCache) continue;
+  const addRow = (target, norm) => {
+    target.requests += 1;
+    target.outputTokens += norm.output;
+    if (!norm.hasCacheTelemetry) {
+      target.requestsExcluded += 1;
+      return;
+    }
+    target.requestsWithTelemetry += 1;
+    target.inputTokens += norm.input;
+    target.cacheReadTokens += norm.cacheRead;
+    target.cacheCreationTokens += norm.cacheCreate;
+  };
 
-    const minute = row.timestamp ? row.timestamp.slice(0, 16) : "";
-    const dedupeKey = `${row.provider}|${row.model}|${norm.input}|${norm.output}|${norm.cacheRead}|${norm.cacheCreate}|${minute}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-
-    totals.requests += 1;
-    totals.inputTokens += norm.input;
-    totals.outputTokens += norm.output;
-    totals.cacheReadTokens += norm.cacheRead;
-    totals.cacheCreationTokens += norm.cacheCreate;
-    if (norm.hasCache) totals.requestsWithCache += 1;
+  for (const { norm, row } of deduped.values()) {
+    addRow(totals, norm);
 
     const provider = row.provider || "unknown";
     if (!totals.byProvider[provider]) {
-      totals.byProvider[provider] = {
-        provider,
-        requests: 0,
-        requestsWithCache: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-      };
+      totals.byProvider[provider] = { provider, ...emptyBucket() };
     }
-    const bucket = totals.byProvider[provider];
-    bucket.requests += 1;
-    bucket.inputTokens += norm.input;
-    bucket.outputTokens += norm.output;
-    bucket.cacheReadTokens += norm.cacheRead;
-    bucket.cacheCreationTokens += norm.cacheCreate;
-    if (norm.hasCache) bucket.requestsWithCache += 1;
+    addRow(totals.byProvider[provider], norm);
   }
 
-  totals.hitRate = totals.requests > 0
-    ? Math.round((totals.requestsWithCache / totals.requests) * 1000) / 10
-    : 0;
+  const finalizeHitRate = (bucket) => ({
+    ...bucket,
+    hitRate: computeTokenWeightedCacheHitRate({
+      cacheRead: bucket.cacheReadTokens,
+      input: bucket.inputTokens,
+      cacheCreate: bucket.cacheCreationTokens,
+    }),
+  });
+
+  totals.hitRate = computeTokenWeightedCacheHitRate({
+    cacheRead: totals.cacheReadTokens,
+    input: totals.inputTokens,
+    cacheCreate: totals.cacheCreationTokens,
+  });
   totals.byProvider = Object.values(totals.byProvider)
-    .map((p) => ({
-      ...p,
-      hitRate: p.requests > 0 ? Math.round((p.requestsWithCache / p.requests) * 1000) / 10 : 0,
-    }))
+    .map(finalizeHitRate)
     .sort((a, b) => b.cacheReadTokens - a.cacheReadTokens);
 
   return totals;

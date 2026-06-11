@@ -21,12 +21,13 @@ describe("getProviderCacheStats", () => {
       prompt_tokens: 1000,
       cache_read_input_tokens: 400,
       cache_creation_input_tokens: 50,
-    })).toEqual({
+    })).toMatchObject({
       input: 1000,
       output: 0,
       cacheRead: 400,
       cacheCreate: 50,
       hasCache: true,
+      hasCacheTelemetry: true,
     });
 
     expect(normalizeCacheTokens({
@@ -64,8 +65,39 @@ describe("getProviderCacheStats", () => {
     const stats = await getProviderCacheStats("7d");
 
     expect(stats.requests).toBe(2);
-    expect(stats.requestsWithCache).toBe(2);
+    expect(stats.requestsWithTelemetry).toBe(2);
     expect(stats.cacheReadTokens).toBe(920);
+    expect(stats.hitRate).toBe(43.4);
     expect(stats.byProvider).toHaveLength(2);
+  });
+
+  it("dedupes duplicate logs and keeps the row with cache telemetry", async () => {
+    mocks.rows = [
+      {
+        timestamp: "2026-06-08T10:00:00.000Z",
+        provider: "claude",
+        model: "claude-opus-4-8",
+        tokens: JSON.stringify({ prompt_tokens: 2, completion_tokens: 100 }),
+      },
+      {
+        timestamp: "2026-06-08T10:00:00.500Z",
+        provider: "claude",
+        model: "claude-opus-4-8",
+        tokens: JSON.stringify({
+          prompt_tokens: 2,
+          completion_tokens: 100,
+          cache_read_input_tokens: 50_000,
+          cache_creation_input_tokens: 200,
+        }),
+      },
+    ];
+
+    const { getProviderCacheStats } = await import("../../src/lib/db/repos/usageRepo.js");
+    const stats = await getProviderCacheStats("7d");
+
+    expect(stats.requests).toBe(1);
+    expect(stats.requestsWithTelemetry).toBe(1);
+    expect(stats.cacheReadTokens).toBe(50_000);
+    expect(stats.hitRate).toBeGreaterThan(95);
   });
 });

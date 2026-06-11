@@ -679,7 +679,11 @@ export default function CachingPageClient() {
             <InlineAlert
               variant="info"
               className="flex-1"
-              message="Upstream prompt-cache tokens come from usage logs (cache_read / cache_creation). Hit rate is per logged request with cache stats — not the same as RTK or Caveman savings."
+              message={
+                providerCache?.providerCache?.requestsExcluded > 0
+                  ? `Hit rate = cache_read ÷ (cache_read + fresh input + cache_creation) using ${providerCache.providerCache.requestsWithTelemetry} requests with upstream cache stats. ${providerCache.providerCache.requestsExcluded} estimated or legacy rows excluded.`
+                  : "Hit rate = share of prompt-side tokens served from cache (cache_read ÷ read + fresh input + cache_creation). Separate from RTK / Caveman savings."
+              }
             />
             <SegmentedControl
               options={CACHE_PERIODS}
@@ -704,8 +708,11 @@ export default function CachingPageClient() {
           {providerCache?.providerCache && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Card padding="md">
-                <p className="text-xs text-text-muted">Cache hit rate</p>
+                <p className="text-xs text-text-muted">Cache hit rate (tokens)</p>
                 <p className="text-2xl font-bold tabular-nums">{providerCache.providerCache.hitRate}%</p>
+                <p className="text-[11px] text-text-muted mt-1">
+                  {providerCache.providerCache.requestsWithTelemetry ?? providerCache.providerCache.requests} measured requests
+                </p>
               </Card>
               <Card padding="md">
                 <p className="text-xs text-text-muted">Cache read tokens</p>
@@ -731,7 +738,7 @@ export default function CachingPageClient() {
                     <tr className="border-b border-border text-left text-xs text-text-muted">
                       <th className="px-3 py-2">Provider</th>
                       <th className="px-3 py-2 text-right">Requests</th>
-                      <th className="px-3 py-2 text-right">Hit rate</th>
+                      <th className="px-3 py-2 text-right">Hit rate (tokens)</th>
                       <th className="px-3 py-2 text-right">Cache read</th>
                       <th className="px-3 py-2 text-right">Cache create</th>
                     </tr>

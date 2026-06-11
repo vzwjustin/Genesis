@@ -100,6 +100,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     cache_read_input_tokens: cacheRead || 0,
     cache_creation_input_tokens: cacheCreate || 0,
     reasoning_tokens: reasoning || 0,
+    ...(tokens.estimated === true ? { estimated: true } : {}),
   };
 
   saveRequestUsage({

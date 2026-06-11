@@ -252,9 +252,9 @@ export function createSSEStream(options = {}) {
             usage = estimateUsage(body, totalContentLength, sourceFormat || FORMATS.OPENAI);
           }
 
-          if (hasValidUsage(usage)) {
+          if (hasValidUsage(usage) && !onStreamComplete) {
             logUsage(provider, usage, model, connectionId, apiKey);
-          } else {
+          } else if (!hasValidUsage(usage)) {
             appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
           }
           
@@ -321,9 +321,9 @@ export function createSSEStream(options = {}) {
           state.usage = estimateUsage(body, totalContentLength, sourceFormat);
         }
 
-        if (hasValidUsage(state?.usage)) {
+        if (hasValidUsage(state?.usage) && !onStreamComplete) {
           logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
-        } else {
+        } else if (!hasValidUsage(state?.usage)) {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
         }
         
