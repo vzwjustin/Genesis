@@ -55,6 +55,10 @@ const MITM_RESTART_RESET_MS = 60000;
 let mitmRestartCount = 0;
 let mitmLastStartTime = 0;
 let mitmIsRestarting = false;
+// Latched on wrong/missing sudo password to suppress auto-restart; cleared on next explicit startServer.
+let mitmAuthFailed = false;
+// Serializes concurrent startServer calls so two callers can't both spawn a child (TOCTOU).
+let _startingPromise = null;
 
 function resolveBundledServerPath() {
   if (process.env.MITM_SERVER_PATH) return process.env.MITM_SERVER_PATH;
@@ -431,7 +435,7 @@ async function getMitmStatus() {
 }
 
 async function scheduleMitmRestart(apiKey) {
-  if (mitmIsRestarting) return;
+  if (mitmIsRestarting || mitmAuthFailed) return;
 
   const aliveMs = Date.now() - mitmLastStartTime;
   if (aliveMs >= MITM_RESTART_RESET_MS) mitmRestartCount = 0;
@@ -496,7 +500,21 @@ async function killPort443Owner(owner, sudoPassword) {
   await new Promise(r => setTimeout(r, 800));
 }
 
+// Public entry: serialize concurrent starts so the TOCTOU window between the
+// `!serverProcess` check and the spawn assignment can't double-spawn.
 async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
+  if (_startingPromise) return _startingPromise;
+  _startingPromise = _startServerImpl(apiKey, sudoPassword, forceKillPort443);
+  try {
+    return await _startingPromise;
+  } finally {
+    _startingPromise = null;
+  }
+}
+
+async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) {
+  // Explicit start clears any prior wrong-password latch so auto-restart works again.
+  mitmAuthFailed = false;
   if (!serverProcess || serverProcess.killed) {
     try {
       if (fs.existsSync(PID_FILE)) {
@@ -729,7 +747,7 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       if (!IS_WIN && (msg.includes("incorrect password") || msg.includes("no password was provided"))) {
         clearCachedPassword();
         clearEncryptedPassword();
-        mitmIsRestarting = true; // prevent scheduleMitmRestart from firing
+        mitmAuthFailed = true; // prevent scheduleMitmRestart from firing until next explicit start
       }
     });
     serverProcess.on("exit", (code) => {
