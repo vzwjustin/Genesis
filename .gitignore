@@ -77,3 +77,6 @@ gitbook/README.md
 .devin/
 .windsurf/
 .windsurfrules
+
+# advisor run artifacts
+.advisor/

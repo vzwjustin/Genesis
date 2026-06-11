@@ -4,6 +4,32 @@ import { dbg } from "../utils/debugLog.js";
 import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
 
 /**
+ * Normalize an expiry value to epoch milliseconds.
+ * Accepts ISO strings, numeric ms, and numeric seconds (auto-detected: a
+ * positive value below 1e12 is treated as seconds and scaled). Returns null
+ * when the value cannot be parsed into a finite timestamp — callers should
+ * treat null as "expiry unknown → refresh" rather than reusing a stale token.
+ * @param {string|number} expiresAt
+ * @returns {number|null}
+ */
+export function normalizeExpiryMs(expiresAt) {
+  let ms;
+  if (typeof expiresAt === "number") {
+    ms = expiresAt > 0 && expiresAt < 1e12 ? expiresAt * 1000 : expiresAt;
+  } else if (typeof expiresAt === "string") {
+    const asNum = Number(expiresAt);
+    if (Number.isFinite(asNum) && expiresAt.trim() !== "") {
+      ms = asNum > 0 && asNum < 1e12 ? asNum * 1000 : asNum;
+    } else {
+      ms = new Date(expiresAt).getTime();
+    }
+  } else {
+    return null;
+  }
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
  * BaseExecutor - Base class for provider executors
  */
 export class BaseExecutor {
@@ -89,8 +115,13 @@ export class BaseExecutor {
   }
 
   needsRefresh(credentials) {
-    if (!credentials.expiresAt) return false;
-    const expiresAtMs = new Date(credentials.expiresAt).getTime();
+    // Distinguish "no expiry tracked" (null/undefined/"") from "expiry present
+    // but unparseable". The former is a long-lived credential → no refresh; the
+    // latter (NaN, bad string) is suspect → refresh rather than reuse a stale token.
+    const raw = credentials.expiresAt;
+    if (raw === null || raw === undefined || raw === "") return false;
+    const expiresAtMs = normalizeExpiryMs(raw);
+    if (expiresAtMs === null) return true;
     return expiresAtMs - Date.now() < 5 * 60 * 1000;
   }
 

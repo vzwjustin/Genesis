@@ -24,6 +24,7 @@ export async function POST(request) {
 
     // Extract account info from the JWT (email, workspace, plan)
     let email = null;
+    let jwtExp = null;
     let providerSpecificData = { authMethod: "access_token" };
 
     // Try decoding as JWT to extract email + workspace
@@ -50,10 +51,22 @@ export async function POST(request) {
         // Store expiry info from JWT if available
         if (payload.exp) {
           providerSpecificData.jwtExp = payload.exp;
+          jwtExp = Number(payload.exp);
         }
       }
     } catch {
       // Not a JWT or malformed — still allow import as raw token
+    }
+
+    // Reject an already-expired token at import time. The JWT signature is not
+    // verified here (the token is the user's own pasted credential, used as a
+    // bearer and validated upstream), but storing a dead token only yields a
+    // connection that 401s on first use — fail fast instead.
+    if (jwtExp != null && Number.isFinite(jwtExp) && jwtExp * 1000 <= Date.now()) {
+      return NextResponse.json(
+        { error: "Access token has expired. Generate a fresh token and try again." },
+        { status: 400 }
+      );
     }
 
     // Also try extractCodexAccountInfo via id_token-style extraction
