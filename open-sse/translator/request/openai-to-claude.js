@@ -298,7 +298,11 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
 // Convert OpenAI tool choice to Claude format
 function convertOpenAIToolChoice(choice) {
   if (!choice) return { type: "auto" };
-  if (choice === "auto" || choice === "none") return { type: "auto" };
+  // OpenAI "none" = model must NOT call any tool. Claude's equivalent is
+  // tool_choice {type:"none"} (supported since 2024-10); mapping it to "auto"
+  // would let the model call tools the caller explicitly forbade.
+  if (choice === "none") return { type: "none" };
+  if (choice === "auto") return { type: "auto" };
   if (choice === "required") return { type: "any" };
   if (typeof choice === "object" && choice.type === "function" && choice.function?.name) {
     return { type: "tool", name: choice.function.name };

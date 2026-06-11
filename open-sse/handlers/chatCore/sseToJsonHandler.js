@@ -53,6 +53,9 @@ export function parseSSEToClaudeResponse(rawSSE) {
     try {
       events.push(JSON.parse(payload));
     } catch {
+      // Fail closed: a malformed frame means the assembled message would be
+      // incomplete. Discard the whole response rather than return a silently
+      // truncated body (Requirement 6.6).
       return null;
     }
   }
@@ -279,6 +282,9 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     try {
       chunks.push(JSON.parse(payload));
     } catch {
+      // Fail closed: a malformed frame means the assembled message would be
+      // incomplete. Discard the whole response rather than return a silently
+      // truncated body (Requirement 6.6).
       return null;
     }
   }

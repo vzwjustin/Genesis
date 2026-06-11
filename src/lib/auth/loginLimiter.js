@@ -101,10 +101,17 @@ export function recordSuccess(ip) {
   persistAttempts();
 }
 
+// When no socket IP is available, fall back to a coarse fingerprint. The
+// authorization header is deliberately EXCLUDED: it carries the password
+// attempt, so including it would give every guess a fresh key and the
+// fail counter could never accumulate — defeating the lockout entirely.
+// User-Agent alone is spoofable; the resulting bucket is intentionally
+// shared so a single client can't trivially escape its own counter by
+// rotating one credential. Operators behind a proxy should set
+// TRUST_PROXY_HEADERS=true so the real client IP is used instead.
 function getFallbackClientKey(request) {
-  const auth = request.headers.get("authorization") || "";
   const ua = request.headers.get("user-agent") || "";
-  const hash = crypto.createHash("sha256").update(`${auth}\0${ua}`).digest("hex").slice(0, 16);
+  const hash = crypto.createHash("sha256").update(ua).digest("hex").slice(0, 16);
   return `fp:${hash}`;
 }
 
