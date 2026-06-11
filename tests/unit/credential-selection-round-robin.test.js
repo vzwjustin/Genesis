@@ -15,6 +15,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Track update calls to observe consecutiveUseCount/lastUsedAt changes
 const updateCalls = [];
 
+const mockGetSettings = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(),
   validateApiKey: vi.fn(),
@@ -22,7 +24,8 @@ vi.mock("@/lib/localDb", () => ({
     updateCalls.push({ id, data });
     return { id, ...data };
   }),
-  getSettings: vi.fn(),
+  getSettings: mockGetSettings,
+  getSettingsSafe: mockGetSettings,
 }));
 
 vi.mock("@/lib/network/connectionProxy", () => ({
@@ -60,7 +63,8 @@ vi.mock("../../src/sse/utils/logger.js", () => ({
   request: vi.fn(),
 }));
 
-const { getProviderConnections, getSettings, updateProviderConnection } = await import("@/lib/localDb");
+const { getProviderConnections, updateProviderConnection } = await import("@/lib/localDb");
+const getSettings = mockGetSettings;
 const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
 
 function makeConnection(overrides = {}) {

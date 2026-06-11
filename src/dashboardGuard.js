@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSettings, validateApiKey } from "@/lib/localDb";
+import { getSettingsSafe, validateApiKey } from "@/lib/localDb";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { normalizeHostHeaderHostname } from "@/shared/utils/host";
-import { isLoopbackRequest, isVerifiableLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
-import { hasValidCliToken } from "@/shared/auth/cliToken";
+import { isLoopbackRequest, isVerifiableLoopbackRequest, isPrivateLanAccessRequest } from "@/shared/utils/loopbackRequest.js";
+import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
+import { hasValidLocalCliToken } from "@/shared/auth/cliToken";
 import {
   verifyApiKeyCrc,
   isLocalhostSentinelKey,
@@ -39,11 +40,14 @@ const ALWAYS_PROTECTED = [
   "/api/oauth/kiro/auto-import",
 ];
 
-// Routes that spawn child processes or read host secrets — restrict to localhost.
+// Routes that spawn processes, read host secrets, or mutate local CLI config.
 const LOCAL_ONLY_PATHS = [
-  "/api/cli-tools/cowork-settings",
-  "/api/cli-tools/antigravity-mitm",
+  "/api/cli-tools/",
   "/api/mcp/",
+  "/api/tunnel/enable",
+  "/api/tunnel/disable",
+  "/api/tunnel/tailscale-enable",
+  "/api/tunnel/tailscale-disable",
   "/api/tunnel/tailscale-install",
   "/api/tunnel/tailscale-check",
   "/api/oauth/cursor/auto-import",
@@ -92,7 +96,7 @@ async function getPublicLlmApiAuthError(request) {
 }
 
 async function canAccessPublicLlmApi(request) {
-  if (await hasValidCliToken(request)) return true;
+  if (await hasValidLocalCliToken(request)) return true;
 
   const settings = await loadSettings();
   const requireApiKey = settings?.requireApiKey === true;
@@ -111,10 +115,10 @@ async function canAccessPublicLlmApi(request) {
 }
 
 async function canAccessLocalOnlyRoute(request) {
-  if (await hasValidCliToken(request)) return true;
-  // Spawn-capable routes: verifiable loopback socket + valid JWT (Host alone is spoofable).
-  if (isVerifiableLoopbackRequest(request) && await hasValidToken(request)) return true;
-  return false;
+  if (await hasValidLocalCliToken(request)) return true;
+  if (!(await hasValidToken(request))) return false;
+  if (isVerifiableLoopbackRequest(request)) return true;
+  return isPrivateLanAccessRequest(request);
 }
 
 async function hasValidToken(request) {
@@ -124,11 +128,28 @@ async function hasValidToken(request) {
 
 // Read settings directly from DB to avoid self-fetch deadlock in proxy
 async function loadSettings() {
-  try {
-    return await getSettings();
-  } catch {
-    return null;
+  return await getSettingsSafe();
+}
+
+const TUNNEL_DASHBOARD_DISABLED_ERROR = "Dashboard access via tunnel is disabled";
+
+/** Block JWT dashboard API on tunnel/tailscale when exposure is disabled; local CLI token still OK. */
+async function rejectTunnelDashboardApi(request, settings) {
+  if (!isTunnelDashboardAccessDenied(request, settings)) return null;
+  if (await hasValidLocalCliToken(request)) return null;
+  return NextResponse.json({ error: TUNNEL_DASHBOARD_DISABLED_ERROR }, { status: 403 });
+}
+
+/** Block password/OIDC login on tunnel when exposure is disabled (no CLI bypass). */
+function rejectTunnelDashboardAuth(request, settings) {
+  if (!isTunnelDashboardAccessDenied(request, settings)) return null;
+  if (
+    request.method === "GET"
+    && request.nextUrl.pathname.startsWith("/api/auth/oidc")
+  ) {
+    return NextResponse.redirect(new URL("/login?error=tunnel_dashboard_disabled", request.url));
   }
+  return NextResponse.json({ error: TUNNEL_DASHBOARD_DISABLED_ERROR }, { status: 403 });
 }
 
 /** Dashboard UI / local-only routes: JWT or requireLogin disabled. */
@@ -168,7 +189,7 @@ export async function proxy(request) {
   // Local-only gate for spawn-capable / host-secret routes.
   if (isLocalOnlyPath) {
     if (!(await canAccessLocalOnlyRoute(request))) {
-      return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
+      return NextResponse.json({ error: "CLI token or login required" }, { status: 403 });
     }
     // Local-only routes are fully authenticated above unless also always-protected.
     if (!ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
@@ -178,7 +199,9 @@ export async function proxy(request) {
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
   if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
-    if (await hasValidCliToken(request) || await hasValidToken(request))
+    const tunnelBlocked = await rejectTunnelDashboardApi(request, await loadSettings());
+    if (tunnelBlocked) return tunnelBlocked;
+    if (await hasValidLocalCliToken(request) || await hasValidToken(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -191,8 +214,36 @@ export async function proxy(request) {
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
-    if (isPublicApi(pathname)) return NextResponse.next();
-    if (await hasValidCliToken(request) || await isApiAuthenticated(request))
+    if (isPublicApi(pathname)) {
+      const settings = await loadSettings();
+      if (pathname === "/api/auth/login" || pathname.startsWith("/api/auth/oidc")) {
+        const authBlocked = rejectTunnelDashboardAuth(request, settings);
+        if (authBlocked) return authBlocked;
+      }
+      if (isTunnelDashboardAccessDenied(request, settings)) {
+        if (pathname === "/api/auth/status") {
+          return NextResponse.json({
+            requireLogin: true,
+            authMode: "password",
+            oidcConfigured: false,
+            oidcLoginLabel: "Sign in with OIDC",
+            hasPassword: false,
+            displayName: "Password user",
+            loginMethod: "Password",
+            oidcName: null,
+            oidcEmail: null,
+            oidcLogin: false,
+          });
+        }
+        if (pathname === "/api/settings/require-login") {
+          return NextResponse.json({ requireLogin: true, tunnelDashboardAccess: false });
+        }
+      }
+      return NextResponse.next();
+    }
+    const tunnelBlocked = await rejectTunnelDashboardApi(request, await loadSettings());
+    if (tunnelBlocked) return tunnelBlocked;
+    if (await hasValidLocalCliToken(request) || await isApiAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -200,24 +251,13 @@ export async function proxy(request) {
   // Protect all dashboard routes
   if (pathname.startsWith("/dashboard")) {
     let requireLogin = true;
-    let tunnelDashboardAccess = false;
 
     try {
       const settings = await loadSettings();
       if (settings) {
         requireLogin = settings.requireLogin !== false;
-        tunnelDashboardAccess = settings.tunnelDashboardAccess === true;
-
-        // Block tunnel/tailscale access if disabled (redirect to login)
-        if (!tunnelDashboardAccess) {
-          const host = normalizeHostHeaderHostname(request.headers.get("host"));
-          let tunnelHost = "";
-          let tailscaleHost = "";
-          try { tunnelHost = settings.tunnelUrl ? new URL(settings.tunnelUrl).hostname.toLowerCase() : ""; } catch {}
-          try { tailscaleHost = settings.tailscaleUrl ? new URL(settings.tailscaleUrl).hostname.toLowerCase() : ""; } catch {}
-          if ((tunnelHost && host === tunnelHost) || (tailscaleHost && host === tailscaleHost)) {
-            return NextResponse.redirect(new URL("/login", request.url));
-          }
+        if (isTunnelDashboardAccessDenied(request, settings)) {
+          return NextResponse.redirect(new URL("/login", request.url));
         }
       }
     } catch {

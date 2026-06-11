@@ -24,3 +24,32 @@ export function normalizeHostHeaderHostname(hostHeader) {
 
   return trimmed;
 }
+
+/**
+ * True when hostname is a private RFC1918 IPv4 address (not loopback).
+ * Used to allow dashboard JWT on LAN without treating public/tunnel hosts as local.
+ * @param {string|null|undefined} hostname
+ * @returns {boolean}
+ */
+function isPrivateLanIPv4(value) {
+  if (!value || typeof value !== "string") return false;
+  const h = value.trim().toLowerCase().replace(/^::ffff:/, "");
+  if (!h || h === "localhost" || h === "::1" || h.startsWith("127.")) return false;
+  if (h.startsWith("10.")) return true;
+  if (h.startsWith("192.168.")) return true;
+  const m = h.match(/^172\.(\d+)\./);
+  if (m) {
+    const second = Number(m[1]);
+    return second >= 16 && second <= 31;
+  }
+  return false;
+}
+
+export function isPrivateLanHostname(hostname) {
+  return isPrivateLanIPv4(hostname);
+}
+
+/** True when the socket/client IP is in a private RFC1918 range. */
+export function isPrivateLanIp(ip) {
+  return isPrivateLanIPv4(ip);
+}

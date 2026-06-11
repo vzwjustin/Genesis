@@ -124,6 +124,54 @@ describe("9router API key shape detection", () => {
     }))).toBe(false);
   });
 
+  it("does not bypass stale gateway x-api-key when Authorization Token is garbage", () => {
+    const req = (headers) => ({
+      headers: { get: (name) => headers[name] ?? null },
+    });
+
+    expect(has9routerCredentialAttempt(req({
+      "x-api-key": "sk-badkeyyy",
+      Authorization: "Token hello",
+    }))).toBe(true);
+    expect(extractGatewayApiKey(req({
+      "x-api-key": "sk-badkeyyy",
+      Authorization: "Token hello",
+    }))).toBe("sk-badkeyyy");
+  });
+
+  it("does not bypass stale gateway Bearer when Authorization Bearer is garbage", () => {
+    const req = (headers) => ({
+      headers: { get: (name) => headers[name] ?? null },
+    });
+
+    expect(has9routerCredentialAttempt(req({
+      Authorization: "Bearer hello",
+      "x-api-key": "sk-badkeyyy",
+    }))).toBe(true);
+  });
+
+  it("ignores stale gateway Bearer when Authorization uses Token scheme (Deepgram)", () => {
+    const req = (headers) => ({
+      headers: { get: (name) => headers[name] ?? null },
+    });
+
+    expect(has9routerCredentialAttempt(req({
+      Authorization: "Bearer sk-badkeyyy",
+    }))).toBe(true);
+    expect(has9routerCredentialAttempt(req({
+      Authorization: "Token deepgram-provider-secret",
+      "x-api-key": "sk-badkeyyy",
+    }))).toBe(false);
+    expect(extractGatewayApiKey(req({
+      Authorization: "Token deepgram-provider-secret",
+      "x-api-key": "sk-badkeyyy",
+    }))).toBe(null);
+    expect(has9routerCredentialAttempt(req({
+      Authorization: "token dg_live_provider_key",
+      "x-api-key": "sk-badkeyyy",
+    }))).toBe(false);
+  });
+
   it("still treats invalid gateway x-api-key alone as a credential attempt", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },

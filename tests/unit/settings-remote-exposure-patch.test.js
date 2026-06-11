@@ -105,6 +105,36 @@ describe("settings PATCH remote exposure hardening", () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
+  it("rejects enabling cloud relay without API key requirement", async () => {
+    mocks.getSettings.mockResolvedValue({
+      password: "hashed",
+      requireLogin: true,
+      requireApiKey: false,
+      cloudEnabled: false,
+    });
+
+    const response = await PATCH(patchRequest({ cloudEnabled: true }));
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("API key");
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects disabling requireApiKey while cloud relay is enabled", async () => {
+    mocks.getSettings.mockResolvedValue({
+      password: "hashed",
+      requireLogin: true,
+      requireApiKey: true,
+      cloudEnabled: true,
+    });
+
+    const response = await PATCH(patchRequest({ requireApiKey: false }));
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("API key");
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
   it("allows disabling requireApiKey when tunnel is not active", async () => {
     mocks.getSettings.mockResolvedValue({
       password: "hashed",

@@ -1,7 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
-import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
+import { assertSafeFetchUrlWithDns } from "open-sse/utils/ssrfGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const TIMEOUT_MS = 8000;
@@ -90,7 +90,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "url required" }, { status: 400 });
     }
     try {
-      assertSafeFetchUrl(url);
+      await assertSafeFetchUrlWithDns(url);
     } catch (err) {
       return NextResponse.json({ error: err.message || "Invalid URL" }, { status: 400 });
     }

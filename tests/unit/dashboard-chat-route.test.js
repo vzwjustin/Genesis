@@ -16,6 +16,13 @@ vi.mock("open-sse/translator/index.js", () => ({
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: (...args) => mockGetSettings(...args),
+  getSettingsSafe: async (...args) => {
+    try {
+      return await mockGetSettings(...args);
+    } catch {
+      return { requireApiKey: false, requireLogin: true };
+    }
+  },
   getApiKeys: (...args) => mockGetApiKeys(...args),
   validateApiKey: (...args) => mockValidateApiKey(...args),
 }));
@@ -149,6 +156,42 @@ describe("dashboard chat completions route", () => {
     expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk-internal-test");
   });
 
+  it("strips stale gateway Token Authorization when injecting internal key", async () => {
+    const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Token sk-badkeyyy",
+      },
+      body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    await POST(request);
+    const internalRequest = mockHandleChat.mock.calls[0][0];
+    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk-internal-test");
+  });
+
+  it("strips stale gateway Token Authorization when valid x-api-key is present", async () => {
+    const userKey = makeTestApiKey();
+    mockValidateApiKey.mockImplementation(async (key) => key === userKey);
+
+    const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": userKey,
+        Authorization: "Token sk-badkeyyy",
+      },
+      body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    await POST(request);
+    const internalRequest = mockHandleChat.mock.calls[0][0];
+    expect(internalRequest.headers.get("x-api-key")).toBe(userKey);
+    expect(internalRequest.headers.get("Authorization")).toBeNull();
+    expect(mockGetApiKeys).not.toHaveBeenCalled();
+  });
+
   it("injects gateway key over stale invalid bearer credentials", async () => {
     const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
       method: "POST",
@@ -201,6 +244,7 @@ describe("dashboard chat completions route", () => {
     const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
       method: "POST",
       headers: {
+        Host: "localhost:3456",
         "Content-Type": "application/json",
         "x-api-key": "sk_9router",
         Authorization: "Bearer sk-badkeyyy",
@@ -240,6 +284,7 @@ describe("dashboard chat completions route", () => {
     const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
       method: "POST",
       headers: {
+        Host: "localhost:3456",
         "Content-Type": "application/json",
         Authorization: "Bearer sk_9router",
       },
@@ -250,6 +295,75 @@ describe("dashboard chat completions route", () => {
     const internalRequest = mockHandleChat.mock.calls[0][0];
     expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk_9router");
     expect(mockGetApiKeys).not.toHaveBeenCalled();
+  });
+
+  it("does not inject on loopback when settings are unavailable (default requireApiKey off)", async () => {
+    mockGetSettings.mockRejectedValue(new Error("db unavailable"));
+    const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
+      method: "POST",
+      headers: {
+        Host: "localhost:3456",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    await POST(request);
+    const internalRequest = mockHandleChat.mock.calls[0][0];
+    expect(internalRequest.headers.get("Authorization")).toBeNull();
+    expect(mockGetApiKeys).not.toHaveBeenCalled();
+  });
+
+  it("injects internal key on remote host when sk_9router sentinel is present", async () => {
+    mockGetSettings.mockResolvedValue({ requireApiKey: false });
+    const request = new Request("https://router.example.com/api/dashboard/chat/completions", {
+      method: "POST",
+      headers: {
+        Host: "router.example.com",
+        "Content-Type": "application/json",
+        Authorization: "Bearer sk_9router",
+      },
+      body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    await POST(request);
+    const internalRequest = mockHandleChat.mock.calls[0][0];
+    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk-internal-test");
+    expect(mockGetApiKeys).toHaveBeenCalled();
+  });
+
+  it("injects internal key on remote host when requireApiKey=false", async () => {
+    mockGetSettings.mockResolvedValue({ requireApiKey: false });
+    const request = new Request("https://router.example.com/api/dashboard/chat/completions", {
+      method: "POST",
+      headers: {
+        Host: "router.example.com",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    await POST(request);
+    const internalRequest = mockHandleChat.mock.calls[0][0];
+    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk-internal-test");
+    expect(mockGetApiKeys).toHaveBeenCalled();
+  });
+
+  it("strips gateway-shaped api-key vendor header when injecting internal key", async () => {
+    const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
+      method: "POST",
+      headers: {
+        Host: "router.example.com",
+        "Content-Type": "application/json",
+        "api-key": "sk-badkeyyy",
+      },
+      body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    await POST(request);
+    const internalRequest = mockHandleChat.mock.calls[0][0];
+    expect(internalRequest.headers.get("api-key")).toBeNull();
+    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk-internal-test");
   });
 
   it("still injects gateway key when only provider x-api-key is present", async () => {

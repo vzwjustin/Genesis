@@ -166,6 +166,11 @@ function extractAuthorizationCredentialToken(request) {
     const token = apiKeyMatch[1]?.trim();
     if (token) return token;
   }
+  const tokenSchemeMatch = auth.match(/^Token\s+(.+)$/i);
+  if (tokenSchemeMatch) {
+    const token = tokenSchemeMatch[1]?.trim();
+    if (token) return token;
+  }
   if (/^sk[-_]/i.test(auth)) return auth;
   return null;
 }
@@ -190,7 +195,7 @@ export function hasNonGatewayBearer(request) {
 }
 
 /** Vendor-specific API key headers (non-gateway credential signals for stale-gateway bypass). */
-const PROVIDER_API_KEY_HEADER_NAMES = ["api-key", "x-goog-api-key", "xi-api-key"];
+export const PROVIDER_API_KEY_HEADER_NAMES = ["api-key", "x-goog-api-key", "xi-api-key"];
 
 /** True when a provider credential is present in x-api-key or vendor-specific headers. */
 export function hasProviderApiKeyHeader(request) {
@@ -208,7 +213,19 @@ export function hasProviderApiKeyHeader(request) {
 
 /** Loopback may ignore stale gateway headers when a provider credential is also present. */
 export function allowsStaleGatewayBypass(request) {
-  return hasNonGatewayBearer(request) || hasProviderApiKeyHeader(request);
+  if (hasProviderApiKeyHeader(request)) return true;
+  const token = extractAuthorizationCredentialToken(request);
+  if (!token || looksLike9routerApiKey(token)) return false;
+  const auth = request.headers.get("Authorization")?.trim() || "";
+  if (/^Bearer\s+/i.test(auth)) {
+    if (token.includes(".")) return true;
+    if (isProviderApiKeyPrefix(token)) return true;
+    // Opaque provider bearer (e.g. Google AIza…) — ignore short garbage like "Bearer hello".
+    return token.length >= 12;
+  }
+  if (/^Token\s+/i.test(auth)) return token.length >= 8;
+  if (/^Api-?Key\s+/i.test(auth) && isProviderApiKeyPrefix(token)) return true;
+  return false;
 }
 
 /** Ordered gateway credential candidates (x-api-key before Authorization; verifiable before stale). */

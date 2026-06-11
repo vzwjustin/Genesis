@@ -87,6 +87,15 @@ export async function getSettings() {
   return mergeWithDefaults(raw);
 }
 
+/** Like getSettings but returns merged defaults instead of throwing when DB is unavailable. */
+export async function getSettingsSafe() {
+  try {
+    return await getSettings();
+  } catch {
+    return mergeWithDefaults({});
+  }
+}
+
 // Atomic read-merge-write inside transaction (prevents losing concurrent updates)
 export async function updateSettings(updates) {
   const db = await getAdapter();

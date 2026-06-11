@@ -1,4 +1,4 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings } from "@/lib/localDb";
+import { getProviderConnections, validateApiKey, updateProviderConnection, getSettingsSafe } from "@/lib/localDb";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -14,7 +14,7 @@ import {
   allowsStaleGatewayBypass,
 } from "@/shared/utils/apiKey.js";
 import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
-import { hasValidCliToken } from "@/shared/auth/cliToken.js";
+import { hasValidLocalCliToken } from "@/shared/auth/cliToken.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -46,7 +46,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
-      const settings = await getSettings();
+      const settings = await getSettingsSafe();
       const override = (settings.providerStrategies || {})[providerId] || {};
       const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: override.proxyPoolId || "" });
       return {
@@ -136,7 +136,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return null;
     }
 
-    const settings = await getSettings();
+    const settings = await getSettingsSafe();
     // Per-provider strategy overrides global setting
     const providerOverride = (settings.providerStrategies || {})[providerId] || {};
     const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
@@ -338,10 +338,10 @@ export async function clearAccountError(connectionId, currentConnection, model =
  * - No-auth bypass when no gateway credential attempt is present
  */
 export async function authenticateRequest(request, log) {
-  const settings = await getSettings();
+  const settings = await getSettingsSafe();
 
-  if (await hasValidCliToken(request)) {
-    log?.debug?.("AUTH", "Authenticated via CLI token");
+  if (await hasValidLocalCliToken(request)) {
+    log?.debug?.("AUTH", "Authenticated via local CLI token");
     return { ok: true, apiKey: null, settings, cliToken: true };
   }
 
@@ -358,7 +358,7 @@ export async function authenticateRequest(request, log) {
   if (hasCredentialHeader) {
     if (!apiKey) {
       if (
-        settings.requireApiKey !== true
+        settings?.requireApiKey !== true
         && isLoopbackRequest(request)
         && allowsStaleGatewayBypass(request)
       ) {
@@ -377,7 +377,7 @@ export async function authenticateRequest(request, log) {
     return { ok: true, apiKey, settings, keyId: parsedKey?.keyId || null };
   }
 
-  if (settings.requireApiKey === true) {
+  if (settings?.requireApiKey === true) {
     log?.warn?.("AUTH", "Missing API key (requireApiKey=true)");
     return {
       ok: false,

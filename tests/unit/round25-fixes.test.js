@@ -15,8 +15,11 @@ import {
   assertSafeResolvedHostname,
 } from "../../open-sse/utils/ssrfGuard.js";
 
+const mockGetSettings = vi.fn().mockResolvedValue({ fallbackStrategy: "fill-first", providerStrategies: {} });
+
 vi.mock("@/lib/localDb", () => ({
-  getSettings: vi.fn().mockResolvedValue({ fallbackStrategy: "fill-first", providerStrategies: {} }),
+  getSettings: mockGetSettings,
+  getSettingsSafe: mockGetSettings,
   getProviderConnections: vi.fn(),
 }));
 

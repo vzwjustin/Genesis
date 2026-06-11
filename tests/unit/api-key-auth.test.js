@@ -9,15 +9,24 @@ const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   validateApiKey: vi.fn(),
   hasValidCliToken: vi.fn(),
+  hasValidLocalCliToken: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
+  getSettingsSafe: vi.fn(async () => {
+    try {
+      return await mocks.getSettings();
+    } catch {
+      return { requireApiKey: false, requireLogin: true };
+    }
+  }),
   validateApiKey: mocks.validateApiKey,
 }));
 
 vi.mock("@/shared/auth/cliToken.js", () => ({
   hasValidCliToken: mocks.hasValidCliToken,
+  hasValidLocalCliToken: mocks.hasValidLocalCliToken,
 }));
 
 const log = {
@@ -51,6 +60,7 @@ describe("authenticateRequest (Task 18)", () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     mocks.validateApiKey.mockImplementation(async (key) => key === VALID_TEST_KEY);
     mocks.hasValidCliToken.mockResolvedValue(false);
+    mocks.hasValidLocalCliToken.mockResolvedValue(false);
   });
 
   it("rejects invalid Bearer even when requireApiKey=false (Requirement 13.7)", async () => {
@@ -300,16 +310,31 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.bypassed).toBe(true);
   });
 
-  it("accepts valid CLI token without API key", async () => {
-    mocks.hasValidCliToken.mockResolvedValue(true);
+  it("accepts valid local CLI token without API key", async () => {
+    mocks.hasValidLocalCliToken.mockResolvedValue(true);
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeRequest({ "x-9r-cli-token": "cli-token" }),
+      makeLoopbackRequest({ "x-9r-cli-token": "cli-token" }),
       log
     );
     expect(result.ok).toBe(true);
     expect(result.cliToken).toBe(true);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects valid CLI token from remote origin without API key", async () => {
+    mocks.hasValidLocalCliToken.mockResolvedValue(false);
+    mocks.getSettings.mockResolvedValue({ requireApiKey: true });
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({
+        host: "router.example.com",
+        "x-9r-cli-token": "cli-token",
+      }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
   });
 
   it("rejects malformed new-format API key before DB lookup", async () => {
@@ -518,5 +543,66 @@ describe("authenticateRequest (Task 18)", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.response?.status).toBe(401);
+  });
+
+  it("allows loopback bypass when settings are unavailable (default requireApiKey off)", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(makeLoopbackRequest({}), log);
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(result.settings.requireApiKey).toBe(false);
+  });
+
+  it("rejects remote access when settings are unavailable", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({ host: "router.example.com" }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+  });
+
+  it("rejects stale gateway x-api-key on loopback when Token authorization is garbage", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "x-api-key": "sk-badkeyyy",
+        Authorization: "Token hello",
+      }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+  });
+
+  it("ignores stale gateway Bearer when Deepgram Token authorization is present on loopback", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        Authorization: "Token deepgram-provider-secret",
+        "x-api-key": "sk-badkeyyy",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback stale gateway bypass when settings are unavailable", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "x-api-key": "sk-badkeyyy",
+        Authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
   });
 });

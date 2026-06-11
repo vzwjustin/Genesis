@@ -62,6 +62,7 @@ export function redactSensitiveText(value) {
   return String(value)
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/Api-?Key\s+[A-Za-z0-9._~+/=-]+/gi, "ApiKey [redacted]")
+    .replace(/Token\s+[A-Za-z0-9._~+/=-]+/gi, "Token [redacted]")
     .replace(/\bsk-[A-Za-z0-9_-]+/g, "sk-[redacted]")
     .replace(/\bsk_[A-Za-z0-9_-]+/g, "sk_[redacted]")
     .replace(/\b(access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)=([^&\s]+)/gi, "$1=[redacted]")

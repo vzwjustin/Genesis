@@ -26,6 +26,7 @@ export function isRemoteExposureActive(settings) {
     settings.tunnelEnabled === true
     || settings.tunnelDashboardAccess === true
     || settings.tailscaleEnabled === true
+    || settings.cloudEnabled === true
   );
 }
 
@@ -34,5 +35,6 @@ export function isRemoteExposureRequest(updates = {}) {
     updates.tunnelDashboardAccess === true
     || updates.tunnelEnabled === true
     || updates.tailscaleEnabled === true
+    || updates.cloudEnabled === true
   );
 }

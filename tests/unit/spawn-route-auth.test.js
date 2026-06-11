@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   verifyDashboardAuthToken: vi.fn(),
-  hasValidCliToken: vi.fn(),
+  hasValidLocalCliToken: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/dashboardSession", () => ({
@@ -10,7 +10,7 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
 }));
 
 vi.mock("@/shared/auth/cliToken", () => ({
-  hasValidCliToken: mocks.hasValidCliToken,
+  hasValidLocalCliToken: mocks.hasValidLocalCliToken,
 }));
 
 function makeRequest({ cookies = {}, headers = {} } = {}) {
@@ -25,12 +25,12 @@ function makeRequest({ cookies = {}, headers = {} } = {}) {
 describe("requireSpawnRouteAuth", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.hasValidCliToken.mockResolvedValue(false);
+    mocks.hasValidLocalCliToken.mockResolvedValue(false);
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
-  it("allows CLI token", async () => {
-    mocks.hasValidCliToken.mockResolvedValue(true);
+  it("allows local CLI token", async () => {
+    mocks.hasValidLocalCliToken.mockResolvedValue(true);
     const { requireSpawnRouteAuth } = await import("../../src/lib/auth/spawnRouteAuth.js");
     const result = await requireSpawnRouteAuth(makeRequest());
     expect(result.ok).toBe(true);
