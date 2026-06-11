@@ -728,7 +728,7 @@ function parseKiroQuotaData(data) {
     quotaInfo[resourceType] = {
       used,
       total,
-      remaining: total - used,
+      remaining: Math.max(0, total - used),
       resetAt,
       unlimited: false,
     };
