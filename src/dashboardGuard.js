@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { normalizeHostHeaderHostname } from "@/shared/utils/host";
-import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
+import { isLoopbackRequest, isVerifiableLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidCliToken } from "@/shared/auth/cliToken";
 import {
   verifyApiKeyCrc,
   isLocalhostSentinelKey,
   has9routerCredentialAttempt,
+  allowsStaleGatewayBypass,
   extractApiKey,
-  extractGatewayApiKey,
+  getGatewayApiKeyCandidates,
 } from "@/shared/utils/apiKey";
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
@@ -73,11 +74,15 @@ function isPublicLlmApi(pathname) {
 }
 
 async function hasValidApiKey(request) {
-  const apiKey = extractGatewayApiKey(request);
-  if (!apiKey) return false;
-  if (isLocalhostSentinelKey(apiKey)) return isLoopbackRequest(request);
-  if (!verifyApiKeyCrc(apiKey)) return false;
-  return await validateApiKey(apiKey);
+  for (const apiKey of getGatewayApiKeyCandidates(request)) {
+    if (isLocalhostSentinelKey(apiKey)) {
+      if (isLoopbackRequest(request)) return true;
+      continue;
+    }
+    if (!verifyApiKeyCrc(apiKey)) continue;
+    if (await validateApiKey(apiKey)) return true;
+  }
+  return false;
 }
 
 async function getPublicLlmApiAuthError(request) {
@@ -89,22 +94,26 @@ async function getPublicLlmApiAuthError(request) {
 async function canAccessPublicLlmApi(request) {
   if (await hasValidCliToken(request)) return true;
 
+  const settings = await loadSettings();
+  const requireApiKey = settings?.requireApiKey === true;
+
   if (has9routerCredentialAttempt(request)) {
-    return await hasValidApiKey(request);
+    if (await hasValidApiKey(request)) return true;
+    if (!requireApiKey && isLoopbackRequest(request) && allowsStaleGatewayBypass(request)) {
+      return true;
+    }
+    return false;
   }
 
-  const settings = await loadSettings();
-  if (settings && settings.requireApiKey === false && isLoopbackRequest(request)) return true;
+  if (!requireApiKey && isLoopbackRequest(request)) return true;
 
   return false;
 }
 
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + valid JWT only.
-  // Intentionally does NOT use isDashboardAccessAllowed because that shortcuts
-  // when requireLogin=false — spawn-capable routes must require real auth.
-  if (isLocalRequest(request) && await hasValidToken(request)) return true;
+  // Spawn-capable routes: verifiable loopback socket + valid JWT (Host alone is spoofable).
+  if (isVerifiableLoopbackRequest(request) && await hasValidToken(request)) return true;
   return false;
 }
 
@@ -130,11 +139,11 @@ async function isDashboardAccessAllowed(request) {
   return false;
 }
 
-/** Management API routes: JWT, CLI token, or loopback when requireLogin=false. */
+/** Management API routes: JWT, CLI token, or verifiable loopback when requireLogin=false. */
 async function isApiAuthenticated(request) {
   if (await hasValidToken(request)) return true;
   const settings = await loadSettings();
-  if (settings && settings.requireLogin === false && isLoopbackRequest(request)) return true;
+  if (settings && settings.requireLogin === false && isVerifiableLoopbackRequest(request)) return true;
   return false;
 }
 

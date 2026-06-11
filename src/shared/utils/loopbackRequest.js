@@ -21,6 +21,18 @@ function getSocketRemoteIp(request) {
   return String(socketIp).replace(/^::ffff:/, "");
 }
 
+/** RFC 7239 Forwarded: for=192.0.2.60 or for="[2001:db8::1]" */
+function parseForwardedClientIp(forwarded) {
+  if (!forwarded) return null;
+  for (const part of forwarded.split(",")) {
+    const match = part.trim().match(/^for=(?:\[([^\]]+)\]|"([^"]+)"|([^;\s]+))/i);
+    if (!match) continue;
+    const ip = (match[1] || match[2] || match[3]).trim();
+    if (ip) return ip.replace(/^::ffff:/, "");
+  }
+  return null;
+}
+
 /** First client IP from common reverse-proxy / CDN forwarding headers. */
 function getForwardedClientIp(request) {
   const xff = request.headers.get("x-forwarded-for");
@@ -28,6 +40,9 @@ function getForwardedClientIp(request) {
     const clientIp = xff.split(",")[0].trim();
     if (clientIp) return clientIp;
   }
+  const forwarded = request.headers.get("forwarded");
+  const forwardedIp = parseForwardedClientIp(forwarded);
+  if (forwardedIp) return forwardedIp;
   const realIp = request.headers.get("x-real-ip")?.trim();
   if (realIp) return realIp;
   const cfConnecting = request.headers.get("cf-connecting-ip")?.trim();
@@ -62,4 +77,24 @@ export function isLoopbackRequest(request) {
 
   // Direct local connection: loopback Host, no forwarding headers (CLI clients omit Origin).
   return true;
+}
+
+/**
+ * Stricter loopback check for management API / settings mutations.
+ * Unlike isLoopbackRequest, never grants access from loopback Host alone when
+ * socket IP is unavailable — Host is trivially spoofable by remote clients.
+ */
+export function isVerifiableLoopbackRequest(request) {
+  if (!isLoopbackHostname(request.headers.get("host"))) return false;
+
+  const forwardedIp = getForwardedClientIp(request);
+  if (forwardedIp) {
+    if (!isLoopbackIp(forwardedIp)) return false;
+    const socketIp = getSocketRemoteIp(request);
+    return socketIp ? isLoopbackIp(socketIp) : false;
+  }
+
+  const socketIp = getSocketRemoteIp(request);
+  if (!socketIp) return false;
+  return isLoopbackIp(socketIp);
 }

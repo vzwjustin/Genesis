@@ -58,12 +58,12 @@ describe("legacy request logger redaction", () => {
       { refresh_token: "provider-refresh-token", safe: "response-safe" }
     );
     logger.logError(
-      new Error("failed with access_token=error-token Bearer sk-error-secret"),
+      new Error("failed with access_token=error-token Bearer sk-error-secret sk_9router"),
       { password: "request-password", safe: "error-safe" }
     );
     logger.appendProviderChunk('data: {"token":"provider-stream-token","safe":"stream-safe"}\n\n');
     logger.appendOpenAIChunk('data: {"client_secret":"openai-stream-secret","safe":"openai-stream-safe"}\n\n');
-    logger.appendConvertedChunk("authorization: Bearer converted-stream-secret\nconverted-safe");
+    logger.appendConvertedChunk("authorization: Bearer converted-stream-secret\nx-9r-cli-token: cli-stream-secret\nconverted-safe");
 
     const logText = readAllLogText(tmp);
     for (const secret of [
@@ -79,10 +79,12 @@ describe("legacy request logger redaction", () => {
       "provider-refresh-token",
       "error-token",
       "sk-error-secret",
+      "sk_9router",
       "request-password",
       "provider-stream-token",
       "openai-stream-secret",
       "converted-stream-secret",
+      "cli-stream-secret",
     ]) {
       expect(logText).not.toContain(secret);
     }

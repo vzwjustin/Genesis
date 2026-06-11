@@ -5,8 +5,12 @@ import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
-import { getRemoteExposureBlockReason, isRemoteExposureRequest } from "@/lib/security/exposureGate";
-import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
+import {
+  getRemoteExposureBlockReason,
+  isRemoteExposureActive,
+  isRemoteExposureRequest,
+} from "@/lib/security/exposureGate";
+import { isVerifiableLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -91,7 +95,7 @@ export async function GET() {
 export async function PATCH(request) {
   try {
     const settings0 = await getSettings();
-    const loopbackNoLogin = settings0.requireLogin === false && isLoopbackRequest(request);
+    const loopbackNoLogin = settings0.requireLogin === false && isVerifiableLoopbackRequest(request);
     if (!loopbackNoLogin) {
       const cookieStore = await cookies();
       const session = await getDashboardAuthSession(cookieStore.get("auth_token")?.value);
@@ -107,9 +111,9 @@ export async function PATCH(request) {
       delete body.resetPasswordToDefault;
     }
 
-    if (isRemoteExposureRequest(body)) {
-      const current = await getSettings();
-      const blockReason = getRemoteExposureBlockReason({ ...current, ...body });
+    const projected = { ...settings0, ...body };
+    if (isRemoteExposureActive(projected) || isRemoteExposureRequest(body)) {
+      const blockReason = getRemoteExposureBlockReason(projected);
       if (blockReason) {
         return NextResponse.json({ error: blockReason }, { status: 400 });
       }

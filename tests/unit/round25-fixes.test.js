@@ -9,7 +9,7 @@ import {
   cleanAnthropicToolDefinitions,
   stripProviderModelPrefix,
 } from "../../open-sse/translator/helpers/claudeHelper.js";
-import { isLoopbackRequest } from "../../src/shared/utils/loopbackRequest.js";
+import { isLoopbackRequest, isVerifiableLoopbackRequest } from "../../src/shared/utils/loopbackRequest.js";
 import {
   isBlockedHostname,
   assertSafeResolvedHostname,
@@ -141,6 +141,20 @@ describe("Round 25 — loopback Host spoofing blocked", () => {
     }))).toBe(false);
   });
 
+  it("rejects loopback Host when Forwarded claims loopback but socket IP is remote", () => {
+    expect(isLoopbackRequest(makeRequest({
+      host: "localhost:20128",
+      forwarded: "for=127.0.0.1;proto=https",
+    }, "203.0.113.9"))).toBe(false);
+  });
+
+  it("rejects loopback Host when RFC 7239 Forwarded indicates remote client", () => {
+    expect(isLoopbackRequest(makeRequest({
+      host: "localhost:20128",
+      forwarded: "for=203.0.113.9;proto=https",
+    }))).toBe(false);
+  });
+
   it("allows loopback Host when XFF is loopback and socket IP is loopback (local proxy)", () => {
     expect(isLoopbackRequest(makeRequest({
       host: "localhost:20128",
@@ -154,6 +168,21 @@ describe("Round 25 — loopback Host spoofing blocked", () => {
 
   it("rejects loopback Host when socket IP is remote", () => {
     expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }, "203.0.113.9"))).toBe(false);
+  });
+});
+
+describe("Round 25 — verifiable loopback for management API", () => {
+  it("rejects loopback Host without socket IP (Host header alone is not enough)", () => {
+    expect(isVerifiableLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(false);
+  });
+
+  it("allows loopback Host with loopback socket IP", () => {
+    expect(isVerifiableLoopbackRequest(makeRequest({ host: "localhost:20128" }, "127.0.0.1"))).toBe(true);
+  });
+
+  it("still allows CLI-style loopback for public LLM auth when socket is unavailable", () => {
+    expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(true);
+    expect(isVerifiableLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(false);
   });
 });
 

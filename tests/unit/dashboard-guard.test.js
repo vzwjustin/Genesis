@@ -37,13 +37,15 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
 const VALID_TEST_KEY = makeTestApiKey();
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
-function request(pathname, headers = {}) {
+function request(pathname, headers = {}, socketIp = null) {
   const normalizedHeaders = new Headers(headers);
   return {
     nextUrl: { pathname },
     headers: normalizedHeaders,
     cookies: { get: vi.fn(() => undefined) },
     url: `http://localhost${pathname}`,
+    socket: socketIp ? { remoteAddress: socketIp } : undefined,
+    ip: socketIp || undefined,
   };
 }
 
@@ -57,7 +59,16 @@ describe("dashboard guard public LLM API access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
-  it("rejects loopback-looking public LLM API without API key", async () => {
+  it("allows loopback public LLM API without API key when requireApiKey is unset (default off)", async () => {
+    const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects loopback public LLM API without API key when requireApiKey=true", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: true });
+
     const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }));
 
     expect(response.status).toBe(401);
@@ -81,7 +92,9 @@ describe("dashboard guard public LLM API access", () => {
     expect(response.body.error).toBe("API key required for remote API access");
   });
 
-  it("rejects loopback rewritten public LLM API without API key", async () => {
+  it("rejects loopback rewritten public LLM API without API key when requireApiKey=true", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: true });
+
     const response = await proxy(request("/api/v1/chat/completions", { host: "localhost:20128" }));
 
     expect(response.status).toBe(401);
@@ -107,6 +120,18 @@ describe("dashboard guard public LLM API access", () => {
 
     expect(response.status).toBe(401);
     expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("allows remote public LLM API with valid raw Authorization gateway key", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+
+    const response = await proxy(request("/v1/models", {
+      host: "router.example.com",
+      authorization: VALID_TEST_KEY,
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
   it("allows remote public LLM API with valid bearer API key", async () => {
@@ -166,6 +191,37 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
+  it("allows loopback public LLM API when settings are unavailable (default requireApiKey off)", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
+
+    const response = await proxy(request("/v1/models", { host: "localhost:20128" }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects remote public LLM API when settings are unavailable", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
+
+    const response = await proxy(request("/v1/models", { host: "router.example.com" }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("allows loopback stale gateway bypass when settings are unavailable", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      "x-api-key": "sk-badkeyyy",
+      authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed API key CRC even when requireApiKey=false", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
 
@@ -179,10 +235,142 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
+  it("rejects remote public LLM API with sk_9router sentinel", async () => {
+    const response = await proxy(request("/v1/models", {
+      host: "router.example.com",
+      authorization: "Bearer sk_9router",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects loopback public LLM API with OAuth bearer when requireApiKey=true", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: true });
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Missing API key");
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
   it("allows loopback public LLM API with sk_9router sentinel without DB lookup", async () => {
     const response = await proxy(request("/v1/models", {
       host: "localhost:20128",
       authorization: "Bearer sk_9router",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API when revoked gateway Bearer accompanies provider x-api-key", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+    mocks.validateApiKey.mockResolvedValue(false);
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      authorization: `Bearer ${VALID_TEST_KEY}`,
+      "x-api-key": "sk-ant-api03-provider-key",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
+  it("allows loopback public LLM API when revoked gateway x-api-key accompanies OAuth bearer", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+    mocks.validateApiKey.mockResolvedValue(false);
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      "x-api-key": VALID_TEST_KEY,
+      authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
+  it("allows loopback public LLM API when stale gateway x-api-key accompanies raw provider Authorization", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      "x-api-key": "sk-badkeyyy",
+      authorization: "sk-ant-api03-provider-key",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows remote public LLM API when valid Bearer accompanies revoked gateway x-api-key", async () => {
+    const activeKey = makeTestApiKey();
+    mocks.validateApiKey.mockImplementation(async (key) => key === activeKey);
+
+    const response = await proxy(request("/v1/models", {
+      host: "router.example.com",
+      "x-api-key": VALID_TEST_KEY,
+      authorization: `Bearer ${activeKey}`,
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(activeKey);
+  });
+
+  it("allows remote public LLM API when valid x-api-key accompanies stale gateway Bearer", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+
+    const response = await proxy(request("/v1/models", {
+      host: "router.example.com",
+      "x-api-key": VALID_TEST_KEY,
+      authorization: "Bearer sk-badkeyyy",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
+  it("allows loopback public LLM API when stale gateway Bearer accompanies provider x-api-key", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      "x-api-key": "sk-ant-api03-provider-key",
+      authorization: "Bearer sk-badkeyyy",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API when stale gateway Bearer accompanies x-goog-api-key", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      "x-goog-api-key": "AIzaSyD-provider-google-key",
+      authorization: "Bearer sk-badkeyyy",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows loopback public LLM API when stale gateway x-api-key accompanies OAuth bearer", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+
+    const response = await proxy(request("/v1/models", {
+      host: "localhost:20128",
+      "x-api-key": "sk-badkeyyy",
+      authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
     }));
 
     expect(response).toBe(mocks.nextResponse);
@@ -235,13 +423,31 @@ describe("dashboard guard management API access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
-  it("allows management API on loopback when requireLogin=false and no JWT/CLI token", async () => {
+  it("allows management API on verifiable loopback when requireLogin=false and no JWT/CLI token", async () => {
+    const response = await proxy(request("/api/keys", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }, "127.0.0.1"));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects management API when Host is loopback but socket IP is remote", async () => {
+    const response = await proxy(request("/api/keys", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }, "203.0.113.9"));
+
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects management API when Host is loopback but socket IP is unavailable (Host spoofing)", async () => {
     const response = await proxy(request("/api/keys", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
     }));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
   });
 
   it("rejects management API from tunnel host even when requireLogin=false", async () => {
@@ -304,7 +510,24 @@ describe("dashboard guard local-only access", () => {
     expect(response.status).toBe(403);
   });
 
-  it("allows local-only route on loopback when requireLogin=false and valid JWT", async () => {
+  it("allows local-only route on verifiable loopback when requireLogin=false and valid JWT", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/antigravity-mitm" },
+      headers: new Headers({ host: "localhost:20128", origin: "http://localhost:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://localhost/api/cli-tools/antigravity-mitm",
+      socket: { remoteAddress: "127.0.0.1" },
+      ip: "127.0.0.1",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects local-only route when JWT is valid but loopback Host is not verifiable", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
     mocks.verifyDashboardAuthToken.mockResolvedValue(true);
 
@@ -316,7 +539,7 @@ describe("dashboard guard local-only access", () => {
     };
 
     const response = await proxy(cookieReq);
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(403);
   });
 
   it("allows local-only route on raw IPv6 loopback host when requireLogin=false", async () => {

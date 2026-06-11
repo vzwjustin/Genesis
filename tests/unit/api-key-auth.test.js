@@ -74,6 +74,139 @@ describe("authenticateRequest (Task 18)", () => {
     );
   });
 
+  it("bypasses stale gateway x-api-key on loopback when provider key is raw Authorization", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "x-api-key": "sk-badkeyyy",
+        Authorization: "sk-ant-api03-provider-key",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("accepts raw Authorization gateway key without Bearer prefix", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({ Authorization: VALID_TEST_KEY }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.apiKey).toBe(VALID_TEST_KEY);
+  });
+
+  it("accepts valid Bearer when revoked gateway x-api-key is also present", async () => {
+    const activeKey = makeTestApiKey();
+    mocks.validateApiKey.mockImplementation(async (key) => key === activeKey);
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({
+        "x-api-key": VALID_TEST_KEY,
+        Authorization: `Bearer ${activeKey}`,
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.apiKey).toBe(activeKey);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(activeKey);
+  });
+
+  it("prefers valid Bearer over stale gateway x-api-key", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeRequest({
+        Authorization: `Bearer ${VALID_TEST_KEY}`,
+        "x-api-key": "sk-badkeyyy",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.apiKey).toBe(VALID_TEST_KEY);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
+  it("does not bypass when requireApiKey=true even with provider Bearer and stale gateway x-api-key", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: true });
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "x-api-key": "sk-badkeyyy",
+        Authorization: "Bearer eyJhbGciOiJSUzI1NiJ9.payload.sig",
+      }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+  });
+
+  it("rejects revoked gateway key with provider x-api-key when requireApiKey=true", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        Authorization: `Bearer ${VALID_TEST_KEY}`,
+        "x-api-key": "sk-ant-api03-provider-key",
+      }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+  });
+
+  it("accepts no header on loopback when requireApiKey is unset (default off)", async () => {
+    mocks.getSettings.mockResolvedValue({});
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(makeLoopbackRequest(), log);
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+  });
+
+  it("rejects stale gateway ApiKey Authorization on loopback when requireApiKey=false", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: "ApiKey sk-badkeyyy" }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("bypasses stale gateway ApiKey Authorization when provider x-api-key is present", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        Authorization: "ApiKey sk-badkeyyy",
+        "x-api-key": "sk-ant-api03-provider-key",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects OAuth bearer alone on loopback when requireApiKey=true", async () => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: true });
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        Authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+      }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
   it("rejects missing key when requireApiKey=true (Requirement 13.1)", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
@@ -126,10 +259,21 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.response?.status).toBe(401);
   });
 
-  it("rejects present-but-malformed Authorization header even when requireApiKey=false", async () => {
+  it("ignores non-Bearer Authorization on loopback when requireApiKey=false", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeRequest({ Authorization: "garbage" }),
+      makeLoopbackRequest({ Authorization: "Basic dXNlcjpwYXNz" }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects Bearer gateway-shaped key on loopback when requireApiKey=false", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: "Bearer sk-badkeyyy" }),
       log
     );
     expect(result.ok).toBe(false);
@@ -179,6 +323,27 @@ describe("authenticateRequest (Task 18)", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
+  it("rejects invalid Api-Key Authorization on loopback when requireApiKey=false", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: "Api-Key sk-badkeyyy" }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+  });
+
+  it("accepts valid gateway key via Api-Key Authorization scheme", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: `Api-Key ${VALID_TEST_KEY}` }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.apiKey).toBe(VALID_TEST_KEY);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
   it("accepts sk_9router sentinel on loopback without DB lookup", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
@@ -214,6 +379,114 @@ describe("authenticateRequest (Task 18)", () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
       makeLoopbackRequest({ Authorization: "Bearer sk-proj-provider-key-not-gateway" }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("ignores long sk- provider bearer for gateway auth on loopback when requireApiKey=false", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ Authorization: `Bearer sk-${"x".repeat(48)}` }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects revoked gateway x-api-key alone on loopback when requireApiKey=false", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({ "x-api-key": VALID_TEST_KEY }),
+      log
+    );
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
+  });
+
+  it("ignores revoked gateway x-api-key when OAuth bearer is present on loopback", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "x-api-key": VALID_TEST_KEY,
+        Authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
+  it("ignores revoked gateway Bearer when provider x-api-key is present on loopback", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        Authorization: `Bearer ${VALID_TEST_KEY}`,
+        "x-api-key": "sk-ant-api03-provider-key",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
+  });
+
+  it("ignores stale gateway Bearer when provider x-api-key is present on loopback", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "x-api-key": "sk-ant-api03-provider-key",
+        Authorization: "Bearer sk-badkeyyy",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale gateway Bearer when Azure api-key header is present on loopback", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "api-key": "azure-openai-provider-secret",
+        Authorization: "Bearer sk-badkeyyy",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale gateway Bearer when x-goog-api-key is present on loopback", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "x-goog-api-key": "AIzaSyD-provider-google-key",
+        Authorization: "Bearer sk-badkeyyy",
+      }),
+      log
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale gateway x-api-key when OAuth bearer is present on loopback", async () => {
+    const { authenticateRequest } = await import("../../src/sse/services/auth.js");
+    const result = await authenticateRequest(
+      makeLoopbackRequest({
+        "x-api-key": "sk-badkeyyy",
+        Authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+      }),
       log
     );
     expect(result.ok).toBe(true);

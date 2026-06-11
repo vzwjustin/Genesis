@@ -14,16 +14,25 @@ export function getRemoteExposureBlockReason(settings) {
   if (settings.requireLogin === false) {
     return "Enable dashboard login in Profile before enabling remote access.";
   }
-  if (settings.requireApiKey === false) {
+  if (settings.requireApiKey !== true) {
     return "Enable API key requirement in Profile before enabling remote access.";
   }
   return null;
 }
 
+export function isRemoteExposureActive(settings) {
+  if (!settings) return false;
+  return (
+    settings.tunnelEnabled === true
+    || settings.tunnelDashboardAccess === true
+    || settings.tailscaleEnabled === true
+  );
+}
+
 export function isRemoteExposureRequest(updates = {}) {
   return (
-    updates.tunnelDashboardAccess === true ||
-    updates.tunnelEnabled === true ||
-    updates.tailscaleEnabled === true
+    updates.tunnelDashboardAccess === true
+    || updates.tunnelEnabled === true
+    || updates.tailscaleEnabled === true
   );
 }

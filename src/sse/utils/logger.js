@@ -69,7 +69,9 @@ export function stream(event, data) {
 
 // Mask sensitive data
 export function maskKey(key) {
-  if (!key || key.length < 8) return "***";
+  if (!key) return "***";
+  if (key === "sk_9router") return "***";
+  if (key.length < 8) return "***";
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
 }
 
