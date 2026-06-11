@@ -87,7 +87,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ connection: result });
   } catch (error) {
-    console.error("Error fetching connection:", error?.message);
+    console.error("Error fetching connection:", error?.stack || error);
     return NextResponse.json({ error: "Failed to fetch connection" }, { status: 500 });
   }
 }

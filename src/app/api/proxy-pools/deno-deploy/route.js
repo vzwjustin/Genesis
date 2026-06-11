@@ -135,7 +135,7 @@ export async function POST(request) {
 
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
   } catch (error) {
-    console.error("Error deploying Deno Deploy relay:", error?.message);
+    console.error("Error deploying Deno Deploy relay:", error?.stack || error);
     return NextResponse.json({ error: "Deno relay deployment failed" }, { status: 500 });
   }
 }

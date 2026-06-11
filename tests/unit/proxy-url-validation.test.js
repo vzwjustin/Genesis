@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeProxyUrl } from "../../open-sse/utils/proxyFetch.js";
+import { normalizeProxyUrl, resolveConnectionProxyUrl } from "../../open-sse/utils/proxyFetch.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +16,23 @@ describe("proxy URL validation", () => {
   it("rejects unsupported proxy URL schemes", () => {
     expect(() => normalizeProxyUrl("file:///tmp/proxy.sock")).toThrow(/http or https/);
     expect(() => normalizeProxyUrl("ssh://proxy.example.com")).toThrow(/http or https/);
+  });
+
+  it("can ignore invalid runtime proxy URLs without throwing", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(normalizeProxyUrl("socks5://proxy.example.com:1080", false)).toBeNull();
+    expect(resolveConnectionProxyUrl("https://api.example.com/v1/chat", {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "socks5://proxy.example.com:1080",
+      strictProxy: false,
+    })).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith("[ProxyFetch] Ignoring invalid connection proxy URL");
+    expect(() => resolveConnectionProxyUrl("https://api.example.com/v1/chat", {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "socks5://proxy.example.com:1080",
+      strictProxy: true,
+    })).toThrow(/Strict connection proxy URL is invalid/);
+    warnSpy.mockRestore();
   });
 
   it("normalizes proxy URLs before provider and proxy-pool config is saved", () => {
@@ -43,7 +60,7 @@ describe("proxy URL validation", () => {
       const src = readFileSync(join(root, file), "utf8");
       expect(src).not.toMatch(/console\.(log|error)\([^)]*,\s*error\)/);
       expect(src).not.toMatch(/error:\s*error\.message\s*\|\|\s*"Deploy failed"/);
-      expect(src).toContain("error?.message");
+      expect(src).toContain("error?.stack || error");
     }
   });
 

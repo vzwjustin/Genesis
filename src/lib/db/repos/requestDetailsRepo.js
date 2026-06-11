@@ -43,12 +43,53 @@ let writeBuffer = [];
 let flushTimer = null;
 let isFlushing = false;
 
+const SENSITIVE_KEY_PARTS = [
+  "authorization", "x-api-key", "cookie", "set-cookie", "token",
+  "api-key", "api_key", "secret", "password",
+];
+
+function isSensitiveKey(key) {
+  const lower = String(key || "").toLowerCase();
+  const compact = lower.replace(/[^a-z0-9]/g, "");
+  return SENSITIVE_KEY_PARTS.includes(lower)
+    || ["apikey", "xapikey", "setcookie", "clientsecret", "accesstoken", "refreshtoken", "idtoken"].includes(compact)
+    || lower.endsWith("authorization")
+    || lower.endsWith("cookie")
+    || (lower.endsWith("token") && !lower.endsWith("tokens"))
+    || lower.endsWith("secret")
+    || lower.endsWith("password");
+}
+
+function redactSensitiveText(value) {
+  return String(value)
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]+/g, "sk-[redacted]")
+    .replace(/\b(access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)=([^&\s]+)/gi, "$1=[redacted]")
+    .replace(/("(?:authorization|x-api-key|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)"/gi, '$1[redacted]"')
+    .replace(/('(?:authorization|x-api-key|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)'\s*:\s*')([^'\\]*(?:\\.[^'\\]*)*)'/gi, "$1[redacted]'")
+    .replace(/\b(authorization|x-api-key|cookie|set-cookie)\s*:\s*([^\r\n]+)/gi, "$1: [redacted]");
+}
+
 function sanitizeHeaders(headers) {
   if (!headers || typeof headers !== "object") return {};
   const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token", "api-key"];
   const sanitized = { ...headers };
   for (const key of Object.keys(sanitized)) {
     if (sensitiveKeys.some((s) => key.toLowerCase().includes(s))) delete sanitized[key];
+  }
+  return sanitized;
+}
+
+function sanitizeForPersistence(value) {
+  if (value == null) return value;
+  if (typeof value === "string") return redactSensitiveText(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeForPersistence(item));
+  if (typeof value !== "object") return value;
+
+  const sanitized = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isSensitiveKey(key)) continue;
+    sanitized[key] = sanitizeForPersistence(item);
   }
   return sanitized;
 }
@@ -84,6 +125,10 @@ async function flushToDatabase() {
           if (!item.id) item.id = generateDetailId(item.model);
           if (!item.timestamp) item.timestamp = new Date().toISOString();
           if (item.request?.headers) item.request.headers = sanitizeHeaders(item.request.headers);
+          const request = sanitizeForPersistence(item.request);
+          const providerRequest = sanitizeForPersistence(item.providerRequest);
+          const providerResponse = sanitizeForPersistence(item.providerResponse);
+          const response = sanitizeForPersistence(item.response);
 
           const record = {
             id: item.id,
@@ -94,10 +139,10 @@ async function flushToDatabase() {
             status: item.status || null,
             latency: item.latency || {},
             tokens: item.tokens || {},
-            request: truncateField(item.request, config.maxJsonSize),
-            providerRequest: truncateField(item.providerRequest, config.maxJsonSize),
-            providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
-            response: truncateField(item.response, config.maxJsonSize),
+            request: truncateField(request, config.maxJsonSize),
+            providerRequest: truncateField(providerRequest, config.maxJsonSize),
+            providerResponse: truncateField(providerResponse, config.maxJsonSize),
+            response: truncateField(response, config.maxJsonSize),
           };
 
           db.run(

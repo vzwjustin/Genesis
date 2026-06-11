@@ -77,7 +77,7 @@ function writeJsonFile(sessionPath, filename, data) {
 function maskSensitiveHeaders(headers) {
   if (!headers) return {};
   const masked = { ...headers };
-  const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
+  const sensitiveKeys = ["authorization", "x-api-key", "cookie", "set-cookie", "token", "api-key", "api_key", "secret", "password"];
 
   for (const key of Object.keys(masked)) {
     const lowerKey = key.toLowerCase();
@@ -91,6 +91,58 @@ function maskSensitiveHeaders(headers) {
     }
   }
   return masked;
+}
+
+function redactSensitiveText(value) {
+  return String(value)
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]+/g, "sk-[redacted]")
+    .replace(/\b(access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)=([^&\s]+)/gi, "$1=[redacted]")
+    .replace(/("(?:authorization|x-api-key|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)"/gi, '$1[redacted]"')
+    .replace(/('(?:authorization|x-api-key|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)'\s*:\s*')([^'\\]*(?:\\.[^'\\]*)*)'/gi, "$1[redacted]'")
+    .replace(/\b(authorization|x-api-key|cookie|set-cookie)\s*:\s*([^\r\n]+)/gi, "$1: [redacted]");
+}
+
+function isSensitiveKey(key) {
+  const lowerKey = String(key || "").toLowerCase();
+  const compactKey = lowerKey.replace(/[^a-z0-9]/g, "");
+  return [
+    "authorization",
+    "x-api-key",
+    "cookie",
+    "set-cookie",
+    "api-key",
+    "api_key",
+    "apikey",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "client_secret",
+    "clientsecret",
+    "token",
+    "secret",
+    "password",
+  ].includes(lowerKey)
+    || ["apikey", "xapikey", "setcookie", "clientsecret", "accesstoken", "refreshtoken", "idtoken"].includes(compactKey)
+    || lowerKey.endsWith("authorization")
+    || lowerKey.endsWith("cookie")
+    || (lowerKey.endsWith("token") && !lowerKey.endsWith("tokens"))
+    || lowerKey.endsWith("secret")
+    || lowerKey.endsWith("password");
+}
+
+function sanitizeLogValue(value) {
+  if (value == null) return value;
+  if (typeof value === "string") return redactSensitiveText(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeLogValue(item));
+  if (typeof value !== "object") return value;
+
+  const sanitized = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isSensitiveKey(key)) continue;
+    sanitized[key] = sanitizeLogValue(item);
+  }
+  return sanitized;
 }
 
 // No-op logger when logging is disabled
@@ -135,7 +187,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
         timestamp: new Date().toISOString(),
         endpoint,
         headers: maskSensitiveHeaders(headers),
-        body
+        body: sanitizeLogValue(body)
       });
     },
     
@@ -144,7 +196,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
       writeJsonFile(sessionPath, "2_req_source.json", {
         timestamp: new Date().toISOString(),
         headers: maskSensitiveHeaders(headers),
-        body
+        body: sanitizeLogValue(body)
       });
     },
     
@@ -152,7 +204,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
     logOpenAIRequest(body) {
       writeJsonFile(sessionPath, "3_req_openai.json", {
         timestamp: new Date().toISOString(),
-        body
+        body: sanitizeLogValue(body)
       });
     },
     
@@ -162,7 +214,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
         timestamp: new Date().toISOString(),
         url,
         headers: maskSensitiveHeaders(headers),
-        body
+        body: sanitizeLogValue(body)
       });
     },
     
@@ -173,8 +225,8 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
         timestamp: new Date().toISOString(),
         status,
         statusText,
-        headers: headers ? (typeof headers.entries === "function" ? Object.fromEntries(headers.entries()) : headers) : {},
-        body
+        headers: maskSensitiveHeaders(headers ? (typeof headers.entries === "function" ? Object.fromEntries(headers.entries()) : headers) : {}),
+        body: sanitizeLogValue(body)
       });
     },
     
@@ -183,7 +235,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
       if (!fs || !sessionPath) return;
       try {
         const filePath = path.join(sessionPath, "5_res_provider.txt");
-        fs.appendFileSync(filePath, chunk);
+        fs.appendFileSync(filePath, redactSensitiveText(chunk));
       } catch (err) {
         // Ignore append errors
       }
@@ -194,7 +246,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
       if (!fs || !sessionPath) return;
       try {
         const filePath = path.join(sessionPath, "6_res_openai.txt");
-        fs.appendFileSync(filePath, chunk);
+        fs.appendFileSync(filePath, redactSensitiveText(chunk));
       } catch (err) {
         // Ignore append errors
       }
@@ -204,7 +256,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
     logConvertedResponse(body) {
       writeJsonFile(sessionPath, "7_res_client.json", {
         timestamp: new Date().toISOString(),
-        body
+        body: sanitizeLogValue(body)
       });
     },
     
@@ -213,7 +265,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
       if (!fs || !sessionPath) return;
       try {
         const filePath = path.join(sessionPath, "7_res_client.txt");
-        fs.appendFileSync(filePath, chunk);
+        fs.appendFileSync(filePath, redactSensitiveText(chunk));
       } catch (err) {
         // Ignore append errors
       }
@@ -226,9 +278,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
         failed: true,
         incomplete: logOptions.incomplete === true,
         passthrough: options.passthrough === true,
-        error: error?.message || String(error),
-        stack: error?.stack,
-        requestBody
+        error: redactSensitiveText(error?.message || String(error)),
+        stack: error?.stack ? redactSensitiveText(error.stack) : undefined,
+        requestBody: sanitizeLogValue(requestBody)
       });
     }
   };
