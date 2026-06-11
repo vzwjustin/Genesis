@@ -16,6 +16,7 @@ import {
 /** OAuth provider id → MITM tool id (IDE traffic interception). */
 const PROVIDER_TO_MITM_TOOL = {
   kiro: "kiro",
+  cursor: "cursor",
   antigravity: "antigravity",
   github: "copilot",
 };
@@ -28,7 +29,18 @@ const CROSS_MODEL_DEFAULTS = {
     "claude-sonnet-4": "cc/claude-sonnet-4-6",
     "claude-haiku-4.5": "cc/claude-haiku-4-5-20251001",
     "deepseek-3.2": "deepseek/deepseek-chat",
+    "MiniMax-M2.5": "minimax/MiniMax-M2.5",
+    "qwen3-coder-next": "cc/claude-sonnet-4-6",
     "simple-task": "cc/claude-sonnet-4-6",
+    "minimax-m2.1": "minimax/MiniMax-M2.5",
+  },
+  cursor: {
+    "composer-2.5-fast": "cu/composer-2.5-fast",
+    "composer-2.5": "cu/composer-2.5",
+    "claude-opus-4-8-high": "cu/claude-opus-4-8-high",
+    "claude-4.6-sonnet-medium": "cu/claude-4.6-sonnet-medium",
+    "gpt-5.5-medium": "cu/gpt-5.5-medium",
+    "auto": "cu/auto",
   },
 };
 
@@ -80,16 +92,6 @@ async function resolveApiKey() {
 export async function autoSetupMitmForProvider(provider, options = {}) {
   const tool = PROVIDER_TO_MITM_TOOL[provider];
   if (!tool) {
-    if (provider === "cursor") {
-      return {
-        attempted: false,
-        skipped: true,
-        reason: "cli_guide",
-        message:
-          "Cursor routes through its own cloud. Use CLI Tools → Cursor to point at your 9router endpoint (enable Tunnel or Cloud Endpoint first). MITM for Cursor is not available yet.",
-        alternativeUrl: "/dashboard/cli-tools",
-      };
-    }
     return { attempted: false, skipped: true, reason: "no_mitm_tool" };
   }
 

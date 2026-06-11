@@ -55,13 +55,14 @@ describe("autoSetupMitmForProvider", () => {
     mocks.setMitmAliasAll.mockResolvedValue(undefined);
   });
 
-  it("skips cursor with cli_guide alternative", async () => {
+  it("auto-enables cursor MITM when privileged", async () => {
     const { autoSetupMitmForProvider } = await import("../../src/lib/mitm/autoSetupForProvider.js");
     const result = await autoSetupMitmForProvider("cursor");
 
-    expect(result.skipped).toBe(true);
-    expect(result.reason).toBe("cli_guide");
-    expect(mocks.startServer).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.tool).toBe("cursor");
+    expect(mocks.startServer).toHaveBeenCalled();
+    expect(mocks.enableToolDNS).toHaveBeenCalledWith("cursor", "pw");
   });
 
   it("auto-enables kiro MITM when privileged", async () => {

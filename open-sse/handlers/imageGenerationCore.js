@@ -79,7 +79,7 @@ export async function handleImageGenerationCore({
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
   }
 
-  // Handle 401/403 — try token refresh (skipped for noAuth providers)
+  // Handle 401/403 — try token refresh (skipped for noAuth / non-refreshable providers)
   const executor = getExecutor(provider);
   if (
     !executor?.noAuth &&
@@ -87,6 +87,11 @@ export async function handleImageGenerationCore({
     (providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
       providerResponse.status === HTTP_STATUS.FORBIDDEN)
   ) {
+    if (executor.supportsTokenRefresh === false) {
+      const { statusCode, message } = await parseUpstreamError(providerResponse, executor);
+      const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
+      return createErrorResult(statusCode, errMsg);
+    }
     const newCredentials = await refreshWithRetry(
       () => executor.refreshCredentials(credentials, log, proxyOptions),
       3,
@@ -114,6 +119,9 @@ export async function handleImageGenerationCore({
       }
     } else {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
+      const { statusCode, message } = await parseUpstreamError(providerResponse, executor);
+      const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
+      return createErrorResult(statusCode, errMsg);
     }
   }
 

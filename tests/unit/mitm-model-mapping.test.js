@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 
 const ALIASES = {
   kiro: {
+    "claude-sonnet-4.6": "cc/claude-sonnet-4-6",
     "claude-sonnet-4.5": "cu/composer-2.5",
     "claude-haiku-4.5": "cu/composer-2.5",
   },
@@ -46,14 +47,52 @@ describe("mitm model mapping — Kiro follow-up turns", () => {
 
   it("strips qdev:: namespace before alias lookup", () => {
     const { getMappedModel: map, normalizeKiroModelId } = require("../../src/mitm/modelMapping.js");
-    expect(map("kiro", "qdev::CLAUDE_SONNET_4_20250514_V1_0")).toBe("cu/composer-2.5");
+    expect(map("kiro", "qdev::CLAUDE_SONNET_4_20250514_V1_0")).toBe("cc/claude-sonnet-4-6");
     expect(normalizeKiroModelId("qdev::auto")).toBe("auto");
   });
 
-  it("maps auto model selection to composer", () => {
+  it("maps auto model selection to Sonnet 4.6 alias", () => {
     const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
-    expect(map("kiro", "auto")).toBe("cu/composer-2.5");
-    expect(map("kiro", "qdev::auto")).toBe("cu/composer-2.5");
+    expect(map("kiro", "auto")).toBe("cc/claude-sonnet-4-6");
+    expect(map("kiro", "qdev::auto")).toBe("cc/claude-sonnet-4-6");
+  });
+
+  it("maps claude-sonnet-4.6 without downgrade", () => {
+    const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
+    expect(map("kiro", "claude-sonnet-4.6")).toBe("cc/claude-sonnet-4-6");
+    expect(map("kiro", "claude-sonnet-4-6")).toBe("cc/claude-sonnet-4-6");
+  });
+
+  it("cursor fallback prefers composer-2.5-fast alias", () => {
+    const aliases = {
+      cursor: {
+        "composer-2.5-fast": "cu/composer-2.5-fast",
+        auto: "cu/auto",
+      },
+    };
+    fs.writeFileSync(
+      path.join(tmpDir, "mitm", "aliases.json"),
+      JSON.stringify(aliases),
+    );
+    delete require.cache[require.resolve("../../src/mitm/modelMapping.js")];
+    const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
+    expect(map("cursor", "unknown-model")).toBe("cu/composer-2.5-fast");
+  });
+
+  it("cursor maps null or missing model to auto alias", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "mitm", "aliases.json"),
+      JSON.stringify({
+        cursor: {
+          auto: "cu/auto",
+          "composer-2.5-fast": "cu/composer-2.5-fast",
+        },
+      }),
+    );
+    delete require.cache[require.resolve("../../src/mitm/modelMapping.js")];
+    const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
+    expect(map("cursor", null)).toBe("cu/auto");
+    expect(map("cursor", "")).toBe("cu/auto");
   });
 
   it("uses auto when tool-round follow-up omits modelId", () => {
@@ -97,11 +136,11 @@ describe("mitm model mapping — Kiro follow-up turns", () => {
       ],
     });
     expect(extract("/", body)).toBe("auto");
-    expect(map("kiro", extract("/", body))).toBe("cu/composer-2.5");
+    expect(map("kiro", extract("/", body))).toBe("cc/claude-sonnet-4-6");
   });
 
-  it("kiro fallback uses claude-sonnet-4.5 when model is unknown", () => {
+  it("kiro fallback prefers claude-sonnet-4.6 when model is unknown", () => {
     const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
-    expect(map("kiro", "totally-unknown-model-xyz")).toBe("cu/composer-2.5");
+    expect(map("kiro", "totally-unknown-model-xyz")).toBe("cc/claude-sonnet-4-6");
   });
 });

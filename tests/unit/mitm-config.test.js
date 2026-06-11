@@ -39,10 +39,16 @@ describe("mitm config — Kiro hosts", () => {
   });
 
   it("normalizes common Kiro model id variants via MODEL_SYNONYMS", () => {
-    expect(MODEL_SYNONYMS.kiro["claude-sonnet-4.6"]).toBe("claude-sonnet-4.5");
-    expect(MODEL_SYNONYMS.kiro["claude-sonnet-4-6"]).toBe("claude-sonnet-4.5");
-    expect(MODEL_SYNONYMS.kiro["CLAUDE_SONNET_4_20250514_V1_0"]).toBe("claude-sonnet-4.5");
-    expect(MODEL_SYNONYMS.kiro.auto).toBe("claude-sonnet-4.5");
-    expect(MODEL_SYNONYMS.kiro["qdev::auto"]).toBe("claude-sonnet-4.5");
+    expect(MODEL_SYNONYMS.kiro["claude-sonnet-4-6"]).toBe("claude-sonnet-4.6");
+    expect(MODEL_SYNONYMS.kiro["claude-sonnet-4-5"]).toBe("claude-sonnet-4.6");
+    expect(MODEL_SYNONYMS.kiro["CLAUDE_SONNET_4_20250514_V1_0"]).toBe("claude-sonnet-4.6");
+    expect(MODEL_SYNONYMS.kiro.auto).toBe("claude-sonnet-4.6");
+    expect(MODEL_SYNONYMS.kiro["qdev::auto"]).toBe("claude-sonnet-4.6");
+    expect(MODEL_SYNONYMS.kiro["simple-task"]).toBe("qwen3-coder-next");
+    expect(MODEL_SYNONYMS.kiro["minimax-m2.1"]).toBe("MiniMax-M2.5");
+  });
+
+  it("maps api2.cursor.sh to cursor tool", () => {
+    expect(getToolForHost("api2.cursor.sh")).toBe("cursor");
   });
 });

@@ -20,19 +20,27 @@ const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
   kiro: ["/generateAssistantResponse"],
+  cursor: ["/aiserver.v1.ChatService/StreamUnifiedChatWithTools"],
 };
 
 // Synonym map: rawModel from request → canonical alias key in mitmAlias DB
 const MODEL_SYNONYMS = {
   kiro: {
-    "claude-sonnet-4.6": "claude-sonnet-4.5",
-    "claude-sonnet-4-6": "claude-sonnet-4.5",
-    "claude-sonnet-4-5": "claude-sonnet-4.5",
+    "claude-sonnet-4-6": "claude-sonnet-4.6",
+    "claude-sonnet-4-5": "claude-sonnet-4.6",
     "claude-haiku-4-5": "claude-haiku-4.5",
-    "CLAUDE_SONNET_4_20250514_V1_0": "claude-sonnet-4.5",
-    "qdev::CLAUDE_SONNET_4_20250514_V1_0": "claude-sonnet-4.5",
-    "auto": "claude-sonnet-4.5",
-    "qdev::auto": "claude-sonnet-4.5",
+    "CLAUDE_SONNET_4_20250514_V1_0": "claude-sonnet-4.6",
+    "qdev::CLAUDE_SONNET_4_20250514_V1_0": "claude-sonnet-4.6",
+    "auto": "claude-sonnet-4.6",
+    "qdev::auto": "claude-sonnet-4.6",
+    "minimax-m2.1": "MiniMax-M2.5",
+    "simple-task": "qwen3-coder-next",
+  },
+  cursor: {
+    "default": "auto",
+    "claude-sonnet-4-5": "claude-4.5-sonnet",
+    "claude-sonnet-4.6": "claude-4.6-sonnet-medium",
+    "claude-sonnet-4-6": "claude-4.6-sonnet-medium",
   },
   antigravity: {
     "gemini-default": "gemini-3.5-flash-low",
@@ -46,11 +54,21 @@ const MODEL_SYNONYMS = {
 // Order matters: more specific patterns first. Catches AG renamed variants (e.g. gemini-pro-agent)
 const MODEL_PATTERNS = {
   kiro: [
-    { match: /CLAUDE_SONNET|claude-sonnet/i, alias: "claude-sonnet-4.5" },
+    { match: /CLAUDE_SONNET|claude-sonnet/i, alias: "claude-sonnet-4.6" },
     { match: /CLAUDE_HAIKU|claude-haiku/i, alias: "claude-haiku-4.5" },
     { match: /deepseek/i, alias: "deepseek-3.2" },
-    { match: /minimax/i, alias: "minimax-m2.1" },
-    { match: /qwen|simple.?task|coder.?next/i, alias: "simple-task" },
+    { match: /minimax/i, alias: "MiniMax-M2.5" },
+    { match: /qwen|simple.?task|coder.?next/i, alias: "qwen3-coder-next" },
+  ],
+  cursor: [
+    { match: /composer/i, alias: "composer-2.5-fast" },
+    { match: /opus.*4\.8|opus-4-8/i, alias: "claude-opus-4-8-high" },
+    { match: /opus/i, alias: "claude-opus-4-8-high" },
+    { match: /sonnet.*4\.6|sonnet-4-6/i, alias: "claude-4.6-sonnet-medium" },
+    { match: /sonnet/i, alias: "claude-4.5-sonnet" },
+    { match: /gpt-5\.5|gpt5\.5/i, alias: "gpt-5.5-medium" },
+    { match: /gpt/i, alias: "gpt-5.4-medium" },
+    { match: /^auto$/i, alias: "auto" },
   ],
   antigravity: [
     { match: /flash.*low|low.*flash|flash.*medium|medium.*flash/i, alias: "gemini-3.5-flash-low" },
@@ -77,6 +95,7 @@ function getToolForHost(host) {
   if (h === "api.individual.githubcopilot.com") return "copilot";
   if (h === "daily-cloudcode-pa.googleapis.com" || h === "cloudcode-pa.googleapis.com") return "antigravity";
   if (isKiroMitmHost(h)) return "kiro";
+  if (h === "api2.cursor.sh") return "cursor";
   return null;
 }
 

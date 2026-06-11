@@ -11,6 +11,7 @@ export class BaseExecutor {
     this.provider = provider;
     this.config = config;
     this.noAuth = config?.noAuth || false;
+    this.supportsTokenRefresh = true;
   }
 
   getProvider() {

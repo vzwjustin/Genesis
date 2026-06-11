@@ -64,6 +64,22 @@ describe("OAuth Token Pre-Check (5-minute expiry window)", () => {
       const result = await checkAndRefreshToken("openai", credentials);
       expect(result.accessToken).toBe("api-key-token");
     });
+
+    it("should skip proactive refresh when expiresAt is set but refreshToken is missing (Cursor import)", async () => {
+      const { checkAndRefreshToken } = await import("../../src/sse/services/tokenRefresh.js");
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
+
+      const credentials = {
+        accessToken: "cursor-jwt",
+        expiresAt,
+        connectionId: "cursor-conn",
+        providerSpecificData: {},
+      };
+
+      const result = await checkAndRefreshToken("cursor", credentials);
+      expect(result.accessToken).toBe("cursor-jwt");
+      expect(result._tokenRefreshFailed).toBeUndefined();
+    });
   });
 
   describe("token refresh implementation (source)", () => {
@@ -91,6 +107,11 @@ describe("OAuth Token Pre-Check (5-minute expiry window)", () => {
       const src = readFileSync(join(root, "../../src/sse/services/tokenRefresh.js"), "utf8");
       expect(src).toContain("copilotToken");
       expect(src).toContain("refreshCopilotToken");
+    });
+
+    it("usage connection route skips refresh for non-refreshable executors", () => {
+      const src = readFileSync(join(root, "../../src/app/api/usage/[connectionId]/route.js"), "utf8");
+      expect(src).toContain("supportsTokenRefresh === false");
     });
   });
 });

@@ -50,24 +50,27 @@ export const MITM_TOOLS = {
       { id: "claude-sonnet-4", name: "Claude Sonnet 4", alias: "claude-sonnet-4" },
       { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
       { id: "deepseek-3.2", name: "DeepSeek 3.2", alias: "deepseek-3.2" },
-      { id: "minimax-m2.1", name: "MiniMax M2.1", alias: "minimax-m2.1" },
-      { id: "simple-task", name: "Qwen3 Coder Next", alias: "simple-task" },
+      { id: "MiniMax-M2.5", name: "MiniMax M2.5", alias: "MiniMax-M2.5" },
+      { id: "qwen3-coder-next", name: "Qwen3 Coder Next", alias: "qwen3-coder-next" },
     ],
   },
-  // cursor: {
-  //   id: "cursor",
-  //   name: "Cursor",
-  //   image: "/providers/cursor.png",
-  //   color: "#000000",
-  //   description: "Route Cursor IDE traffic through 9Router",
-  //   configType: "mitm",
-  //   mitmDomain: "api2.cursor.sh",
-  //   defaultModels: [
-  //     { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", alias: "claude-sonnet-4-5" },
-  //     { id: "claude-opus-4", name: "Claude Opus 4", alias: "claude-opus-4" },
-  //     { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },
-  //   ],
-  // },
+  cursor: {
+    id: "cursor",
+    name: "Cursor",
+    image: "/providers/cursor.png",
+    color: "#000000",
+    description: "Route Cursor IDE traffic through 9Router",
+    configType: "mitm",
+    mitmDomain: "api2.cursor.sh",
+    defaultModels: [
+      { id: "composer-2.5-fast", name: "Composer 2.5 Fast", alias: "composer-2.5-fast" },
+      { id: "composer-2.5", name: "Composer 2.5", alias: "composer-2.5" },
+      { id: "claude-opus-4-8-high", name: "Opus 4.8", alias: "claude-opus-4-8-high" },
+      { id: "claude-4.6-sonnet-medium", name: "Sonnet 4.6", alias: "claude-4.6-sonnet-medium" },
+      { id: "gpt-5.5-medium", name: "GPT 5.5", alias: "gpt-5.5-medium" },
+      { id: "auto", name: "Auto", alias: "auto" },
+    ],
+  },
 };
 
 // CLI Tools configuration

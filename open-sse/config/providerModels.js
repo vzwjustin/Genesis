@@ -127,6 +127,7 @@ export const PROVIDER_MODELS = {
   kr: [  // Kiro AI
     // --- Base Claude variants ---
     // { id: "claude-opus-4.5", name: "Claude Opus 4.5" },
+    { id: "claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
     { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" },
     { id: "claude-haiku-4.5", name: "Claude Haiku 4.5" },
     { id: "deepseek-3.2", name: "DeepSeek 3.2", strip: ["image", "audio"] },
@@ -143,6 +144,9 @@ export const PROVIDER_MODELS = {
     { id: "claude-haiku-4.5-agentic", name: "Claude Haiku 4.5 (Agentic)" },
     { id: "claude-sonnet-4.5-thinking-agentic", name: "Claude Sonnet 4.5 (Thinking + Agentic)" },
     { id: "claude-haiku-4.5-thinking-agentic", name: "Claude Haiku 4.5 (Thinking + Agentic)" },
+    { id: "claude-sonnet-4.6-thinking", name: "Claude Sonnet 4.6 (Thinking)" },
+    { id: "claude-sonnet-4.6-agentic", name: "Claude Sonnet 4.6 (Agentic)" },
+    { id: "claude-sonnet-4.6-thinking-agentic", name: "Claude Sonnet 4.6 (Thinking + Agentic)" },
   ],
   qd: [  // Qoder - tier + frontier models (server-published catalog)
     // Tier models — pick a quality/cost tradeoff

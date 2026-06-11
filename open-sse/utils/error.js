@@ -97,6 +97,9 @@ export async function parseUpstreamError(response, executor = null) {
   if (executor && typeof executor.parseError === "function") {
     try {
       const parsed = executor.parseError(response, bodyText);
+      if (typeof parsed === "string" && parsed) {
+        return { statusCode: response.status, message: parsed };
+      }
       if (parsed && typeof parsed === "object") {
         const msg = parsed.message || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
         return { statusCode: parsed.status || response.status, message: msg, resetsAtMs: parsed.resetsAtMs };

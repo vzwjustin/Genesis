@@ -257,4 +257,9 @@ describe("embeddingsCore proxy routing (source)", () => {
     expect(src).toContain("HTTP_STATUS.UNAUTHORIZED");
     expect(src).toContain("HTTP_STATUS.FORBIDDEN");
   });
+
+  it("skips refresh loop when executor.supportsTokenRefresh is false", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/embeddingsCore.js"), "utf8");
+    expect(src).toContain("supportsTokenRefresh === false");
+  });
 });

@@ -16,7 +16,7 @@ import { qoderEncodeBody } from "../../src/lib/qoder/encoding.js";
 import { buildCosyHeaders } from "../../src/lib/qoder/cosy.js";
 import { QoderService } from "../../src/lib/oauth/services/qoder.js";
 import { QODER_CHAT_URL_ENCODED, QODER_MODEL_LIST_URL } from "../../src/lib/qoder/constants.js";
-import { __test__ as qoderExecutorInternals } from "../../open-sse/executors/qoder.js";
+import QoderExecutor, { __test__ as qoderExecutorInternals } from "../../open-sse/executors/qoder.js";
 
 // Convenience aliases — tests were originally written against module-level
 // helpers; the QoderService class wraps them so each test creates its own
@@ -450,5 +450,17 @@ describe("wrapQoderSSE", () => {
     const r = new Response("not ok", { status: 500 });
     const wrapped = wrapQoderSSE(r, "qoder/auto");
     expect(wrapped).toBe(r);
+  });
+});
+
+describe("QoderExecutor — token refresh policy", () => {
+  it("does not support programmatic OAuth refresh (device token)", () => {
+    const executor = new QoderExecutor();
+    expect(executor.supportsTokenRefresh).toBe(false);
+  });
+
+  it("refreshCredentials returns null without throwing", async () => {
+    const executor = new QoderExecutor();
+    await expect(executor.refreshCredentials()).resolves.toBeNull();
   });
 });
