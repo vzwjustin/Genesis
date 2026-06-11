@@ -1,4 +1,4 @@
-import { BaseExecutor } from "./base.js";
+import { BaseExecutor, normalizeExpiryMs } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
@@ -363,13 +363,10 @@ export class GithubExecutor extends BaseExecutor {
     if (!credentials.copilotToken) return true;
 
     if (credentials.copilotTokenExpiresAt) {
-      // Handle both Unix timestamp (seconds) and ISO string
-      let expiresAtMs = credentials.copilotTokenExpiresAt;
-      if (typeof expiresAtMs === "number" && expiresAtMs < 1e12) {
-        expiresAtMs = expiresAtMs * 1000; // Convert seconds to ms
-      } else if (typeof expiresAtMs === "string") {
-        expiresAtMs = new Date(expiresAtMs).getTime();
-      }
+      // Handles Unix seconds, ms, and ISO; null when unparseable.
+      const expiresAtMs = normalizeExpiryMs(credentials.copilotTokenExpiresAt);
+      // Unparseable expiry → refresh rather than reuse a possibly-expired token.
+      if (expiresAtMs === null) return true;
       if (expiresAtMs - Date.now() < 5 * 60 * 1000) return true;
     }
     return super.needsRefresh(credentials);

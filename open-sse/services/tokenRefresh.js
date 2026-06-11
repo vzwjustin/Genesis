@@ -861,6 +861,12 @@ export async function refreshVertexToken(saJson, log, proxyOptions = null) {
     }
 
     const { access_token, expires_in } = await res.json();
+    if (!access_token || typeof access_token !== "string") {
+      // A 200 with no token would otherwise cache a null Bearer for every
+      // subsequent request keyed to this SA — fail instead of poisoning cache.
+      log?.error?.("TOKEN_REFRESH", `Vertex token mint returned no access_token for ${saJson.client_email}`);
+      return null;
+    }
     const expiresAt = Date.now() + (expires_in ?? 3600) * 1000;
 
     vertexTokenCache.set(cacheKey, { token: access_token, expiresAt });

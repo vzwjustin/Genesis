@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSettingsSafe } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
+import { timingSafeEqual, createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
@@ -8,6 +9,15 @@ import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/lo
 import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
 
 const RESET_HINT = "Forgot password? Reset to default via 9Router CLI → Settings → Reset Password to Default.";
+
+// Constant-time string compare. timingSafeEqual requires equal-length buffers
+// and throws otherwise, which itself leaks length — hash both sides to a fixed
+// width first so the comparison is length-independent.
+function timingSafeEqualStr(a, b) {
+  const ha = createHash("sha256").update(String(a ?? "")).digest();
+  const hb = createHash("sha256").update(String(b ?? "")).digest();
+  return timingSafeEqual(ha, hb);
+}
 
 export async function POST(request) {
   try {
@@ -39,9 +49,10 @@ export async function POST(request) {
     if (storedHash) {
       isValid = await bcrypt.compare(password, storedHash);
     } else {
-      // Use env var or default
+      // Use env var or default. Constant-time compare so the pre-setup path
+      // doesn't leak INITIAL_PASSWORD length/content via response timing.
       const initialPassword = process.env.INITIAL_PASSWORD || "123456";
-      isValid = password === initialPassword;
+      isValid = timingSafeEqualStr(password, initialPassword);
     }
 
     if (isValid) {

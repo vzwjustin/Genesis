@@ -143,6 +143,21 @@ const CODEX_PORT = 1455;
 // Pending exchange sessions keyed by state — used by server-side exchange mode
 const pendingExchanges = new Map();
 
+// A pending OAuth state is only valid for a short window. Without this, a
+// state captured from a prior flow could be replayed for as long as the
+// in-memory Map retained it. 5 min matches the proxy server timeout.
+const SESSION_TTL_MS = 5 * 60 * 1000;
+
+function readSessionWithTtl(map, state) {
+  const session = map.get(state);
+  if (!session) return null;
+  if (Date.now() - (session.createdAt || 0) > SESSION_TTL_MS) {
+    map.delete(state);
+    return null;
+  }
+  return session;
+}
+
 /**
  * Register a pending exchange session for server-side mode.
  * Modal client calls this before opening popup.
@@ -162,7 +177,7 @@ export function registerCodexSession({ state, codeVerifier, redirectUri }) {
  * Read session status (modal polls this).
  */
 export function getCodexSessionStatus(state) {
-  return pendingExchanges.get(state) || null;
+  return readSessionWithTtl(pendingExchanges, state);
 }
 
 /**
@@ -213,7 +228,7 @@ export function startCodexProxy(appPort) {
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
       const errorParam = url.searchParams.get("error");
-      const session = state ? pendingExchanges.get(state) : null;
+      const session = state ? readSessionWithTtl(pendingExchanges, state) : null;
 
       // Mode A: server-side exchange (session registered)
       if (session) {
@@ -322,7 +337,7 @@ export function registerXaiSession({ state, codeVerifier, redirectUri }) {
 }
 
 export function getXaiSessionStatus(state) {
-  return xaiPendingExchanges.get(state) || null;
+  return readSessionWithTtl(xaiPendingExchanges, state);
 }
 
 export function clearXaiSession(state) {
@@ -360,7 +375,7 @@ export function startXaiProxy(appPort) {
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
       const errorParam = url.searchParams.get("error");
-      const session = state ? xaiPendingExchanges.get(state) : null;
+      const session = state ? readSessionWithTtl(xaiPendingExchanges, state) : null;
 
       // Mode A: server-side exchange
       if (session) {
