@@ -24,16 +24,29 @@ const nextConfig = {
     unoptimized: true
   },
   env: {},
-  webpack: (config, { isServer }) => {
-    // Ignore fs/path modules in browser bundle
+  webpack: (config, { isServer, webpack }) => {
+    // Ignore node built-ins in browser bundle. Shared client+server utils import
+    // node:fs/path/util/dns at module top-level (guarded so they're never *called*
+    // client-side); without these fallbacks the client build fails.
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         path: false,
-        dns: false,
         util: false,
+        dns: false,
+        crypto: false,
+        os: false,
+        net: false,
+        tls: false,
       };
+      // resolve.fallback keys are bare specifiers; `node:fs` is a distinct request.
+      // Rewrite the `node:` scheme to the bare name so the fallback applies.
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          resource.request = resource.request.replace(/^node:/, "");
+        })
+      );
     }
     // Exclude logs, .next, gitbook subapp from watcher
     config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next|gitbook|cli)[\\/]/ };
