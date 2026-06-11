@@ -26,6 +26,17 @@ describe("ssrfGuard", () => {
     expect(() => assertSafeFetchUrl("https://user:pass@example.com")).toThrow();
   });
 
+  it("blocks IPv4-mapped IPv6 in hex-normalized form (URL normalization bypass)", () => {
+    // new URL("http://[::ffff:127.0.0.1]") normalizes host to "::ffff:7f00:1"
+    expect(isBlockedHostname("::ffff:7f00:1")).toBe(true); // 127.0.0.1
+    expect(isBlockedHostname("::ffff:a9fe:a9fe")).toBe(true); // 169.254.169.254 metadata
+    expect(isBlockedHostname("::ffff:0a00:1")).toBe(true); // 10.0.0.1
+    expect(isSafeFetchUrl("http://[::ffff:127.0.0.1]/secret", { requireHttps: false, allowHttp: true })).toBe(false);
+    expect(isSafeFetchUrl("http://[::ffff:169.254.169.254]/latest/meta-data/", { requireHttps: false, allowHttp: true })).toBe(false);
+    // still allows mapped public IPs
+    expect(isBlockedHostname("::ffff:0808:0808")).toBe(false); // 8.8.8.8
+  });
+
   it("assertSafeResolvedHostname blocks literal private IPs", async () => {
     await expect(assertSafeResolvedHostname("10.0.0.1")).rejects.toThrow(/not allowed/);
   });

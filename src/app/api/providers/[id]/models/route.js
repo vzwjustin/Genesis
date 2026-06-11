@@ -508,7 +508,7 @@ export async function GET(request, { params }) {
       url = resolveQwenModelsUrl(connection);
     }
     if (config.authQuery) {
-      url += `?${config.authQuery}=${token}`;
+      url += `?${config.authQuery}=${encodeURIComponent(token)}`;
     }
 
     // Build headers

@@ -22,9 +22,9 @@ async function withComboRotationLock(comboName, fn) {
   const current = new Promise((resolve) => {
     release = resolve;
   });
-  comboRotationLocks.set(comboName, previous.then(() => current));
+  comboRotationLocks.set(comboName, previous.catch(() => {}).then(() => current));
 
-  await previous;
+  await previous.catch(() => {});
   try {
     return await fn();
   } finally {

@@ -643,8 +643,11 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       "sudo", ["-S", "-E", "sh", "-c", inlineCmd],
       { detached: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
-    serverProcess.stdin.write(`${sudoPassword}\n`);
-    serverProcess.stdin.end();
+    if (serverProcess.stdin && !serverProcess.stdin.destroyed) {
+      serverProcess.stdin.on("error", () => {});
+      serverProcess.stdin.write(`${sudoPassword}\n`);
+      serverProcess.stdin.end();
+    }
   } else {
     // Docker/minimal images: no sudo — same as Windows-style direct spawn
     serverProcess = spawn(process.execPath, [effectiveServerPath], {

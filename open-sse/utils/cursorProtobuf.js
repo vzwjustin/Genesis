@@ -674,7 +674,7 @@ export function decodeVarint(buffer, offset) {
 
   while (pos < buffer.length) {
     const b = buffer[pos];
-    result |= (b & 0x7F) << shift;
+    result += (b & 0x7F) * 2 ** shift;
     pos++;
     if (!(b & 0x80)) break;
     shift += 7;
@@ -697,6 +697,9 @@ export function decodeField(buffer, offset) {
     [value, pos] = decodeVarint(buffer, pos);
   } else if (wireType === WIRE_TYPE.LEN) {
     const [length, pos2] = decodeVarint(buffer, pos);
+    if (pos2 + length > buffer.length) {
+      return [null, null, null, offset];
+    }
     value = buffer.slice(pos2, pos2 + length);
     pos = pos2 + length;
   } else if (wireType === WIRE_TYPE.FIXED64) {
