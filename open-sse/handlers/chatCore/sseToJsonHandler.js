@@ -11,10 +11,19 @@ import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 // any legitimate single-block response.
 const MAX_BLOCK_CHARS = 64 * 1024 * 1024;
 
+// Sentinel thrown when a block exceeds the cap. Callers catch this and fail
+// closed (return null) rather than emit a silently-truncated success — a
+// truncated body would violate the same response-validity rule as a malformed
+// frame (Requirement 6.6).
+class BlockSizeExceededError extends Error {}
+
 function appendCapped(existing, addition) {
   const cur = existing || "";
-  if (cur.length >= MAX_BLOCK_CHARS) return cur;
-  return cur + (addition || "");
+  const next = cur + (addition || "");
+  if (next.length > MAX_BLOCK_CHARS) {
+    throw new BlockSizeExceededError("content block exceeded MAX_BLOCK_CHARS");
+  }
+  return next;
 }
 
 function textFromResponsesMessageItem(item) {
@@ -101,6 +110,7 @@ export function parseSSEToClaudeResponse(rawSSE) {
     sawContent = true;
   };
 
+  try {
   for (const ev of events) {
     switch (ev.type) {
       case "message_start":
@@ -142,6 +152,11 @@ export function parseSSEToClaudeResponse(rawSSE) {
       default:
         break;
     }
+  }
+  } catch (e) {
+    // Fail closed on block-size overflow rather than returning a truncated body.
+    if (e instanceof BlockSizeExceededError) return null;
+    throw e;
   }
 
   if (openBlocks.size > 0) return null;

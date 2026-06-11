@@ -149,12 +149,18 @@ const pendingExchanges = new Map();
 const SESSION_TTL_MS = 5 * 60 * 1000;
 
 function readSessionWithTtl(map, state) {
+  const now = Date.now();
+  // Sweep all expired sessions, not just the queried one — an abandoned flow
+  // (popup closed before exchange) would otherwise linger in the Map until its
+  // exact state is queried again, which never happens. The Map is tiny so a
+  // full pass on each read is cheap.
+  for (const [key, session] of map.entries()) {
+    if (now - (session.createdAt || 0) > SESSION_TTL_MS) {
+      map.delete(key);
+    }
+  }
   const session = map.get(state);
   if (!session) return null;
-  if (Date.now() - (session.createdAt || 0) > SESSION_TTL_MS) {
-    map.delete(state);
-    return null;
-  }
   return session;
 }
 
