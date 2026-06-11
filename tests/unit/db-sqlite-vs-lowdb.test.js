@@ -215,7 +215,20 @@ describe("DB SQLite layer — public API parity", () => {
     await sqliteDb.saveRequestDetail({
       id: "d1", provider: "openai", model: "gpt-4", connectionId: "c1",
       status: "ok", tokens: { prompt_tokens: 10 },
-      request: { method: "POST" }, response: { status: 200 },
+      request: { method: "POST", headers: { Authorization: "Bearer local-secret" } },
+      providerRequest: {
+        headers: { Authorization: "Bearer provider-secret", "x-api-key": "provider-key" },
+        body: { token: "nested-token", safe: "kept", max_tokens: 1024, usage: { prompt_tokens: 12 } },
+        rawBody: '{"api_key":"raw-provider-key","safe":"raw-provider-safe"}',
+      },
+      providerResponse: {
+        headers: { "set-cookie": "session=secret", "content-type": "application/json" },
+      },
+      response: {
+        status: 200,
+        secret: "response-secret",
+        body: "authorization: Bearer raw-response-secret\nsafe-response-text",
+      },
     });
 
     // Wait for buffer flush
@@ -224,6 +237,20 @@ describe("DB SQLite layer — public API parity", () => {
     const got = await sqliteDb.getRequestDetailById("d1");
     expect(got).toBeDefined();
     expect(got.id).toBe("d1");
+    expect(got.request.headers.Authorization).toBeUndefined();
+    expect(got.providerRequest.headers.Authorization).toBeUndefined();
+    expect(got.providerRequest.headers["x-api-key"]).toBeUndefined();
+    expect(got.providerRequest.body.token).toBeUndefined();
+    expect(got.providerRequest.body.safe).toBe("kept");
+    expect(got.providerRequest.body.max_tokens).toBe(1024);
+    expect(got.providerRequest.body.usage.prompt_tokens).toBe(12);
+    expect(got.providerRequest.rawBody).not.toContain("raw-provider-key");
+    expect(got.providerRequest.rawBody).toContain("raw-provider-safe");
+    expect(got.providerResponse.headers["set-cookie"]).toBeUndefined();
+    expect(got.providerResponse.headers["content-type"]).toBe("application/json");
+    expect(got.response.secret).toBeUndefined();
+    expect(got.response.body).not.toContain("raw-response-secret");
+    expect(got.response.body).toContain("safe-response-text");
 
     const list = await sqliteDb.getRequestDetails({ provider: "openai" });
     expect(list.details.length).toBeGreaterThanOrEqual(1);

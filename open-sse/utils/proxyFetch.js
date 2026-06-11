@@ -210,24 +210,38 @@ function getEnvProxyUrl(targetUrl) {
 /**
  * Normalize proxy URL (allow host:port)
  */
-function normalizeProxyUrl(proxyUrl) {
+function normalizeProxyUrl(proxyUrl, throwOnError = true) {
   const normalizedInput = normalizeString(proxyUrl);
   if (!normalizedInput) return null;
 
-  const withProtocol = /^[a-z][a-z\d+\-.]*:\/\//i.test(normalizedInput)
-    ? normalizedInput
-    : `http://${normalizedInput}`;
-  const parsed = new URL(withProtocol);
-  if (!SUPPORTED_PROXY_PROTOCOLS.has(parsed.protocol)) {
-    throw new Error("Proxy URL must use http or https");
+  try {
+    const withProtocol = /^[a-z][a-z\d+\-.]*:\/\//i.test(normalizedInput)
+      ? normalizedInput
+      : `http://${normalizedInput}`;
+    const parsed = new URL(withProtocol);
+    if (!SUPPORTED_PROXY_PROTOCOLS.has(parsed.protocol)) {
+      throw new Error("Proxy URL must use http or https");
+    }
+    if (!parsed.hostname) {
+      throw new Error("Proxy URL host is required");
+    }
+    const normalized = parsed.toString();
+    return parsed.pathname === "/" && !parsed.search && !parsed.hash
+      ? normalized.replace(/\/$/, "")
+      : normalized;
+  } catch (error) {
+    if (throwOnError) throw error;
+    return null;
   }
-  if (!parsed.hostname) {
-    throw new Error("Proxy URL host is required");
+}
+
+function normalizeRuntimeProxyUrl(proxyUrl, source) {
+  if (!normalizeString(proxyUrl)) return null;
+  const normalized = normalizeProxyUrl(proxyUrl, false);
+  if (!normalized) {
+    console.warn(`[ProxyFetch] Ignoring invalid ${source} proxy URL`);
   }
-  const normalized = parsed.toString();
-  return parsed.pathname === "/" && !parsed.search && !parsed.hash
-    ? normalized.replace(/\/$/, "")
-    : normalized;
+  return normalized;
 }
 
 function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
@@ -240,7 +254,14 @@ function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
   const noProxy = normalizeString(proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy);
   if (noProxy && shouldBypassByNoProxy(targetUrl, noProxy)) return null;
 
-  return normalizeProxyUrl(proxyUrlRaw);
+  const normalizedProxyUrl = normalizeProxyUrl(proxyUrlRaw, false);
+  if (!normalizedProxyUrl) {
+    if (proxyOptions?.strictProxy === true) {
+      throw new Error("[ProxyFetch] Strict connection proxy URL is invalid");
+    }
+    console.warn("[ProxyFetch] Ignoring invalid connection proxy URL");
+  }
+  return normalizedProxyUrl;
 }
 
 /**
@@ -402,7 +423,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   }
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  const envProxyUrl = connectionProxyUrl ? null : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
+  const envProxyUrl = connectionProxyUrl ? null : normalizeRuntimeProxyUrl(getEnvProxyUrl(targetUrl), "environment");
   let proxyUrl = connectionProxyUrl || envProxyUrl;
 
   // Vercel relay is lower precedence than per-connection proxy (AGENTS.md § outbound proxy routing)
