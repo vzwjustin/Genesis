@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { compressMessages, formatRtkLog, findLastCacheBoundary } from "../../open-sse/rtk/index.js";
+import { compressMessages, formatRtkLog, findLastCacheBoundary, findLastToolOutputMessageIndex } from "../../open-sse/rtk/index.js";
 import { gitDiff } from "../../open-sse/rtk/filters/gitDiff.js";
 import { gitStatus } from "../../open-sse/rtk/filters/gitStatus.js";
 import { grep } from "../../open-sse/rtk/filters/grep.js";
@@ -146,6 +146,24 @@ describe("compressMessages cache boundary", () => {
     const stats = compressMessages(body, true);
     expect(stats.hits.length).toBeGreaterThan(0);
     expect(body.messages[1].content.length).toBeLessThan(big.length);
+  });
+
+  it("compresses latest tool batch before trailing cached assistant (Claude Code turn)", () => {
+    const big = makeLongDiff();
+    const body = {
+      messages: [
+        { role: "user", content: [{ type: "text", text: "hi" }] },
+        { role: "assistant", content: [{ type: "text", text: "ok" }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: big }] },
+        { role: "assistant", content: [{ type: "text", text: "done", cache_control: { type: "ephemeral" } }] },
+      ],
+    };
+    expect(findLastToolOutputMessageIndex(body.messages)).toBe(2);
+    const stats = compressMessages(body, true);
+    expect(stats.bytesBefore).toBeGreaterThan(0);
+    expect(stats.hits.length).toBeGreaterThan(0);
+    expect(body.messages[2].content[0].content.length).toBeLessThan(big.length);
+    expect(body.messages[3].content[0].text).toBe("done");
   });
 });
 

@@ -33,28 +33,68 @@ export function findLastCacheBoundary(messages) {
   return -1;
 }
 
+function restoreItems(items, snapshot) {
+  if (!Array.isArray(items) || !Array.isArray(snapshot)) return;
+  for (let i = 0; i < snapshot.length; i++) {
+    items[i] = snapshot[i];
+  }
+}
+
+function messageHasCacheControl(msg) {
+  if (!msg) return false;
+  if (msg.cache_control) return true;
+  if (Array.isArray(msg.content)) {
+    return msg.content.some((block) => block?.cache_control);
+  }
+  return false;
+}
+
+// Latest tool output in the request — Claude Code usually appends new tool results here.
+export function findLastToolOutputMessageIndex(items) {
+  if (!Array.isArray(items)) return -1;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const msg = items[i];
+    if (!msg) continue;
+    if (msg.role === "tool") return i;
+    if (msg.type === "function_call_output") return i;
+    if (Array.isArray(msg.content) && msg.content.some((block) => block?.type === "tool_result")) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function shouldSkipForCacheBoundary(i, items, cacheFloor) {
+  if (cacheFloor < 0) return false;
+  const msg = items[i];
+  if (messageHasCacheControl(msg)) return true;
+  const tailToolIdx = findLastToolOutputMessageIndex(items);
+  // Allow the latest tool batch even when it sits before the final cache_control
+  // assistant — those bytes are new in this flight and not yet part of a cached prefix.
+  if (i === tailToolIdx) return false;
+  return i <= cacheFloor;
+}
+
 function snapshotCacheProtectedRegion(items, cacheFloor) {
-  if (cacheFloor < 0 || !Array.isArray(items)) return null;
+  if (!Array.isArray(items)) return null;
   const snap = [];
-  for (let i = 0; i <= cacheFloor; i++) {
-    snap.push(JSON.stringify(items[i]));
+  for (let i = 0; i < items.length; i++) {
+    if (shouldSkipForCacheBoundary(i, items, cacheFloor)) {
+      snap.push(JSON.stringify(items[i]));
+    } else {
+      snap.push(null);
+    }
   }
   return snap;
 }
 
 function verifyCacheBoundaryIntegrity(items, cacheFloor, snapshot) {
   if (cacheFloor < 0 || !snapshot) return true;
-  for (let i = 0; i <= cacheFloor; i++) {
+  for (let i = 0; i < items.length; i++) {
+    if (snapshot[i] == null) continue;
     if (JSON.stringify(items[i]) !== snapshot[i]) return false;
   }
   return true;
-}
-
-function restoreItems(items, snapshot) {
-  if (!Array.isArray(items) || !Array.isArray(snapshot)) return;
-  for (let i = 0; i < snapshot.length; i++) {
-    items[i] = snapshot[i];
-  }
 }
 
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
@@ -92,7 +132,7 @@ export function compressMessages(body, enabled = rtkEnabled, filterConfig = null
     protectedSnapshot = snapshotCacheProtectedRegion(items, cacheFloor);
     itemsSnapshot = items.map((item) => JSON.parse(JSON.stringify(item)));
     for (let i = 0; i < items.length; i++) {
-      if (i <= cacheFloor) continue; // protected by cache boundary
+      if (shouldSkipForCacheBoundary(i, items, cacheFloor)) continue;
       const msg = items[i];
       if (!msg) continue;
 
