@@ -12,6 +12,16 @@ import {
   KIRO_AGENTIC_SYSTEM_PROMPT
 } from "../../config/kiroConstants.js";
 
+// Tool-call arguments arrive as a JSON string. Malformed/partial JSON must not
+// throw and abort the whole request translation — fall back to empty args.
+function safeParseArgs(str) {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Convert OpenAI messages to Kiro format
  * Rules: system/tool/user -> user role, merge consecutive same roles
@@ -211,8 +221,8 @@ function convertMessages(messages, tools, model) {
               return {
                 toolUseId: tc.id || uuidv4(),
                 name: tc.function.name,
-                input: typeof tc.function.arguments === "string" 
-                  ? JSON.parse(tc.function.arguments) 
+                input: typeof tc.function.arguments === "string"
+                  ? safeParseArgs(tc.function.arguments)
                   : (tc.function.arguments || {})
               };
             } else {

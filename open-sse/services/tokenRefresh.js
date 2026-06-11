@@ -133,6 +133,27 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
 
     if (!response.ok) {
       const errorText = await response.text();
+
+      // Detect unrecoverable errors (invalid_grant/reused/expired) so callers stop retrying
+      let errorCode = null;
+      try {
+        const parsed = JSON.parse(errorText);
+        errorCode = parsed?.error?.code || (typeof parsed?.error === "string" ? parsed.error : null);
+      } catch {}
+
+      if (
+        errorCode === "refresh_token_reused" ||
+        errorCode === "invalid_grant" ||
+        errorCode === "token_expired" ||
+        errorCode === "invalid_token"
+      ) {
+        log?.error?.("TOKEN_REFRESH", `Refresh token unrecoverable for ${provider}. Re-auth required.`, {
+          status: response.status,
+          errorCode,
+        });
+        return { error: "unrecoverable_refresh_error", code: errorCode };
+      }
+
       log?.error?.("TOKEN_REFRESH", `Failed to refresh token for ${provider}`, {
         status: response.status,
         error: errorText,
@@ -373,6 +394,7 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
 export async function refreshKiroToken(refreshToken, providerSpecificData, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("kiro", refreshToken, async () => {
+  try {
   const authMethod = providerSpecificData?.authMethod;
   const clientId = providerSpecificData?.clientId;
   const clientSecret = providerSpecificData?.clientSecret;
@@ -460,6 +482,10 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
     refreshToken: tokens.refreshToken || refreshToken,
     expiresIn: tokens.expiresIn,
   };
+  } catch (error) {
+    log?.error?.("TOKEN_REFRESH", `Network error refreshing Kiro token: ${error.message}`);
+    return null;
+  }
   }, log);
 }
 
@@ -469,6 +495,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
 export async function refreshIflowToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("iflow", refreshToken, async () => {
+  try {
   const basicAuth = btoa(`${PROVIDERS.iflow.clientId}:${PROVIDERS.iflow.clientSecret}`);
 
   const response = await proxyAwareFetch(OAUTH_ENDPOINTS.iflow.token, {
@@ -508,6 +535,10 @@ export async function refreshIflowToken(refreshToken, log, proxyOptions = null) 
     refreshToken: tokens.refresh_token || refreshToken,
     expiresIn: tokens.expires_in,
   };
+  } catch (error) {
+    log?.error?.("TOKEN_REFRESH", `Network error refreshing iFlow token: ${error.message}`);
+    return null;
+  }
   }, log);
 }
 
@@ -517,6 +548,7 @@ export async function refreshIflowToken(refreshToken, log, proxyOptions = null) 
 export async function refreshGitHubToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("github", refreshToken, async () => {
+  try {
   const params = {
     grant_type: "refresh_token",
     refresh_token: refreshToken,
@@ -557,6 +589,10 @@ export async function refreshGitHubToken(refreshToken, log, proxyOptions = null)
     refreshToken: tokens.refresh_token || refreshToken,
     expiresIn: tokens.expires_in,
   };
+  } catch (error) {
+    log?.error?.("TOKEN_REFRESH", `Network error refreshing GitHub token: ${error.message}`);
+    return null;
+  }
   }, log);
 }
 

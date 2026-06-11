@@ -741,7 +741,7 @@ function parseKiroQuotaData(data) {
       quotaInfo[`${resourceType}_freetrial`] = {
         used: freeUsed,
         total: freeTotal,
-        remaining: freeTotal - freeUsed,
+        remaining: Math.max(0, freeTotal - freeUsed),
         resetAt: parseResetTime(breakdown.freeTrialInfo.freeTrialExpiry || resetAt),
         unlimited: false,
       };

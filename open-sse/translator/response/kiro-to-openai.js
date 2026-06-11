@@ -57,6 +57,7 @@ export function convertKiroToOpenAI(chunk, state) {
     state.responseId = `chatcmpl-${Date.now()}`;
     state.created = Math.floor(Date.now() / 1000);
     state.chunkIndex = 0;
+    state.toolCallIndex = 0;
   }
 
   const eventType = data._eventType || data.event || "";
@@ -133,7 +134,10 @@ export function convertKiroToOpenAI(chunk, state) {
         delta: {
           ...(state.chunkIndex === 0 ? { role: "assistant" } : {}),
           tool_calls: [{
-            index: 0,
+            // Each toolUseEvent is a distinct tool call — a per-stream counter
+            // keeps parallel calls separate. Hardcoding 0 collapsed them so
+            // their arguments concatenated into one invalid JSON blob.
+            index: state.toolCallIndex,
             id: toolCallId,
             type: "function",
             function: {
@@ -146,6 +150,7 @@ export function convertKiroToOpenAI(chunk, state) {
       }]
     };
 
+    state.toolCallIndex++;
     state.chunkIndex++;
     return openaiChunk;
   }
