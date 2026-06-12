@@ -36,6 +36,39 @@ describe("decodeCursorRequest", () => {
     expect(decoded.instruction).toBe("You are a helpful assistant.");
   });
 
+  // Regression: Cursor has no system role. A system message reaching the encoder (e.g. via
+  // passthrough where the openai→cursor translator is skipped, or after Caveman injects one)
+  // must be folded into a user turn — otherwise it encodes as a leading ASSISTANT turn, an
+  // invalid conversation that Cursor rejects upstream with HTTP 464.
+  it("folds a leading system message into a user turn instead of an assistant turn", () => {
+    const frame = buildChatRequestFrame("composer-2.5-fast", [
+      { role: "system", content: "be terse" },
+      { role: "user", content: "hello" },
+    ]);
+    const decoded = decodeCursorRequest(frame);
+    expect(decoded.kind).toBe("chat");
+    // Conversation must not start with an assistant turn (the HTTP 464 trigger).
+    expect(decoded.messages[0].role).toBe("user");
+    expect(decoded.messages).toEqual([
+      { role: "user", content: "[System Instructions]\nbe terse" },
+      { role: "user", content: "hello" },
+    ]);
+  });
+
+  // Caveman uses OpenAI array-shaped content blocks ({ type, text }); those must still fold
+  // into a flattened "[System Instructions]" user turn.
+  it("folds a system message with array content blocks into a user turn", () => {
+    const frame = buildChatRequestFrame("composer-2.5-fast", [
+      { role: "system", content: [{ type: "input_text", text: "ugg make short" }] },
+      { role: "user", content: "hi" },
+    ]);
+    const decoded = decodeCursorRequest(frame);
+    expect(decoded.messages[0]).toEqual({
+      role: "user",
+      content: "[System Instructions]\nugg make short",
+    });
+  });
+
   it("flags tool-result-only frames for passthrough", () => {
     const frame = Buffer.from(generateToolResultBody({
       tool_call_id: "tc-1",
