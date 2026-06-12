@@ -115,8 +115,8 @@ function getConnectionsEmptyMessage(totals, providerFilter, accountFilter) {
       title: "No Accounts Match Current Filters",
       description:
         providerFilter === "all"
-          ? "Try changing the account status filter to see more quota trackers."
-          : `No ${accountFilter === "inactive" ? "turned off" : accountFilter === "active" ? "active" : "matching"} accounts found for ${providerFilter}.`,
+          ? "Try changing the account status filter to see more accounts."
+          : `No ${accountFilter === "inactive" ? "disabled" : accountFilter === "active" ? "active" : "matching"} accounts found for ${providerFilter}.`,
     };
   }
 
@@ -912,7 +912,7 @@ export default function ProviderLimits() {
             title="Disable connections with depleted quota on the current page"
           >
             <span className="material-symbols-outlined text-[14px]">block</span>
-            <span className="hidden sm:inline">Turn off Empty</span>
+            <span className="hidden sm:inline">Disable empty</span>
           </button>
 
           {/* Bulk: enable available */}
@@ -926,7 +926,7 @@ export default function ProviderLimits() {
             <span className="material-symbols-outlined text-[14px]">
               check_circle
             </span>
-            <span className="hidden sm:inline">Turn on Available</span>
+            <span className="hidden sm:inline">Enable available</span>
           </button>
 
           {/* Auto-refresh toggle */}
@@ -977,7 +977,7 @@ export default function ProviderLimits() {
         <InlineAlert
           variant="warning"
           compact
-          message="Expiring-first reorders accounts on the current page only. Cross-page ordering still follows backend pagination."
+          message="Sorting by soonest reset only reorders the accounts on this page. The order from one page to the next is unchanged."
         />
       )}
 

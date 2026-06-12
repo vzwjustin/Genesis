@@ -19,7 +19,7 @@ function exposureStatus(type, message) {
 const TUNNEL_BENEFITS = [
   { icon: "public", title: "Reach it remotely", desc: "Call your API from any network" },
   { icon: "group", title: "Share with teammates", desc: "Give teammates a stable URL" },
-  { icon: "code", title: "Use in coding tools", desc: "Point coding tools at it" },
+  { icon: "code", title: "Use in coding tools", desc: "Point Cursor, Cline, and other tools at it" },
   { icon: "lock", title: "Encrypted", desc: "End-to-end TLS via Cloudflare" },
 ];
 
@@ -467,7 +467,7 @@ export default function APIPageClient({ machineId }) {
   // Ping tunnel health until reachable. Race multiple URLs (shortlink + direct) — 1 OK is enough.
   const pingTunnelHealth = async (...urls) => {
     setTunnelLoading(true);
-    setTunnelProgress("Waiting for tunnel ready...");
+    setTunnelProgress("Waiting for the tunnel to be ready...");
     const targets = urls.filter(Boolean).map((u) => `${u}/api/health`);
     const start = Date.now();
     while (Date.now() - start < TUNNEL_PING_MAX_MS) {
@@ -499,7 +499,7 @@ export default function APIPageClient({ machineId }) {
         } catch { /* ignore */ }
       }
     }
-    setTunnelStatus({ type: "error", message: "Tunnel created but not reachable. Please try again." });
+    setTunnelStatus({ type: "error", message: "Tunnel created, but it isn't responding yet. Check your internet connection and try again." });
     setTunnelLoading(false);
     setTunnelProgress("");
     return false;
@@ -1417,7 +1417,7 @@ export default function APIPageClient({ machineId }) {
                   Cloudflare Tunnel
                 </p>
                 <p className="text-sm text-text-muted">
-                  Expose your local 9Router to the internet. No port forwarding, no static IP needed. Share endpoint URL with your team or use it in Cursor, Cline, and other AI tools from anywhere.
+                  Make your local 9Router reachable from the internet — no router or network setup needed. Share the endpoint URL with your team, or use it in Cursor, Cline, and other AI tools from anywhere.
                 </p>
               </div>
             </div>
