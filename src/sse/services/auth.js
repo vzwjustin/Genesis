@@ -15,6 +15,7 @@ import {
 } from "@/shared/utils/apiKey.js";
 import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidLocalCliToken } from "@/shared/auth/cliToken.js";
+import { strictProxyFieldFromResolved } from "open-sse/utils/proxyFetch.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -61,7 +62,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
           vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
           relayAuthSecret: resolvedProxy.relayAuthSecret || "",
-          strictProxy: resolvedProxy.strictProxy === true,
+          ...strictProxyFieldFromResolved(resolvedProxy),
         },
       };
     }
@@ -223,7 +224,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
         vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
         relayAuthSecret: resolvedProxy.relayAuthSecret || "",
-        strictProxy: resolvedProxy.strictProxy === true,
+        ...strictProxyFieldFromResolved(resolvedProxy),
       },
       connectionId: connection.id,
       // Include current status for optimization check

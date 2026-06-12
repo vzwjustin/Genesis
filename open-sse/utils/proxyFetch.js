@@ -672,6 +672,26 @@ if (globalThis.fetch !== patchedFetch) {
 export default patchedFetch;
 
 /**
+ * Tri-state strictProxy for proxyAwareFetch:
+ * - undefined (unset): fail closed — do not fall back to direct on proxy failure
+ * - true: fail closed (explicit)
+ * - false: allow fallback to direct when proxy fails
+ */
+export function resolveStrictProxyOption(value) {
+  if (value === false) return false;
+  if (value === true) return true;
+  return undefined;
+}
+
+/** Copy strictProxy from resolveConnectionProxyConfig only when that resolver set it. */
+export function strictProxyFieldFromResolved(resolvedProxy) {
+  if (!resolvedProxy || !Object.prototype.hasOwnProperty.call(resolvedProxy, "strictProxy")) {
+    return {};
+  }
+  return { strictProxy: resolvedProxy.strictProxy === true };
+}
+
+/**
  * Build proxy routing options from a connection credentials record (same shape as chatCore).
  */
 export function buildProxyOptionsFromCredentials(credentials) {
@@ -682,7 +702,7 @@ export function buildProxyOptionsFromCredentials(credentials) {
     connectionNoProxy: psd.connectionNoProxy || "",
     vercelRelayUrl: psd.vercelRelayUrl || "",
     relayAuthSecret: psd.relayAuthSecret || "",
-    strictProxy: psd.strictProxy === true,
+    strictProxy: resolveStrictProxyOption(psd.strictProxy),
   };
 }
 

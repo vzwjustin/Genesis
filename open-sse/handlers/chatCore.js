@@ -32,6 +32,13 @@ import {
 } from "../rtk/cacheBoundary.js";
 import { compressWithHeadroom } from "../rtk/headroom.js";
 import { recordCompressionStats, saveCompressionStats } from "@/lib/compressionStats.js";
+import { buildProxyOptionsFromCredentials } from "../utils/proxyFetch.js";
+
+function buildExecCredentials(credentials, clientHasCacheBreakpoints) {
+  return clientHasCacheBreakpoints
+    ? { ...credentials, _preserveClientCache: true }
+    : credentials;
+}
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -443,14 +450,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  const proxyOptions = {
-    connectionProxyEnabled: credentials?.providerSpecificData?.connectionProxyEnabled === true,
-    connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
-    connectionNoProxy: credentials?.providerSpecificData?.connectionNoProxy || "",
-    vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
-    relayAuthSecret: credentials?.providerSpecificData?.relayAuthSecret || "",
-    strictProxy: credentials?.providerSpecificData?.strictProxy === true,
-  };
+  const proxyOptions = buildProxyOptionsFromCredentials(credentials);
 
   if (proxyOptions.vercelRelayUrl) {
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
@@ -480,15 +480,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
-  const execCredentials = clientHasCacheBreakpoints
-    ? { ...credentials, _preserveClientCache: true }
-    : credentials;
   try {
     const result = await executor.execute({
       model,
       body: translatedBody,
       stream,
-      credentials: execCredentials,
+      credentials: buildExecCredentials(credentials, clientHasCacheBreakpoints),
       signal: upstreamSignal,
       log,
       proxyOptions,
@@ -546,18 +543,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         if (onCredentialsRefreshed) {
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
-        // Rebuild execCredentials so the retry carries the refreshed token.
-        // When clientHasCacheBreakpoints is true, execCredentials was a spread
-        // copy made before the refresh and does not pick up the mutation above.
-        const refreshedExecCredentials = clientHasCacheBreakpoints
-          ? { ...credentials, _preserveClientCache: true }
-          : credentials;
+        // Rebuild exec credentials so the retry carries the refreshed token.
+        // When clientHasCacheBreakpoints is true, the spread copy made before refresh
+        // does not pick up Object.assign(credentials, newCredentials) above.
         try {
           const retryResult = await executor.execute({
             model,
             body: translatedBody,
             stream,
-            credentials: refreshedExecCredentials,
+            credentials: buildExecCredentials(credentials, clientHasCacheBreakpoints),
             signal: upstreamSignal,
             log,
             proxyOptions,
