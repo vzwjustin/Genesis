@@ -27,11 +27,12 @@ if hooks_json.exists():
 hooks = data.setdefault("hooks", {})
 pretool = hooks.setdefault("preToolUse", [])
 
-# Remove legacy/broken direct rtk hook entries
-pretool[:] = [
-    h for h in pretool
-    if h.get("command") not in ("rtk hook cursor", hook_cmd, str(hook_script))
-]
+# Remove legacy/broken direct rtk hook entries (incl. missing rtk-rewrite.sh)
+def _is_legacy_rtk_hook(entry: dict) -> bool:
+    cmd = str(entry.get("command", ""))
+    return cmd in ("rtk hook cursor", hook_cmd, str(hook_script)) or "rtk-rewrite" in cmd
+
+pretool[:] = [h for h in pretool if not _is_legacy_rtk_hook(h)]
 
 entry = {
     "command": hook_cmd,
