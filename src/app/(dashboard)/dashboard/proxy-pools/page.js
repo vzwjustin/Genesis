@@ -744,7 +744,7 @@ export default function ProxyPoolsPage() {
                   />
                   <button
                     onClick={() => handleTest(pool.id)}
-                    className="p-2 rounded hover:bg-surface-2 text-text-muted hover:text-primary"
+                    className="p-2 rounded hover:bg-surface-2 text-text-muted hover:text-primary transition-colors"
                     title="Test proxy"
                     disabled={testingId === pool.id}
                   >
@@ -757,14 +757,14 @@ export default function ProxyPoolsPage() {
                   </button>
                   <button
                     onClick={() => openEditModal(pool)}
-                    className="p-2 rounded hover:bg-surface-2 text-text-muted hover:text-primary"
+                    className="p-2 rounded hover:bg-surface-2 text-text-muted hover:text-primary transition-colors"
                     title="Edit"
                   >
                     <span className="material-symbols-outlined text-[18px]">edit</span>
                   </button>
                   <button
                     onClick={() => handleDelete(pool)}
-                    className="p-2 rounded hover:bg-danger/10 text-danger"
+                    className="p-2 rounded hover:bg-danger/10 text-danger transition-colors"
                     title="Delete"
                   >
                     <span className="material-symbols-outlined text-[18px]">delete</span>

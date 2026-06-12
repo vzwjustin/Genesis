@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Card from "@/shared/components/Card";
+import Button from "@/shared/components/Button";
 import PricingModal from "@/shared/components/PricingModal";
 
 export default function PricingSettingsPage() {
@@ -61,12 +62,9 @@ export default function PricingSettingsPage() {
             Configure pricing rates for cost tracking and calculations
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90 transition-colors"
-        >
+        <Button icon="edit" onClick={() => setShowModal(true)}>
           Edit Pricing
-        </button>
+        </Button>
       </div>
 
       {/* Quick Stats */}
@@ -76,7 +74,7 @@ export default function PricingSettingsPage() {
             Total Models
           </div>
           <div className="text-2xl font-bold mt-1">
-            {loading ? "..." : getModelCount()}
+            {loading ? <span className="inline-block h-7 w-12 animate-pulse rounded bg-surface-2" /> : getModelCount()}
           </div>
         </Card>
         <Card className="p-4">
@@ -84,7 +82,7 @@ export default function PricingSettingsPage() {
             Providers
           </div>
           <div className="text-2xl font-bold mt-1">
-            {loading ? "..." : getProviders().length}
+            {loading ? <span className="inline-block h-7 w-12 animate-pulse rounded bg-surface-2" /> : getProviders().length}
           </div>
         </Card>
         <Card className="p-4">
@@ -92,7 +90,7 @@ export default function PricingSettingsPage() {
             Status
           </div>
           <div className="text-2xl font-bold mt-1 text-success">
-            {loading ? "..." : "Active"}
+            {loading ? <span className="inline-block h-7 w-16 animate-pulse rounded bg-surface-2" /> : "Active"}
           </div>
         </Card>
       </div>
@@ -130,16 +128,17 @@ export default function PricingSettingsPage() {
       <Card className="p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Current Pricing Overview</h2>
-          <button
-            onClick={() => setShowModal(true)}
-            className="text-primary hover:underline text-sm"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setShowModal(true)}>
             View Full Details
-          </button>
+          </Button>
         </div>
 
         {loading ? (
-          <div className="text-center py-4 text-text-muted">Loading pricing data...</div>
+          <div className="space-y-3 py-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-5 animate-pulse rounded bg-surface-2" style={{ width: `${70 - i * 10}%` }} />
+            ))}
+          </div>
         ) : currentPricing ? (
           <div className="space-y-3">
             {Object.keys(currentPricing).slice(0, 5).map(provider => (

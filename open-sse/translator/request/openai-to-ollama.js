@@ -99,16 +99,20 @@ function normalizeMessages(messages) {
       const content = normalizeContent(msg.content) || "";
       
       // Convert OpenAI tool_calls format to Ollama format
-      const ollamaToolCalls = msg.tool_calls.map(tc => ({
-        type: "function",
-        function: {
-          index: tc.index || 0,
-          name: tc.function?.name || "",
-          arguments: typeof tc.function?.arguments === "string" 
-            ? JSON.parse(tc.function.arguments || "{}")
-            : tc.function?.arguments || {}
+      const ollamaToolCalls = msg.tool_calls.map(tc => {
+        let args = tc.function?.arguments || {};
+        if (typeof args === "string") {
+          try { args = JSON.parse(args); } catch { args = {}; }
         }
-      }));
+        return {
+          type: "function",
+          function: {
+            index: tc.index || 0,
+            name: tc.function?.name || "",
+            arguments: args,
+          },
+        };
+      });
 
       result.push({
         role: "assistant",

@@ -23,7 +23,7 @@ export default function EmptyState({
         className,
       )}
     >
-      <span className="material-symbols-outlined text-[32px] text-text-muted mb-3">{icon}</span>
+      <span className="material-symbols-outlined text-[32px] text-text-muted mb-3" aria-hidden="true">{icon}</span>
       <h3 className="text-sm font-semibold text-text-main">{title}</h3>
       {description ? <p className="text-xs text-text-muted mt-1 max-w-sm">{description}</p> : null}
       {action ? (

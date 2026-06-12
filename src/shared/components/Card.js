@@ -74,16 +74,18 @@ Card.Section = function CardSection({ children, className, ...props }) {
 };
 
 Card.Row = function CardRow({ children, className, onClick, ...props }) {
+  const interactive = !!onClick;
   return (
     <div
       className={cn(
         "p-3 -mx-3 px-3 transition-colors",
         "border-b border-border-subtle last:border-b-0",
         "hover:bg-surface-2/50",
-        onClick && "cursor-pointer",
+        interactive && "cursor-pointer",
         className
       )}
       onClick={onClick}
+      {...(interactive && { role: "button", tabIndex: 0, onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(e); } } })}
       {...props}
     >
       {children}
@@ -98,16 +100,18 @@ Card.ListItem = function CardListItem({
   onClick,
   ...props
 }) {
+  const interactive = !!onClick;
   return (
     <div
       className={cn(
         "group flex items-center justify-between p-3 -mx-3 px-3",
         "border-b border-border-subtle last:border-b-0",
         "hover:bg-surface-2/50 transition-colors",
-        onClick && "cursor-pointer",
+        interactive && "cursor-pointer",
         className
       )}
       onClick={onClick}
+      {...(interactive && { role: "button", tabIndex: 0, onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(e); } } })}
       {...props}
     >
       <div className="flex-1 min-w-0">{children}</div>

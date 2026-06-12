@@ -373,7 +373,12 @@ async function createBypassRequest(parsedUrl, realIP, options) {
             const buf = Buffer.concat(chunks);
             return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
           },
-          json: async () => JSON.parse(await response.text()),
+          json: async () => {
+            const text = await response.text();
+            try { return JSON.parse(text); } catch (e) {
+              throw new Error(`Failed to parse JSON response (${response.status}): ${text.slice(0, 200)}`);
+            }
+          },
         };
         resolve(response);
       });
@@ -497,6 +502,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     };
     const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
     if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
+    await assertSafeResolvedHostname(new URL(vercelRelayUrl).hostname, { allowLoopback: false });
     return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
 

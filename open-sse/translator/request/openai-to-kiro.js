@@ -208,12 +208,14 @@ function convertMessages(messages, tools, model) {
         if (lastMsg?.assistantResponseMessage) {
           lastMsg.assistantResponseMessage.toolUses = toolUses.map(tc => {
             if (tc.function) {
+              let input = tc.function.arguments || {};
+              if (typeof input === "string") {
+                try { input = JSON.parse(input); } catch { input = {}; }
+              }
               return {
                 toolUseId: tc.id || uuidv4(),
                 name: tc.function.name,
-                input: typeof tc.function.arguments === "string" 
-                  ? JSON.parse(tc.function.arguments) 
-                  : (tc.function.arguments || {})
+                input,
               };
             } else {
               return {

@@ -66,7 +66,7 @@ async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
       }
 
       const finish = chunk?.choices?.[0]?.finish_reason;
-      if (finish === "tool_calls") {
+      if (finish && toolCalls.size > 0) {
         for (const entry of toolCalls.values()) {
           res.write(Buffer.from(encodeToolCallResponseFrame({
             id: entry.id,
@@ -77,6 +77,18 @@ async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
         }
         toolCalls.clear();
       }
+    }
+  }
+
+  // Flush any remaining tool_calls if stream ended without finish_reason
+  if (toolCalls.size > 0) {
+    for (const entry of toolCalls.values()) {
+      res.write(Buffer.from(encodeToolCallResponseFrame({
+        id: entry.id,
+        name: entry.name || "tool",
+        args: entry.args || "{}",
+        isLast: true,
+      })));
     }
   }
 
