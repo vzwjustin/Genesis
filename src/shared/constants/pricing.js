@@ -1,3 +1,5 @@
+import { getProviderAlias, resolveProviderId } from "./providers.js";
+
 // Pricing rates for AI models — all rates in $/1M tokens
 //
 // Fallback order (first match wins):
@@ -212,6 +214,25 @@ function matchPattern(pattern, model) {
   return regex.test(model);
 }
 
+function providerPricingKeys(provider) {
+  if (!provider) return [];
+  const keys = new Set([provider]);
+  keys.add(getProviderAlias(provider));
+  keys.add(resolveProviderId(provider));
+  return [...keys];
+}
+
+/** Full default catalog for dashboard/API (canonical models + provider overrides). */
+export function buildDefaultPricingCatalog() {
+  const catalog = {
+    models: { ...MODEL_PRICING },
+  };
+  for (const [provider, models] of Object.entries(PROVIDER_PRICING)) {
+    catalog[provider] = { ...models };
+  }
+  return catalog;
+}
+
 /**
  * Resolve pricing for a model using the 3-step fallback chain:
  *   1. PROVIDER_PRICING[provider][model]
@@ -225,9 +246,11 @@ function matchPattern(pattern, model) {
 export function getPricingForModel(provider, model) {
   if (!model) return null;
 
-  // 1. Provider-specific override
-  if (provider && PROVIDER_PRICING[provider]?.[model]) {
-    return PROVIDER_PRICING[provider][model];
+  // 1. Provider-specific override (id or alias key)
+  for (const key of providerPricingKeys(provider)) {
+    if (PROVIDER_PRICING[key]?.[model]) {
+      return PROVIDER_PRICING[key][model];
+    }
   }
 
   // 2. Canonical model pricing (strip vendor prefix if needed: "deepseek/deepseek-chat" → "deepseek-chat")
@@ -246,11 +269,10 @@ export function getPricingForModel(provider, model) {
 }
 
 /**
- * Get all provider pricing (for UI / API).
- * Returns PROVIDER_PRICING — consumers should fall back to MODEL_PRICING for unlisted models.
+ * Default pricing catalog for UI / API (canonical models + provider overrides).
  */
 export function getDefaultPricing() {
-  return PROVIDER_PRICING;
+  return buildDefaultPricingCatalog();
 }
 
 /**

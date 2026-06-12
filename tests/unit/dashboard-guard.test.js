@@ -558,13 +558,31 @@ describe("dashboard guard local-only access", () => {
     expect(response).toBe(mocks.nextResponse);
   });
 
-  it("rejects local-only route when JWT is valid but loopback Host is not verifiable", async () => {
+  it("allows local-only route when JWT is valid and browser Origin is loopback (no socket IP)", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
     mocks.verifyDashboardAuthToken.mockResolvedValue(true);
 
     const cookieReq = {
       nextUrl: { pathname: "/api/cli-tools/antigravity-mitm" },
       headers: new Headers({ host: "localhost:20128", origin: "http://localhost:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://localhost/api/cli-tools/antigravity-mitm",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects local-only route when JWT is valid but Origin is remote", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/antigravity-mitm" },
+      headers: new Headers({
+        host: "localhost:20128",
+        origin: "http://evil.example.com",
+      }),
       cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
       url: "http://localhost/api/cli-tools/antigravity-mitm",
     };

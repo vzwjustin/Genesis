@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getSettingsSafe, validateApiKey } from "@/lib/localDb";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { normalizeHostHeaderHostname } from "@/shared/utils/host";
-import { isLoopbackRequest, isVerifiableLoopbackRequest, isPrivateLanAccessRequest } from "@/shared/utils/loopbackRequest.js";
+import {
+  isLoopbackRequest,
+  isVerifiableLoopbackRequest,
+  isPrivateLanAccessRequest,
+  isDashboardLoopbackSession,
+} from "@/shared/utils/loopbackRequest.js";
 import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
 import { hasValidLocalCliToken } from "@/shared/auth/cliToken";
 import {
@@ -118,7 +123,9 @@ async function canAccessLocalOnlyRoute(request) {
   if (await hasValidLocalCliToken(request)) return true;
   if (!(await hasValidToken(request))) return false;
   if (isVerifiableLoopbackRequest(request)) return true;
-  return isPrivateLanAccessRequest(request);
+  if (isPrivateLanAccessRequest(request)) return true;
+  if (isDashboardLoopbackSession(request)) return true;
+  return false;
 }
 
 async function hasValidToken(request) {
