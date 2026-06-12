@@ -5,6 +5,7 @@ import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { buildKiroChatUrl, buildKiroFingerprintHeaders } from "../services/kiroHeaders.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry } from "../config/runtimeConfig.js";
+import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -46,12 +47,13 @@ export class KiroExecutor extends BaseExecutor {
   /**
    * Custom execute for Kiro - handles AWS EventStream binary response with retry support
    */
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false, cacheProtectedSnapshot = null }) {
     const url = this.buildUrl(model, stream, 0, credentials);
     // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
     // Only model name + auth header are swapped (Requirement 1.2).
     const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
-    
+    throwOnCacheViolation(transformedBody, cacheProtectedSnapshot, "kiro executor");
+
     // Merge default retry config with provider-specific config
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
     let retryAttempts = 0;
@@ -310,26 +312,19 @@ export class KiroExecutor extends BaseExecutor {
             state.endDetected = true;
           }
 
-          // Handle contextUsageEvent to extract contextUsagePercentage
+          // Handle contextUsageEvent to extract contextUsagePercentage (for token estimation fallback)
           if (eventType === "contextUsageEvent" && event.payload?.contextUsagePercentage) {
             state.contextUsagePercentage = event.payload.contextUsagePercentage;
-            // Mark that we received context usage event
-            state.hasContextUsage = true;
           }
 
-          // Handle meteringEvent - mark that we received it
-          if (eventType === "meteringEvent") {
-            state.hasMeteringEvent = true;
-          }
-
-          // Handle metricsEvent for token usage
+          // Handle metricsEvent for token usage — terminal finish waits on messageStop + metrics.
           if (eventType === "metricsEvent") {
-            // Extract usage data from metricsEvent payload
+            state.hasMetricsEvent = true;
             const metrics = event.payload?.metricsEvent || event.payload;
-            if (metrics && typeof metrics === 'object') {
+            if (metrics && typeof metrics === "object") {
               const inputTokens = metrics.inputTokens || 0;
               const outputTokens = metrics.outputTokens || 0;
-              
+
               if (inputTokens > 0 || outputTokens > 0) {
                 state.usage = {
                   prompt_tokens: inputTokens,
@@ -340,10 +335,8 @@ export class KiroExecutor extends BaseExecutor {
             }
           }
 
-          // Emit final chunk once we have seen messageStopEvent AND both metering signals.
-          // This ordering fix ensures usage data is included even when messageStopEvent arrives
-          // before meteringEvent / contextUsageEvent in the stream.
-          if (state.endDetected && state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
+          // Emit final chunk once messageStopEvent and metricsEvent have both arrived.
+          if (state.endDetected && state.hasMetricsEvent && !state.finishEmitted) {
             state.finishEmitted = true;
             
             // Estimate tokens if not available from events
@@ -393,8 +386,9 @@ export class KiroExecutor extends BaseExecutor {
       },
 
       flush(controller) {
-        // Emit finish chunk if not already sent (e.g. stream ended without metering events,
-        // or messageStopEvent arrived but metering/context signals never completed).
+        // Fail closed: only synthesize terminal chunks when messageStopEvent was seen.
+        if (!state.endDetected) return;
+
         if (!state.finishEmitted) {
           state.finishEmitted = true;
           const finishChunk = {
@@ -408,14 +402,12 @@ export class KiroExecutor extends BaseExecutor {
               finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
             }]
           };
-          // Include usage if already computed
           if (state.usage) {
             finishChunk.usage = state.usage;
           }
           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(finishChunk)}\n\n`));
         }
 
-        // Send final done message
         controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
       }
     });
@@ -477,6 +469,7 @@ export class KiroExecutor extends BaseExecutor {
     let totalContentLength = 0;
 
     let pos = 0;
+    let sawMessageStop = false;
     while (buffer.length - pos >= 16) {
       const view = new DataView(buffer.buffer, buffer.byteOffset + pos);
       const totalLen = view.getUint32(0, false);
@@ -548,6 +541,20 @@ export class KiroExecutor extends BaseExecutor {
           }
         }
       }
+
+      if (eventType === "messageStopEvent") {
+        sawMessageStop = true;
+      }
+    }
+
+    const truncated = pos < buffer.length;
+    if (truncated || !sawMessageStop) {
+      const message = truncated
+        ? "Truncated Kiro EventStream response"
+        : "Incomplete Kiro EventStream response (missing messageStopEvent)";
+      return new Response(JSON.stringify({
+        error: { message, type: "server_error", code: "sse_assembly_failed" }
+      }), { status: 502, headers: { "Content-Type": "application/json" } });
     }
 
     if (!usage) {

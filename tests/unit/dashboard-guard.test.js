@@ -481,6 +481,15 @@ describe("dashboard guard management API access", () => {
     expect(response.status).toBe(401);
   });
 
+  it("allows management API with valid CLI token on loopback host without socket IP", async () => {
+    const response = await proxy(request("/api/keys", {
+      host: "localhost:20128",
+      "x-9r-cli-token": "cli-token",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
   it("rejects management API from tunnel host even when requireLogin=false", async () => {
     const response = await proxy(request("/api/translator/send", {
       host: "router.example.com",
@@ -591,9 +600,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.status).toBe(403);
   });
 
-  it("allows local-only route on raw IPv6 loopback host when requireLogin=false", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
+  it("isLocalRequest treats raw IPv6 loopback host as local", () => {
     const localRequest = request("/api/cli-tools/antigravity-mitm", {
       host: "::1",
       origin: "http://[::1]:20128",

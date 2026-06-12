@@ -74,13 +74,15 @@ export async function POST(request) {
     const connections = await getProviderConnections({ provider });
     const lockKey = `${MODEL_LOCK_PREFIX}${model}`;
 
+    const clearingAll = model === "__all";
+
     await Promise.all(
       connections
         .filter((connection) => connection[lockKey])
         .map((connection) =>
           updateProviderConnection(connection.id, {
             [lockKey]: null,
-            ...(connection.testStatus === "unavailable"
+            ...(clearingAll && connection.testStatus === "unavailable"
               ? {
                   testStatus: "active",
                   lastError: null,

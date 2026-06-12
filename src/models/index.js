@@ -16,6 +16,7 @@ export {
   updateProxyPool,
   deleteProxyPool,
   deleteProviderConnectionsByProvider,
+  swapProviderConnectionPriorities,
   getCombos,
   getComboById,
   getComboByName,

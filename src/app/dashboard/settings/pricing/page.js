@@ -4,23 +4,37 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Card from "@/shared/components/Card";
 import PricingModal from "@/shared/components/PricingModal";
+import { useNotificationStore } from "@/store/notificationStore";
 
 export default function PricingSettingsPage() {
   const router = useRouter();
+  const notify = useNotificationStore();
   const [showModal, setShowModal] = useState(false);
   const [currentPricing, setCurrentPricing] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   const loadPricing = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await fetch("/api/pricing");
       if (response.ok) {
         const data = await response.json();
         setCurrentPricing(data);
+      } else {
+        const error = await response.json().catch(() => ({}));
+        const message = error.error || "Failed to load pricing";
+        setLoadError(message);
+        setCurrentPricing(null);
+        notify.error(message);
       }
     } catch (error) {
       console.error("Failed to load pricing:", error);
+      const message = error?.message || "Failed to load pricing";
+      setLoadError(message);
+      setCurrentPricing(null);
+      notify.error(message);
     } finally {
       setLoading(false);
     }
@@ -99,8 +113,8 @@ export default function PricingSettingsPage() {
           <div className="text-text-muted text-sm uppercase font-semibold">
             Status
           </div>
-          <div className="text-2xl font-bold mt-1 text-success">
-            {loading ? "..." : "Active"}
+          <div className={`text-2xl font-bold mt-1 ${loadError ? "text-danger" : "text-success"}`}>
+            {loading ? "..." : loadError ? "Error" : "Active"}
           </div>
         </Card>
       </div>
@@ -148,6 +162,8 @@ export default function PricingSettingsPage() {
 
         {loading ? (
           <div className="text-center py-4 text-text-muted">Loading pricing data...</div>
+        ) : loadError ? (
+          <div className="text-center py-4 text-danger">{loadError}</div>
         ) : currentPricing ? (
           <div className="space-y-3">
             {Object.keys(currentPricing).slice(0, 5).map(provider => (

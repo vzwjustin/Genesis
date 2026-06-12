@@ -97,6 +97,10 @@ export default function CompatibleModelsSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` }),
       });
+      if (!res.ok) {
+        setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
+        return;
+      }
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
     } catch {
@@ -143,8 +147,8 @@ export default function CompatibleModelsSection({
 
     setAdding(true);
     try {
-      await onSetAlias(modelId, resolvedAlias, providerStorageAlias);
-      setNewModel("");
+      const ok = await onSetAlias(modelId, resolvedAlias, providerStorageAlias);
+      if (ok) setNewModel("");
     } catch (error) {
       notify.error(error?.message || "Failed to add model");
     } finally {

@@ -19,6 +19,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
+import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import {
   resolveProviderRetryLimits,
   noActiveCredentialsResponse,
@@ -152,9 +153,6 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Log resolved routing path for every request (Requirement 2.5)
   log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
 
-  // Extract userAgent from request
-  const userAgent = request?.headers?.get("user-agent") || "";
-
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
   let lastError = null;
@@ -168,6 +166,23 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     return noActiveCredentialsResponse(provider);
   }
 
+  const resolvedProvider = AI_PROVIDERS[resolveProviderId(provider)];
+  if (resolvedProvider?.noAuth) {
+    log.info("AUTH", `\x1b[32m${provider} no-auth mode\x1b[0m`);
+    const result = await dispatchChatCore({
+      body,
+      model,
+      provider,
+      clientRawRequest,
+      request,
+      apiKey,
+      credentials: null,
+      connectionId: null,
+    });
+    if (result.success) return result.response;
+    return result.response;
+  }
+
   let retryCount = 0;
 
   while (true) {
@@ -176,7 +191,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       log.warn("CHAT", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
       return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
-    retryCount++;
+
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
     // All accounts unavailable
@@ -240,28 +255,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       continue;
     }
 
-    // Use shared chatCore
-    const chatSettings = await getSettingsSafe();
-    const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
-    const result = await handleChatCore({
-      body: { ...body, model: `${provider}/${model}` },
-      modelInfo: { provider, model },
-      credentials: refreshedCredentials,
-      log,
+    retryCount++;
+
+    const result = await dispatchChatCore({
+      body,
+      model,
+      provider,
       clientRawRequest,
-      connectionId: credentials.connectionId,
-      userAgent,
+      request,
       apiKey,
-      ccFilterNaming: !!chatSettings.ccFilterNaming,
-      rtkEnabled: chatSettings.rtkEnabled !== false,
-      rtkFilterConfig: chatSettings.rtkFilterConfig || null,
-      cavemanEnabled: chatSettings.cavemanEnabled === true,
-      cavemanLevel: chatSettings.cavemanLevel || "full",
-      headroomEnabled: chatSettings.headroomEnabled === true,
-      passthroughCompression: !!chatSettings.passthroughCompression,
-      providerThinking,
-      // Detect source format by endpoint + body
-      sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
+      credentials: refreshedCredentials,
+      connectionId: credentials.connectionId,
       onCredentialsRefreshed: async (newCreds) => {
         await updateProviderCredentials(credentials.connectionId, {
           accessToken: newCreds.accessToken,
@@ -272,13 +276,21 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       },
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
-      }
+      },
     });
 
     if (result.success) return result.response;
 
     // Mark account unavailable (auto-calculates cooldown with exponential backoff, or precise resetsAtMs)
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs);
+    const { shouldFallback } = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      provider,
+      model,
+      result.resetsAtMs,
+      { proxyInternal: result.proxyInternal, errorCode: result.errorCode }
+    );
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
@@ -291,4 +303,42 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     return result.response;
   }
+}
+
+async function dispatchChatCore({
+  body,
+  model,
+  provider,
+  clientRawRequest,
+  request,
+  apiKey,
+  credentials,
+  connectionId,
+  onCredentialsRefreshed,
+  onRequestSuccess,
+}) {
+  const userAgent = request?.headers?.get("user-agent") || "";
+  const chatSettings = await getSettingsSafe();
+  const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
+  return handleChatCore({
+    body: { ...body, model: `${provider}/${model}` },
+    modelInfo: { provider, model },
+    credentials,
+    log,
+    clientRawRequest,
+    connectionId,
+    userAgent,
+    apiKey,
+    ccFilterNaming: !!chatSettings.ccFilterNaming,
+    rtkEnabled: chatSettings.rtkEnabled !== false,
+    rtkFilterConfig: chatSettings.rtkFilterConfig || null,
+    cavemanEnabled: chatSettings.cavemanEnabled === true,
+    cavemanLevel: chatSettings.cavemanLevel || "full",
+    headroomEnabled: chatSettings.headroomEnabled === true,
+    passthroughCompression: !!chatSettings.passthroughCompression,
+    providerThinking,
+    sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
+    onCredentialsRefreshed,
+    onRequestSuccess,
+  });
 }

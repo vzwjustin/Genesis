@@ -1,6 +1,7 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 
 // Models that use /zen/go/v1/messages (Anthropic/Claude format + x-api-key auth)
 const CLAUDE_FORMAT_MODELS = new Set(["minimax-m2.5", "minimax-m2.7"]);
@@ -36,6 +37,7 @@ export class OpenCodeGoExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
+    if (hasAnthropicCacheBreakpoints(body)) return body;
     return injectReasoningContent({ provider: this.provider, model, body });
   }
 }

@@ -11,6 +11,7 @@ import { estimateUsage } from "../utils/usageTracking.js";
 import { FORMATS } from "../translator/formats.js";
 import { proxyAwareFetch, shouldBypassMitmDns } from "../utils/proxyFetch.js";
 import { stripRedactedToolCalls, extractRedactedToolCalls } from "../utils/composerRedactedTools.js";
+import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 import zlib from "zlib";
 
 // Detect cloud environment
@@ -282,9 +283,12 @@ export class CursorExecutor extends BaseExecutor {
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false, cacheProtectedSnapshot = null }) {
     const url = this.buildUrl();
     const headers = this.buildHeaders(credentials);
+    if (!Buffer.isBuffer(body)) {
+      throwOnCacheViolation(body, cacheProtectedSnapshot, "cursor pre-protobuf");
+    }
     // Passthrough (passthru) mode: body should already be provider-native (protobuf Buffer).
     // If it's not a Buffer (e.g. a plain JSON object was forwarded), encode it as protobuf so
     // the upstream never receives an invalid request shape.

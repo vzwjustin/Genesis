@@ -145,7 +145,6 @@ export default function CachingPageClient() {
   const [cavemanEnabled, setCavemanEnabled] = useState(false);
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
-  const [passthroughCompression, setPassthroughCompression] = useState(false);
   const [mitmAutoSetupOnImport, setMitmAutoSetupOnImport] = useState(true);
   const [providerCache, setProviderCache] = useState(null);
   const [providerCompression, setProviderCompression] = useState(null);
@@ -194,7 +193,6 @@ export default function CachingPageClient() {
       setCavemanEnabled(data.cavemanEnabled === true);
       setCavemanLevel(data.cavemanLevel || "full");
       setHeadroomEnabled(data.headroomEnabled === true);
-      setPassthroughCompression(data.passthroughCompression === true);
       setMitmAutoSetupOnImport(data.mitmAutoSetupOnImport !== false);
       setEnableRequestLogs(data.enableRequestLogs === true);
     } catch { /* ignore */ }
@@ -524,19 +522,11 @@ export default function CachingPageClient() {
                   disabled={!headroomCanEnable(headroomStatus)}
                 />
               </div>
-              <div className="flex items-center justify-between py-4 gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">Passthrough compression</p>
-                  <p className="text-sm text-text-muted">Apply savers to native passthrough traffic (off by default)</p>
-                </div>
-                <Toggle
-                  checked={passthroughCompression}
-                  onChange={(v) => {
-                    setPassthroughCompression(v);
-                    patchSetting({ passthroughCompression: v });
-                    fetchCompressionStats();
-                  }}
-                />
+              <div className="py-4 border-t border-border/50">
+                <p className="font-medium">Passthrough + prompt cache</p>
+                <p className="text-sm text-text-muted mt-1">
+                  RTK and Headroom compress uncached tail content only. Every <code className="text-xs">cache_control</code> region stays 100% byte-identical — verified before dispatch. Caveman is skipped when the client already set cache breakpoints.
+                </p>
               </div>
               <div className="flex items-center justify-between py-4 gap-4">
                 <div className="min-w-0 flex-1">

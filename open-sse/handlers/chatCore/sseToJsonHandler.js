@@ -1,5 +1,10 @@
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
-import { createErrorResult } from "../../utils/error.js";
+import { createErrorResult, PROXY_INTERNAL_ERROR_CODES } from "../../utils/error.js";
+
+const PROXY_INTERNAL_SSE = {
+  errorCode: PROXY_INTERNAL_ERROR_CODES.SSE_ASSEMBLY_FAILED,
+  proxyInternal: true,
+};
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
@@ -176,8 +181,21 @@ function unwrapGeminiStreamChunk(chunk) {
   return chunk.response && typeof chunk.response === "object" ? chunk.response : chunk;
 }
 
+function functionCallDedupeKey(functionCall) {
+  if (!functionCall || typeof functionCall !== "object") return "";
+  const id = functionCall.id || "";
+  if (id) return `id:${id}`;
+  const name = functionCall.name || "";
+  const args = JSON.stringify(functionCall.args || {});
+  return `name:${name}:${args}`;
+}
+
 function mergeGeminiParts(existingParts, incomingParts) {
   const parts = [...existingParts];
+  const seenFunctionCalls = new Set(
+    parts.filter((p) => p.functionCall).map((p) => functionCallDedupeKey(p.functionCall))
+  );
+
   for (const part of incomingParts) {
     if (typeof part.text === "string") {
       const last = parts[parts.length - 1];
@@ -189,6 +207,9 @@ function mergeGeminiParts(existingParts, incomingParts) {
       continue;
     }
     if (part.functionCall) {
+      const key = functionCallDedupeKey(part.functionCall);
+      if (key && seenFunctionCalls.has(key)) continue;
+      if (key) seenFunctionCalls.add(key);
       parts.push({ functionCall: { ...part.functionCall } });
     }
   }
@@ -375,8 +396,15 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
+function readResponseHeader(headers, name) {
+  if (!headers) return "";
+  if (typeof headers.get === "function") return headers.get(name) || "";
+  const lower = name.toLowerCase();
+  return headers[name] || headers[lower] || "";
+}
+
 export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, passthrough }) {
-  const contentType = providerResponse.headers.get("content-type") || "";
+  const contentType = readResponseHeader(providerResponse.headers, "content-type");
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && provider === "codex");
   if (!isSSE) return null; // not handled here
 
@@ -397,7 +425,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       // Fail closed: a stream that never reached "completed" is truncated or failed.
       // Discard the partial assembly and return an error — never emit partial JSON as success.
       if (jsonResponse.status !== "completed") {
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Incomplete streaming response");
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Incomplete streaming response", undefined, PROXY_INTERNAL_SSE);
       }
 
       if (onRequestSuccess) await onRequestSuccess();
@@ -408,12 +436,16 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
 
       const { msgItem, textContent } = pickAssistantMessageForChatCompletion(jsonResponse.output);
       const totalLatency = Date.now() - requestStartTime;
+      const hasToolCallsForLog = (jsonResponse.output || []).some((item) => item.type === "function_call");
+      const logFinishReason = hasToolCallsForLog
+        ? "tool_calls"
+        : (jsonResponse.status === "completed" ? "stop" : "unknown");
 
       saveRequestDetail(buildRequestDetail({
         ...ctx,
         latency: { ttft: totalLatency, total: totalLatency },
         tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
-        response: { content: textContent, thinking: null, finish_reason: jsonResponse.status || "unknown" },
+        response: { content: textContent, thinking: null, finish_reason: logFinishReason },
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
@@ -440,8 +472,28 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       const hasToolCalls = toolCalls.length > 0;
 
       if (sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {
+        const geminiParts = [];
+        if (textContent) geminiParts.push({ text: textContent });
+        for (const item of funcCallItems) {
+          let args = item.arguments || {};
+          if (typeof args === "string") {
+            try { args = JSON.parse(args); } catch { args = {}; }
+          }
+          geminiParts.push({
+            functionCall: {
+              id: item.call_id || item.id,
+              name: item.name,
+              args,
+            },
+          });
+        }
+        if (geminiParts.length === 0) geminiParts.push({ text: "" });
         const geminiBody = {
-          candidates: [{ content: { role: "model", parts: [{ text: textContent || "" }] }, finishReason: "STOP", index: 0 }],
+          candidates: [{
+            content: { role: "model", parts: geminiParts },
+            finishReason: "STOP",
+            index: 0,
+          }],
           usageMetadata: { promptTokenCount: inTokens, candidatesTokenCount: outTokens, totalTokenCount: inTokens + outTokens },
           modelVersion: model,
           responseId: jsonResponse.id || `resp_${Date.now()}`
@@ -467,7 +519,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       console.error("[ChatCore] Responses API SSE→JSON failed:", err);
-      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON");
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON", undefined, PROXY_INTERNAL_SSE);
     }
   }
 
@@ -477,7 +529,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     const parsed = passthrough
       ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
       : parseSSEToOpenAIResponse(sseText, model);
-    if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+    if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request", undefined, PROXY_INTERNAL_SSE);
 
     if (onRequestSuccess) await onRequestSuccess();
 
@@ -535,6 +587,6 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     return { success: true, response: new Response(JSON.stringify(parsed), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
   } catch (err) {
     console.error("[ChatCore] Chat Completions SSE→JSON failed:", err);
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON");
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON", undefined, PROXY_INTERNAL_SSE);
   }
 }

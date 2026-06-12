@@ -177,8 +177,14 @@ const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => asyn
       if (models.length > 0) return { models };
     } else {
       const errorText = await response.text();
+      console.log(`${errorLabel}:`, errorText);
+      if (response.status === 401 || response.status === 403) {
+        return {
+          error: formatModelsFetchError(response.status, connection.provider),
+          status: response.status,
+        };
+      }
       warning = `${errorLabel}: ${response.status} ${errorText}`;
-      console.log(`${errorLabel} (falling back to static):`, errorText);
     }
   } catch (error) {
     warning = `${errorLabel}: ${error.message}`;
@@ -418,8 +424,8 @@ const PROVIDER_MODELS_CONFIG = {
         console,
         proxyOptions,
       ),
-      fetchFn: (token, conn, proxyOptions) => {
-        const projectId = conn.projectId || conn.providerSpecificData?.projectId;
+      fetchFn: async (token, conn, proxyOptions) => {
+        const projectId = await resolveAntigravityProjectId(conn, token, proxyOptions);
         const body = projectId ? { project: projectId } : {};
         return proxyAwareFetch(GEMINI_CLI_MODELS_URL, {
           method: "POST",
@@ -698,6 +704,43 @@ function buildProviderModelsRequest(connection, config) {
   return { url, fetchOptions, token };
 }
 
+async function fetchOpenAICompatibleModels(connection, url, proxyOptions, { retried = false } = {}) {
+  const token = resolveAuthToken(connection, {
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+  });
+  if (!token) {
+    return { error: "No valid token found", status: 401 };
+  }
+
+  const response = await proxyAwareFetch(url, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  }, proxyOptions);
+
+  if (response.ok) {
+    const data = await response.json();
+    return { models: data.data || data.models || [] };
+  }
+
+  if (!retried && (response.status === 401 || response.status === 403)) {
+    const refreshed = await retryConnectionAuthRefresh(connection);
+    if (refreshed) {
+      return fetchOpenAICompatibleModels(connection, url, proxyOptions, { retried: true });
+    }
+  }
+
+  const errorText = await response.text();
+  console.log(`Error fetching models from ${connection.provider}:`, errorText);
+  return {
+    error: formatModelsFetchError(response.status, connection.provider),
+    status: response.status,
+  };
+}
+
 async function fetchProviderModelsWithConfig(connection, config, proxyOptions, { retried = false } = {}) {
   const request = buildProviderModelsRequest(connection, config);
   if (request.error) return request;
@@ -732,7 +775,13 @@ export async function fetchModelsForConnection(connection) {
     return { error: "Connection not found", status: 404 };
   }
 
-  await ensureFreshConnectionCredentials(connection);
+  const credsFresh = await ensureFreshConnectionCredentials(connection);
+  if (credsFresh === false) {
+    return {
+      error: formatModelsFetchError(401, connection.provider),
+      status: 401,
+    };
+  }
   await ensureGithubCopilotToken(connection);
 
   const proxyOptions = await buildProxyOptionsFromConnection(connection);
@@ -743,22 +792,7 @@ export async function fetchModelsForConnection(connection) {
       return { error: "No base URL configured for OpenAI compatible provider", status: 400 };
     }
     const url = `${baseUrl.replace(/\/$/, "")}/models`;
-    const response = await proxyAwareFetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${connection.apiKey}`,
-      },
-    }, proxyOptions);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.log(`Error fetching models from ${connection.provider}:`, errorText);
-      return { error: `Failed to fetch models: ${response.status}`, status: response.status };
-    }
-
-    const data = await response.json();
-    return { models: data.data || data.models || [] };
+    return fetchOpenAICompatibleModels(connection, url, proxyOptions);
   }
 
   if (isAnthropicCompatibleProvider(connection.provider)) {
@@ -773,24 +807,43 @@ export async function fetchModelsForConnection(connection) {
     }
 
     const url = `${baseUrl}/models`;
-    const response = await proxyAwareFetch(url, {
-      method: "GET",
-      headers: {
+    const buildHeaders = () => {
+      const requestHeaders = {
         "Content-Type": "application/json",
-        "x-api-key": connection.apiKey,
         "anthropic-version": "2023-06-01",
-        Authorization: `Bearer ${connection.apiKey}`,
-      },
-    }, proxyOptions);
+      };
+      if (!applyAnthropicModelsAuth(connection, requestHeaders)) return null;
+      return requestHeaders;
+    };
 
-    if (!response.ok) {
+    const fetchAnthropicModels = async ({ retried = false } = {}) => {
+      const headers = buildHeaders();
+      if (!headers) return { error: "No valid token found", status: 401 };
+
+      const response = await proxyAwareFetch(url, {
+        method: "GET",
+        headers,
+      }, proxyOptions);
+
+      if (response.ok) {
+        const data = await response.json();
+        return { models: data.data || data.models || [] };
+      }
+
+      if (!retried && (response.status === 401 || response.status === 403)) {
+        const refreshed = await retryConnectionAuthRefresh(connection);
+        if (refreshed) return fetchAnthropicModels({ retried: true });
+      }
+
       const errorText = await response.text();
       console.log(`Error fetching models from ${connection.provider}:`, errorText);
-      return { error: `Failed to fetch models: ${response.status}`, status: response.status };
-    }
+      return {
+        error: formatModelsFetchError(response.status, connection.provider),
+        status: response.status,
+      };
+    };
 
-    const data = await response.json();
-    return { models: data.data || data.models || [] };
+    return fetchAnthropicModels();
   }
 
   const config = PROVIDER_MODELS_CONFIG[connection.provider];

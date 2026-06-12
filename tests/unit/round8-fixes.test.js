@@ -48,12 +48,16 @@ describe("combo exhaustion without rate-limit metadata", () => {
   });
 });
 
-describe("responsesHandler incomplete SSE assembly (source)", () => {
-  it("returns 502 when assembled Responses JSON is not completed", () => {
-    const src = readFileSync(join(root, "../../open-sse/handlers/responsesHandler.js"), "utf8");
-    expect(src).toContain('jsonResponse.status !== "completed"');
-    expect(src).toContain("Incomplete streaming response");
+describe("Responses API SSE assembly on live chatCore path (source)", () => {
+  it("sseToJsonHandler uses convertResponsesStreamToJson for openai-responses", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/chatCore/sseToJsonHandler.js"), "utf8");
     expect(src).toContain("convertResponsesStreamToJson");
+  });
+
+  it("/v1/responses route delegates to handleChat", () => {
+    const src = readFileSync(join(root, "../../src/app/api/v1/responses/route.js"), "utf8");
+    expect(src).toContain("handleChat");
+    expect(src).not.toContain("handleResponsesCore");
   });
 });
 

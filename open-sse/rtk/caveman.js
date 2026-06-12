@@ -111,10 +111,21 @@ function injectClaudeSystem(body, prompt) {
 
 // Gemini shape: body.system_instruction | body.systemInstruction | body.request.systemInstruction
 // Each shape: { parts: [{ text }] }
+function pickGeminiSystemKey(target) {
+  const snake = target.system_instruction;
+  const camel = target.systemInstruction;
+  const snakePopulated = snake && Array.isArray(snake.parts) && snake.parts.length > 0;
+  const camelPopulated = camel && Array.isArray(camel.parts) && camel.parts.length > 0;
+  if (snakePopulated) return "system_instruction";
+  if (camelPopulated) return "systemInstruction";
+  if (Object.prototype.hasOwnProperty.call(target, "system_instruction")) return "system_instruction";
+  if (Object.prototype.hasOwnProperty.call(target, "systemInstruction")) return "systemInstruction";
+  return "system_instruction";
+}
+
 function injectGeminiSystem(body, prompt) {
   const target = body.request && typeof body.request === "object" ? body.request : body;
-  const useSnake = Object.prototype.hasOwnProperty.call(target, "system_instruction");
-  const key = useSnake ? "system_instruction" : "systemInstruction";
+  const key = pickGeminiSystemKey(target);
   const sys = target[key];
   if (sys && Array.isArray(sys.parts)) {
     sys.parts.push({ text: prompt });

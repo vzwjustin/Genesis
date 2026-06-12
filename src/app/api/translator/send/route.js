@@ -1,5 +1,9 @@
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor, refreshTokenByProvider } from "open-sse/index.js";
+import {
+  hasAnthropicCacheBreakpoints,
+  snapshotCacheProtectedBody,
+} from "open-sse/rtk/cacheBoundary.js";
 
 export async function POST(request) {
   try {
@@ -26,15 +30,29 @@ export async function POST(request) {
 
     const executor = getExecutor(provider);
     const stream = body.stream !== false;
+    const cacheProtectedSnapshot = snapshotCacheProtectedBody(body);
+    const execOpts = {
+      model,
+      body,
+      stream,
+      credentials: cacheProtectedSnapshot
+        ? { ...credentials, _preserveClientCache: true }
+        : credentials,
+      cacheProtectedSnapshot,
+      passthrough: hasAnthropicCacheBreakpoints(body),
+    };
 
-    let { response } = await executor.execute({ model, body, stream, credentials });
+    let { response } = await executor.execute(execOpts);
 
     // Auto-refresh token on 401/403 and retry (same as chatCore.js)
     if (response.status === 401 || response.status === 403) {
       const newCredentials = await refreshTokenByProvider(provider, credentials);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         Object.assign(credentials, newCredentials);
-        ({ response } = await executor.execute({ model, body, stream, credentials }));
+        execOpts.credentials = cacheProtectedSnapshot
+          ? { ...credentials, _preserveClientCache: true }
+          : credentials;
+        ({ response } = await executor.execute(execOpts));
       }
     }
 

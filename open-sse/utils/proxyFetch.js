@@ -110,11 +110,13 @@ const MITM_BYPASS_HOSTS = [
   "cloudcode-pa.googleapis.com",
   "daily-cloudcode-pa.googleapis.com",
   "api.individual.githubcopilot.com",
+  "api.github.com",
   "q.us-east-1.amazonaws.com",
   "codewhisperer.us-east-1.amazonaws.com",
   "api2.cursor.sh",
 ];
-const GOOGLE_DNS_SERVERS = ["8.8.8.8", "8.8.4.4"];
+const DEFAULT_DNS_SERVERS = ["8.8.8.8"];
+const DNS_SERVER_IP_PATTERN = /^\d{1,3}(\.\d{1,3}){3}$/;
 const HTTPS_PORT = 443;
 const HTTP_SUCCESS_MIN = 200;
 const HTTP_SUCCESS_MAX = 300;
@@ -124,8 +126,26 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
+function extractDnsServersFromSettings(dnsToolEnabled) {
+  return Object.entries(dnsToolEnabled || {})
+    .filter(([key, enabled]) => enabled === true && DNS_SERVER_IP_PATTERN.test(key))
+    .map(([key]) => key);
+}
+
+async function getMitmDnsServers() {
+  try {
+    const { getSettings } = await import("../../src/lib/db/repos/settingsRepo.js");
+    const settings = await getSettings();
+    const servers = extractDnsServersFromSettings(settings?.dnsToolEnabled);
+    if (servers.length > 0) return servers;
+  } catch (error) {
+    console.warn("[ProxyFetch] Failed to load DNS resolver settings:", error.message);
+  }
+  return DEFAULT_DNS_SERVERS;
+}
+
 /**
- * Resolve real IP using Google DNS (bypass system DNS)
+ * Resolve real IP using configured external DNS (bypass system DNS)
  */
 async function resolveRealIP(hostname) {
   const cached = DNS_CACHE.get(hostname);
@@ -135,7 +155,7 @@ async function resolveRealIP(hostname) {
     const dns = await import("dns");
     const { promisify } = await import("util");
     const resolver = new dns.Resolver();
-    resolver.setServers(GOOGLE_DNS_SERVERS);
+    resolver.setServers(await getMitmDnsServers());
     const resolve4 = promisify(resolver.resolve4.bind(resolver));
     const addresses = await resolve4(hostname);
     DNS_CACHE.set(hostname, { ip: addresses[0], expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
@@ -163,13 +183,27 @@ function shouldBypassMitmDns(url) {
   } catch { return false; }
 }
 
-function serializeBypassRequestBody(body) {
+async function serializeBypassRequestBody(body) {
   if (body == null) return undefined;
   if (typeof body === "string") return body;
   if (Buffer.isBuffer(body)) return body;
   if (body instanceof Uint8Array) return Buffer.from(body);
   if (typeof body === "object" && typeof body.pipe === "function") {
-    throw new Error("[ProxyFetch] Streaming request bodies are not supported on MITM bypass path");
+    const chunks = [];
+    for await (const chunk of body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+  if (typeof body === "object" && typeof body.getReader === "function") {
+    const reader = body.getReader();
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks);
   }
   return JSON.stringify(body);
 }
@@ -353,36 +387,108 @@ async function createBypassRequest(parsedUrl, realIP, options) {
         settled = true;
         options.signal?.removeEventListener("abort", onAbort);
         activeRes = res;
-        const response = {
-          ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
-          status: res.statusCode,
-          statusText: res.statusMessage,
-          headers: new Map(Object.entries(res.headers)),
-          body: Readable.toWeb(res),
-          text: async () => {
-            const chunks = [];
-            for await (const chunk of res) chunks.push(chunk);
-            return Buffer.concat(chunks).toString();
-          },
-          // Cursor executor (and any binary-response caller on the MITM-bypass path)
-          // expects a fetch-like arrayBuffer(). Without it: "f.arrayBuffer is not a
-          // function". text()/body/arrayBuffer are mutually-exclusive consumers of res.
-          arrayBuffer: async () => {
-            const chunks = [];
-            for await (const chunk of res) chunks.push(chunk);
-            const buf = Buffer.concat(chunks);
-            return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-          },
-          json: async () => JSON.parse(await response.text()),
+
+        const bodyChunks = [];
+        let bodyEnded = false;
+        let bodyError = null;
+
+        res.on("data", (chunk) => bodyChunks.push(Buffer.from(chunk)));
+        res.on("end", () => { bodyEnded = true; });
+        res.on("error", (err) => { bodyError = err; });
+
+        const materializeBody = async () => {
+          if (bodyError) throw bodyError;
+          if (bodyEnded) return Buffer.concat(bodyChunks);
+          await new Promise((resolvePromise, rejectPromise) => {
+            const onEnd = () => { cleanup(); resolvePromise(); };
+            const onErr = (err) => { cleanup(); rejectPromise(err); };
+            const cleanup = () => {
+              res.off("end", onEnd);
+              res.off("error", onErr);
+            };
+            if (bodyEnded) { cleanup(); resolvePromise(); return; }
+            if (bodyError) { cleanup(); rejectPromise(bodyError); return; }
+            res.on("end", onEnd);
+            res.on("error", onErr);
+          });
+          return Buffer.concat(bodyChunks);
         };
-        resolve(response);
+
+        const buildFetchResponse = () => {
+          const response = {
+            ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
+            status: res.statusCode,
+            statusText: res.statusMessage,
+            headers: new Map(Object.entries(res.headers)),
+            get body() {
+              let offset = 0;
+              return new ReadableStream({
+                pull(controller) {
+                  if (bodyError) {
+                    controller.error(bodyError);
+                    return;
+                  }
+                  if (offset < bodyChunks.length) {
+                    controller.enqueue(new Uint8Array(bodyChunks[offset++]));
+                    return;
+                  }
+                  if (bodyEnded) {
+                    controller.close();
+                    return;
+                  }
+                  const onData = () => {
+                    res.off("data", onData);
+                    res.off("end", onEnd);
+                    res.off("error", onErr);
+                    if (offset < bodyChunks.length) {
+                      controller.enqueue(new Uint8Array(bodyChunks[offset++]));
+                    } else if (bodyEnded) {
+                      controller.close();
+                    }
+                  };
+                  const onEnd = () => {
+                    res.off("data", onData);
+                    res.off("end", onEnd);
+                    res.off("error", onErr);
+                    if (offset < bodyChunks.length) {
+                      controller.enqueue(new Uint8Array(bodyChunks[offset++]));
+                    } else {
+                      controller.close();
+                    }
+                  };
+                  const onErr = (err) => {
+                    res.off("data", onData);
+                    res.off("end", onEnd);
+                    res.off("error", onErr);
+                    controller.error(err);
+                  };
+                  res.on("data", onData);
+                  res.on("end", onEnd);
+                  res.on("error", onErr);
+                },
+              });
+            },
+            text: async () => (await materializeBody()).toString(),
+            arrayBuffer: async () => {
+              const buf = await materializeBody();
+              return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+            },
+            json: async () => JSON.parse((await materializeBody()).toString()),
+            clone: () => buildFetchResponse(),
+          };
+          return response;
+        };
+
+        resolve(buildFetchResponse());
       });
 
       req.on("error", fail);
-      if (options.body != null) {
-        req.write(serializeBypassRequestBody(options.body));
-      }
-      req.end();
+      serializeBypassRequestBody(options.body)
+        .then((serialized) => {
+          if (serialized != null) req.write(serialized);
+          req.end();
+        })
+        .catch(fail);
     });
 
     socket.on("error", fail);
@@ -578,5 +684,7 @@ export {
   shouldBypassByNoProxy,
   normalizeProxyUrl,
   resolveRealIP,
+  extractDnsServersFromSettings,
+  getMitmDnsServers,
   MITM_BYPASS_HOSTS,
 };

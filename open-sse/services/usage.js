@@ -71,7 +71,7 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
     case "gemini-cli":
       return await getGeminiUsage(accessToken, providerDataWithProjectId, proxyOptions);
     case "antigravity":
-      return await getAntigravityUsage(accessToken, providerSpecificData, proxyOptions);
+      return await getAntigravityUsage(accessToken, providerDataWithProjectId, proxyOptions);
     case "claude":
       return await getClaudeUsage(accessToken, proxyOptions);
     case "codex":
@@ -302,6 +302,14 @@ async function getGeminiUsage(accessToken, providerSpecificData, proxyOptions = 
   }
 }
 
+function getGlmQuotaKey(limit) {
+  if (limit.type === "TOKENS_LIMIT" && limit.unit === 3 && limit.number === 5) return "session (5h)";
+  if (limit.type === "TOKENS_LIMIT" && limit.unit === 6 && limit.number === 7) return "weekly (7d)";
+  if (limit.type === "TIME_LIMIT") return "web searches";
+  const window = limit.unit != null && limit.number != null ? `${limit.unit}:${limit.number}` : "default";
+  return `${limit.type} (${window})`;
+}
+
 function normalizeCloudCodeProjectId(project) {
   if (typeof project === "string") return project.trim() || null;
   if (project && typeof project === "object" && typeof project.id === "string") {
@@ -348,7 +356,10 @@ async function getAntigravityUsage(accessToken, providerSpecificData, proxyOptio
   try {
     // Fetch subscription info once — reuse for both projectId and plan
     const subscriptionInfo = await getAntigravitySubscriptionInfo(accessToken, proxyOptions);
-    const projectId = subscriptionInfo?.cloudaicompanionProject || null;
+    let projectId = normalizeCloudCodeProjectId(providerSpecificData?.projectId);
+    if (!projectId) {
+      projectId = normalizeCloudCodeProjectId(subscriptionInfo?.cloudaicompanionProject);
+    }
 
     // Fetch quota data with timeout
     const controller = new AbortController();
@@ -958,12 +969,13 @@ async function getGlmUsage(apiKey, provider, proxyOptions = null) {
     const quotas = {};
 
     for (const limit of limits) {
-      if (!limit || limit.type !== "TOKENS_LIMIT") continue;
+      if (!limit || !limit.type) continue;
+      const quotaKey = getGlmQuotaKey(limit);
       const usedPercent = Number(limit.percentage) || 0;
       const resetMs = Number(limit.nextResetTime) || 0;
       const remaining = Math.max(0, 100 - usedPercent);
 
-      quotas["session"] = {
+      quotas[quotaKey] = {
         used: usedPercent,
         total: 100,
         remaining,

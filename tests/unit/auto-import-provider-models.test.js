@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = {
   fetchModelsForConnection: vi.fn(),
   getModelAliases: vi.fn(),
+  getProviderNodeById: vi.fn(),
   setModelAlias: vi.fn(),
 };
 
@@ -12,6 +13,7 @@ vi.mock("../../src/lib/models/fetchConnectionModels.js", () => ({
 
 vi.mock("@/models", () => ({
   getModelAliases: mocks.getModelAliases,
+  getProviderNodeById: mocks.getProviderNodeById,
   setModelAlias: mocks.setModelAlias,
 }));
 
@@ -28,12 +30,26 @@ describe("resolveModelAlias", () => {
       resolveModelAlias("anthropic/claude-sonnet-4.6", "openrouter", { "claude-sonnet-4.6": "openrouter/other" }),
     ).toBe("openrouter-claude-sonnet-4.6");
   });
+
+  it("uses providerDisplayAlias for collision prefix on compatible providers", async () => {
+    const { resolveModelAlias } = await import("../../src/lib/models/resolveModelAlias.js");
+    const providerId = "openai-compatible-chat-abc";
+    expect(
+      resolveModelAlias(
+        "glm-4.7",
+        providerId,
+        { "glm-4.7": "openai-compatible-other/glm-4.7" },
+        "oc",
+      ),
+    ).toBe("oc-glm-4.7");
+  });
 });
 
 describe("autoImportProviderModels", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getModelAliases.mockResolvedValue({});
+    mocks.getProviderNodeById.mockResolvedValue(null);
     mocks.setModelAlias.mockResolvedValue(undefined);
   });
 
@@ -74,6 +90,59 @@ describe("autoImportProviderModels", () => {
     expect(result.imported).toBe(0);
     expect(result.upstreamFailure).toBe(true);
     expect(result.warning).toContain("Gemini CLI");
+  });
+
+  it("strips node display prefix from upstream model ids", async () => {
+    const providerId = "openai-compatible-chat-abc";
+    mocks.fetchModelsForConnection.mockResolvedValue({
+      models: [{ id: "oc/upstream-prefixed-model" }],
+    });
+    mocks.getProviderNodeById.mockResolvedValue({ id: providerId, prefix: "oc" });
+
+    const { autoImportProviderModels } = await import("../../src/lib/models/autoImportProviderModels.js");
+    const result = await autoImportProviderModels({
+      id: "conn-compat-prefix",
+      provider: providerId,
+      providerSpecificData: {},
+    });
+
+    expect(result.imported).toBe(1);
+    expect(mocks.setModelAlias).toHaveBeenCalledWith(
+      "upstream-prefixed-model",
+      `${providerId}/upstream-prefixed-model`,
+    );
+  });
+
+  it("returns error payload when import throws", async () => {
+    mocks.fetchModelsForConnection.mockRejectedValue(new Error("network down"));
+
+    const { autoImportProviderModels } = await import("../../src/lib/models/autoImportProviderModels.js");
+    const result = await autoImportProviderModels({ id: "conn-err", provider: "openai" });
+
+    expect(result.imported).toBe(0);
+    expect(result.error).toBe("network down");
+  });
+
+  it("uses node prefix for compatible provider collision aliases", async () => {
+    const providerId = "openai-compatible-chat-abc";
+    mocks.fetchModelsForConnection.mockResolvedValue({
+      models: [{ id: "glm-4.7" }],
+    });
+    mocks.getModelAliases.mockResolvedValue({ "glm-4.7": "openai-compatible-other/glm-4.7" });
+    mocks.getProviderNodeById.mockResolvedValue({ id: providerId, prefix: "oc" });
+
+    const { autoImportProviderModels } = await import("../../src/lib/models/autoImportProviderModels.js");
+    const result = await autoImportProviderModels({
+      id: "conn-compat",
+      provider: providerId,
+      providerSpecificData: {},
+    });
+
+    expect(result.imported).toBe(1);
+    expect(mocks.setModelAlias).toHaveBeenCalledWith(
+      "oc-glm-4.7",
+      `${providerId}/glm-4.7`,
+    );
   });
 
   it("fail-open when upstream listing is unsupported", async () => {

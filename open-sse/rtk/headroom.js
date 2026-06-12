@@ -1,4 +1,5 @@
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { findLastCacheBoundary } from "./cacheBoundary.js";
 
 const DEFAULT_PROXY_URL = "http://localhost:8787";
 const DEFAULT_CLOUD_URL = "https://api.headroom.ai";
@@ -78,7 +79,7 @@ function tailHasToolHistory(messages) {
 }
 
 function shouldSkipHeadroomForMessages(messages) {
-  const cacheFloor = findCacheFloor(messages);
+  const cacheFloor = findLastCacheBoundary(messages);
   const tail = messages.slice(cacheFloor + 1);
   if (tail.length === 0) return true;
   if (tail.every((m) => m?.role === "system" || m?.role === "developer")) return true;
@@ -87,7 +88,7 @@ function shouldSkipHeadroomForMessages(messages) {
 }
 
 function shouldSkipHeadroomForInput(input) {
-  const cacheFloor = findCacheFloor(input);
+  const cacheFloor = findLastCacheBoundary(input);
   const tail = input.slice(cacheFloor + 1);
   if (tail.length === 0) return true;
   const messageRoles = tail
@@ -96,21 +97,6 @@ function shouldSkipHeadroomForInput(input) {
   if (messageRoles.length === 0) return true;
   if (messageRoles.every((role) => role === "system" || role === "developer")) return true;
   return false;
-}
-
-// Returns the index of the last message/item carrying a cache_control marker.
-function findCacheFloor(arr) {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    const item = arr[i];
-    if (!item) continue;
-    if (item.cache_control) return i;
-    if (Array.isArray(item.content)) {
-      for (const part of item.content) {
-        if (part?.cache_control) return i;
-      }
-    }
-  }
-  return -1;
 }
 
 function cloneForCompress(value) {
@@ -133,6 +119,20 @@ function applyCompressedTextToInputItem(item, compressedMsg) {
     return updated;
   }
   if (Array.isArray(updated.content)) {
+    if (updated.content.length > 1) {
+      let wrote = false;
+      for (const part of updated.content) {
+        if (!part) continue;
+        if (part.text !== undefined || part.input_text !== undefined || part.output_text !== undefined) {
+          if (part.text !== undefined) part.text = text;
+          else if (part.input_text !== undefined) part.input_text = text;
+          else part.output_text = text;
+          wrote = true;
+          break;
+        }
+      }
+      if (wrote) return updated;
+    }
     for (const part of updated.content) {
       if (!part) continue;
       if (part.text !== undefined) {
@@ -148,7 +148,9 @@ function applyCompressedTextToInputItem(item, compressedMsg) {
         return updated;
       }
     }
-    if (text) updated.content = [{ type: "input_text", text }];
+    if (text && updated.content.length === 0) {
+      updated.content = [{ type: "input_text", text }];
+    }
   }
   return updated;
 }
@@ -170,7 +172,7 @@ async function compressTail(tail, model, compress) {
 // Compress body.messages (Chat Completions / Claude format).
 async function compressMessagesBody(body, model, compress) {
   const messages = body.messages;
-  const cacheFloor = findCacheFloor(messages);
+  const cacheFloor = findLastCacheBoundary(messages);
   const head = messages.slice(0, cacheFloor + 1);
   const tail = messages.slice(cacheFloor + 1);
   if (tail.length < 1) return null;
@@ -196,7 +198,7 @@ async function compressMessagesBody(body, model, compress) {
 //      and preserve all function_call / function_call_output items in place.
 async function compressInputBody(body, model, compress) {
   const input = body.input;
-  const cacheFloor = findCacheFloor(input);
+  const cacheFloor = findLastCacheBoundary(input);
 
   const headItems = input.slice(0, cacheFloor + 1);
   const tailItems = input.slice(cacheFloor + 1);

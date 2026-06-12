@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 
 /**
  * IFlowExecutor - Executor for iFlow API with HMAC-SHA256 signature
@@ -100,6 +101,7 @@ export class IFlowExecutor extends BaseExecutor {
    * @returns {object} Transformed body
    */
   transformRequest(model, body, stream, credentials) {
+    if (hasAnthropicCacheBreakpoints(body)) return body;
     // Inject stream_options for streaming requests to get usage data
     if (stream && body.messages && !body.stream_options) {
       body.stream_options = { include_usage: true };

@@ -78,11 +78,11 @@ for (let i = 0; i < args.length; i++) {
   if (args[i] === "--port" || args[i] === "-p") {
     const val = args[i + 1];
     const n = parseInt(val, 10);
-    if (val === undefined || val.startsWith("-") || Number.isNaN(n) || n < 0 || n > 65535) {
-      console.error(`Error: --port requires a number 0-65535`);
+    if (val === undefined || val.startsWith("-") || Number.isNaN(n) || n < 1 || n > 65535) {
+      console.error(`Error: --port requires a number 1-65535`);
       process.exit(1);
     }
-    port = n; // 0 = OS-assigned ephemeral port (valid, must not fall back to default)
+    port = n;
     i++;
   } else if (args[i] === "--host" || args[i] === "-H") {
     const val = args[i + 1];

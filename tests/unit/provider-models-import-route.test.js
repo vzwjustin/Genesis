@@ -39,7 +39,7 @@ describe("POST /api/providers/[id]/models/import", () => {
     expect(mocks.autoImportProviderModels).toHaveBeenCalledWith({ id: "conn-1", provider: "openai" });
   });
 
-  it("returns 200 with warning when provider session expired", async () => {
+  it("returns 200 degraded response when provider session expired", async () => {
     mocks.getProviderConnectionById.mockResolvedValue({ id: "conn-3", provider: "codex" });
     mocks.autoImportProviderModels.mockResolvedValue({
       imported: 0,
@@ -53,11 +53,12 @@ describe("POST /api/providers/[id]/models/import", () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.ok).toBe(true);
+    expect(data.ok).toBe(false);
+    expect(data.status).toBe("degraded");
     expect(data.warning).toContain("session expired");
   });
 
-  it("returns 200 for upstream listing warnings (custom resolver fail-open)", async () => {
+  it("returns 200 degraded response for upstream listing warnings", async () => {
     mocks.getProviderConnectionById.mockResolvedValue({ id: "conn-4", provider: "gemini-cli" });
     mocks.autoImportProviderModels.mockResolvedValue({
       imported: 0,
@@ -68,7 +69,29 @@ describe("POST /api/providers/[id]/models/import", () => {
 
     const { POST } = await import("../../src/app/api/providers/[id]/models/import/route.js");
     const res = await POST(null, { params: Promise.resolve({ id: "conn-4" }) });
+    const data = await res.json();
+
     expect(res.status).toBe(200);
+    expect(data.ok).toBe(false);
+    expect(data.status).toBe("degraded");
+    expect(data.upstreamFailure).toBe(true);
+  });
+
+  it("returns degraded response when auto-import catches an error", async () => {
+    mocks.getProviderConnectionById.mockResolvedValue({ id: "conn-5", provider: "openai" });
+    mocks.autoImportProviderModels.mockResolvedValue({
+      imported: 0,
+      error: "network down",
+    });
+
+    const { POST } = await import("../../src/app/api/providers/[id]/models/import/route.js");
+    const res = await POST(null, { params: Promise.resolve({ id: "conn-5" }) });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.ok).toBe(false);
+    expect(data.status).toBe("degraded");
+    expect(data.error).toBe("network down");
   });
 
   it("returns 400 when upstream listing is unsupported", async () => {

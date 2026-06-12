@@ -168,8 +168,8 @@ describe("streamingHandler — shared streamDetailId prevents duplicate DB recor
 
     const { onStreamComplete, streamDetailId } = buildOnStreamComplete(ctx);
 
-    // Trigger onStreamComplete
-    onStreamComplete({ content: "hello", thinking: null }, { prompt_tokens: 10, completion_tokens: 5 }, Date.now());
+    // Trigger onStreamComplete (clean completion)
+    onStreamComplete({ content: "hello", thinking: null, clean: true }, { prompt_tokens: 10, completion_tokens: 5 }, Date.now());
 
     expect(mockSaveRequestDetail).toHaveBeenCalledTimes(1);
     const [savedDetail] = mockSaveRequestDetail.mock.calls[0];

@@ -61,7 +61,86 @@ export function createSSEStream(options = {}) {
   let ttftAt = null;
   let sseLineCount = 0;
   let sseEmittedCount = 0;
+  let sawTerminal = false;
+  let doneAlreadyForwarded = false;
   const eventTypeCounts = {};
+
+  const maybeEmitDone = (controller) => {
+    if (sourceFormat === FORMATS.OPENAI && sawTerminal && !doneAlreadyForwarded) {
+      const doneOutput = "data: [DONE]\n\n";
+      reqLogger?.appendConvertedChunk?.(doneOutput);
+      controller.enqueue(sharedEncoder.encode(doneOutput));
+      doneAlreadyForwarded = true;
+    }
+  };
+
+  const markTerminalFromParsed = (parsed) => {
+    if (!parsed) return;
+    if (parsed.done) sawTerminal = true;
+    if (parsed.type === "message_stop") sawTerminal = true;
+    if (parsed.choices?.[0]?.finish_reason) sawTerminal = true;
+    if (parsed.candidates?.[0]?.finishReason) sawTerminal = true;
+  };
+
+  const markTerminalFromTranslated = (items) => {
+    if (!items?.length) return;
+    for (const item of items) {
+      if (item?.type === "message_stop") sawTerminal = true;
+      if (item?.choices?.[0]?.finish_reason) sawTerminal = true;
+      if (item?.type === "response.completed") sawTerminal = true;
+    }
+  };
+
+  const markTerminalFromState = () => {
+    if (state?.finishReason || state?.finishReasonSent) sawTerminal = true;
+  };
+
+  const processPassthroughDataLine = (trimmed) => {
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (payload === "[DONE]") {
+      sawTerminal = true;
+      doneAlreadyForwarded = true;
+      return;
+    }
+    if (!payload) return;
+    try {
+      const parsed = JSON.parse(payload);
+      markTerminalFromParsed(parsed);
+      const delta = parsed.choices?.[0]?.delta;
+      if (delta?.content && typeof delta.content === "string") {
+        totalContentLength += delta.content.length;
+        accumulatedContent += delta.content;
+      }
+      if (delta?.reasoning_content && typeof delta.reasoning_content === "string") {
+        totalContentLength += delta.reasoning_content.length;
+        accumulatedThinking += delta.reasoning_content;
+      }
+      if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta" && typeof parsed.delta.text === "string") {
+        totalContentLength += parsed.delta.text.length;
+        accumulatedContent += parsed.delta.text;
+      }
+      if (parsed.type === "content_block_delta" && parsed.delta?.type === "thinking_delta" && typeof parsed.delta.thinking === "string") {
+        totalContentLength += parsed.delta.thinking.length;
+        accumulatedThinking += parsed.delta.thinking;
+      }
+      const geminiBody = parsed.response || parsed;
+      if (geminiBody.candidates?.[0]?.content?.parts) {
+        for (const part of geminiBody.candidates[0].content.parts) {
+          if (part.text && typeof part.text === "string") {
+            totalContentLength += part.text.length;
+            if (part.thought === true) {
+              accumulatedThinking += part.text;
+            } else {
+              accumulatedContent += part.text;
+            }
+          }
+        }
+      }
+      const extracted = extractUsage(parsed);
+      if (extracted) usage = extracted;
+    } catch { /* non-JSON passthrough lines are forwarded as-is */ }
+  };
 
   return new TransformStream({
     transform(chunk, controller) {
@@ -85,43 +164,7 @@ export function createSSEStream(options = {}) {
 
         // Passthrough mode: byte-forward upstream SSE (usage accounting only, no mutation)
         if (mode === STREAM_MODE.PASSTHROUGH) {
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
-            try {
-              const parsed = JSON.parse(trimmed.slice(5).trim());
-              const delta = parsed.choices?.[0]?.delta;
-              if (delta?.content && typeof delta.content === "string") {
-                totalContentLength += delta.content.length;
-                accumulatedContent += delta.content;
-              }
-              if (delta?.reasoning_content && typeof delta.reasoning_content === "string") {
-                totalContentLength += delta.reasoning_content.length;
-                accumulatedThinking += delta.reasoning_content;
-              }
-              if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta" && typeof parsed.delta.text === "string") {
-                totalContentLength += parsed.delta.text.length;
-                accumulatedContent += parsed.delta.text;
-              }
-              if (parsed.type === "content_block_delta" && parsed.delta?.type === "thinking_delta" && typeof parsed.delta.thinking === "string") {
-                totalContentLength += parsed.delta.thinking.length;
-                accumulatedThinking += parsed.delta.thinking;
-              }
-              const geminiBody = parsed.response || parsed;
-              if (geminiBody.candidates?.[0]?.content?.parts) {
-                for (const part of geminiBody.candidates[0].content.parts) {
-                  if (part.text && typeof part.text === "string") {
-                    totalContentLength += part.text.length;
-                    if (part.thought === true) {
-                      accumulatedThinking += part.text;
-                    } else {
-                      accumulatedContent += part.text;
-                    }
-                  }
-                }
-              }
-              const extracted = extractUsage(parsed);
-              if (extracted) usage = extracted;
-            } catch { /* non-JSON passthrough lines are forwarded as-is */ }
-          }
+          processPassthroughDataLine(trimmed);
 
           let output;
           if (line.startsWith("data:") && !line.startsWith("data: ")) {
@@ -144,11 +187,17 @@ export function createSSEStream(options = {}) {
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate
         // For other formats: done=true is the [DONE] sentinel, skip
         if (parsed && parsed.done && targetFormat !== FORMATS.OLLAMA) {
-          const output = "data: [DONE]\n\n";
-          reqLogger?.appendConvertedChunk?.(output);
-          controller.enqueue(sharedEncoder.encode(output));
+          sawTerminal = true;
+          if (!doneAlreadyForwarded) {
+            const output = "data: [DONE]\n\n";
+            reqLogger?.appendConvertedChunk?.(output);
+            controller.enqueue(sharedEncoder.encode(output));
+            doneAlreadyForwarded = true;
+          }
           continue;
         }
+
+        markTerminalFromParsed(parsed);
 
         // Claude format - content
         if (parsed.delta?.text) {
@@ -193,6 +242,8 @@ export function createSSEStream(options = {}) {
 
         // Translate: targetFormat -> openai -> sourceFormat
         const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
+        markTerminalFromState();
+        markTerminalFromTranslated(translated);
 
         // Log OpenAI intermediate chunks (if available)
         if (translated?._openaiIntermediate) {
@@ -239,7 +290,8 @@ export function createSSEStream(options = {}) {
         if (remaining) buffer += remaining;
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
-          if (buffer) {
+          if (buffer.trim()) {
+            processPassthroughDataLine(buffer.trim());
             let output = buffer;
             if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
               output = "data: " + buffer.slice(5);
@@ -258,17 +310,15 @@ export function createSSEStream(options = {}) {
             appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
           }
           
-          // OpenAI chat-completions clients expect data: [DONE]; native Claude/Responses streams do not.
-          if (sourceFormat === FORMATS.OPENAI) {
-            const doneOutput = "data: [DONE]\n\n";
-            reqLogger?.appendConvertedChunk?.(doneOutput);
-            controller.enqueue(sharedEncoder.encode(doneOutput));
-          }
+          // Passthrough relay: emit [DONE] only when upstream signalled terminal
+          // and did not already forward [DONE].
+          maybeEmitDone(controller);
 
           if (onStreamComplete) {
             onStreamComplete({
               content: accumulatedContent,
-              thinking: accumulatedThinking
+              thinking: accumulatedThinking,
+              clean: sawTerminal
             }, usage, ttftAt);
           }
           return;
@@ -277,7 +327,10 @@ export function createSSEStream(options = {}) {
         if (buffer.trim()) {
           const parsed = parseSSELine(buffer.trim());
           if (parsed && !parsed.done) {
+            markTerminalFromParsed(parsed);
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
+            markTerminalFromState();
+            markTerminalFromTranslated(translated);
 
             if (translated?._openaiIntermediate) {
               for (const item of translated._openaiIntermediate) {
@@ -293,10 +346,14 @@ export function createSSEStream(options = {}) {
                 controller.enqueue(sharedEncoder.encode(output));
               }
             }
+          } else if (parsed?.done) {
+            sawTerminal = true;
           }
         }
 
         const flushed = translateResponse(targetFormat, sourceFormat, null, state);
+        markTerminalFromState();
+        markTerminalFromTranslated(flushed);
 
         if (flushed?._openaiIntermediate) {
           for (const item of flushed._openaiIntermediate) {
@@ -313,41 +370,27 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        const doneOutput = "data: [DONE]\n\n";
-        reqLogger?.appendConvertedChunk?.(doneOutput);
-        controller.enqueue(sharedEncoder.encode(doneOutput));
+        maybeEmitDone(controller);
 
         if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
           state.usage = estimateUsage(body, totalContentLength, sourceFormat);
         }
 
-        if (hasValidUsage(state?.usage) && !onStreamComplete) {
+        if (hasValidUsage(state?.usage) && !onStreamComplete && sawTerminal) {
           logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
-        } else if (!hasValidUsage(state?.usage)) {
+        } else if (!hasValidUsage(state?.usage) && sawTerminal) {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
         }
         
         if (onStreamComplete) {
           onStreamComplete({
             content: accumulatedContent,
-            thinking: accumulatedThinking
+            thinking: accumulatedThinking,
+            clean: sawTerminal
           }, state?.usage, ttftAt);
         }
       } catch (error) {
         console.error("Error in flush:", error);
-        try {
-          const doneOutput = "data: [DONE]\n\n";
-          reqLogger?.appendConvertedChunk?.(doneOutput);
-          controller.enqueue(sharedEncoder.encode(doneOutput));
-          if (onStreamComplete) {
-            onStreamComplete({
-              content: accumulatedContent,
-              thinking: accumulatedThinking
-            }, state?.usage, ttftAt);
-          }
-        } catch {
-          // stream may already be closed
-        }
       }
     }
   });

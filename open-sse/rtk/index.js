@@ -4,50 +4,13 @@ import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
 import { smartTruncate } from "./filters/smartTruncate.js";
+import {
+  findLastCacheBoundary,
+  shouldSkipMessageForCache,
+  hasAnthropicCacheBreakpoints,
+} from "./cacheBoundary.js";
 
-let rtkEnabled = false;
-
-export function setRtkEnabled(enabled) {
-  rtkEnabled = enabled === true;
-}
-
-export function isRtkEnabled() {
-  return rtkEnabled;
-}
-
-// Returns the index of the last message that carries a cache_control marker
-// (either at the top-level or inside a content block). RTK must not touch
-// any message at or before this index — doing so would change the content
-// hash and invalidate the Anthropic/OpenAI KV cache.
-export function findLastCacheBoundary(messages) {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (!msg) continue;
-    if (msg.cache_control) return i;
-    if (Array.isArray(msg.content)) {
-      for (const block of msg.content) {
-        if (block?.cache_control) return i;
-      }
-    }
-  }
-  return -1;
-}
-
-function restoreItems(items, snapshot) {
-  if (!Array.isArray(items) || !Array.isArray(snapshot)) return;
-  for (let i = 0; i < snapshot.length; i++) {
-    items[i] = snapshot[i];
-  }
-}
-
-function messageHasCacheControl(msg) {
-  if (!msg) return false;
-  if (msg.cache_control) return true;
-  if (Array.isArray(msg.content)) {
-    return msg.content.some((block) => block?.cache_control);
-  }
-  return false;
-}
+export { findLastCacheBoundary } from "./cacheBoundary.js";
 
 // Latest tool output in the request — Claude Code usually appends new tool results here.
 export function findLastToolOutputMessageIndex(items) {
@@ -64,22 +27,28 @@ export function findLastToolOutputMessageIndex(items) {
   return -1;
 }
 
-function shouldSkipForCacheBoundary(i, items, cacheFloor) {
-  if (cacheFloor < 0) return false;
-  const msg = items[i];
-  if (messageHasCacheControl(msg)) return true;
-  const tailToolIdx = findLastToolOutputMessageIndex(items);
-  // Allow the latest tool batch even when it sits before the final cache_control
-  // assistant — those bytes are new in this flight and not yet part of a cached prefix.
-  if (i === tailToolIdx) return false;
-  return i <= cacheFloor;
+let rtkEnabled = false;
+
+export function setRtkEnabled(enabled) {
+  rtkEnabled = enabled === true;
+}
+
+export function isRtkEnabled() {
+  return rtkEnabled;
+}
+
+function restoreItems(items, snapshot) {
+  if (!Array.isArray(items) || !Array.isArray(snapshot)) return;
+  for (let i = 0; i < snapshot.length; i++) {
+    items[i] = snapshot[i];
+  }
 }
 
 function snapshotCacheProtectedRegion(items, cacheFloor) {
   if (!Array.isArray(items)) return null;
   const snap = [];
   for (let i = 0; i < items.length; i++) {
-    if (shouldSkipForCacheBoundary(i, items, cacheFloor)) {
+    if (shouldSkipMessageForCache(i, items, cacheFloor)) {
       snap.push(JSON.stringify(items[i]));
     } else {
       snap.push(null);
@@ -89,7 +58,7 @@ function snapshotCacheProtectedRegion(items, cacheFloor) {
 }
 
 function verifyCacheBoundaryIntegrity(items, cacheFloor, snapshot) {
-  if (cacheFloor < 0 || !snapshot) return true;
+  if (!snapshot) return true;
   for (let i = 0; i < items.length; i++) {
     if (snapshot[i] == null) continue;
     if (JSON.stringify(items[i]) !== snapshot[i]) return false;
@@ -102,8 +71,10 @@ export function compressMessages(body, enabled = rtkEnabled, filterConfig = null
   if (!enabled) return null;
   if (!body) return null;
 
+  const clientCache = hasAnthropicCacheBreakpoints(body);
+
   // Kiro format: conversationState.history + conversationState.currentMessage
-  if (body.conversationState) {
+  if (body.conversationState && !clientCache) {
     return compressKiroFormat(body, enabled, filterConfig);
   }
 
@@ -111,7 +82,7 @@ export function compressMessages(body, enabled = rtkEnabled, filterConfig = null
   const geminiContents = Array.isArray(body.contents) ? body.contents
     : Array.isArray(body.request?.contents) ? body.request.contents
     : null;
-  if (geminiContents) {
+  if (geminiContents && !clientCache) {
     return compressGeminiContents(geminiContents, filterConfig);
   }
 
@@ -130,9 +101,15 @@ export function compressMessages(body, enabled = rtkEnabled, filterConfig = null
     // those bytes are part of the cached prefix; mutating them invalidates the cache.
     cacheFloor = findLastCacheBoundary(items);
     protectedSnapshot = snapshotCacheProtectedRegion(items, cacheFloor);
-    itemsSnapshot = items.map((item) => JSON.parse(JSON.stringify(item)));
+    itemsSnapshot = items.map((item) => {
+      try {
+        return structuredClone(item);
+      } catch {
+        return JSON.parse(JSON.stringify(item));
+      }
+    });
     for (let i = 0; i < items.length; i++) {
-      if (shouldSkipForCacheBoundary(i, items, cacheFloor)) continue;
+      if (shouldSkipMessageForCache(i, items, cacheFloor)) continue;
       const msg = items[i];
       if (!msg) continue;
 

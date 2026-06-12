@@ -11,8 +11,12 @@ function invalidate() {
   cache = { value: null, expiresAt: 0 };
 }
 
-async function getUserPricing() {
+export async function getUserPricingOverrides() {
   return await pricingKv.getAll();
+}
+
+async function getUserPricing() {
+  return await getUserPricingOverrides();
 }
 
 export async function getPricing() {
@@ -46,16 +50,26 @@ export async function getPricingForModel(provider, model) {
     ? [...new Set([provider, getProviderAlias(provider), resolveProviderId(provider)])]
     : [];
 
+  const { getPricingForModel: resolveConst } = await import("@/shared/constants/pricing.js");
+  const defaults = resolveConst(provider, model);
+
+  let userOverride = null;
   for (const key of providerKeys) {
-    if (userPricing[key]?.[model]) return userPricing[key][model];
-    if (userPricing[key]?.[baseModel]) return userPricing[key][baseModel];
+    if (userPricing[key]?.[model]) {
+      userOverride = userPricing[key][model];
+      break;
+    }
+    if (userPricing[key]?.[baseModel]) {
+      userOverride = userPricing[key][baseModel];
+      break;
+    }
+  }
+  if (!userOverride) {
+    userOverride = userPricing.models?.[baseModel] || userPricing.models?.[model] || null;
   }
 
-  if (userPricing.models?.[baseModel]) return userPricing.models[baseModel];
-  if (userPricing.models?.[model]) return userPricing.models[model];
-
-  const { getPricingForModel: resolveConst } = await import("@/shared/constants/pricing.js");
-  return resolveConst(provider, model);
+  if (!userOverride) return defaults;
+  return defaults ? { ...defaults, ...userOverride } : { ...userOverride };
 }
 
 // Atomic merge inside transaction (per-provider read-modify-write)
@@ -67,16 +81,34 @@ export async function updatePricing(pricingData) {
       const current = row ? (parseJson(row.value, {}) || {}) : {};
       const merged = { ...current };
       for (const [model, pricing] of Object.entries(models)) {
-        merged[model] = pricing;
+        if (pricing === null) {
+          delete merged[model];
+          continue;
+        }
+        if (!merged[model]) merged[model] = {};
+        for (const [field, value] of Object.entries(pricing)) {
+          if (value === null) {
+            delete merged[model][field];
+          } else {
+            merged[model][field] = value;
+          }
+        }
+        if (Object.keys(merged[model]).length === 0) {
+          delete merged[model];
+        }
       }
-      db.run(
-        `INSERT INTO kv(scope, key, value) VALUES('pricing', ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
-        [provider, stringifyJson(merged)]
-      );
+      if (Object.keys(merged).length === 0) {
+        db.run(`DELETE FROM kv WHERE scope = 'pricing' AND key = ?`, [provider]);
+      } else {
+        db.run(
+          `INSERT INTO kv(scope, key, value) VALUES('pricing', ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
+          [provider, stringifyJson(merged)]
+        );
+      }
     }
   });
   invalidate();
-  return await getUserPricing();
+  return await getPricing();
 }
 
 export async function resetPricing(provider, model) {

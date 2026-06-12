@@ -3,7 +3,8 @@
  * Requirements 5.1–5.6
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { shouldComboAdvance, handleComboChat, resetComboRotation, isZeroConnectionsResponse, isModelResolutionFailureResponse } from "../../open-sse/services/combo.js";
+import { shouldComboAdvance, handleComboChat, resetComboRotation, isZeroConnectionsResponse, isModelResolutionFailureResponse, isProxyInternalResponse } from "../../open-sse/services/combo.js";
+import { PROXY_INTERNAL_ERROR_CODES } from "../../open-sse/utils/error.js";
 
 describe("shouldComboAdvance (Requirement 5.1, 5.3–5.5)", () => {
   it("does not advance on 2xx", () => {
@@ -203,6 +204,49 @@ describe("handleComboChat sequencing", () => {
   });
 });
 
+describe("isProxyInternalResponse", () => {
+  it("returns true for proxy-internal 502 SSE assembly failure", async () => {
+    const response = new Response(JSON.stringify({
+      error: { message: "Incomplete streaming response", code: PROXY_INTERNAL_ERROR_CODES.SSE_ASSEMBLY_FAILED },
+    }), { status: 502, headers: { "Content-Type": "application/json" } });
+    expect(await isProxyInternalResponse(response)).toBe(true);
+  });
+
+  it("returns false for upstream 502 without proxy-internal code", async () => {
+    const response = new Response(JSON.stringify({
+      error: { message: "Bad gateway", code: "internal_server_error" },
+    }), { status: 502, headers: { "Content-Type": "application/json" } });
+    expect(await isProxyInternalResponse(response)).toBe(false);
+  });
+});
+
+describe("handleComboChat — proxy-internal errors", () => {
+  const log = { info: vi.fn(), warn: vi.fn(), debug: vi.fn() };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetComboRotation();
+  });
+
+  it("does not advance on proxy-internal 502", async () => {
+    const handleSingleModel = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: { message: "Invalid SSE response", code: PROXY_INTERNAL_ERROR_CODES.SSE_ASSEMBLY_FAILED },
+      }), { status: 502, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const response = await handleComboChat({
+      body: { messages: [] },
+      models: ["a/model-1", "b/model-2"],
+      handleSingleModel,
+      log,
+    });
+
+    expect(response.status).toBe(502);
+    expect(handleSingleModel).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("isModelResolutionFailureResponse", () => {
   it("returns true for 400 with Failed to resolve model message", async () => {
     const response = new Response(JSON.stringify({
@@ -286,7 +330,15 @@ describe("isZeroConnectionsResponse", () => {
     expect(await isZeroConnectionsResponse(response)).toBe(false);
   });
 
-  it("returns false for malformed JSON body", async () => {
+  it("returns true for plain-text 404 with no-credentials message", async () => {
+    const response = new Response("No active credentials for provider: claude", {
+      status: 404,
+      headers: { "Content-Type": "text/plain" },
+    });
+    expect(await isZeroConnectionsResponse(response)).toBe(true);
+  });
+
+  it("returns false for unrelated plain-text 404", async () => {
     const response = new Response("not json", {
       status: 404,
       headers: { "Content-Type": "text/plain" },

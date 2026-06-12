@@ -151,7 +151,6 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
       log.warn("SEARCH", `Max retries (${maxRetries}) exhausted for ${providerId}`);
       return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
-    retryCount++;
 
     const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
 
@@ -183,6 +182,8 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
       lastStatus = 401;
       continue;
     }
+
+    retryCount++;
 
     const result = await handleSearchCore({
       body: coreBody,

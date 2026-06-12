@@ -139,16 +139,23 @@ describe("prepareClaudeRequest — integrated tool cleaning", () => {
     expect(body.system[1].cache_control).toBeUndefined();
     expect(body.messages[1].content[0].cache_control).toEqual({ type: "ephemeral" });
     expect(body.tools[0].cache_control).toEqual({ type: "ephemeral" });
-    expect(body.tools[0].model).toBeUndefined();
+    expect(body.tools[0].model).toBe("strip-me");
     expect(body.tools[1].cache_control).toBeUndefined();
-    expect(body.tools[1].model).toBe("claude-opus-4-6");
+    expect(body.tools[1].model).toBe("cc/claude-opus-4-6");
   });
 });
 
 describe("passthrough compatibility fix (Task 9.3)", () => {
   function applyPassthroughToolCleaning(body, provider) {
     const translatedBody = { ...body };
-    if ((provider === "claude" || provider?.startsWith("anthropic-compatible")) && Array.isArray(translatedBody.tools)) {
+    const hasBreakpoints = Array.isArray(translatedBody.tools) && translatedBody.tools.some((t) => t?.cache_control)
+      || Array.isArray(translatedBody.system) && translatedBody.system.some((b) => b?.cache_control)
+      || Array.isArray(translatedBody.messages) && translatedBody.messages.some((m) => m?.cache_control);
+    if (
+      !hasBreakpoints
+      && (provider === "claude" || provider?.startsWith("anthropic-compatible"))
+      && Array.isArray(translatedBody.tools)
+    ) {
       translatedBody.tools = cleanAnthropicToolDefinitions(translatedBody.tools, provider);
       if (translatedBody.tools.length === 0) {
         delete translatedBody.tools;
@@ -182,7 +189,7 @@ describe("passthrough compatibility fix (Task 9.3)", () => {
     expect(result.tools[0].model).toBe("claude-opus-4-6");
   });
 
-  it("preserves tool cache_control in passthrough", () => {
+  it("preserves tool cache_control and model prefix byte-identical in passthrough", () => {
     const body = {
       model: "claude-sonnet-4-5",
       messages: [{ role: "user", content: "Search" }],
@@ -194,7 +201,7 @@ describe("passthrough compatibility fix (Task 9.3)", () => {
       }],
     };
     const result = applyPassthroughToolCleaning(body, "claude");
-    expect(result.tools[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(result.tools[0]).toEqual(body.tools[0]);
   });
 
   it("does not mutate tools for non-anthropic passthrough providers", () => {

@@ -15,8 +15,12 @@ describe("detectClientTool", () => {
     expect(detectClientTool({ "user-agent": "claude-code/1.0.0" }, {})).toBe("claude");
   });
 
-  it("detects Claude CLI from x-app header", () => {
-    expect(detectClientTool({ "x-app": "cli" }, {})).toBe("claude");
+  it("does not detect Claude from x-app header alone", () => {
+    expect(detectClientTool({ "x-app": "cli" }, {})).toBeNull();
+  });
+
+  it("detects Claude CLI from x-app header with corroborating user-agent", () => {
+    expect(detectClientTool({ "x-app": "cli", "user-agent": "claude-cli/2.1.92" }, {})).toBe("claude");
   });
 
   // --- OpenAI SDK ---

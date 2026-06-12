@@ -1,6 +1,6 @@
 import { FORMATS } from "./formats.js";
 import { ensureToolCallIds, fixMissingToolResponses } from "./helpers/toolCallHelper.js";
-import { prepareClaudeRequest } from "./helpers/claudeHelper.js";
+import { prepareClaudeRequest, hasAnthropicCacheBreakpoints } from "./helpers/claudeHelper.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./helpers/openaiHelper.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
@@ -76,18 +76,29 @@ function stripContentTypes(body, stripList = []) {
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null) {
   ensureInitialized();
   let result = structuredClone(body);
+  const clientOwnsCacheLayout = hasAnthropicCacheBreakpoints(body);
 
-  // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
-  stripContentTypes(result, stripList);
+  if (clientOwnsCacheLayout && sourceFormat !== targetFormat) {
+    const err = new Error(
+      "Cannot translate across formats when the client placed Anthropic cache_control breakpoints"
+    );
+    err.code = "cache_translation_forbidden";
+    throw err;
+  }
 
-  // Normalize thinking config: remove if lastMessage is not user
-  normalizeThinkingConfig(result);
+  if (!clientOwnsCacheLayout) {
+    // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
+    stripContentTypes(result, stripList);
 
-  // Always ensure tool_calls have id (some providers require it)
-  ensureToolCallIds(result);
-  
-  // Fix missing tool responses (insert empty tool_result if needed)
-  fixMissingToolResponses(result);
+    // Normalize thinking config: remove if lastMessage is not user
+    normalizeThinkingConfig(result);
+
+    // Always ensure tool_calls have id (some providers require it)
+    ensureToolCallIds(result);
+
+    // Fix missing tool responses (insert empty tool_result if needed)
+    fixMissingToolResponses(result);
+  }
 
   // If same format, skip translation steps
   if (sourceFormat !== targetFormat) {
@@ -115,21 +126,23 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // Always normalize to clean OpenAI format when target is OpenAI
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)
-  if (targetFormat === FORMATS.OPENAI) {
+  if (targetFormat === FORMATS.OPENAI && !hasAnthropicCacheBreakpoints(result)) {
     result = filterToOpenAIFormat(result);
   }
 
   // Final step: prepare request for Claude format endpoints
   if (targetFormat === FORMATS.CLAUDE) {
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
-    result = prepareClaudeRequest(result, provider, apiKey, connectionId);
+    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?._requestHeaders);
   }
 
   // Claude cloaking: rename client tools with _cc suffix (anti-ban)
   // Only for claude provider (not anthropic-compatible-*) with OAuth token
   if (provider === "claude") {
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
-    if (apiKey?.includes("sk-ant-oat")) {
+    // Tool renaming injects decoys and shifts tool cache breakpoints — skip when the
+    // client already placed cache_control markers we must preserve byte-for-byte.
+    if (apiKey?.includes("sk-ant-oat") && !hasAnthropicCacheBreakpoints(result)) {
       const { body: cloakedBody, toolNameMap } = cloakClaudeTools(result);
       result = cloakedBody;
       if (toolNameMap?.size > 0) {

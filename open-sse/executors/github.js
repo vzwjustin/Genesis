@@ -7,6 +7,7 @@ import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-r
 import { initState } from "../translator/index.js";
 import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 import crypto from "crypto";
 
 export class GithubExecutor extends BaseExecutor {
@@ -42,6 +43,7 @@ export class GithubExecutor extends BaseExecutor {
   // Tool-related content (tool_use, tool_result, thinking) must be serialized as text.
   sanitizeMessagesForChatCompletions(body) {
     if (!body?.messages) return body;
+    if (hasAnthropicCacheBreakpoints(body)) return body;
 
     const sanitized = { ...body };
     
@@ -135,6 +137,7 @@ export class GithubExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
+    if (hasAnthropicCacheBreakpoints(body)) return body;
     const transformed = { ...body };
     if (this.requiresMaxCompletionTokens(model) && transformed.max_tokens !== undefined) {
       transformed.max_completion_tokens = transformed.max_tokens;

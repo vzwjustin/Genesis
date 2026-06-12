@@ -4,6 +4,7 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
+import { resolveModelAlias } from "@/lib/models/resolveModelAlias.js";
 
 function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
@@ -103,27 +104,19 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
     alias,
   }));
 
-  // Generate default alias from modelId (last part after /)
-  const generateDefaultAlias = (modelId) => {
-    const parts = modelId.split("/");
-    return parts[parts.length - 1];
-  };
-
   const handleAdd = async () => {
     if (!newModel.trim() || adding) return;
     const modelId = newModel.trim();
-    const defaultAlias = generateDefaultAlias(modelId);
-    
-    // Check if alias already exists
-    if (modelAliases[defaultAlias]) {
-      notify.warning(`Alias "${defaultAlias}" already exists. Use a different model or edit the existing alias.`);
+    const alias = resolveModelAlias(modelId, providerAlias, modelAliases);
+    if (!alias) {
+      notify.warning("Could not assign a unique alias for this model. Choose a different model ID.");
       return;
     }
-    
+
     setAdding(true);
     try {
-      await onSetAlias(modelId, defaultAlias);
-      setNewModel("");
+      const ok = await onSetAlias(modelId, alias);
+      if (ok) setNewModel("");
     } catch (error) {
       notify.error(error?.message || "Failed to add model");
     } finally {

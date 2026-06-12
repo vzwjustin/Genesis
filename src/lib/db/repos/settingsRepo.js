@@ -96,6 +96,18 @@ export async function getSettingsSafe() {
   }
 }
 
+function mergeNestedSettingMap(current = {}, incoming = {}) {
+  const merged = { ...current };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === null || value === undefined) {
+      delete merged[key];
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
 // Atomic read-merge-write inside transaction (prevents losing concurrent updates)
 export async function updateSettings(updates) {
   const db = await getAdapter();
@@ -104,6 +116,36 @@ export async function updateSettings(updates) {
     const row = db.get(`SELECT data FROM settings WHERE id = 1`);
     const current = row ? parseJson(row.data, {}) : {};
     next = { ...current, ...updates };
+    if (Object.prototype.hasOwnProperty.call(updates, "providerStrategies")) {
+      next.providerStrategies = mergeNestedSettingMap(
+        current.providerStrategies,
+        updates.providerStrategies,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "providerThinking")) {
+      next.providerThinking = mergeNestedSettingMap(
+        current.providerThinking,
+        updates.providerThinking,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "comboStrategies")) {
+      next.comboStrategies = mergeNestedSettingMap(
+        current.comboStrategies,
+        updates.comboStrategies,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "rtkFilterConfig")) {
+      next.rtkFilterConfig = mergeNestedSettingMap(
+        current.rtkFilterConfig,
+        updates.rtkFilterConfig,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "dnsToolEnabled")) {
+      next.dnsToolEnabled = mergeNestedSettingMap(
+        current.dnsToolEnabled,
+        updates.dnsToolEnabled,
+      );
+    }
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
       [stringifyJson(next)]

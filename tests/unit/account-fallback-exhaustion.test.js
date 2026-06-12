@@ -80,10 +80,10 @@ describe("handler retry wiring (source)", () => {
 });
 
 describe("providerCredentialRetry module (source)", () => {
-  it("maxRetries equals connection count for auth providers", () => {
+  it("maxRetries equals connection count for all providers including no-auth", () => {
     const src = readFileSync(join(root, "../../src/sse/utils/providerCredentialRetry.js"), "utf8");
     expect(src).toContain("allConnections.length");
     expect(src).toContain("FREE_PROVIDERS");
-    expect(src).toContain("isNoAuthProvider ? 1");
+    expect(src).toMatch(/maxRetries\s*=\s*allConnections\.length/);
   });
 });

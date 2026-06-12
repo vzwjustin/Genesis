@@ -23,6 +23,50 @@ function extractContent(content) {
   return "";
 }
 
+function mapImageUrlBlock(block) {
+  const url = block?.image_url?.url;
+  if (typeof url !== "string" || !url) return null;
+  if (url.startsWith("data:")) {
+    const mimeMatch = url.match(/^data:([^;,]+)/);
+    const mime = mimeMatch?.[1] || "image";
+    return `[Image attachment: ${mime}]`;
+  }
+  return null;
+}
+
+function extractContentWithImages(content) {
+  if (typeof content === "string") return { text: content, hasUnsupportedImage: false };
+  if (!Array.isArray(content)) return { text: "", hasUnsupportedImage: false };
+
+  const segments = [];
+  let hasUnsupportedImage = false;
+  for (const part of content) {
+    if (!part || typeof part !== "object") continue;
+    if (part.type === "text" && typeof part.text === "string") {
+      segments.push(part.text);
+      continue;
+    }
+    if (part.type === "image_url") {
+      const mapped = mapImageUrlBlock(part);
+      if (mapped) segments.push(mapped);
+      else hasUnsupportedImage = true;
+    }
+  }
+  return { text: segments.join("\n"), hasUnsupportedImage };
+}
+
+function findUnsupportedImageInMessages(messages) {
+  for (const msg of messages || []) {
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block?.type === "image_url" && !mapImageUrlBlock(block)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function sanitizeToolResultText(text) {
   // Strip non-printable control chars that can produce backend request errors
   return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
@@ -110,6 +154,11 @@ function convertMessages(messages) {
             }
             continue;
           }
+          if (block.type === "image_url") {
+            const mapped = mapImageUrlBlock(block);
+            if (mapped) parts.push(mapped);
+            continue;
+          }
           if (block.type === "tool_result") {
             const toolCallId = block.tool_use_id || "";
             const toolMeta =
@@ -125,10 +174,18 @@ function convertMessages(messages) {
         continue;
       }
 
-      const content = extractContent(msg.content);
+      const { text: content, hasUnsupportedImage } = extractContentWithImages(msg.content);
+      if (hasUnsupportedImage) {
+        const err = new Error("Cursor does not support remote image_url content blocks");
+        err.validationErrorType = "unsupported_request";
+        throw err;
+      }
 
       if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
         const assistantMsg = { role: "assistant", content: content || "" };
+        if (typeof msg.reasoning_content === "string" && msg.reasoning_content.length > 0) {
+          assistantMsg.reasoning_content = msg.reasoning_content;
+        }
         assistantMsg.tool_calls = msg.tool_calls.map(tc => {
           const { index, ...rest } = tc || {};
           return rest;
@@ -148,17 +205,29 @@ function convertMessages(messages) {
           .filter(tc => tc.id);
 
         if (extractedToolCalls.length > 0) {
-          result.push({
+          const assistantMsg = {
             role: "assistant",
             content: content || "",
             tool_calls: extractedToolCalls
-          });
-        } else if (content) {
-          result.push({ role: "assistant", content });
+          };
+          if (typeof msg.reasoning_content === "string" && msg.reasoning_content.length > 0) {
+            assistantMsg.reasoning_content = msg.reasoning_content;
+          }
+          result.push(assistantMsg);
+        } else if (content || msg.reasoning_content) {
+          const assistantMsg = { role: "assistant", content: content || "" };
+          if (typeof msg.reasoning_content === "string" && msg.reasoning_content.length > 0) {
+            assistantMsg.reasoning_content = msg.reasoning_content;
+          }
+          result.push(assistantMsg);
         }
       } else {
-        if (content) {
-          result.push({ role: msg.role, content });
+        if (content || (msg.role === "assistant" && msg.reasoning_content)) {
+          const outMsg = { role: msg.role, content: content || "" };
+          if (msg.role === "assistant" && typeof msg.reasoning_content === "string" && msg.reasoning_content.length > 0) {
+            outMsg.reasoning_content = msg.reasoning_content;
+          }
+          result.push(outMsg);
         }
       }
     }
@@ -168,6 +237,11 @@ function convertMessages(messages) {
 }
 
 export function buildCursorRequest(model, body, stream, credentials) {
+  if (findUnsupportedImageInMessages(body.messages)) {
+    const err = new Error("Cursor does not support remote image_url content blocks");
+    err.validationErrorType = "unsupported_request";
+    throw err;
+  }
   const messages = convertMessages(body.messages || []);
 
   // Strip fields irrelevant to Cursor (OpenAI/Anthropic-specific)

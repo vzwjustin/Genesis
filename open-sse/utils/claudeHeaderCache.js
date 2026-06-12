@@ -73,13 +73,22 @@ export function cacheClaudeHeaders(headers, connectionId) {
  * @returns {object|null}
  */
 export function getCachedClaudeHeaders(connectionId, requestHeaders) {
+  let merged = null;
+
   if (connectionId && cacheByConnection.has(connectionId)) {
-    return cacheByConnection.get(connectionId);
+    merged = { ...cacheByConnection.get(connectionId) };
   }
+
+  // Per-request headers win over the connection cache so volatile identity fields
+  // (especially x-claude-code-session-id) stay aligned with the live client session.
   if (requestHeaders && isClaudeCodeClient(requestHeaders)) {
-    return extractIdentityHeaders(requestHeaders);
+    const fromRequest = extractIdentityHeaders(requestHeaders);
+    if (fromRequest) {
+      merged = { ...merged, ...fromRequest };
+    }
   }
-  return null;
+
+  return merged && Object.keys(merged).length > 0 ? merged : null;
 }
 
 /** @internal test helper */

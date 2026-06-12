@@ -47,9 +47,26 @@ export async function handleEmbeddings(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
-  if (!body.input) {
+  const input = body.input;
+  if (input === null || input === undefined || input === "") {
     log.warn("EMBEDDINGS", "Missing input");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
+  }
+  if (typeof input !== "string" && !Array.isArray(input)) {
+    log.warn("EMBEDDINGS", "Invalid input type");
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "input must be a string or array of strings");
+  }
+  if (Array.isArray(input)) {
+    if (input.length === 0) {
+      log.warn("EMBEDDINGS", "Empty input array");
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, "input array must not be empty");
+    }
+    for (let i = 0; i < input.length; i++) {
+      if (typeof input[i] !== "string") {
+        log.warn("EMBEDDINGS", `Invalid input[${i}] type`);
+        return errorResponse(HTTP_STATUS.BAD_REQUEST, `input[${i}] must be a string`);
+      }
+    }
   }
 
   const brokenComboError = await getBrokenComboError(modelStr);
@@ -134,7 +151,6 @@ async function handleSingleModelEmbeddings(body, modelStr) {
       log.warn("EMBEDDINGS", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
       return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
-    retryCount++;
 
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
@@ -165,6 +181,8 @@ async function handleSingleModelEmbeddings(body, modelStr) {
       continue;
     }
 
+    retryCount++;
+
     const result = await handleEmbeddingsCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
@@ -185,7 +203,15 @@ async function handleSingleModelEmbeddings(body, modelStr) {
 
     if (result.success) return result.response;
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
+    const { shouldFallback } = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      provider,
+      model,
+      null,
+      { proxyInternal: result.proxyInternal, errorCode: result.errorCode }
+    );
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

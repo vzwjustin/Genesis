@@ -14,6 +14,26 @@ export const VALIDATION_ERROR_TYPES = {
   MISSING_REQUIRED_FIELD: "missing_required_field",
 };
 
+/** Proxy-generated errors (SSE assembly, parse, compression restore) — not upstream provider faults. */
+export const PROXY_INTERNAL_ERROR_CODES = {
+  SSE_ASSEMBLY_FAILED: "sse_assembly_failed",
+  RESPONSE_PARSE_FAILED: "response_parse_failed",
+  COMPRESSION_RESTORE_FAILED: "compression_restore_failed",
+  CACHE_INTEGRITY_FAILED: "cache_integrity_failed",
+  PROXY_INTERNAL: "proxy_internal",
+};
+
+const PROXY_INTERNAL_CODE_SET = new Set(Object.values(PROXY_INTERNAL_ERROR_CODES));
+
+/**
+ * @param {{ proxyInternal?: boolean, errorCode?: string }} [meta]
+ */
+export function isProxyInternalError(meta = {}) {
+  if (meta.proxyInternal === true) return true;
+  if (!meta.errorCode) return false;
+  return PROXY_INTERNAL_CODE_SET.has(meta.errorCode);
+}
+
 /**
  * Build OpenAI-compatible error response body
  * @param {number} statusCode - HTTP status code
@@ -129,14 +149,18 @@ export async function parseUpstreamError(response, executor = null) {
  * @param {object} [options] - Optional overrides for error type/code
  * @param {string} [options.errorType] - Custom error type
  * @param {string} [options.errorCode] - Custom error code
- * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
+ * @param {boolean} [options.proxyInternal] - True when error is proxy-generated (not upstream)
+ * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number, errorCode?: string, proxyInternal?: boolean }}
  */
 export function createErrorResult(statusCode, message, resetsAtMs, options = {}) {
+  const proxyInternal = isProxyInternalError(options);
   return {
     success: false,
     status: statusCode,
     error: message,
     resetsAtMs,
+    errorCode: options.errorCode,
+    proxyInternal,
     response: errorResponse(statusCode, message, options)
   };
 }

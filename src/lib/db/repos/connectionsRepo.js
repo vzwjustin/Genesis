@@ -66,7 +66,11 @@ export async function getProviderConnections(filter = {}) {
   const sql = `SELECT * FROM providerConnections${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
   const rows = db.all(sql, params);
   const list = rows.map(rowToConn);
-  list.sort((a, b) => (a.priority || 999) - (b.priority || 999));
+  list.sort((a, b) => {
+    const pDiff = (a.priority ?? 999) - (b.priority ?? 999);
+    if (pDiff !== 0) return pDiff;
+    return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+  });
   return list;
 }
 
@@ -80,7 +84,7 @@ export async function getProviderConnectionById(id) {
 function reorderInTx(db, providerId) {
   const list = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [providerId]).map(rowToConn);
   list.sort((a, b) => {
-    const pDiff = (a.priority || 0) - (b.priority || 0);
+    const pDiff = (a.priority ?? 999) - (b.priority ?? 999);
     if (pDiff !== 0) return pDiff;
     return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
   });
@@ -124,8 +128,8 @@ export async function createProviderConnection(data) {
       connectionName = data.email || `Account ${all.length + 1}`;
     }
     let connectionPriority = data.priority;
-    if (!connectionPriority) {
-      connectionPriority = all.reduce((m, c) => Math.max(m, c.priority || 0), 0) + 1;
+    if (connectionPriority == null) {
+      connectionPriority = all.reduce((m, c) => Math.max(m, c.priority ?? 0), 0) + 1;
     }
 
     const conn = {
@@ -201,6 +205,28 @@ export async function deleteProviderConnectionsByProvider(providerId) {
 export async function reorderProviderConnections(providerId) {
   const db = await getAdapter();
   db.transaction(() => reorderInTx(db, providerId));
+}
+
+/** Atomically swap priorities between two connections of the same provider. */
+export async function swapProviderConnectionPriorities(id1, id2) {
+  const db = await getAdapter();
+  let ok = false;
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    const row1 = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id1]);
+    const row2 = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id2]);
+    if (!row1 || !row2) return;
+    const conn1 = rowToConn(row1);
+    const conn2 = rowToConn(row2);
+    if (conn1.provider !== conn2.provider) return;
+    const priority1 = conn1.priority ?? 999;
+    const priority2 = conn2.priority ?? 999;
+    db.run(`UPDATE providerConnections SET priority = ?, updatedAt = ? WHERE id = ?`, [priority2, now, id1]);
+    db.run(`UPDATE providerConnections SET priority = ?, updatedAt = ? WHERE id = ?`, [priority1, now, id2]);
+    reorderInTx(db, conn1.provider);
+    ok = true;
+  });
+  return ok;
 }
 
 export async function cleanupProviderConnections() {

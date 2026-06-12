@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal, EmptyState, MobileStickyActionBar } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
+import { parseProxyLine } from "@/shared/utils/dashboardHelpers";
 
 function getStatusVariant(status) {
   if (status === "active") return "success";
@@ -448,37 +449,6 @@ export default function ProxyPoolsPage() {
     } finally {
       setDeploying(false);
     }
-  };
-
-  const parseProxyLine = (line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-
-    if (trimmed.includes("://")) {
-      const parsed = new URL(trimmed);
-      const hostLabel = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
-      return {
-        proxyUrl: parsed.toString(),
-        name: `Imported ${hostLabel}`,
-      };
-    }
-
-    const parts = trimmed.split(":");
-    if (parts.length === 4) {
-      const [host, port, username, password] = parts;
-      if (!host || !port || !username || !password) {
-        throw new Error("Invalid host:port:user:pass format");
-      }
-
-      const proxyUrl = `http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
-      const parsed = new URL(proxyUrl);
-      return {
-        proxyUrl: parsed.toString(),
-        name: `Imported ${host}:${port}`,
-      };
-    }
-
-    throw new Error("Unsupported format");
   };
 
   const handleBatchImport = async () => {

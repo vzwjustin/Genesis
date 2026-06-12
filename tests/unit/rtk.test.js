@@ -148,7 +148,7 @@ describe("compressMessages cache boundary", () => {
     expect(body.messages[1].content.length).toBeLessThan(big.length);
   });
 
-  it("compresses latest tool batch before trailing cached assistant (Claude Code turn)", () => {
+  it("does not compress tool batch at or before trailing cached assistant", () => {
     const big = makeLongDiff();
     const body = {
       messages: [
@@ -159,11 +159,11 @@ describe("compressMessages cache boundary", () => {
       ],
     };
     expect(findLastToolOutputMessageIndex(body.messages)).toBe(2);
+    const beforeLen = body.messages[2].content[0].content.length;
     const stats = compressMessages(body, true);
-    expect(stats.bytesBefore).toBeGreaterThan(0);
-    expect(stats.hits.length).toBeGreaterThan(0);
-    expect(body.messages[2].content[0].content.length).toBeLessThan(big.length);
+    expect(body.messages[2].content[0].content.length).toBe(beforeLen);
     expect(body.messages[3].content[0].text).toBe("done");
+    expect(stats?.hits?.length ?? 0).toBe(0);
   });
 });
 

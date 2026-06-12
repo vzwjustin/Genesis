@@ -5,6 +5,11 @@ import { FORMATS } from "open-sse/translator/formats.js";
 import { parseModel } from "open-sse/services/model.js";
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor } from "open-sse/executors/index.js";
+import {
+  hasAnthropicCacheBreakpoints,
+  snapshotCacheProtectedBody,
+  throwOnCacheViolation,
+} from "open-sse/rtk/cacheBoundary.js";
 
 export async function POST(request) {
   try {
@@ -31,6 +36,14 @@ export async function POST(request) {
         const { provider, model } = parseModel(clientBody.model);
         const sourceFormat = detectFormat(clientBody);
         const stream = clientBody.stream !== false;
+
+        if (hasAnthropicCacheBreakpoints(clientBody) && sourceFormat !== FORMATS.OPENAI) {
+          return NextResponse.json({
+            success: false,
+            error: "Cannot translate across formats when the client placed Anthropic cache_control breakpoints",
+            errorCode: "cache_translation_forbidden",
+          }, { status: 400 });
+        }
 
         // translateRequest(source, OPENAI) = only the first half
         const result = translateRequest(sourceFormat, FORMATS.OPENAI, model, clientBody, stream, null, provider);
@@ -75,7 +88,17 @@ export async function POST(request) {
         const executor = getExecutor(provider);
         const url = executor.buildUrl(model, stream, 0, credentials);
         const headers = executor.buildHeaders(credentials, stream);
+        const cacheSnap = snapshotCacheProtectedBody(translated);
         const finalBody = executor.transformRequest(model, translated, stream, credentials);
+        try {
+          throwOnCacheViolation(finalBody, cacheSnap, "translator debug step 3");
+        } catch (cacheErr) {
+          return NextResponse.json({
+            success: false,
+            error: cacheErr.message,
+            errorCode: cacheErr.code || "cache_integrity_failed",
+          }, { status: 502 });
+        }
 
         return NextResponse.json({ success: true, result: { url, headers, body: finalBody } });
       }

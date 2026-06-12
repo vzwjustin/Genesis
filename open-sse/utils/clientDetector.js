@@ -41,7 +41,9 @@ export function detectClientTool(headers = {}, body = {}) {
   }
 
   // Claude Code / Claude CLI → passthrough to Anthropic/Claude provider
-  if (ua.includes("claude-cli") || ua.includes("claude-code") || xApp === "cli") return "claude";
+  // x-app: cli alone is ambiguous — require corroborating Claude/Anthropic signals
+  if (ua.includes("claude-cli") || ua.includes("claude-code")) return "claude";
+  if (xApp === "cli" && (ua.includes("claude") || ua.includes("anthropic"))) return "claude";
 
   // Cursor IDE → passthrough to Cursor provider
   // Cursor uses connect-protocol-version header and application/connect+proto content type

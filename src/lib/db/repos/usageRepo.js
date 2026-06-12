@@ -179,9 +179,21 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
     clearTimeout(pendingTimers[timerKey]);
     pendingTimers[timerKey] = setTimeout(() => {
       delete pendingTimers[timerKey];
-      if (pendingRequests.byModel[modelKey] > 0) pendingRequests.byModel[modelKey] = 0;
+      if (pendingRequests.byModel[modelKey] > 0) {
+        pendingRequests.byModel[modelKey] = Math.max(0, pendingRequests.byModel[modelKey] - 1);
+        if (pendingRequests.byModel[modelKey] === 0) delete pendingRequests.byModel[modelKey];
+      }
       if (connectionId && pendingRequests.byAccount[connectionId]?.[modelKey] > 0) {
-        pendingRequests.byAccount[connectionId][modelKey] = 0;
+        pendingRequests.byAccount[connectionId][modelKey] = Math.max(
+          0,
+          pendingRequests.byAccount[connectionId][modelKey] - 1
+        );
+        if (pendingRequests.byAccount[connectionId][modelKey] === 0) {
+          delete pendingRequests.byAccount[connectionId][modelKey];
+          if (Object.keys(pendingRequests.byAccount[connectionId]).length === 0) {
+            delete pendingRequests.byAccount[connectionId];
+          }
+        }
       }
       statsEmitter.emit("pending");
     }, PENDING_TIMEOUT_MS);

@@ -79,13 +79,29 @@ async function transcribeAssemblyAI(cfg, file, model, token, proxyOptions) {
   const { id } = await sub.json();
 
   const start = Date.now();
+  const MAX_CONSECUTIVE_POLL_ERRORS = 3;
+  let consecutivePollErrors = 0;
   while (Date.now() - start < 120_000) {
     await new Promise((r) => setTimeout(r, 2000));
-    const poll = await sttFetch(`${cfg.baseUrl}/${id}`, { headers: auth }, proxyOptions);
-    if (!poll.ok) {
-      if (poll.status === 401 || poll.status === 403) return upstreamError(poll);
+    let poll;
+    try {
+      poll = await sttFetch(`${cfg.baseUrl}/${id}`, { headers: auth }, proxyOptions);
+    } catch (pollErr) {
+      consecutivePollErrors++;
+      if (consecutivePollErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, pollErr.message || "AssemblyAI poll failed");
+      }
       continue;
     }
+    if (!poll.ok) {
+      if (poll.status === 401 || poll.status === 403) return upstreamError(poll);
+      consecutivePollErrors++;
+      if (consecutivePollErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+        return upstreamError(poll);
+      }
+      continue;
+    }
+    consecutivePollErrors = 0;
     const r = await poll.json();
     if (r.status === "completed") return jsonResponse({ text: r.text || "" });
     if (r.status === "error") return createErrorResult(500, r.error || "AssemblyAI failed");
