@@ -29,6 +29,7 @@ export default function NoAuthProxyCard({ providerId }) {
   }, [providerId]);
 
   const handleChange = async (newValue) => {
+    const prevValue = proxyPoolId;
     setProxyPoolId(newValue);
     setSaving(true);
     try {
@@ -39,16 +40,21 @@ export default function NoAuthProxyCard({ providerId }) {
       if (newValue === NONE_PROXY_POOL_VALUE) delete override.proxyPoolId;
       else override.proxyPoolId = newValue;
       const updated = { ...current };
-      if (Object.keys(override).length === 0) delete updated[providerId];
+      if (Object.keys(override).length === 0) updated[providerId] = null;
       else updated[providerId] = override;
-      await fetch("/api/settings", {
+      const patchRes = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerStrategies: updated }),
       });
+      if (!patchRes.ok) {
+        setProxyPoolId(prevValue);
+        return;
+      }
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
     } catch (e) {
+      setProxyPoolId(prevValue);
       console.log("Save proxyPoolId error:", e);
     } finally {
       setSaving(false);

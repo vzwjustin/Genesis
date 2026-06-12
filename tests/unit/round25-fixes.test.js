@@ -87,7 +87,7 @@ describe("Round 25 — Claude-native fixMissingToolResponses", () => {
 
     expect(body.messages[1].role).toBe("user");
     expect(body.messages[1].content).toEqual([
-      { type: "tool_result", tool_use_id: "toolu_01", content: "" },
+      { type: "tool_result", tool_use_id: "toolu_01", content: "[No response received]" },
     ]);
     expect(body.messages.some((m) => m.role === "tool")).toBe(false);
   });

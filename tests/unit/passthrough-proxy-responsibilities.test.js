@@ -72,6 +72,10 @@ vi.mock("open-sse/utils/error.js", () => ({
     UNSUPPORTED_REQUEST: "unsupported_request",
     VALIDATION_FAILED: "validation_failed",
   },
+  PROXY_INTERNAL_ERROR_CODES: {
+    CACHE_INTEGRITY_FAILED: "cache_integrity_failed",
+    COMPRESSION_RESTORE_FAILED: "compression_restore_failed",
+  },
 }));
 vi.mock("open-sse/config/runtimeConfig.js", () => ({
   HTTP_STATUS: {

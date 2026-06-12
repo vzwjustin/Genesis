@@ -6,6 +6,7 @@ import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
@@ -13,6 +14,7 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
+    if (hasAnthropicCacheBreakpoints(body)) return body;
     const transformed = this.applyJsonSchemaFallback(body);
     return injectReasoningContent({ provider: this.provider, model, body: transformed });
   }
@@ -93,12 +95,11 @@ export class DefaultExecutor extends BaseExecutor {
             const titleKey = lcKey.replace(/(^|-)([a-z])/g, (_, sep, c) => sep + c.toUpperCase());
 
             // Special handling for Anthropic-Beta to preserve required flags like OAuth
-            if (lcKey === "anthropic-beta") {
+            if (lcKey === "anthropic-beta" && !credentials?._preserveClientCache) {
               const staticBetaStr = headers[titleKey] || headers[lcKey] || "";
               const staticFlags = new Set(staticBetaStr.split(",").map(f => f.trim()).filter(Boolean));
               const cachedFlags = new Set(cached[lcKey].split(",").map(f => f.trim()).filter(Boolean));
 
-              // Merge all static flags (which contain oauth, thinking, etc) into the cached ones
               for (const flag of staticFlags) {
                 cachedFlags.add(flag);
               }

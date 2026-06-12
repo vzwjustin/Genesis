@@ -54,7 +54,7 @@ export async function PUT(request) {
     }
 
     // Update alias
-    await setModelAlias(model, alias);
+    await setModelAlias(alias, model);
 
     return NextResponse.json({ success: true, model, alias });
   } catch (error) {

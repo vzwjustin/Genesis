@@ -12,7 +12,7 @@ export async function resolveProviderRetryLimits(provider) {
   const providerId = resolveProviderId(provider);
   const isNoAuthProvider = !!FREE_PROVIDERS[providerId]?.noAuth;
   const allConnections = await getProviderConnections({ provider: providerId, isActive: true });
-  const maxRetries = isNoAuthProvider ? 1 : allConnections.length;
+  const maxRetries = allConnections.length;
   return { providerId, isNoAuthProvider, maxRetries };
 }
 

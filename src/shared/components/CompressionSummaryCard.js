@@ -11,7 +11,6 @@ export default function CompressionSummaryCard({
   rtkEnabled,
   cavemanEnabled,
   headroomEnabled,
-  passthroughCompression,
 }) {
   const tools = compressionStats?.tools || {};
   const totalSaved =
@@ -37,9 +36,9 @@ export default function CompressionSummaryCard({
             <Badge variant={rtkEnabled ? "success" : "default"} size="sm">RTK {rtkEnabled ? "on" : "off"}</Badge>
             <Badge variant={headroomEnabled ? "success" : "default"} size="sm">Headroom {headroomEnabled ? "on" : "off"}</Badge>
             <Badge variant={cavemanEnabled ? "success" : "default"} size="sm">Caveman {cavemanEnabled ? "on" : "off"}</Badge>
-            <Badge variant={passthroughCompression ? "warning" : "default"} size="sm">
-              Passthrough {passthroughCompression ? "on" : "off"}
-            </Badge>
+            {(rtkEnabled || headroomEnabled || cavemanEnabled) && (
+              <Badge variant="success" size="sm">Cache-safe</Badge>
+            )}
           </div>
           {totalSaved > 0 && (
             <p className="text-sm font-medium text-success tabular-nums">

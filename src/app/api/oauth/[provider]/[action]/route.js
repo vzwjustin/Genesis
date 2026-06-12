@@ -14,11 +14,13 @@ import {
   stopCodexProxy,
   registerCodexSession,
   getCodexSessionStatus,
+  consumeCodexSession,
   clearCodexSession,
   startXaiProxy,
   stopXaiProxy,
   registerXaiSession,
   getXaiSessionStatus,
+  consumeXaiSession,
   clearXaiSession,
 } from "@/lib/oauth/utils/server";
 
@@ -113,8 +115,8 @@ export async function GET(request, { params }) {
       if (!session) return NextResponse.json({ status: "unknown" });
       if (session.status === "done" || session.status === "error") {
         const payload = { ...session };
-        if (provider === "xai") clearXaiSession(state);
-        else clearCodexSession(state);
+        if (provider === "xai") consumeXaiSession(state);
+        else consumeCodexSession(state);
         return NextResponse.json(payload);
       }
       return NextResponse.json({ status: session.status });

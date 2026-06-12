@@ -8,6 +8,7 @@ import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { confirmDialog } from "@/store/confirmStore";
 import { useNotificationStore } from "@/store/notificationStore";
+import { revealApiKey } from "@/shared/utils/revealApiKey";
 
 // Parse "providerId/model" or just "providerId" → { providerId, model }
 function parseModelEntry(entry) {
@@ -78,7 +79,11 @@ export default function ComboDetailPage() {
       if (aliasesRes.ok) setModelAliases((await aliasesRes.json()).aliases || {});
       if (keysRes.ok) {
         const k = await keysRes.json();
-        setApiKey((k.keys || []).find((x) => x.isActive !== false)?.key || "");
+        const active = (k.keys || []).find((x) => x.isActive !== false);
+        if (active?.id) {
+          const full = await revealApiKey(active.id);
+          if (full) setApiKey(full);
+        }
       }
       if (connsRes.ok) setConnections((await connsRes.json()).connections || []);
       if (!comboRes.ok) { setCombo(null); setLoading(false); return; }
@@ -153,17 +158,28 @@ export default function ComboDetailPage() {
   };
 
   const handleToggleRoundRobin = async (enabled) => {
+    const prev = roundRobin;
     setRoundRobin(enabled);
-    const settingsRes = await fetch("/api/settings", { cache: "no-store" });
-    const s = settingsRes.ok ? await settingsRes.json() : {};
-    const updated = { ...(s.comboStrategies || {}) };
-    if (enabled) updated[combo.name] = { fallbackStrategy: "round-robin" };
-    else delete updated[combo.name];
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comboStrategies: updated }),
-    });
+    try {
+      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const s = settingsRes.ok ? await settingsRes.json() : {};
+      const updated = { ...(s.comboStrategies || {}) };
+      if (enabled) updated[combo.name] = { fallbackStrategy: "round-robin" };
+      else updated[combo.name] = null;
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comboStrategies: updated }),
+      });
+      if (!res.ok) {
+        setRoundRobin(prev);
+        const err = await res.json().catch(() => ({}));
+        notify.error(err.error || "Failed to update combo strategy");
+      }
+    } catch (error) {
+      setRoundRobin(prev);
+      notify.error(error?.message || "Failed to update combo strategy");
+    }
   };
 
   const handleDelete = async () => {

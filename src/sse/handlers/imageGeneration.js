@@ -4,9 +4,10 @@ import {
   clearAccountError,
   authenticateRequest,
 } from "../services/auth.js";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getSettingsSafe } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
+import { getImageAdapter } from "open-sse/handlers/imageProviders/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -17,9 +18,6 @@ import {
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
 import * as log from "../utils/logger.js";
-
-// Providers that don't require credentials (noAuth)
-const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
 
 /**
  * Handle image generation request
@@ -79,6 +77,23 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
     if (brokenComboError) {
       return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
     }
+    const comboModels = await getComboModels(modelStr);
+    if (comboModels) {
+      const settings = await getSettingsSafe();
+      const comboStrategies = settings.comboStrategies || {};
+      const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
+      const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+      log.info("IMAGE", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+      return handleComboChat({
+        body,
+        models: comboModels,
+        handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId }),
+        log,
+        comboName: modelStr,
+        comboStrategy,
+        comboStickyLimit,
+      });
+    }
     return errorResponse(
       HTTP_STATUS.BAD_REQUEST,
       `Failed to resolve model: "${modelStr}". Not a registered alias, combo name, or valid provider/model format.`
@@ -87,8 +102,8 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
 
   const { provider, model } = modelInfo;
 
-  // noAuth providers — no credential needed
-  if (NO_AUTH_PROVIDERS.has(provider)) {
+  // noAuth providers — derived from image adapter config
+  if (getImageAdapter(provider)?.noAuth) {
     const result = await handleImageGenerationCore({
       body,
       modelInfo: { provider, model },
@@ -115,7 +130,6 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       log.warn("IMAGE", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
       return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
-    retryCount++;
 
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
 
@@ -143,6 +157,8 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       continue;
     }
 
+    retryCount++;
+
     const result = await handleImageGenerationCore({
       body,
       modelInfo: { provider, model },
@@ -164,7 +180,15 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
 
     if (result.success) return result.response;
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
+    const { shouldFallback } = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      provider,
+      model,
+      null,
+      { proxyInternal: result.proxyInternal, errorCode: result.errorCode }
+    );
 
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);

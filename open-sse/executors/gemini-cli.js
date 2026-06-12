@@ -1,5 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 import { GEMINI_CLI_API_CLIENT, geminiCLIUserAgent } from "../config/appConstants.js";
 import { refreshGoogleToken } from "../services/tokenRefresh.js";
 
@@ -24,6 +25,7 @@ export class GeminiCLIExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
+    if (hasAnthropicCacheBreakpoints(body)) return body;
     // Store model for use in buildHeaders (called by base.execute after transformRequest)
     this._currentModel = model;
     // Cloud Code Assist wraps the Gemini payload: { project, model, request: <body> }

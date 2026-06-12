@@ -74,9 +74,13 @@ gitbooks/*
 gitbook/README.md
 
 # AI assistant tool configs
+.claude/
 .devin/
 .windsurf/
 .windsurfrules
 
 # advisor run artifacts
 .advisor/
+
+# packaged CLI tarballs (local build artifacts)
+9router-*.tgz

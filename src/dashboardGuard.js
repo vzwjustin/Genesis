@@ -159,14 +159,6 @@ function rejectTunnelDashboardAuth(request, settings) {
   return NextResponse.json({ error: TUNNEL_DASHBOARD_DISABLED_ERROR }, { status: 403 });
 }
 
-/** Dashboard UI / local-only routes: JWT or requireLogin disabled. */
-async function isDashboardAccessAllowed(request) {
-  if (await hasValidToken(request)) return true;
-  const settings = await loadSettings();
-  if (settings && settings.requireLogin === false) return true;
-  return false;
-}
-
 /** Management API routes: JWT, CLI token, or verifiable loopback when requireLogin=false. */
 async function isApiAuthenticated(request) {
   if (await hasValidToken(request)) return true;

@@ -22,7 +22,10 @@ export async function OPTIONS() {
 
 /**
  * POST /v1/responses - OpenAI Responses API format
- * Now handled by translator pattern (openai-responses format auto-detected)
+ *
+ * Handled by handleChat → chatCore (openai-responses format auto-detected via
+ * provider.js / formats.js). Responses-specific SSE assembly lives in
+ * open-sse/handlers/chatCore/sseToJsonHandler.js — not a separate handler module.
  */
 export async function POST(request) {
   await ensureInitialized();

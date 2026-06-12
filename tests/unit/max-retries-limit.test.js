@@ -20,8 +20,10 @@ describe("chat handler retry loop (source)", () => {
     expect(src).toMatch(/retryCount\s*>=\s*maxRetries/);
   });
 
-  it("increments retryCount before each dispatch attempt", () => {
-    expect(src).toMatch(/retryCount\+\+/);
+  it("increments retryCount after pre-flight checks, before dispatch", () => {
+    const tokenRefreshIdx = src.indexOf("_tokenRefreshFailed");
+    const retryIncIdx = src.indexOf("retryCount++");
+    expect(retryIncIdx).toBeGreaterThan(tokenRefreshIdx);
   });
 
   it("returns exhaustedAccountsResponse when retry budget is spent", () => {

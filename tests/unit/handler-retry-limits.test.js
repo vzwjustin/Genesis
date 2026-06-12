@@ -23,6 +23,14 @@ describe("embeddings handler — retry limits (source)", () => {
     expect(src).toContain("handleEmbeddingsCore");
   });
 
+  it("increments retryCount after token refresh pre-check", () => {
+    const src = readFileSync(join(root, "../../src/sse/handlers/embeddings.js"), "utf8");
+    const loop = src.slice(src.indexOf("while (true)"));
+    const tokenRefreshIdx = loop.indexOf("_tokenRefreshFailed");
+    const retryIncIdx = loop.indexOf("retryCount++");
+    expect(retryIncIdx).toBeGreaterThan(tokenRefreshIdx);
+  });
+
   it("noActiveCredentialsResponse returns 404 for embeddings path", async () => {
     const response = noActiveCredentialsResponse("openai");
     expect(response.status).toBe(404);
@@ -38,6 +46,14 @@ describe("search handler — retry limits (source)", () => {
     expect(src).toContain("exhaustedAccountsResponse");
     expect(src).toMatch(/retryCount\s*>=\s*maxRetries/);
     expect(src).toContain("handleSearchCore");
+  });
+
+  it("increments retryCount after token refresh pre-check", () => {
+    const src = readFileSync(join(root, "../../src/sse/handlers/search.js"), "utf8");
+    const loop = src.slice(src.indexOf("while (true)"));
+    const tokenRefreshIdx = loop.indexOf("_tokenRefreshFailed");
+    const retryIncIdx = loop.indexOf("retryCount++");
+    expect(retryIncIdx).toBeGreaterThan(tokenRefreshIdx);
   });
 
   it("no-auth searxng bypasses credential retry loop", () => {

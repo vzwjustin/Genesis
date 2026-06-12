@@ -14,9 +14,11 @@ import {
 
 // Tool-call arguments arrive as a JSON string. Malformed/partial JSON must not
 // throw and abort the whole request translation — fall back to empty args.
-function safeParseArgs(str) {
+function safeParseJson(value) {
+  if (value == null) return {};
+  if (typeof value !== "string") return value;
   try {
-    return JSON.parse(str);
+    return JSON.parse(value);
   } catch {
     return {};
   }
@@ -221,9 +223,7 @@ function convertMessages(messages, tools, model) {
               return {
                 toolUseId: tc.id || uuidv4(),
                 name: tc.function.name,
-                input: typeof tc.function.arguments === "string"
-                  ? safeParseArgs(tc.function.arguments)
-                  : (tc.function.arguments || {})
+                input: safeParseJson(tc.function.arguments)
               };
             } else {
               return {

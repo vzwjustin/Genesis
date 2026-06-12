@@ -1228,7 +1228,6 @@ export default function APIPageClient({ machineId }) {
         rtkEnabled={rtkEnabled}
         cavemanEnabled={cavemanEnabled}
         headroomEnabled={headroomEnabled}
-        passthroughCompression={passthroughCompression}
       />
 
       {/* API Keys */}

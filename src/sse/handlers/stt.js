@@ -1,6 +1,8 @@
 import {
   authenticateRequest,
-  getProviderCredentials, markAccountUnavailable,
+  getProviderCredentials,
+  markAccountUnavailable,
+  clearAccountError,
 } from "../services/auth.js";
 import { getSettingsSafe } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
@@ -15,6 +17,7 @@ import {
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
 import * as log from "../utils/logger.js";
+import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 
 const CREDENTIALED_PROVIDERS = new Set(
   Object.entries(AI_PROVIDERS)
@@ -119,7 +122,6 @@ async function handleSingleModelStt(formData, modelStr) {
       log.warn("STT", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
       return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
-    retryCount++;
 
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
@@ -135,11 +137,34 @@ async function handleSingleModelStt(formData, modelStr) {
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleSttCore({ provider, model, formData, credentials });
+    const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
-    if (result.success) return result.response;
+    if (refreshedCredentials._tokenRefreshFailed) {
+      log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Token refresh failed";
+      lastStatus = 401;
+      continue;
+    }
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
+    retryCount++;
+
+    const result = await handleSttCore({ provider, model, formData, credentials: refreshedCredentials });
+
+    if (result.success) {
+      await clearAccountError(credentials.connectionId, credentials, model);
+      return result.response;
+    }
+
+    const { shouldFallback } = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      provider,
+      model,
+      null,
+      { proxyInternal: result.proxyInternal, errorCode: result.errorCode }
+    );
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;

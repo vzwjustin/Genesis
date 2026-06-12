@@ -1,4 +1,5 @@
 import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS } from "../config/errorConfig.js";
+import { isProxyInternalError } from "../utils/error.js";
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -18,9 +19,14 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
+ * @param {{ proxyInternal?: boolean, errorCode?: string }} [meta] - Proxy-internal errors must not rotate accounts
  * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number }}
  */
-export function checkFallbackError(status, errorText, backoffLevel = 0) {
+export function checkFallbackError(status, errorText, backoffLevel = 0, meta = {}) {
+  if (isProxyInternalError(meta)) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   const lowerError = errorText
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
     : "";
@@ -202,11 +208,11 @@ export function resetAccountState(account) {
  * @param {string} errorText - Error message
  * @returns {object} Updated account with error state
  */
-export function applyErrorState(account, status, errorText) {
+export function applyErrorState(account, status, errorText, meta = {}) {
   if (!account) return account;
 
   const backoffLevel = account.backoffLevel || 0;
-  const { cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel);
+  const { cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel, meta);
 
   return {
     ...account,

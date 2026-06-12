@@ -19,6 +19,7 @@ export async function createSqlJsAdapter(filePath) {
 
   let dirty = false;
   let saveTimer = null;
+  let txDepth = 0;
   const SAVE_DEBOUNCE_MS = 100;
 
   function persist() {
@@ -28,6 +29,7 @@ export async function createSqlJsAdapter(filePath) {
   }
 
   function scheduleSave() {
+    if (txDepth > 0) return;
     dirty = true;
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
@@ -100,14 +102,17 @@ export async function createSqlJsAdapter(filePath) {
 
   function transaction(fn) {
     const sp = `sp_${Math.random().toString(36).slice(2)}`;
+    txDepth += 1;
     db.exec(`SAVEPOINT ${sp}`);
     try {
       const result = fn();
       db.exec(`RELEASE ${sp}`);
+      txDepth -= 1;
       scheduleSave();
       return result;
     } catch (e) {
       try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}
+      txDepth -= 1;
       throw e;
     }
   }

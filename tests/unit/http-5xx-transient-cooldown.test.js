@@ -152,6 +152,14 @@ describe("HTTP 5xx Transient Cooldown (Requirement 4.2)", () => {
     });
   });
 
+  describe("proxy-internal 502 does not trigger account rotation", () => {
+    it("HTTP 502 with proxyInternal flag returns shouldFallback=false", () => {
+      const result = checkFallbackError(502, "Invalid SSE response", 0, { proxyInternal: true });
+      expect(result.shouldFallback).toBe(false);
+      expect(result.cooldownMs).toBe(0);
+    });
+  });
+
   describe("Retry picks up next connection (shouldFallback=true)", () => {
     it("shouldFallback=true signals the retry loop to try the next connection", () => {
       // For all 5xx errors, shouldFallback must be true so the retry loop

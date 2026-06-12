@@ -71,6 +71,138 @@ describe("fetchModelsForConnection auth refresh", () => {
     expect(connection.accessToken).toBe("fresh-token");
   });
 
+  it("returns authFailure when proactive token refresh fails", async () => {
+    const connection = {
+      id: "conn-stale",
+      provider: "codex",
+      accessToken: "stale-token",
+      refreshToken: "refresh-token",
+      providerSpecificData: {},
+    };
+
+    mocks.checkAndRefreshToken.mockResolvedValue({ _tokenRefreshFailed: true });
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    const result = await fetchModelsForConnection(connection);
+
+    expect(result.status).toBe(401);
+    expect(result.error).toContain("Provider session expired");
+    expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
+  });
+
+  it("uses accessToken for openai-compatible OAuth model listing", async () => {
+    const connection = {
+      id: "conn-oc-oauth",
+      provider: "openai-compatible-chat-abc",
+      authType: "oauth",
+      accessToken: "oauth-access-token",
+      apiKey: "sk-should-not-use",
+      providerSpecificData: { baseUrl: "https://compat.example.com/v1" },
+    };
+
+    mocks.proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: "glm-4.7" }] }),
+    });
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    const result = await fetchModelsForConnection(connection);
+
+    expect(result.models).toHaveLength(1);
+    const [url, fetchOpts] = mocks.proxyAwareFetch.mock.calls[0];
+    expect(url).toBe("https://compat.example.com/v1/models");
+    expect(fetchOpts.headers.Authorization).toBe("Bearer oauth-access-token");
+  });
+
+  it("retries openai-compatible model fetch after 401 when token refresh succeeds", async () => {
+    const connection = {
+      id: "conn-oc-retry",
+      provider: "openai-compatible-chat-abc",
+      authType: "oauth",
+      accessToken: "stale-token",
+      refreshToken: "refresh-token",
+      providerSpecificData: { baseUrl: "https://compat.example.com/v1" },
+    };
+
+    mocks.proxyAwareFetch
+      .mockResolvedValueOnce({ ok: false, status: 401, text: async () => "unauthorized" })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: "glm-4.7" }] }),
+      });
+
+    mocks.refreshTokenByProvider.mockResolvedValue({
+      accessToken: "fresh-token",
+      refreshToken: "refresh-token",
+      expiresIn: 3600,
+    });
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    const result = await fetchModelsForConnection(connection);
+
+    expect(result.models).toHaveLength(1);
+    expect(mocks.refreshTokenByProvider).toHaveBeenCalled();
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2);
+    expect(connection.accessToken).toBe("fresh-token");
+  });
+
+  it("returns auth error for gemini-cli when upstream responds 403", async () => {
+    const connection = {
+      id: "conn-gemini-cli",
+      provider: "gemini-cli",
+      accessToken: "google-access",
+      refreshToken: "google-refresh",
+      providerSpecificData: {},
+    };
+
+    mocks.proxyAwareFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => "forbidden",
+    });
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    const result = await fetchModelsForConnection(connection);
+
+    expect(result.status).toBe(403);
+    expect(result.error).toContain("Provider session expired");
+    expect(result.models).toBeUndefined();
+    expect(result.warning).toBeUndefined();
+  });
+
+  it("bootstraps gemini-cli project id before model listing", async () => {
+    const { getProjectIdForConnection } = await import("open-sse/services/projectId.js");
+    getProjectIdForConnection.mockResolvedValue("gemini-project-456");
+
+    const connection = {
+      id: "conn-gemini-bootstrap",
+      provider: "gemini-cli",
+      accessToken: "google-access",
+      refreshToken: "google-refresh",
+      providerSpecificData: {},
+    };
+
+    mocks.proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        models: {
+          "gemini-2.0-flash": { displayName: "Gemini 2.0 Flash", isInternal: false },
+        },
+      }),
+    });
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    const result = await fetchModelsForConnection(connection);
+
+    expect(result.models).toHaveLength(1);
+    const [, fetchOpts] = mocks.proxyAwareFetch.mock.calls[0];
+    expect(JSON.parse(fetchOpts.body)).toEqual({ project: "gemini-project-456" });
+    expect(connection.projectId).toBe("gemini-project-456");
+  });
+
   it("returns a reconnect message when auth refresh fails", async () => {
     const connection = {
       id: "conn-codex-2",
@@ -188,6 +320,52 @@ describe("fetchModelsForConnection auth refresh", () => {
     expect(JSON.parse(fetchOpts.body)).toEqual({ project: "ag-project-123" });
     expect(fetchOpts.headers["X-Client-Name"]).toBe("antigravity");
     expect(fetchOpts.headers["x-request-source"]).toBe("local");
+  });
+
+  it("uses x-api-key OR Bearer for anthropic-compatible model listing (not both)", async () => {
+    const connection = {
+      id: "conn-ac",
+      provider: "anthropic-compatible-custom",
+      apiKey: "sk-ant-compat",
+      providerSpecificData: { baseUrl: "https://compat.example.com" },
+    };
+
+    mocks.proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: "claude-sonnet-4-20250514" }] }),
+    });
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    const result = await fetchModelsForConnection(connection);
+
+    expect(result.models).toHaveLength(1);
+    const [, fetchOpts] = mocks.proxyAwareFetch.mock.calls[0];
+    expect(fetchOpts.headers["x-api-key"]).toBe("sk-ant-compat");
+    expect(fetchOpts.headers.Authorization).toBeUndefined();
+  });
+
+  it("uses Bearer auth for anthropic-compatible OAuth model listing (not x-api-key)", async () => {
+    const connection = {
+      id: "conn-ac-oauth",
+      provider: "anthropic-compatible-custom",
+      accessToken: "oauth-access-token",
+      providerSpecificData: { baseUrl: "https://compat.example.com" },
+    };
+
+    mocks.proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: "claude-sonnet-4-20250514" }] }),
+    });
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    await fetchModelsForConnection(connection);
+
+    const [, fetchOpts] = mocks.proxyAwareFetch.mock.calls[0];
+    expect(fetchOpts.headers.Authorization).toBe("Bearer oauth-access-token");
+    expect(fetchOpts.headers["x-api-key"]).toBeUndefined();
+    expect(fetchOpts.headers["anthropic-beta"]).toContain("oauth-2025-04-20");
   });
 
   it("uses Bearer auth for Claude OAuth model listing (not x-api-key)", async () => {

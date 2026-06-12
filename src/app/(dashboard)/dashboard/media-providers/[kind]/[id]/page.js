@@ -9,6 +9,7 @@ import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProviderAlias, isCustomEmbeddingProvider, resolveProviderId } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { revealApiKey } from "@/shared/utils/revealApiKey";
 import { confirmDialog } from "@/store/confirmStore";
 import ConnectionsCard from "@/app/(dashboard)/dashboard/providers/components/ConnectionsCard";
 import ModelsCard from "@/app/(dashboard)/dashboard/providers/components/ModelsCard";
@@ -156,11 +157,17 @@ function EmbeddingExampleCard({ providerId, customAlias }) {
     setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
-      .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
+      .then(async (d) => {
+        const active = (d.keys || []).find((k) => k.isActive !== false);
+        if (active?.id) {
+          const full = await revealApiKey(active.id);
+          if (full) setApiKey(full);
+        }
+      })
       .catch(() => {});
     fetch("/api/tunnel/status")
       .then((r) => r.json())
-      .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
+      .then((d) => { if (d.tunnel?.publicUrl) setTunnelEndpoint(d.tunnel.publicUrl); })
       .catch(() => {});
   }, []);
 
@@ -420,11 +427,17 @@ function TtsExampleCard({ providerId }) {
     setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
-      .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
+      .then(async (d) => {
+        const active = (d.keys || []).find((k) => k.isActive !== false);
+        if (active?.id) {
+          const full = await revealApiKey(active.id);
+          if (full) setApiKey(full);
+        }
+      })
       .catch(() => {});
     fetch("/api/tunnel/status")
       .then((r) => r.json())
-      .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
+      .then((d) => { if (d.tunnel?.publicUrl) setTunnelEndpoint(d.tunnel.publicUrl); })
       .catch(() => {});
 
     // Pre-select default voice based on provider config
@@ -966,11 +979,17 @@ function GenericExampleCard({ providerId, kind }) {
     setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
-      .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
+      .then(async (d) => {
+        const active = (d.keys || []).find((k) => k.isActive !== false);
+        if (active?.id) {
+          const full = await revealApiKey(active.id);
+          if (full) setApiKey(full);
+        }
+      })
       .catch(() => {});
     fetch("/api/tunnel/status")
       .then((r) => r.json())
-      .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
+      .then((d) => { if (d.tunnel?.publicUrl) setTunnelEndpoint(d.tunnel.publicUrl); })
       .catch(() => {});
     // Load active connections of this provider for pinning
     fetch("/api/providers/client")
@@ -1463,11 +1482,17 @@ function SttExampleCard({ providerId }) {
     setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
-      .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
+      .then(async (d) => {
+        const active = (d.keys || []).find((k) => k.isActive !== false);
+        if (active?.id) {
+          const full = await revealApiKey(active.id);
+          if (full) setApiKey(full);
+        }
+      })
       .catch(() => {});
     fetch("/api/tunnel/status")
       .then((r) => r.json())
-      .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
+      .then((d) => { if (d.tunnel?.publicUrl) setTunnelEndpoint(d.tunnel.publicUrl); })
       .catch(() => {});
     const loadCustom = () => {
       fetch("/api/models/custom", { cache: "no-store" })

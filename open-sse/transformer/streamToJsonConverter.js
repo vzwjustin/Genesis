@@ -20,7 +20,11 @@ function processSSEMessage(msg, state) {
 
   let parsed;
   try { parsed = JSON.parse(dataStr); }
-  catch { return; }
+  catch {
+    state.status = "failed";
+    state.parseError = true;
+    return;
+  }
 
   if (eventType === "response.created") {
     state.responseId = parsed.response?.id || state.responseId;
@@ -98,11 +102,23 @@ export async function convertResponsesStreamToJson(stream) {
     reader.releaseLock();
   }
 
-  // Build output array from accumulated items (ordered by index)
+  // Build output array from accumulated items (ordered by index).
+  // Fail closed on index gaps — never fabricate placeholder items.
   const output = [];
-  const maxIndex = state.items.size > 0 ? Math.max(...state.items.keys()) : -1;
-  for (let i = 0; i <= maxIndex; i++) {
-    output.push(state.items.get(i) || { type: "message", content: [], role: "assistant" });
+  if (state.items.size > 0) {
+    const maxIndex = Math.max(...state.items.keys());
+    let hasGap = false;
+    for (let i = 0; i <= maxIndex; i++) {
+      const item = state.items.get(i);
+      if (!item) {
+        hasGap = true;
+        break;
+      }
+      output.push(item);
+    }
+    if (hasGap) {
+      state.status = "failed";
+    }
   }
 
   return {

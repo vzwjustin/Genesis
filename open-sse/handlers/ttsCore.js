@@ -11,6 +11,23 @@ export {
   fetchElevenLabsVoices,
 } from "./ttsProviders/index.js";
 
+// Map short format names → IANA audio MIME types (mp3 → audio/mpeg, like sttCore)
+function resolveTtsContentType(format) {
+  const f = (format || "mp3").toLowerCase();
+  const map = {
+    mp3: "audio/mpeg",
+    mp4: "audio/mp4",
+    m4a: "audio/mp4",
+    wav: "audio/wav",
+    ogg: "audio/ogg",
+    flac: "audio/flac",
+    webm: "audio/webm",
+    aac: "audio/aac",
+    opus: "audio/opus",
+  };
+  return map[f] || `audio/${f}`;
+}
+
 // ── Response Formatter (DRY) ───────────────────────────────────
 function createTtsResponse(base64Audio, format, responseFormat) {
   const audioBuffer = Buffer.from(base64Audio, "base64");
@@ -33,7 +50,7 @@ function createTtsResponse(base64Audio, format, responseFormat) {
     success: true,
     response: new Response(audioBuffer, {
       headers: {
-        "Content-Type": `audio/${format}`,
+        "Content-Type": resolveTtsContentType(format),
         "Content-Length": String(audioBuffer.length),
         "Access-Control-Allow-Origin": "*",
       },

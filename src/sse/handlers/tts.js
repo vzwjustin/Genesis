@@ -1,8 +1,10 @@
 import {
   authenticateRequest,
-  getProviderCredentials, markAccountUnavailable,
+  getProviderCredentials,
+  markAccountUnavailable,
+  clearAccountError,
 } from "../services/auth.js";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getSettingsSafe } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -15,6 +17,7 @@ import {
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
 import * as log from "../utils/logger.js";
+import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
 const CREDENTIALED_PROVIDERS = new Set(
@@ -77,6 +80,23 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
     if (brokenComboError) {
       return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
     }
+    const comboModels = await getComboModels(modelStr);
+    if (comboModels) {
+      const settings = await getSettingsSafe();
+      const comboStrategies = settings.comboStrategies || {};
+      const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
+      const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+      log.info("TTS", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+      return handleComboChat({
+        body,
+        models: comboModels,
+        handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language),
+        log,
+        comboName: modelStr,
+        comboStrategy,
+        comboStickyLimit,
+      });
+    }
     return errorResponse(
       HTTP_STATUS.BAD_REQUEST,
       `Failed to resolve model: "${modelStr}". Not a registered alias, combo name, or valid provider/model format.`
@@ -109,7 +129,6 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
       log.warn("TTS", `Max retries (${maxRetries}) exhausted for ${provider}/${model}`);
       return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
-    retryCount++;
 
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
@@ -125,11 +144,41 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleTtsCore({ provider, model, input: body.input, credentials, responseFormat, language });
+    const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
-    if (result.success) return result.response;
+    if (refreshedCredentials._tokenRefreshFailed) {
+      log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Token refresh failed";
+      lastStatus = 401;
+      continue;
+    }
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
+    retryCount++;
+
+    const result = await handleTtsCore({
+      provider,
+      model,
+      input: body.input,
+      credentials: refreshedCredentials,
+      responseFormat,
+      language,
+    });
+
+    if (result.success) {
+      await clearAccountError(credentials.connectionId, credentials, model);
+      return result.response;
+    }
+
+    const { shouldFallback } = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      provider,
+      model,
+      null,
+      { proxyInternal: result.proxyInternal, errorCode: result.errorCode }
+    );
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;

@@ -13,6 +13,7 @@ export {
   createProviderConnection, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,
   reorderProviderConnections, cleanupProviderConnections,
+  swapProviderConnectionPriorities,
 } from "./repos/connectionsRepo.js";
 
 // Provider nodes
@@ -47,7 +48,8 @@ export {
 
 // Pricing
 export {
-  getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
+  getPricing, getPricingForModel, getUserPricingOverrides,
+  updatePricing, resetPricing, resetAllPricing,
 } from "./repos/pricingRepo.js";
 
 // Disabled models
@@ -83,20 +85,73 @@ export async function exportDb() {
     customModels: [],
     mitmAlias: {},
     pricing: {},
+    disabledModels: {},
   };
 
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) out.modelAliases[r.key] = parseJson(r.value);
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'customModels'`)) out.customModels.push(parseJson(r.value));
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'mitmAlias'`)) out.mitmAlias[r.key] = parseJson(r.value);
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
+  for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'disabledModels'`)) out.disabledModels[r.key] = parseJson(r.value);
 
   return out;
+}
+
+const IMPORT_ARRAY_SECTIONS = [
+  "providerConnections",
+  "providerNodes",
+  "proxyPools",
+  "apiKeys",
+  "combos",
+  "customModels",
+];
+
+const IMPORT_OBJECT_SECTIONS = [
+  "settings",
+  "modelAliases",
+  "mitmAlias",
+  "pricing",
+  "disabledModels",
+];
+
+function validateImportPayload(payload) {
+  for (const key of IMPORT_ARRAY_SECTIONS) {
+    if (payload[key] != null && !Array.isArray(payload[key])) {
+      throw new Error(`Invalid database payload: ${key} must be an array`);
+    }
+  }
+  for (const key of IMPORT_OBJECT_SECTIONS) {
+    if (payload[key] != null && (typeof payload[key] !== "object" || Array.isArray(payload[key]))) {
+      throw new Error(`Invalid database payload: ${key} must be an object`);
+    }
+  }
+
+  const hasContent =
+    (payload.settings && typeof payload.settings === "object") ||
+    (Array.isArray(payload.providerConnections) && payload.providerConnections.length > 0) ||
+    (Array.isArray(payload.providerNodes) && payload.providerNodes.length > 0) ||
+    (Array.isArray(payload.proxyPools) && payload.proxyPools.length > 0) ||
+    (Array.isArray(payload.apiKeys) && payload.apiKeys.length > 0) ||
+    (Array.isArray(payload.combos) && payload.combos.length > 0) ||
+    (payload.modelAliases && Object.keys(payload.modelAliases).length > 0) ||
+    (Array.isArray(payload.customModels) && payload.customModels.length > 0) ||
+    (payload.mitmAlias && Object.keys(payload.mitmAlias).length > 0) ||
+    (payload.pricing && Object.keys(payload.pricing).length > 0) ||
+    (payload.disabledModels && Object.keys(payload.disabledModels).length > 0);
+
+  if (!hasContent) {
+    throw new Error(
+      "Invalid database payload: must include at least one non-empty section (replace-only import)",
+    );
+  }
 }
 
 export async function importDb(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
+  validateImportPayload(payload);
+
   const db = await getAdapter();
 
   db.transaction(() => {
@@ -107,7 +162,7 @@ export async function importDb(payload) {
     db.run(`DELETE FROM proxyPools`);
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
-    db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
+    db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing', 'disabledModels')`);
     db.run(`DELETE FROM usageHistory`);
     db.run(`DELETE FROM usageDaily`);
     db.run(`DELETE FROM requestDetails`);
@@ -122,7 +177,7 @@ export async function importDb(payload) {
       const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
       db.run(
         `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, provider, authType || "oauth", name || null, email || null, priority || null, isActive === false ? 0 : 1, stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
+        [id, provider, authType || "oauth", name || null, email || null, priority ?? null, isActive === false ? 0 : 1, stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
       );
     }
     for (const n of payload.providerNodes || []) {
@@ -163,6 +218,9 @@ export async function importDb(payload) {
     }
     for (const [provider, models] of Object.entries(payload.pricing || {})) {
       db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('pricing', ?, ?)`, [provider, stringifyJson(models || {})]);
+    }
+    for (const [providerAlias, ids] of Object.entries(payload.disabledModels || {})) {
+      db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('disabledModels', ?, ?)`, [providerAlias, stringifyJson(ids || [])]);
     }
   });
 

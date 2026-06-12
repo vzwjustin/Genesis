@@ -40,9 +40,10 @@ export function geminiToOpenAIRequest(model, body, stream) {
   if (body.contents && Array.isArray(body.contents)) {
     for (const content of body.contents) {
       const converted = convertGeminiContent(content);
+      if (!converted) continue;
       if (Array.isArray(converted)) {
         result.messages.push(...converted);
-      } else if (converted) {
+      } else {
         result.messages.push(converted);
       }
     }
@@ -70,6 +71,12 @@ export function geminiToOpenAIRequest(model, body, stream) {
   return result;
 }
 
+function serializeFunctionResponseContent(functionResponse) {
+  const payload = functionResponse?.response?.result ?? functionResponse?.response ?? {};
+  if (typeof payload === "string") return payload;
+  return JSON.stringify(payload);
+}
+
 // Convert Gemini content to OpenAI message
 function convertGeminiContent(content) {
   const role = content.role === "user" ? "user" : "assistant";
@@ -81,8 +88,14 @@ function convertGeminiContent(content) {
   const parts = [];
   const toolCalls = [];
   const toolResponses = [];
+  let reasoningContent = "";
 
   for (const part of content.parts) {
+    if (part.thought === true && part.text !== undefined) {
+      reasoningContent += part.text;
+      continue;
+    }
+
     if (part.text !== undefined) {
       parts.push({ type: "text", text: part.text });
     }
@@ -98,7 +111,7 @@ function convertGeminiContent(content) {
 
     if (part.functionCall) {
       toolCalls.push({
-        id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: part.functionCall.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         type: "function",
         function: {
           name: part.functionCall.name,
@@ -113,30 +126,46 @@ function convertGeminiContent(content) {
       toolResponses.push({
         role: "tool",
         tool_call_id: part.functionResponse.id || part.functionResponse.name,
-        content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
+        content: serializeFunctionResponseContent(part.functionResponse)
       });
     }
   }
 
-  // A turn is either tool-results or assistant/user content, not both.
   if (toolResponses.length > 0) {
-    return toolResponses;
+    const messages = [];
+    if (parts.length > 0) {
+      messages.push({
+        role: "user",
+        content: parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts
+      });
+    }
+    messages.push(...toolResponses);
+    return messages.length === 1 ? messages[0] : messages;
   }
 
   if (toolCalls.length > 0) {
     const result = { role: "assistant" };
     if (parts.length > 0) {
-      result.content = parts.length === 1 ? parts[0].text : parts;
+      result.content = parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts;
+    }
+    if (reasoningContent) {
+      result.reasoning_content = reasoningContent;
     }
     result.tool_calls = toolCalls;
     return result;
   }
 
-  if (parts.length > 0) {
-    return {
+  if (parts.length > 0 || reasoningContent) {
+    const result = {
       role,
-      content: parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts
+      content: parts.length === 1 && parts[0].type === "text" ? parts[0].text
+        : parts.length > 0 ? parts
+        : ""
     };
+    if (reasoningContent) {
+      result.reasoning_content = reasoningContent;
+    }
+    return result;
   }
 
   return null;

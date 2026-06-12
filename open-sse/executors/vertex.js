@@ -2,6 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { parseVertexSaJson, refreshVertexToken } from "../services/tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
 const projectIdCache = new Map();
@@ -96,7 +97,7 @@ export class VertexExecutor extends BaseExecutor {
     return { accessToken: result.accessToken, expiresAt: result.expiresAt };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, cacheProtectedSnapshot = null }) {
     const saJson = parseVertexSaJson(credentials?.apiKey);
 
     // SA JSON flow: mint Bearer token (cached)
@@ -117,6 +118,7 @@ export class VertexExecutor extends BaseExecutor {
     const url = this.buildUrl(model, stream, 0, credentials);
     const headers = this.buildHeaders(credentials, stream);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
+    throwOnCacheViolation(transformedBody, cacheProtectedSnapshot, "vertex executor");
 
     const response = await proxyAwareFetch(url, {
       method: "POST",

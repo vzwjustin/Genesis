@@ -10,6 +10,11 @@ import { DEFAULT_RETRY_CONFIG, resolveRetryEntry } from "../config/runtimeConfig
 import { OAUTH_ENDPOINTS } from "../config/appConstants.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
+import {
+  findLastCacheBoundary,
+  hasAnthropicCacheBreakpoints,
+  shouldSkipMessageForCache,
+} from "../rtk/cacheBoundary.js";
 
 // SSE error patterns inside 200-OK body that should trigger retry as if 503
 const CODEX_SSE_OVERLOADED_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
@@ -226,7 +231,10 @@ export class CodexExecutor extends BaseExecutor {
    */
   async prefetchImages(body, proxyOptions = null) {
     if (!Array.isArray(body?.input)) return;
-    for (const item of body.input) {
+    const cacheFloor = findLastCacheBoundary(body.input);
+    for (let i = 0; i < body.input.length; i++) {
+      if (shouldSkipMessageForCache(i, body.input, cacheFloor)) continue;
+      const item = body.input[i];
       if (!Array.isArray(item.content)) continue;
       const pending = item.content.map(async (c) => {
         if (c.type !== "image_url") return c;
@@ -399,27 +407,28 @@ export class CodexExecutor extends BaseExecutor {
     const machineId = await getMachineId();
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
     this._currentSessionId = resolveCacheSessionId(body, credentials, machineId);
-    // Convert string input to array format (Codex API requires input as array)
-    const normalized = normalizeResponsesInput(body.input);
-    if (normalized) body.input = normalized;
 
-    // Ensure input is present and non-empty (Codex API rejects empty input)
-    if (!body.input || (Array.isArray(body.input) && body.input.length === 0)) {
-      body.input = [{ type: "message", role: "user", content: [{ type: "input_text", text: "..." }] }];
+    const preserveClientCache = hasAnthropicCacheBreakpoints(body);
+
+    if (!preserveClientCache) {
+      // Convert string input to array format (Codex API requires input as array)
+      const normalized = normalizeResponsesInput(body.input);
+      if (normalized) body.input = normalized;
+
+      // Ensure input is present and non-empty (Codex API rejects empty input)
+      if (!body.input || (Array.isArray(body.input) && body.input.length === 0)) {
+        body.input = [{ type: "message", role: "user", content: [{ type: "input_text", text: "..." }] }];
+      }
+
+      convertSystemToDeveloperRole(body);
+      stripStoredItemReferences(body);
+      normalizeCodexTools(body);
     }
-
-    // Keep system prompts in body.input as role=developer so they stay in the cacheable prefix
-    convertSystemToDeveloperRole(body);
-    // Strip server-generated item IDs (rs_/fc_/resp_/msg_) — Codex /responses can't resolve when store=false
-    stripStoredItemReferences(body);
-    // Flatten function tools + drop unsupported types
-    normalizeCodexTools(body);
 
     // Ensure streaming is enabled (Codex API requires it)
     body.stream = true;
 
-    // If no instructions provided, inject default Codex instructions
-    if (!body.instructions || body.instructions.trim() === "") {
+    if (!preserveClientCache && (!body.instructions || body.instructions.trim() === "")) {
       body.instructions = CODEX_DEFAULT_INSTRUCTIONS;
     }
 

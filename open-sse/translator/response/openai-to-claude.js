@@ -1,8 +1,8 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 
-// Prefix for Claude OAuth tool names (must match request translator)
-const CLAUDE_OAUTH_TOOL_PREFIX = "proxy_";
+// Must match openai-to-claude.js request translator (empty = real Claude Code behavior).
+const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
 // Sanitize tool call arguments to fix bad params from non-Anthropic models
 function sanitizeToolArgs(toolName, argsJson) {

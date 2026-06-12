@@ -1,4 +1,4 @@
-import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
+import { createErrorResult, parseUpstreamError, formatProviderError, PROXY_INTERNAL_ERROR_CODES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
@@ -23,11 +23,24 @@ export async function handleEmbeddingsCore({
 
   // Validate input
   const input = body.input;
-  if (!input) {
+  if (input === null || input === undefined || input === "") {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
   }
   if (typeof input !== "string" && !Array.isArray(input)) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "input must be a string or array of strings");
+  }
+  if (Array.isArray(input)) {
+    if (input.length === 0) {
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, "input array must not be empty");
+    }
+    for (let i = 0; i < input.length; i++) {
+      if (typeof input[i] !== "string") {
+        return createErrorResult(
+          HTTP_STATUS.BAD_REQUEST,
+          `input[${i}] must be a string`
+        );
+      }
+    }
   }
 
   const adapter = getEmbeddingAdapter(provider);
@@ -81,7 +94,7 @@ export async function handleEmbeddingsCore({
       log
     );
 
-    if (newCredentials?.accessToken || newCredentials?.apiKey) {
+    if (newCredentials?.accessToken || newCredentials?.copilotToken || newCredentials?.apiKey) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for embeddings`);
       Object.assign(credentials, newCredentials);
       if (onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
@@ -118,7 +131,10 @@ export async function handleEmbeddingsCore({
   try {
     responseBody = await providerResponse.json();
   } catch {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`, undefined, {
+      errorCode: PROXY_INTERNAL_ERROR_CODES.RESPONSE_PARSE_FAILED,
+      proxyInternal: true,
+    });
   }
 
   if (onRequestSuccess) await onRequestSuccess();

@@ -1,5 +1,5 @@
 import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
-import { PROVIDER_MODELS } from "@/shared/constants/models";
+import { buildModelsList } from "../../v1/models/route.js";
 
 /**
  * Handle CORS preflight
@@ -16,28 +16,22 @@ export async function OPTIONS() {
 
 /**
  * GET /v1beta/models - Gemini compatible models list
- * Returns models in Gemini API format
+ * Returns models in Gemini API format, filtered like /v1/models.
  */
 export async function GET(request) {
   const routeAuth = await requireRouteAuth(request);
   if (!routeAuth.ok) return routeAuth.response;
 
   try {
-    // Collect all models from all providers
-    const models = [];
-    
-    for (const [provider, providerModels] of Object.entries(PROVIDER_MODELS)) {
-      for (const model of providerModels) {
-        models.push({
-          name: `models/${provider}/${model.id}`,
-          displayName: model.name || model.id,
-          description: `${provider} model: ${model.name || model.id}`,
-          supportedGenerationMethods: ["generateContent"],
-          inputTokenLimit: 128000,
-          outputTokenLimit: 8192,
-        });
-      }
-    }
+    const openAiModels = await buildModelsList(["llm"]);
+    const models = openAiModels.map((model) => ({
+      name: `models/${model.id}`,
+      displayName: model.id.includes("/") ? model.id.split("/").slice(1).join("/") : model.id,
+      description: `${model.owned_by || "provider"} model: ${model.id}`,
+      supportedGenerationMethods: ["generateContent"],
+      inputTokenLimit: 128000,
+      outputTokenLimit: 8192,
+    }));
 
     return Response.json({ models });
   } catch (error) {
@@ -45,4 +39,3 @@ export async function GET(request) {
     return Response.json({ error: { message: error.message } }, { status: 500 });
   }
 }
-

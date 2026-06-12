@@ -12,8 +12,16 @@ function defaultAliasFromModelId(modelId) {
 /**
  * Pick a dashboard alias for a provider model id.
  * Mirrors CompatibleModelsSection.resolveAlias behavior.
+ *
+ * @param {string} providerStorageAlias - alias used in stored fullModel paths
+ * @param {string} [providerDisplayAlias] - short prefix for collision aliases (node prefix)
  */
-export function resolveModelAlias(modelId, providerStorageAlias, existingAliases = {}) {
+export function resolveModelAlias(
+  modelId,
+  providerStorageAlias,
+  existingAliases = {},
+  providerDisplayAlias = providerStorageAlias,
+) {
   if (!modelId || !providerStorageAlias) return null;
 
   const fullModel = `${providerStorageAlias}/${modelId}`;
@@ -33,7 +41,7 @@ export function resolveModelAlias(modelId, providerStorageAlias, existingAliases
   }
 
   if (!existingAliases[baseAlias]) return baseAlias;
-  const prefixedAlias = `${providerStorageAlias}-${baseAlias}`;
+  const prefixedAlias = `${providerDisplayAlias}-${baseAlias}`;
   if (!existingAliases[prefixedAlias]) return prefixedAlias;
   return null;
 }

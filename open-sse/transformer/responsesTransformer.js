@@ -73,7 +73,8 @@ export function createResponsesApiTransformStream(logger = null) {
     funcArgsDone: {},
     funcItemDone: {},
     buffer: "",
-    completedSent: false
+    completedSent: false,
+    finishReasonSeen: false
   };
 
   const encoder = new TextEncoder();
@@ -416,6 +417,7 @@ export function createResponsesApiTransformStream(logger = null) {
 
         // Handle finish_reason
         if (choice.finish_reason) {
+          state.finishReasonSeen = true;
           for (const i in state.msgItemAdded) closeMessage(controller, i);
           closeReasoning(controller);
           for (const i in state.funcCallIds) closeToolCall(controller, i);
@@ -428,10 +430,28 @@ export function createResponsesApiTransformStream(logger = null) {
       for (const i in state.msgItemAdded) closeMessage(controller, i);
       closeReasoning(controller);
       for (const i in state.funcCallIds) closeToolCall(controller, i);
-      sendCompleted(controller);
 
-      logger?.logOutput("data: [DONE]");
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      if (state.finishReasonSeen) {
+        sendCompleted(controller);
+        logger?.logOutput("data: [DONE]");
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      } else if (state.started) {
+        emit(controller, "response.failed", {
+          type: "response.failed",
+          response: {
+            id: state.responseId,
+            object: "response",
+            created_at: state.created,
+            status: "failed",
+            background: false,
+            error: {
+              type: "incomplete_stream",
+              message: "Stream ended without finish_reason"
+            }
+          }
+        });
+      }
+
       logger?.flush();
     }
   });

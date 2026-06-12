@@ -153,7 +153,6 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       log.warn("FETCH", `Max retries (${maxRetries}) exhausted for ${providerId}`);
       return exhaustedAccountsResponse(had5xx, lastStatus, lastError);
     }
-    retryCount++;
 
     const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
 
@@ -185,6 +184,8 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       lastStatus = 401;
       continue;
     }
+
+    retryCount++;
 
     const result = await handleFetchCore({
       url: targetUrl,

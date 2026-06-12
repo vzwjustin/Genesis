@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
+import { swapConnectionPriorityUpdates } from "@/shared/utils/dashboardHelpers";
+import { useNotificationStore } from "@/store/notificationStore";
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -309,6 +311,8 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("1");
   const [confirmState, setConfirmState] = useState(null);
+  const stickyLimitDebounceRef = useRef(null);
+  const notify = useNotificationStore();
 
   const fetch_ = useCallback(async () => {
     try {
@@ -320,7 +324,17 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       const connData = await connRes.json();
       const proxyData = await proxyRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
-      if (connRes.ok) setConnections((connData.connections || []).filter((c) => c.provider === providerId));
+      if (connRes.ok) {
+        setConnections(
+          (connData.connections || [])
+            .filter((c) => c.provider === providerId)
+            .sort((a, b) => {
+              const pDiff = (a.priority ?? 999) - (b.priority ?? 999);
+              if (pDiff !== 0) return pDiff;
+              return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+            }),
+        );
+      }
       if (proxyRes.ok) setProxyPools(proxyData.proxyPools || []);
       const override = (settingsData.providerStrategies || {})[providerId] || {};
       setProviderStrategy(override.fallbackStrategy || null);
@@ -334,29 +348,64 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 
   const saveStrategy = async (strategy, stickyLimit) => {
     try {
-      const res = await fetch("/api/settings", { cache: "no-store" });
-      const data = res.ok ? await res.json() : {};
-      const current = data.providerStrategies || {};
       const override = {};
       if (strategy) override.fallbackStrategy = strategy;
-      if (strategy === "round-robin" && stickyLimit !== "") override.stickyRoundRobinLimit = Number(stickyLimit) || 3;
-      const updated = { ...current };
-      if (Object.keys(override).length === 0) delete updated[providerId];
-      else updated[providerId] = override;
-      await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerStrategies: updated }) });
-    } catch (e) { console.log("saveStrategy error:", e); }
+      if (strategy === "round-robin" && stickyLimit !== "") {
+        const n = Number(stickyLimit);
+        if (Number.isFinite(n) && n >= 1) override.stickyRoundRobinLimit = n;
+      }
+      const providerPatch = Object.keys(override).length === 0
+        ? { [providerId]: null }
+        : { [providerId]: override };
+      const patchRes = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerStrategies: providerPatch }),
+      });
+      if (!patchRes.ok) {
+        const err = await patchRes.json().catch(() => ({}));
+        notify.error(err.error || "Failed to save provider strategy");
+        return false;
+      }
+      return true;
+    } catch (e) {
+      notify.error(e?.message || "Failed to save provider strategy");
+      return false;
+    }
+  };
+
+  const handleStickyLimitChange = (value) => {
+    setProviderStickyLimit(value);
+    if (stickyLimitDebounceRef.current) clearTimeout(stickyLimitDebounceRef.current);
+    stickyLimitDebounceRef.current = setTimeout(async () => {
+      const ok = await saveStrategy("round-robin", value);
+      if (!ok) await fetch_();
+    }, 400);
   };
 
   const handleSwapPriority = async (i1, i2) => {
+    const conn1 = connections[i1];
+    const conn2 = connections[i2];
+    const updates = swapConnectionPriorityUpdates(conn1, conn2);
     const next = [...connections];
-    [next[i1], next[i2]] = [next[i2], next[i1]];
+    next[i1] = { ...conn1, priority: updates[0].priority };
+    next[i2] = { ...conn2, priority: updates[1].priority };
     setConnections(next);
     try {
-      await Promise.all([
-        fetch(`/api/providers/${next[i1].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i1 }) }),
-        fetch(`/api/providers/${next[i2].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i2 }) }),
-      ]);
-    } catch { await fetch_(); }
+      const res = await fetch("/api/providers/swap-priority", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId1: conn1.id, connectionId2: conn2.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      await fetch_();
+    } catch (error) {
+      notify.error(error?.message || "Failed to swap priority");
+      await fetch_();
+    }
   };
 
   const handleDelete = async (id) => {
@@ -412,11 +461,13 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
             <span className="text-xs text-text-muted font-medium">Round Robin</span>
             <Toggle
               checked={providerStrategy === "round-robin"}
-              onChange={(enabled) => {
+              onChange={async (enabled) => {
+                const prevStrategy = providerStrategy;
                 const strategy = enabled ? "round-robin" : null;
                 setProviderStrategy(strategy);
                 if (enabled && !providerStickyLimit) setProviderStickyLimit("1");
-                saveStrategy(strategy, enabled ? (providerStickyLimit || "1") : providerStickyLimit);
+                const ok = await saveStrategy(strategy, enabled ? (providerStickyLimit || "1") : providerStickyLimit);
+                if (!ok) setProviderStrategy(prevStrategy);
               }}
             />
             {providerStrategy === "round-robin" && (
@@ -424,7 +475,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
                 <span className="text-xs text-text-muted">Sticky:</span>
                 <input
                   type="number" min={1} value={providerStickyLimit}
-                  onChange={(e) => { setProviderStickyLimit(e.target.value); saveStrategy("round-robin", e.target.value); }}
+                  onChange={(e) => handleStickyLimitChange(e.target.value)}
                   className="w-16 px-2 py-1 text-xs border border-border rounded-md bg-surface-2 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 transition-all"
                 />
               </div>

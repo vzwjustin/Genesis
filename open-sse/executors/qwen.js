@@ -2,6 +2,7 @@ import { DefaultExecutor } from "./default.js";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS } from "../config/appConstants.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 
 /** portal.qwen.ai — static fingerprint matching stable Qwen Code release */
 const QWEN_USER_AGENT = "QwenCode/0.12.3 (linux; x64)";
@@ -96,6 +97,7 @@ export class QwenExecutor extends DefaultExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
+    if (hasAnthropicCacheBreakpoints(body)) return body;
     let next = body && typeof body === "object" ? { ...body } : body;
     if (stream && next?.messages && !next.stream_options && !next.thinking && !next.enable_thinking && next.stream !== false) {
       next.stream_options = { include_usage: true };

@@ -1,5 +1,8 @@
 import { handleChat } from "@/sse/handlers/chat.js";
-import { initTranslators } from "open-sse/translator/index.js";
+import { initTranslators, translateRequest } from "open-sse/translator/index.js";
+import { FORMATS } from "open-sse/translator/formats.js";
+import { detectClientTool, isNativePassthrough } from "open-sse/utils/clientDetector.js";
+import { VALIDATION_ERROR_TYPES } from "open-sse/utils/error.js";
 
 let initialized = false;
 
@@ -38,47 +41,77 @@ export async function OPTIONS() {
  * The upstream handleChat returns OpenAI SSE format; we transform it to
  * Gemini SSE format on the fly via transformOpenAISSEToGeminiSSE().
  */
+function parseV1BetaPath(path) {
+  if (!path?.length) {
+    const err = new Error("Missing model path");
+    err.status = 400;
+    throw err;
+  }
+
+  const modelAction = path[path.length - 1];
+  let action;
+  if (modelAction.endsWith(":streamGenerateContent")) {
+    action = ":streamGenerateContent";
+  } else if (modelAction.endsWith(":generateContent")) {
+    action = ":generateContent";
+  } else {
+    const err = new Error(`Unrecognized action suffix in path: ${modelAction}`);
+    err.status = 400;
+    throw err;
+  }
+  const modelName = modelAction.slice(0, -action.length);
+
+  if (path.length === 1) {
+    return { model: modelName, action };
+  }
+
+  const prefix = path.slice(0, -1).join("/");
+  return { model: `${prefix}/${modelName}`, action };
+}
+
+function geminiErrorResponse(status, message, code) {
+  return Response.json(
+    { error: { message, code } },
+    {
+      status,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    }
+  );
+}
+
 export async function POST(request, { params }) {
   await ensureInitialized();
 
   try {
     const { path } = await params;
-    // path = ["provider", "model:action"] or ["model:action"]
+    const { model, action } = parseV1BetaPath(path);
 
-    let model;
-    let action; // ":generateContent" | ":streamGenerateContent"
-
-    if (path.length >= 2) {
-      // Format: /v1beta/models/provider/model:generateContent
-      const provider = path[0];
-      const modelAction = path[1];
-      action = modelAction.includes(":streamGenerateContent")
-        ? ":streamGenerateContent"
-        : ":generateContent";
-      const modelName = modelAction
-        .replace(":streamGenerateContent", "")
-        .replace(":generateContent", "");
-      model = provider + "/" + modelName;
-    } else {
-      // Format: /v1beta/models/model:generateContent
-      const modelAction = path[0];
-      action = modelAction.includes(":streamGenerateContent")
-        ? ":streamGenerateContent"
-        : ":generateContent";
-      model = modelAction
-        .replace(":streamGenerateContent", "")
-        .replace(":generateContent", "");
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return geminiErrorResponse(
+        400,
+        "Invalid JSON body",
+        VALIDATION_ERROR_TYPES.VALIDATION_FAILED
+      );
     }
-
-    const body = await request.json();
 
     // Streaming is determined by URL action suffix:
     //   :streamGenerateContent => stream: true  (SSE)
     //   :generateContent       => stream: false (plain JSON)
     const stream = action === ":streamGenerateContent";
 
-    // Convert Gemini request format to OpenAI/internal format
-    const convertedBody = convertGeminiToInternal(body, model, stream);
+    let convertedBody;
+    try {
+      convertedBody = convertGeminiToInternal(body, model, stream);
+    } catch (translationError) {
+      return geminiErrorResponse(
+        400,
+        translationError.message || "Request translation failed",
+        VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY
+      );
+    }
 
     // Create new request with converted body
     const newRequest = new Request(request.url, {
@@ -87,23 +120,36 @@ export async function POST(request, { params }) {
       body: JSON.stringify(convertedBody),
     });
 
+    const headerObj = {};
+    for (const [k, v] of request.headers.entries()) {
+      headerObj[k.toLowerCase()] = v;
+    }
+    const provider = model.includes("/") ? model.split("/")[0] : model;
+    const clientTool = detectClientTool(headerObj, body);
+    const passthrough = isNativePassthrough(clientTool, provider);
+
     const response = await handleChat(newRequest);
 
     if (stream) {
-      // Transform OpenAI SSE => Gemini SSE on the fly.
-      // The @google/genai SDK always uses :streamGenerateContent?alt=sse and
-      // expects Gemini SSE chunks (no [DONE] sentinel — stream just closes).
-      return transformOpenAISSEToGeminiSSE(response, model);
+      // Passthrough or upstream-native Gemini SSE: relay unchanged.
+      if (passthrough) {
+        return withGeminiStreamHeaders(response);
+      }
+      return passthroughOrTransformGeminiSSE(response, model);
     } else {
       // Convert OpenAI JSON response => Gemini GenerateContentResponse
       return await convertOpenAIResponseToGemini(response, model);
     }
   } catch (error) {
     console.log("Error handling Gemini request:", error);
-    return Response.json(
-      { error: { message: error.message, code: 500 } },
-      { status: 500 }
-    );
+    if (error.status === 400) {
+      return geminiErrorResponse(
+        400,
+        error.message || "Invalid request path",
+        VALIDATION_ERROR_TYPES.VALIDATION_FAILED
+      );
+    }
+    return geminiErrorResponse(500, error.message, 500);
   }
 }
 
@@ -115,35 +161,49 @@ export async function POST(request, { params }) {
  * @param {boolean} stream     - whether to stream (from URL action)
  */
 function convertGeminiToInternal(geminiBody, model, stream) {
-  const messages = [];
+  return translateRequest(FORMATS.GEMINI, FORMATS.OPENAI, model, geminiBody, stream);
+}
 
-  // Convert system instruction
-  if (geminiBody.systemInstruction) {
-    const systemText = geminiBody.systemInstruction.parts
-      ?.map(p => p.text)
-      .join("\n") || "";
-    if (systemText) {
-      messages.push({ role: "system", content: systemText });
+function withGeminiStreamHeaders(response) {
+  if (!response.ok) return response;
+  const headers = new Headers(response.headers);
+  headers.set("Content-Type", "text/event-stream");
+  headers.set("Cache-Control", "no-cache");
+  headers.set("Access-Control-Allow-Origin", "*");
+  return new Response(response.body, { status: response.status, headers });
+}
+
+async function peekFirstChunkIsGeminiSSE(peekStream) {
+  const reader = peekStream.getReader();
+  let decoded = "";
+  try {
+    while (decoded.length < 8192) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      decoded += new TextDecoder().decode(value, { stream: true });
+      if (/data:\s*\S/.test(decoded)) break;
     }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return /"candidates"\s*:/.test(decoded);
+}
+
+async function passthroughOrTransformGeminiSSE(upstreamResponse, model) {
+  if (!upstreamResponse.ok || !upstreamResponse.body) {
+    return upstreamResponse;
   }
 
-  // Convert contents to messages
-  if (geminiBody.contents) {
-    for (const content of geminiBody.contents) {
-      const role = content.role === "model" ? "assistant" : "user";
-      const text = content.parts?.map(p => p.text).join("\n") || "";
-      messages.push({ role, content: text });
-    }
+  const [peek, main] = upstreamResponse.body.tee();
+  const isNativeGemini = await peekFirstChunkIsGeminiSSE(peek);
+  if (isNativeGemini) {
+    return withGeminiStreamHeaders(new Response(main, { status: upstreamResponse.status }));
   }
 
-  return {
-    model,
-    messages,
-    stream,
-    max_tokens: geminiBody.generationConfig?.maxOutputTokens,
-    temperature: geminiBody.generationConfig?.temperature,
-    top_p: geminiBody.generationConfig?.topP,
-  };
+  return transformOpenAISSEToGeminiSSE(
+    new Response(main, { status: upstreamResponse.status, headers: upstreamResponse.headers }),
+    model
+  );
 }
 
 /** Map OpenAI finish_reason => Gemini finishReason */
@@ -176,6 +236,9 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
   const encoder = new TextEncoder();
 
   let sawTerminal = false;
+  let consecutiveParseFailures = 0;
+  const MAX_CONSECUTIVE_PARSE_FAILURES = 3;
+  const toolCallAccum = {};
 
   const transformStream = new TransformStream({
     transform(chunk, controller) {
@@ -197,7 +260,13 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
         let parsed;
         try {
           parsed = JSON.parse(data);
+          consecutiveParseFailures = 0;
         } catch {
+          consecutiveParseFailures++;
+          if (consecutiveParseFailures >= MAX_CONSECUTIVE_PARSE_FAILURES) {
+            controller.error(new Error("Malformed SSE data after consecutive parse failures"));
+            return;
+          }
           continue;
         }
 
@@ -206,12 +275,43 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
 
         const delta = choice.delta || {};
 
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index ?? 0;
+            if (!toolCallAccum[idx]) {
+              toolCallAccum[idx] = { id: "", name: "", arguments: "" };
+            }
+            const accum = toolCallAccum[idx];
+            if (tc.id) accum.id = tc.id;
+            if (tc.function?.name) accum.name += tc.function.name;
+            if (tc.function?.arguments) accum.arguments += tc.function.arguments;
+          }
+        }
+
         const parts = [];
         if (delta.reasoning_content) {
           parts.push({ text: delta.reasoning_content, thought: true });
         }
         if (delta.content) {
           parts.push({ text: delta.content });
+        }
+
+        if (choice.finish_reason) {
+          for (const idx of Object.keys(toolCallAccum)) {
+            const accum = toolCallAccum[idx];
+            let args = {};
+            try {
+              args = JSON.parse(accum.arguments || "{}");
+            } catch {
+              /* empty */
+            }
+            parts.push({
+              functionCall: {
+                name: accum.name,
+                args,
+              },
+            });
+          }
         }
 
         // Skip pure role-only deltas with no content and no finish signal
@@ -294,9 +394,10 @@ async function convertOpenAIResponseToGemini(response, model) {
 
   const choice = body.choices?.[0];
   if (!choice) {
-    return Response.json(body, {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-    });
+    return Response.json(
+      { error: { message: "Upstream returned empty completion", type: "server_error", code: "empty_completion" } },
+      { status: 502, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+    );
   }
 
   const { message, finish_reason } = choice;
@@ -305,7 +406,28 @@ async function convertOpenAIResponseToGemini(response, model) {
   if (message.reasoning_content) {
     parts.push({ text: message.reasoning_content, thought: true });
   }
-  parts.push({ text: message.content || "" });
+  if (message.content) {
+    parts.push({ text: message.content });
+  }
+  if (message.tool_calls) {
+    for (const tc of message.tool_calls) {
+      let args = {};
+      try {
+        args = JSON.parse(tc.function?.arguments || "{}");
+      } catch {
+        /* empty */
+      }
+      parts.push({
+        functionCall: {
+          name: tc.function?.name || "",
+          args,
+        },
+      });
+    }
+  }
+  if (parts.length === 0) {
+    parts.push({ text: "" });
+  }
 
   const finishReason = FINISH_REASON_MAP[finish_reason] || "STOP";
 

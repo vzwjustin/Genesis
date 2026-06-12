@@ -72,6 +72,19 @@ describe("convertResponsesStreamToJson — terminal status (Bug A)", () => {
     expect(result.status).not.toBe("completed");
   });
 
+  it("reports status 'failed' when output indices have gaps", async () => {
+    const sse = [
+      'event: response.created\ndata: {"response":{"id":"resp_gap","created_at":1700000000}}',
+      'event: response.output_item.done\ndata: {"output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"A"}]}}',
+      'event: response.output_item.done\ndata: {"output_index":2,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"C"}]}}',
+      'event: response.completed\ndata: {"response":{"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}',
+    ].join("\n\n");
+
+    const result = await convertResponsesStreamToJson(sseStream(sse));
+    expect(result.status).toBe("failed");
+    expect(result.output).toHaveLength(1);
+  });
+
   it("reports status 'failed' when response.failed is emitted", async () => {
     const sse = [
       'event: response.created\ndata: {"response":{"id":"resp_3","created_at":1700000000}}',

@@ -1,25 +1,43 @@
-import { createHash, randomBytes, randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { CLAUDE_TOOL_SUFFIX, CC_DEFAULT_TOOLS } from "../config/appConstants.js";
+import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 
 const CLAUDE_VERSION = "2.1.92";
 const CC_ENTRYPOINT = "sdk-cli";
 
-// Generate billing header matching real Claude Code 2.1.92+ format:
-// x-anthropic-billing-header: cc_version=<ver>.<build>; cc_entrypoint=sdk-cli; cch=<hash>;
+// Generate billing header matching real Claude Code 2.1.92+ format.
+// cch is derived from the request body so the header is stable for identical payloads
+// (random per-request noise would invalidate Anthropic prompt-cache prefixes).
 function generateBillingHeader(payload) {
   const content = JSON.stringify(payload);
   const cch = createHash("sha256").update(content).digest("hex").slice(0, 5);
-  const buildHash = randomBytes(2).toString("hex").slice(0, 3);
-  return `x-anthropic-billing-header: cc_version=${CLAUDE_VERSION}.${buildHash}; cc_entrypoint=${CC_ENTRYPOINT}; cch=${cch};`;
+  return `x-anthropic-billing-header: cc_version=${CLAUDE_VERSION}; cc_entrypoint=${CC_ENTRYPOINT}; cch=${cch};`;
 }
 
 // Generate fake user ID in Claude Code 2.1.92+ JSON format:
 // {"device_id":"<64hex>","account_uuid":"<uuid>","session_id":"<uuid>"}
+// device_id/account_uuid are derived from sessionId so they stay stable per session.
 function generateFakeUserID(sessionId) {
-  const deviceId = randomBytes(32).toString("hex");
-  const accountUuid = randomUUID();
   const sessionUuid = sessionId || randomUUID();
-  return `{"device_id":"${deviceId}","account_uuid":"${accountUuid}","session_id":"${sessionUuid}"}`;
+  const deviceId = createHash("sha256").update(`device:${sessionUuid}`).digest("hex");
+  const accountUuid = createHash("sha256").update(`account:${sessionUuid}`).digest("hex").slice(0, 32);
+  const accountFormatted = `${accountUuid.slice(0, 8)}-${accountUuid.slice(8, 12)}-${accountUuid.slice(12, 16)}-${accountUuid.slice(16, 20)}-${accountUuid.slice(20, 32)}`;
+  return `{"device_id":"${deviceId}","account_uuid":"${accountFormatted}","session_id":"${sessionUuid}"}`;
+}
+
+function insertAfterLastSystemCache(systemBlocks, block) {
+  let lastCacheIdx = -1;
+  for (let i = systemBlocks.length - 1; i >= 0; i--) {
+    if (systemBlocks[i]?.cache_control) {
+      lastCacheIdx = i;
+      break;
+    }
+  }
+  if (lastCacheIdx >= 0) {
+    systemBlocks.splice(lastCacheIdx + 1, 0, block);
+  } else {
+    systemBlocks.push(block);
+  }
 }
 
 /**
@@ -117,19 +135,26 @@ export function applyCloaking(body, apiKey, sessionId) {
 
   const result = { ...body };
 
-  // Inject billing header as system[0], preserve existing system blocks
+  // Client cache breakpoints: zero mutations — system, messages, tools, metadata untouched.
+  if (hasAnthropicCacheBreakpoints(body)) {
+    return body;
+  }
+
+  // Inject billing header after the last cached system block (never prepend — that
+  // would shift every downstream cache_control breakpoint and bust KV cache hits).
   const billingText = generateBillingHeader(body);
   const billingBlock = { type: "text", text: billingText };
+  const alreadyInjected = Array.isArray(result.system)
+    && result.system.some((block) => block?.text?.startsWith("x-anthropic-billing-header:"));
 
-  if (Array.isArray(result.system)) {
-    // Skip if already injected
-    if (!result.system[0]?.text?.startsWith("x-anthropic-billing-header:")) {
-      result.system = [billingBlock, ...result.system];
+  if (!alreadyInjected) {
+    if (Array.isArray(result.system)) {
+      insertAfterLastSystemCache(result.system, billingBlock);
+    } else if (typeof result.system === "string" && result.system.length > 0) {
+      result.system = [{ type: "text", text: result.system }, billingBlock];
+    } else {
+      result.system = [billingBlock];
     }
-  } else if (typeof result.system === "string") {
-    result.system = [billingBlock, { type: "text", text: result.system }];
-  } else {
-    result.system = [billingBlock];
   }
 
   // Inject fake user ID into metadata (session_id must match X-Claude-Code-Session-Id)

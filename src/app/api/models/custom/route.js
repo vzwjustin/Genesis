@@ -22,6 +22,9 @@ export async function POST(request) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
     const added = await addCustomModel({ providerAlias, id, type: type || "llm", name });
+    if (!added) {
+      return NextResponse.json({ error: "Model already exists" }, { status: 409 });
+    }
     return NextResponse.json({ success: true, added });
   } catch (error) {
     console.log("Error adding custom model:", error);

@@ -3,6 +3,15 @@ import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../../config/defaultThinkingS
 import { adjustMaxTokens } from "./maxTokensHelper.js";
 import { applyCloaking } from "../../utils/claudeCloaking.js";
 import { deriveSessionId } from "../../utils/sessionManager.js";
+import { getCachedClaudeHeaders } from "../../utils/claudeHeaderCache.js";
+import {
+  hasAnthropicCacheBreakpoints,
+  findLastCachedIndexInArray,
+  findLastCacheBoundary,
+  itemHasCacheControl,
+} from "../../rtk/cacheBoundary.js";
+
+export { hasAnthropicCacheBreakpoints };
 
 // Check if message has valid non-empty content
 export function hasValidContent(msg) {
@@ -13,22 +22,6 @@ export function hasValidContent(msg) {
       block.type === "tool_use" ||
       block.type === "tool_result"
     );
-  }
-  return false;
-}
-
-/** True when the client already placed Anthropic cache_control breakpoints. */
-export function hasAnthropicCacheBreakpoints(body) {
-  if (!body || typeof body !== "object") return false;
-  if (Array.isArray(body.system) && body.system.some((b) => b?.cache_control)) return true;
-  if (Array.isArray(body.tools) && body.tools.some((t) => t?.cache_control)) return true;
-  if (!Array.isArray(body.messages)) return false;
-  for (const msg of body.messages) {
-    if (msg?.cache_control) return true;
-    if (!Array.isArray(msg.content)) continue;
-    for (const block of msg.content) {
-      if (block?.cache_control) return true;
-    }
   }
   return false;
 }
@@ -65,7 +58,7 @@ export function stripProviderModelPrefix(model) {
  * Clean Anthropic tool definitions for upstream compatibility.
  * Client tools: strip model and type. Built-in tools: preserve properties but strip provider prefix from model.
  */
-export function cleanAnthropicToolDefinitions(tools, provider) {
+export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientCache = false } = {}) {
   if (!tools || !Array.isArray(tools)) return tools;
 
   const isAnthropicEndpoint = provider === "claude" || provider?.startsWith("anthropic-compatible");
@@ -74,7 +67,17 @@ export function cleanAnthropicToolDefinitions(tools, provider) {
     filtered = tools.filter((tool) => !tool.type || tool.type === "function");
   }
 
-  return filtered.map((tool) => {
+  const toolFloor = preserveClientCache ? findLastCachedIndexInArray(filtered) : -1;
+
+  return filtered.map((tool, i) => {
+    const toolProtected = preserveClientCache
+      && (itemHasCacheControl(tool) || (toolFloor >= 0 && i <= toolFloor));
+
+    // Tools in the cached prefix: 100% byte-identical — no field stripping or prefix rewrites.
+    if (toolProtected) {
+      return { ...tool };
+    }
+
     if (!tool.type || tool.type === "function") {
       const { model, type, ...clientRest } = tool;
       return { ...clientRest };
@@ -94,8 +97,19 @@ export function cleanAnthropicToolDefinitions(tools, provider) {
 export function fixToolUseOrdering(messages) {
   if (messages.length <= 1) return messages;
 
+  const messageHasCacheMarker = (msg) => {
+    if (!msg) return false;
+    if (msg.cache_control) return true;
+    if (!Array.isArray(msg.content)) return false;
+    return msg.content.some((block) => block?.cache_control);
+  };
+
+  const cacheFloor = findLastCacheBoundary(messages);
+
   // Pass 1: Fix assistant messages with tool_use - remove text after tool_use
-  for (const msg of messages) {
+  for (let mi = 0; mi < messages.length; mi++) {
+    const msg = messages[mi];
+    if (messageHasCacheMarker(msg) || (cacheFloor >= 0 && mi <= cacheFloor)) continue;
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       const hasToolUse = msg.content.some(b => b.type === "tool_use");
       if (hasToolUse) {
@@ -124,13 +138,24 @@ export function fixToolUseOrdering(messages) {
   const contentHasToolUse = (content) =>
     Array.isArray(content) && content.some((b) => b.type === "tool_use");
 
+  const cloneMessageShell = (msg, content) => {
+    const out = { role: msg.role, content };
+    if (msg.cache_control) out.cache_control = msg.cache_control;
+    if (msg.id) out.id = msg.id;
+    return out;
+  };
+
   // Pass 2: Merge consecutive same-role messages
   const merged = [];
 
-  for (const msg of messages) {
+  for (let mi = 0; mi < messages.length; mi++) {
+    const msg = messages[mi];
     const last = merged[merged.length - 1];
+    const lastMergedIdx = merged.length - 1;
     const msgContent = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
-    const skipMerge = last?.role === "assistant" && (contentHasToolUse(last.content) || contentHasToolUse(msgContent));
+    const skipMerge = last?.role === "assistant" && (contentHasToolUse(last.content) || contentHasToolUse(msgContent))
+      || messageHasCacheMarker(last) || messageHasCacheMarker(msg)
+      || (cacheFloor >= 0 && (lastMergedIdx <= cacheFloor || mi <= cacheFloor));
 
     if (last && last.role === msg.role && !skipMerge) {
       // Merge content arrays
@@ -144,7 +169,7 @@ export function fixToolUseOrdering(messages) {
     } else {
       // Ensure content is array
       const content = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
-      merged.push({ role: msg.role, content: [...content] });
+      merged.push(cloneMessageShell(msg, [...content]));
     }
   }
 
@@ -159,14 +184,25 @@ const CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG = new Set(["minimax", "minim
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
-export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null) {
+export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, requestHeaders = null) {
+  const preserveClientCache = hasAnthropicCacheBreakpoints(body);
+
+  // Client-owned cache layout: only OAuth metadata cloaking — no message/tool rewriting.
+  if (preserveClientCache) {
+    if ((provider === "claude" || provider?.startsWith("anthropic-compatible")) && apiKey) {
+      const cached = connectionId ? getCachedClaudeHeaders(connectionId, requestHeaders) : null;
+      const headerSessionId = cached?.["x-claude-code-session-id"];
+      const sessionId = headerSessionId || (connectionId ? deriveSessionId(connectionId) : null);
+      body = applyCloaking(body, apiKey, sessionId);
+    }
+    return body;
+  }
+
   // MiniMax exposes a Claude-compatible endpoint but rejects Anthropic's extended
   // structured output parameter with a generic 400 "invalid params" response.
   if (CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG.has(provider)) {
     delete body.output_config;
   }
-
-  const preserveClientCache = hasAnthropicCacheBreakpoints(body);
 
   // 1. System: only rewrite cache_control when the client did not set breakpoints
   if (!preserveClientCache && body.system && Array.isArray(body.system)) {
@@ -235,17 +271,25 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           let hasToolUse = false;
           let hasThinking = false;
 
-          // Always replace signature for all thinking blocks
-          for (const block of msg.content) {
-            if (block.type === "thinking" || block.type === "redacted_thinking") {
-              block.signature = DEFAULT_THINKING_CLAUDE_SIGNATURE;
-              hasThinking = true;
+          // Replace signatures only when we own cache layout — client breakpoints
+          // include thinking blocks and mutating them invalidates KV cache hits.
+          if (!preserveClientCache) {
+            for (const block of msg.content) {
+              if (block.type === "thinking" || block.type === "redacted_thinking") {
+                block.signature = DEFAULT_THINKING_CLAUDE_SIGNATURE;
+                hasThinking = true;
+              }
+              if (block.type === "tool_use") hasToolUse = true;
             }
-            if (block.type === "tool_use") hasToolUse = true;
+          } else {
+            for (const block of msg.content) {
+              if (block.type === "thinking" || block.type === "redacted_thinking") hasThinking = true;
+              if (block.type === "tool_use") hasToolUse = true;
+            }
           }
 
           // Add thinking block if thinking enabled + has tool_use but no thinking
-          if (thinkingEnabled && !hasThinking && hasToolUse) {
+          if (!preserveClientCache && thinkingEnabled && !hasThinking && hasToolUse) {
             msg.content.unshift({
               type: "thinking",
               thinking: ".",
@@ -279,7 +323,9 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // Apply cloaking for OAuth tokens (billing header + fake user ID)
   // session_id in user_id must match X-Claude-Code-Session-Id for fingerprint consistency
   if ((provider === "claude" || provider?.startsWith("anthropic-compatible")) && apiKey) {
-    const sessionId = connectionId ? deriveSessionId(connectionId) : null;
+    const cached = connectionId ? getCachedClaudeHeaders(connectionId, requestHeaders) : null;
+    const headerSessionId = cached?.["x-claude-code-session-id"];
+    const sessionId = headerSessionId || (connectionId ? deriveSessionId(connectionId) : null);
     body = applyCloaking(body, apiKey, sessionId);
   }
 

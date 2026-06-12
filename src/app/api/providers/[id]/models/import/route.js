@@ -16,12 +16,16 @@ export async function POST(request, { params }) {
 
     const result = await autoImportProviderModels(connection);
 
+    if (result.error) {
+      return NextResponse.json({ ok: false, status: "degraded", ...result });
+    }
+
     if (result.warning && result.imported === 0 && !result.total) {
       const softFailure = result.authFailure
         || result.upstreamFailure
         || /session expired|reconnect|401|403|token|falling back|no models returned/i.test(result.warning);
       if (softFailure) {
-        return NextResponse.json({ ok: true, ...result });
+        return NextResponse.json({ ok: false, status: "degraded", ...result });
       }
       return NextResponse.json(
         { error: result.warning, ...result },
