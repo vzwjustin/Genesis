@@ -155,7 +155,7 @@ export default function CombosPage() {
         <EmptyState
           icon="layers"
           title="No combos yet"
-          description="Create model combos with fallback support for ordered failover."
+          description="A combo is an ordered list of models. If the first model fails, 9router automatically tries the next one."
           action={{ label: "Create Combo", onClick: () => setShowCreateModal(true) }}
         />
       ) : (
@@ -243,7 +243,10 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
         {/* Actions */}
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0">
           {/* Round Robin Toggle — always visible */}
-          <div className="flex items-center justify-between gap-1.5 rounded-brand bg-bg-alt px-2 py-1.5 sm:justify-start sm:bg-transparent sm:px-0 sm:py-0">
+          <div
+            className="flex items-center justify-between gap-1.5 rounded-brand bg-bg-alt px-2 py-1.5 sm:justify-start sm:bg-transparent sm:px-0 sm:py-0"
+            title="Spread requests evenly across the models in this combo instead of always starting with the first one."
+          >
             <span className="text-xs text-text-muted font-medium">Round Robin</span>
             <Toggle
               size="sm"

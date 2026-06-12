@@ -800,7 +800,7 @@ export default function ProfilePage() {
           {oidcExpanded && (
           <div className="flex flex-col gap-4 mt-4">
             <p className="text-xs sm:text-sm text-text-muted">
-              Use Authentik or any OIDC provider to sign in to the dashboard. You can enable password-only, OIDC-only, or both for the dashboard; model API access still uses API keys.
+              Sign in to the dashboard with a password, with an OIDC provider (such as Authentik or Keycloak), or with both. The AI model API always uses API keys, no matter which you choose.
             </p>
 
             <div className="flex flex-col gap-2">
@@ -953,7 +953,7 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm sm:text-base">Round Robin</p>
                 <p className="text-xs sm:text-sm text-text-muted">
-                  Cycle through accounts to distribute load
+                  Rotate between accounts to spread out the load, instead of always using the first one
                 </p>
               </div>
               <Toggle
@@ -969,7 +969,7 @@ export default function ProfilePage() {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm sm:text-base">Sticky Limit</p>
                   <p className="text-xs sm:text-sm text-text-muted">
-                    Calls per account before switching
+                    How many requests to send to one account before rotating to the next
                   </p>
                 </div>
                 <Input
@@ -1044,7 +1044,7 @@ export default function ProfilePage() {
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm sm:text-base">Outbound Proxy</p>
-                <p className="text-xs sm:text-sm text-text-muted">Enable proxy for OAuth + provider outbound requests.</p>
+                <p className="text-xs sm:text-sm text-text-muted">Send the requests 9router makes to providers (including sign-in) through a proxy server.</p>
               </div>
               <Toggle
                 checked={settings.outboundProxyEnabled === true}
@@ -1115,7 +1115,7 @@ export default function ProfilePage() {
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm sm:text-base">Enable Observability</p>
               <p className="text-xs sm:text-sm text-text-muted">
-                Record request details for inspection in the logs view
+                Record details of each request so you can inspect them under Usage → Details
               </p>
             </div>
             <Toggle

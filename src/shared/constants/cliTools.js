@@ -272,8 +272,8 @@ amp --model "{{model}}"
     configType: "guide",
     defaultCommand: "qwen",
     notes: [
-      { type: "info", text: "Qwen Code supports multiple provider types (openai, anthropic, gemini) via modelProviders in settings.json. 9Router works as an OpenAI-compatible endpoint." },
-      { type: "info", text: "Any model available in 9Router can be used — not just Qwen models. Select from Qwen, Claude, Gemini, GPT, and more." },
+      { type: "info", text: "Qwen Code can use OpenAI, Anthropic, or Gemini models. Add 9Router as an OpenAI-compatible provider in its settings.json." },
+      { type: "info", text: "You can use any model from your connected providers here — Qwen, Claude, Gemini, GPT, and more — not just Qwen models." },
       { type: "warning", text: "Config path: Linux/macOS ~/.qwen/settings.json • Windows %USERPROFILE%\\.qwen\\settings.json" },
       { type: "error", text: "Qwen OAuth free tier was discontinued on 2026-04-15. Use 9Router with alicode/openrouter/anthropic/gemini providers instead." },
     ],

@@ -111,10 +111,10 @@ function CallbackContent() {
 
         {status === "manual" && (
           <>
-            <h1 className="text-xl font-semibold mb-4">Copy This URL</h1>
+            <h1 className="text-xl font-semibold mb-4">Copy this URL</h1>
             <InlineAlert
               variant="caution"
-              message="Copy the URL from the address bar and paste it in the application."
+              message="Copy the full URL shown below (or from your browser's address bar) and paste it back into the app you're signing in from."
               className="text-left mb-4"
             />
             <div className="bg-surface border border-border rounded-lg p-3 text-left">

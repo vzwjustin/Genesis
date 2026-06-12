@@ -91,7 +91,7 @@ export default function MitmPageClient() {
     <div className="flex w-full flex-col gap-6">
       <InlineAlert
         variant="caution"
-        message="MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via a local CA to redirect requests to your providers. May violate provider ToS and lead to account bans. Use at your own risk."
+        message="MITM (man-in-the-middle) intercepts the HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) using a locally-installed certificate, so their requests can be redirected to your own providers. This may violate a provider's Terms of Service and lead to account bans. Use at your own risk."
       />
 
       {!hasActiveProviders() && (
@@ -99,7 +99,7 @@ export default function MitmPageClient() {
           borderless
           icon="dns"
           title="Connect a provider first"
-          description="MITM model mappings need at least one active provider with models."
+          description="Redirecting intercepted requests needs at least one active provider with available models."
           action={{ label: "Add provider", href: "/dashboard/providers" }}
         />
       )}

@@ -124,8 +124,11 @@ export default function PricingSettingsPage() {
         <h2 className="text-xl font-semibold mb-4">How Pricing Works</h2>
         <div className="space-y-3 text-sm text-text-muted">
           <p>
-            <strong>Cost Calculation:</strong> Costs are calculated based on token usage and pricing rates.
-            Each request&apos;s cost is determined by: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)
+            A <strong>token</strong> is a small chunk of text (roughly ¾ of a word). Models bill by the number of tokens they read and write.
+          </p>
+          <p>
+            <strong>Cost Calculation:</strong> Each request&apos;s cost adds up the tokens it used at each rate:
+            (input tokens × input rate) + (output tokens × output rate) + (cached tokens × cached rate)
           </p>
           <p>
             <strong>Pricing Format:</strong> All rates are in <strong>dollars per million tokens</strong> ($/1M tokens).
@@ -135,11 +138,11 @@ export default function PricingSettingsPage() {
             <strong>Token Types:</strong>
           </p>
           <ul className="list-disc list-inside ml-4 space-y-1">
-            <li><strong>Input:</strong> Standard prompt tokens</li>
-            <li><strong>Output:</strong> Completion/response tokens</li>
-            <li><strong>Cached:</strong> Cached input tokens (typically 50% of input rate)</li>
-            <li><strong>Reasoning:</strong> Special reasoning/thinking tokens (fallback to output rate)</li>
-            <li><strong>Cache Creation:</strong> Tokens used to create cache entries (fallback to input rate)</li>
+            <li><strong>Input:</strong> Tokens in the prompt you send</li>
+            <li><strong>Output:</strong> Tokens in the model&apos;s reply</li>
+            <li><strong>Cached:</strong> Input tokens reused from an earlier request (usually cheaper than fresh input)</li>
+            <li><strong>Reasoning:</strong> Internal &quot;thinking&quot; tokens some models use (billed at the output rate if no separate rate is set)</li>
+            <li><strong>Cache Creation:</strong> Tokens spent saving content so it can be reused later (billed at the input rate if no separate rate is set)</li>
           </ul>
           <p>
             <strong>Custom Pricing:</strong> You can override default pricing for specific models.

@@ -161,7 +161,7 @@ export default function CompatibleModelsSection({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-text-muted">
-        Add {isAnthropic ? "Anthropic" : "OpenAI"}-compatible models manually, or use Import Models above to fetch from the upstream /models endpoint.
+        Add {isAnthropic ? "Anthropic" : "OpenAI"}-compatible models by entering their IDs below, or use Import Models above to pull the full list the provider offers.
       </p>
 
       <div className="flex items-end gap-2 flex-wrap">

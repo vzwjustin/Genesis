@@ -133,7 +133,7 @@ export default function LoginPage() {
                 {((authMode === "oidc" && !oidcConfigured) || (authMode === "both" && !oidcConfigured)) && (
                   <InlineAlert
                     variant="warning"
-                    message="OIDC login is enabled, but issuer/client fields are not configured yet. Password login remains available for recovery."
+                    message="OIDC login is turned on, but its provider details (issuer URL and client ID) aren't filled in yet. You can still sign in with your password."
                     compact
                   />
                 )}

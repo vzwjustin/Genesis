@@ -2,7 +2,7 @@
 
 export const SECURITY_COPY = {
   requireLoginHelp:
-    "When ON, dashboard pages require a password. When OFF, the UI loads without login on this machine. Management APIs always require a session; LLM endpoints use API keys.",
+    "When ON, you must enter a password to open the dashboard. When OFF, the dashboard opens without a login on this machine. Either way, management APIs still need a session and the AI (LLM) endpoints still use API keys.",
 
   requireApiKeyHelp:
     "When ON, all /v1 and /api/v1 routes require a valid API key. Recommended before exposing a tunnel or Tailscale URL.",
@@ -29,7 +29,7 @@ export const SECURITY_COPY = {
     "Require API key is disabled — your LLM endpoint is publicly accessible without authentication.",
 
   tunnelDashboardAccessHelp:
-    "When enabled, the dashboard can be accessed through your tunnel or Tailscale URL (login still required when Require login is ON). When disabled, dashboard access via tunnel/Tailscale is blocked.",
+    "When enabled, the dashboard can be opened through your tunnel or Tailscale URL — a login is still required if \"Require login\" is ON. When disabled, the dashboard can only be opened on this machine.",
 
   loginDefaultPassword:
     "First-time setup uses the default password (123456). Change it in Profile → Security after signing in.",

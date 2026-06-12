@@ -10,13 +10,13 @@ const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 // 7 steps matching requestLogger files exactly
 const STEPS = [
-  { id: 1, label: "Client Request",         file: "1_req_client.json",  lang: "json", desc: "Raw request from client" },
-  { id: 2, label: "Source Body",            file: "2_req_source.json",  lang: "json", desc: "After initial conversion" },
-  { id: 3, label: "OpenAI Intermediate",    file: "3_req_openai.json",  lang: "json", desc: "source → openai" },
-  { id: 4, label: "Target Request",         file: "4_req_target.json",  lang: "json", desc: "openai → target + URL + headers" },
-  { id: 5, label: "Provider Response",      file: "5_res_provider.txt", lang: "text", desc: "Raw SSE from provider" },
-  { id: 6, label: "OpenAI Response",        file: "6_res_openai.txt",   lang: "text", desc: "target → openai (response)" },
-  { id: 7, label: "Client Response",        file: "7_res_client.txt",   lang: "text", desc: "Final response to client" },
+  { id: 1, label: "Client Request",         file: "1_req_client.json",  lang: "json", desc: "Raw request as it arrived from the client" },
+  { id: 2, label: "Source Body",            file: "2_req_source.json",  lang: "json", desc: "Parsed into the source provider's format" },
+  { id: 3, label: "OpenAI Intermediate",    file: "3_req_openai.json",  lang: "json", desc: "Converted from source format to OpenAI format" },
+  { id: 4, label: "Target Request",         file: "4_req_target.json",  lang: "json", desc: "Converted from OpenAI format to the target provider, with URL and headers" },
+  { id: 5, label: "Provider Response",      file: "5_res_provider.txt", lang: "text", desc: "Raw streamed response from the provider" },
+  { id: 6, label: "OpenAI Response",        file: "6_res_openai.txt",   lang: "text", desc: "Provider response converted back to OpenAI format" },
+  { id: 7, label: "Client Response",        file: "7_res_client.txt",   lang: "text", desc: "Final response sent back to the client" },
 ];
 
 const EDITOR_OPTIONS = {
@@ -148,7 +148,7 @@ export default function TranslatorPage() {
       const model = step4.model || meta?.model;
 
       if (!provider || !model) {
-        notify.warning("Missing provider or model. Run step 1 first to detect them.");
+        notify.warning("No provider or model detected. Load a Client Request (step 1) first.");
         return;
       }
 
@@ -217,8 +217,8 @@ export default function TranslatorPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div>
-          <p className="text-sm text-text-muted">Debug translation flow between API formats</p>
-          <p className="text-sm text-text-muted mt-1">Replay request flow — matches log files</p>
+          <p className="text-sm text-text-muted">See how a request is converted step by step between API formats</p>
+          <p className="text-sm text-text-muted mt-1">Each step matches a saved request log file</p>
         </div>
         {meta && (
           <div className="flex items-center gap-2 flex-wrap justify-end">
