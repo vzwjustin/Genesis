@@ -195,6 +195,17 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       const sessionId = headerSessionId || (connectionId ? deriveSessionId(connectionId) : null);
       body = applyCloaking(body, apiKey, sessionId);
     }
+    // Tool-order fixes apply only after the last message cache breakpoint.
+    if (body.messages && Array.isArray(body.messages)) {
+      const cacheFloor = findLastCacheBoundary(body.messages);
+      if (cacheFloor >= 0 && cacheFloor < body.messages.length - 1) {
+        const prefix = body.messages.slice(0, cacheFloor + 1);
+        const tail = fixToolUseOrdering(body.messages.slice(cacheFloor + 1));
+        body.messages = [...prefix, ...tail];
+      } else if (cacheFloor < 0) {
+        body.messages = fixToolUseOrdering(body.messages);
+      }
+    }
     return body;
   }
 
