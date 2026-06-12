@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { getModelAliases, setModelAlias, deleteModelAlias } from "@/models";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/models/alias - Get all aliases
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const aliases = await getModelAliases();
     return NextResponse.json({ aliases });
@@ -16,6 +19,8 @@ export async function GET() {
 
 // PUT /api/models/alias - Set model alias
 export async function PUT(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const { model, alias } = body;
@@ -44,6 +49,8 @@ export async function PUT(request) {
 
 // DELETE /api/models/alias?alias=xxx - Delete alias
 export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { searchParams } = new URL(request.url);
     const alias = searchParams.get("alias");

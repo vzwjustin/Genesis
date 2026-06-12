@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 /**
  * POST /api/oauth/codex/import-token
@@ -11,6 +12,9 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  */
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { accessToken, name } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {

@@ -95,12 +95,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // PASSTHROUGH GUARD: Do NOT inject thinking config in passthrough mode — only model + auth are swapped.
   if (!passthrough && providerThinking?.mode && providerThinking.mode !== "auto") {
     const mode = providerThinking.mode;
-    if (mode === "on" && !body.thinking) {
-      console.log("Injecting provider-level thinking config override: on");
-      body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
-    } else if (mode === "off" && !body.thinking) {
-      body = { ...body, thinking: { type: "disabled" } };
+    const isThinkingMode = mode === "on" || mode === "off";
+    if (isThinkingMode) {
+      // Extended thinking toggle — only inject if the client hasn't already configured it.
+      // Do NOT fall through to reasoning_effort: "on"/"off" are not valid effort values.
+      if (!body.thinking) {
+        if (mode === "on") {
+          console.log("Injecting provider-level thinking config override: on");
+          body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
+        } else {
+          body = { ...body, thinking: { type: "disabled" } };
+        }
+      }
     } else if (!body.reasoning_effort) {
+      // Effort-based thinking (none/low/medium/high) — only inject if not already set.
       body = { ...body, reasoning_effort: mode };
     }
   }
@@ -236,7 +244,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const allowPassthroughCompression = !passthrough || passthroughCompression === true;
   const saversEnabled = rtkEnabled || headroomEnabled || (cavemanEnabled && cavemanLevel);
   // Hard rule: never compress when the client placed cache_control breakpoints.
-  const compressionActive = !clientHasCacheBreakpoints
+  let compressionActive = !clientHasCacheBreakpoints
     && allowPassthroughCompression
     && saversEnabled;
   if (clientHasCacheBreakpoints && saversEnabled) {
@@ -250,6 +258,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       originalBodySnapshot = JSON.stringify(translatedBody);
     } catch (snapshotError) {
       console.warn(`[COMPRESSION] Could not snapshot body for restore: ${snapshotError.message}`);
+      compressionActive = false;
     }
   }
 
@@ -433,6 +442,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       streamController.handleDisconnect("client_aborted");
     } else {
       clientSignal.addEventListener("abort", () => {
+        // On runtimes without AbortSignal.any, propagate the client abort to
+        // the upstream signal immediately (no 500 ms delay from handleDisconnect).
+        streamController.abort();
         streamController.handleDisconnect("client_aborted");
       }, { once: true });
     }
@@ -531,6 +543,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         if (onCredentialsRefreshed) {
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
+        // Rebuild exec credentials so the retry carries the refreshed token.
+        // When clientHasCacheBreakpoints is true, the spread copy made before refresh
+        // does not pick up Object.assign(credentials, newCredentials) above.
         try {
           const retryResult = await executor.execute({
             model,
@@ -578,6 +593,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (passthrough) {
       let errorBody;
       let errorBodyText;
+      let resetsAtMs;
+      let upstreamErrorCode;
       const upstreamContentType = providerResponse.headers.get("content-type") || "";
       try {
         errorBodyText = await providerResponse.text();
@@ -585,6 +602,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       } catch {
         errorBodyText = "";
         errorBody = null;
+      }
+      if (executor && typeof executor.parseError === "function") {
+        try {
+          const parsed = executor.parseError(providerResponse, errorBodyText);
+          if (parsed && typeof parsed === "object") {
+            resetsAtMs = parsed.resetsAtMs;
+            upstreamErrorCode = parsed.code || parsed.errorCode;
+          }
+        } catch { /* preserve native body path */ }
+      }
+      if (!upstreamErrorCode && errorBody?.error?.code) {
+        upstreamErrorCode = errorBody.error.code;
       }
       appendRequestLog({ model, provider, connectionId, status: `FAILED ${providerResponse.status}` }).catch(() => { });
       saveRequestDetail(buildRequestDetail({
@@ -608,6 +637,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         success: false,
         status: providerResponse.status,
         error: errorBodyText || `Upstream error: ${providerResponse.status}`,
+        resetsAtMs,
+        errorCode: upstreamErrorCode,
         proxyInternal: false,
         response: new Response(errorBodyText || "", {
           status: providerResponse.status,
@@ -616,14 +647,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       };
     }
 
-    const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
-    let upstreamErrorCode;
-    try {
-      const errBody = await providerResponse.clone().json();
-      upstreamErrorCode = errBody?.error?.code;
-    } catch {
-      upstreamErrorCode = undefined;
-    }
+    const { statusCode, message, resetsAtMs, errorCode: upstreamErrorCode } = await parseUpstreamError(providerResponse, executor);
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,

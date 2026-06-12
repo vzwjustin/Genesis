@@ -39,7 +39,7 @@ export function openaiToAntigravityResponse(chunk, state) {
   // Accumulate tool calls silently (no emit until finish)
   if (delta.tool_calls) {
     for (const tc of delta.tool_calls) {
-      const idx = tc.index ?? 0;
+      const idx = tc.index ?? (state._nextToolCallIdx = (state._nextToolCallIdx ?? -1) + 1);
       if (!state._toolCallAccum[idx]) {
         state._toolCallAccum[idx] = { id: "", name: "", arguments: "" };
       }

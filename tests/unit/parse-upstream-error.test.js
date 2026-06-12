@@ -21,8 +21,9 @@ describe("parseUpstreamError — executor parseError shapes", () => {
       }),
     };
     const response = new Response("{}", { status: 401 });
-    const { statusCode, message } = await parseUpstreamError(response, executor);
+    const { statusCode, message, errorCode } = await parseUpstreamError(response, executor);
     expect(statusCode).toBe(401);
     expect(message).toBe("reconnect required");
+    expect(errorCode).toBe("reauth_required");
   });
 });

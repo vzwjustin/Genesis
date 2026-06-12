@@ -15,6 +15,12 @@ vi.mock("@/lib/appUpdater", () => ({
   spawnUpdaterAndExit: mocks.spawnUpdaterAndExit,
 }));
 
+// Stub the auth gate (requireSpawnRouteAuth reads `.cookies`, absent on the
+// minimal request stub used here) so the version-validation logic is tested.
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 function request(body) {
   return { json: vi.fn(async () => body) };
 }

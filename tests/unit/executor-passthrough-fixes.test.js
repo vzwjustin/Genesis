@@ -217,8 +217,8 @@ describe("KiroExecutor — messageStopEvent before metering", () => {
   });
 });
 
-describe("KiroExecutor — flush fail-closed without messageStopEvent", () => {
-  it("does not fabricate finish_reason or [DONE] when stream ends early", async () => {
+describe("KiroExecutor — truncated stream terminal semantics", () => {
+  it("emits [DONE] without fabricating finish_reason when messageStopEvent is missing", async () => {
     const executor = new KiroExecutor();
     const frames = [
       buildKiroFrame({ ":event-type": "assistantResponseEvent" }, { content: "partial" }),
@@ -234,7 +234,7 @@ describe("KiroExecutor — flush fail-closed without messageStopEvent", () => {
 
     expect(text).toContain("partial");
     expect(text).not.toMatch(/"finish_reason":"(stop|tool_calls)"/);
-    expect(text).not.toContain("[DONE]");
+    expect(text).toContain("[DONE]");
   });
 });
 

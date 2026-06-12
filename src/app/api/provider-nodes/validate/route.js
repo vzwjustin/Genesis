@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { isBlockedHostname } from "open-sse/utils/ssrfGuardCore.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 async function fetchWithTimeout(url, options = {}, timeout = 10000) {
   const controller = new AbortController();
@@ -56,6 +57,8 @@ const getChatErrorMessage = (status) => {
 
 // POST /api/provider-nodes/validate - Validate API key against base URL
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const { baseUrl, apiKey, type, modelId } = body;

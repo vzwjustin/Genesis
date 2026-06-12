@@ -103,8 +103,14 @@ export async function writeStreamError(writer, statusCode, message) {
  * Parse upstream provider error response
  * @param {Response} response - Fetch response from provider
  * @param {object} [executor] - Optional executor with parseError() override for provider-specific parsing
- * @returns {Promise<{statusCode: number, message: string, resetsAtMs?: number}>}
+ * @returns {Promise<{statusCode: number, message: string, resetsAtMs?: number, errorCode?: string}>}
  */
+function extractErrorCodeFromJson(json) {
+  if (!json || typeof json !== "object") return undefined;
+  const code = json.error?.code ?? json.code;
+  return typeof code === "string" && code.length > 0 ? code : undefined;
+}
+
 export async function parseUpstreamError(response, executor = null) {
   let bodyText = "";
   try {
@@ -122,15 +128,23 @@ export async function parseUpstreamError(response, executor = null) {
       }
       if (parsed && typeof parsed === "object") {
         const msg = parsed.message || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
-        return { statusCode: parsed.status || response.status, message: msg, resetsAtMs: parsed.resetsAtMs };
+        const errorCode = parsed.code || parsed.errorCode;
+        return {
+          statusCode: parsed.status || response.status,
+          message: msg,
+          resetsAtMs: parsed.resetsAtMs,
+          errorCode: typeof errorCode === "string" ? errorCode : undefined,
+        };
       }
     } catch { /* fall through to default parsing */ }
   }
 
   let message = "";
+  let errorCode;
   try {
     const json = JSON.parse(bodyText);
     message = json.error?.message || json.message || json.error || bodyText;
+    errorCode = extractErrorCodeFromJson(json);
   } catch {
     message = bodyText;
   }
@@ -138,7 +152,7 @@ export async function parseUpstreamError(response, executor = null) {
   const messageStr = typeof message === "string" ? message : JSON.stringify(message);
   const finalMessage = messageStr || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
 
-  return { statusCode: response.status, message: finalMessage };
+  return { statusCode: response.status, message: finalMessage, errorCode };
 }
 
 /**

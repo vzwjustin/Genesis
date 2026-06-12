@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { clearConsoleLogs, getConsoleLogs, initConsoleLogCapture } from "@/lib/consoleLogBuffer";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 initConsoleLogCapture();
 
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const logs = getConsoleLogs();
     return NextResponse.json({ success: true, logs });
@@ -13,7 +16,9 @@ export async function GET() {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     clearConsoleLogs();
     return NextResponse.json({ success: true });

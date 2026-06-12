@@ -19,6 +19,18 @@ async function setupTestContext(nodeData) {
       },
     },
   }));
+  // Stub the auth gate: the providers POST handler calls requireSpawnRouteAuth,
+  // which reads NextRequest `.cookies` (absent on the plain Request used here).
+  vi.doMock("@/lib/auth/spawnRouteAuth", () => ({
+    requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+  }));
+  // Stub model auto-import: createProviderConnection awaits autoImportProviderModels,
+  // which does a real DNS lookup against the fake .test baseUrl. Left unmocked it
+  // adds nondeterministic latency (real DNS timeout) that can exceed the vitest
+  // test timeout under parallel full-suite load, making this test flaky.
+  vi.doMock("@/lib/models/autoImportProviderModels.js", () => ({
+    autoImportProviderModels: vi.fn(async () => ({ imported: 0, models: [] })),
+  }));
 
   const { POST } = await import("@/app/api/providers/route.js");
   const {
@@ -75,6 +87,8 @@ describe("compatible provider connections API", () => {
 
   afterEach(() => {
     vi.doUnmock("next/server");
+    vi.doUnmock("@/lib/auth/spawnRouteAuth");
+    vi.doUnmock("@/lib/models/autoImportProviderModels.js");
     vi.resetModules();
     vi.clearAllMocks();
     cleanup();

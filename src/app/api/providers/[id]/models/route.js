@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { fetchModelsForConnection } from "@/lib/models/fetchConnectionModels.js";
 
 /**
  * GET /api/providers/[id]/models - Get models list from provider
  */
 export async function GET(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const connection = await getProviderConnectionById(id);

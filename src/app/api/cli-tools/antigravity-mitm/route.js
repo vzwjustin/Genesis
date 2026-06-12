@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import {
   getMitmStatus,
   startServer,
@@ -73,7 +74,9 @@ function checkPrivilege(pwd) {
 }
 
 // GET - Full MITM status (server + per-tool DNS)
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const status = await getMitmStatus();
     const settings = await getSettings();
@@ -101,6 +104,8 @@ export async function GET() {
 
 // POST - Start MITM server (cert + server, no DNS)
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { apiKey, sudoPassword, mitmRouterBaseUrl, forceKillPort443 } = await request.json();
     const pwd = getPassword(sudoPassword) || await loadEncryptedPassword() || "";
@@ -149,6 +154,8 @@ export async function POST(request) {
 
 // DELETE - Stop MITM server (removes all DNS first, then kills server)
 export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json().catch(() => ({}));
     const { sudoPassword } = body;
@@ -170,6 +177,8 @@ export async function DELETE(request) {
 
 // PATCH - Toggle DNS for a specific tool (enable/disable)
 export async function PATCH(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { tool, action, sudoPassword } = await request.json();
     const pwd = getPassword(sudoPassword) || await loadEncryptedPassword() || "";

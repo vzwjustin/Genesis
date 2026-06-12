@@ -188,7 +188,9 @@ describe("proxyFetch hardening", () => {
 
   it("per-connection proxy failure does not fall back to direct", () => {
     const src = readFileSync(join(root, "../../open-sse/utils/proxyFetch.js"), "utf8");
+    // Both the MITM bypass path and the regular host path now use the same
+    // strictProxy !== false default (unified in audit fix #10).
     expect(src).toContain("connectionProxyUrl");
-    expect(src).toMatch(/strictProxy === true \|\| connectionProxyUrl/);
+    expect(src).toMatch(/strictProxy !== false/);
   });
 });

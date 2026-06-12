@@ -1,11 +1,14 @@
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { getMitmAlias, setMitmAliasAll } from "@/models";
 import { getMitmStatus } from "@/mitm/manager";
 import { writeAliasForTool } from "@/lib/mitmAliasCache";
 
 // GET - Get MITM aliases for a tool
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { searchParams } = new URL(request.url);
     const toolName = searchParams.get("tool");
@@ -19,6 +22,8 @@ export async function GET(request) {
 
 // PUT - Save MITM aliases for a specific tool
 export async function PUT(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { tool, mappings } = await request.json();
 

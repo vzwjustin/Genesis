@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDisabledModels, disableModels, enableModels } from "@/lib/disabledModelsDb";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/models/disabled?providerAlias=xxx
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { searchParams } = new URL(request.url);
     const providerAlias = searchParams.get("providerAlias");
@@ -19,6 +22,8 @@ export async function GET(request) {
 
 // POST /api/models/disabled  body: { providerAlias, ids: [...] }
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { providerAlias, ids } = await request.json();
     if (!providerAlias || !Array.isArray(ids)) {
@@ -34,6 +39,8 @@ export async function POST(request) {
 
 // DELETE /api/models/disabled?providerAlias=xxx[&id=yyy]
 export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { searchParams } = new URL(request.url);
     const providerAlias = searchParams.get("providerAlias");

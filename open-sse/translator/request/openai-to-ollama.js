@@ -116,8 +116,8 @@ function normalizeMessages(messages) {
         function: {
           index: tc.index || 0,
           name: tc.function?.name || "",
-          arguments: safeParseJson(tc.function?.arguments)
-        }
+          arguments: safeParseJson(tc.function?.arguments),
+        },
       }));
 
       result.push({

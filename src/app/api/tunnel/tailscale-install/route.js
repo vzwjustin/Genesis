@@ -5,6 +5,7 @@ import { execSync } from "child_process";
 import { installTailscale, loadState, generateShortId } from "@/lib/tunnel";
 import { getCachedPassword, loadEncryptedPassword, initDbHooks } from "@/mitm/manager";
 import { getSettings, updateSettings } from "@/lib/localDb";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 initDbHooks(getSettings, updateSettings);
 
@@ -15,6 +16,8 @@ function hasBrew() {
 }
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return new Response(JSON.stringify({ error: auth.error }), { status: auth.status, headers: { "Content-Type": "application/json" } });
   const body = await request.json().catch(() => ({}));
   const platform = os.platform();
   const isWindows = platform === "win32";

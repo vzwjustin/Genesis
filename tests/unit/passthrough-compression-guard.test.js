@@ -119,6 +119,7 @@ vi.mock("open-sse/utils/clientDetector.js", () => ({
 }));
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+const { translateRequest } = await import("../../open-sse/translator/index.js");
 
 function makeBody() {
   return {
@@ -190,6 +191,18 @@ describe("Cache-safe compression in passthrough", () => {
     expect(mockCompressMessages).not.toHaveBeenCalled();
     expect(mockInjectCaveman).not.toHaveBeenCalled();
     expect(mockCompressWithHeadroom).not.toHaveBeenCalled();
+  });
+
+  it("skips compression when body snapshot fails (non-serializable fields)", async () => {
+    mockCompressMessages.mockClear();
+    mockIsNativePassthrough.mockReturnValue(false);
+    vi.mocked(translateRequest).mockReturnValueOnce({
+      model: "test",
+      messages: [{ role: "user", content: 1n }],
+    });
+    const result = await handleChatCore(makeOptions());
+    expect(result.success).toBe(true);
+    expect(mockCompressMessages).not.toHaveBeenCalled();
   });
 
   it("continues with original content if compression throws and snapshot exists", async () => {

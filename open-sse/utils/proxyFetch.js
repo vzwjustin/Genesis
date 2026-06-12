@@ -473,7 +473,12 @@ async function createBypassRequest(parsedUrl, realIP, options) {
               const buf = await materializeBody();
               return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
             },
-            json: async () => JSON.parse((await materializeBody()).toString()),
+            json: async () => {
+              const text = (await materializeBody()).toString();
+              try { return JSON.parse(text); } catch (e) {
+                throw new Error(`Failed to parse JSON response (${res.statusCode}): ${text.slice(0, 200)}`);
+              }
+            },
             clone: () => buildFetchResponse(),
           };
           return response;
@@ -603,6 +608,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     };
     const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
     if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
+    await assertSafeResolvedHostname(new URL(vercelRelayUrl).hostname, { allowLoopback: false });
     return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
 
@@ -615,7 +621,10 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
         const dispatcher = await getDispatcher(proxyUrl);
         return await originalFetch(url, { ...options, dispatcher });
       } catch (proxyError) {
-        if (proxyOptions?.strictProxy === true || connectionProxyUrl) {
+        // Use the same default-strict rule as the regular host path: throw unless
+        // strictProxy is explicitly opt-out (false). This keeps proxy routing
+        // unambiguous across all host types (AGENTS.md § outbound proxy routing).
+        if (proxyOptions?.strictProxy !== false) {
           throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
         }
         console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);

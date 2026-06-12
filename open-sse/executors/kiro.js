@@ -386,8 +386,11 @@ export class KiroExecutor extends BaseExecutor {
       },
 
       flush(controller) {
-        // Fail closed: only synthesize terminal chunks when messageStopEvent was seen.
-        if (!state.endDetected) return;
+        // Truncated upstream — unblock streaming clients without fabricating a successful finish.
+        if (!state.endDetected) {
+          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+          return;
+        }
 
         if (!state.finishEmitted) {
           state.finishEmitted = true;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection, getProviderConnectionById, updateProviderConnection } from "@/models";
 import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 /**
  * POST /api/oauth/kiro/import
@@ -9,6 +10,9 @@ import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
  */
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { refreshToken, existingConnectionId } = await request.json();
 
     if (!refreshToken || typeof refreshToken !== "string") {

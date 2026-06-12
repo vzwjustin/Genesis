@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { getApiKeys, createApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { maskApiKeyForDisplay } from "@/shared/utils/apiKey";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/keys - List API keys
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const keys = await getApiKeys();
     const masked = keys.map(({ key, ...rest }) => ({
@@ -23,6 +26,8 @@ export async function GET() {
 
 // POST /api/keys - Create new API key
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const { name } = body;

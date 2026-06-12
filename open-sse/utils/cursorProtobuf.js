@@ -447,6 +447,36 @@ export function encodeMcpTool(tool) {
 
 // ==================== REQUEST BUILDING ====================
 
+function extractCursorMessageText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part && typeof part === "object" && typeof part.text === "string")
+      .map((part) => part.text)
+      .join("");
+  }
+  return "";
+}
+
+// Cursor's protobuf conversation model has only USER and ASSISTANT roles (no system).
+// Mirror openai-to-cursor.js: fold system/developer messages into user turns prefixed with
+// "[System Instructions]". Without this, encodeMessage maps any non-user role to ASSISTANT,
+// so a system message (e.g. injected by Caveman, or forwarded in passthrough where the
+// openai→cursor translator is skipped) becomes a leading/duplicate assistant turn that
+// Cursor rejects upstream with HTTP 464.
+function foldSystemMessagesIntoUserTurns(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((msg) => {
+    if (msg && (msg.role === "system" || msg.role === "developer")) {
+      return {
+        role: "user",
+        content: `[System Instructions]\n${extractCursorMessageText(msg.content)}`,
+      };
+    }
+    return msg;
+  });
+}
+
 export function encodeRequest(messages, modelName, tools = [], reasoningEffort = null, forceAgentMode = false, instruction = "") {
   const hasTools = tools?.length > 0;
   const isAgentic = hasTools || forceAgentMode;
@@ -454,10 +484,14 @@ export function encodeRequest(messages, modelName, tools = [], reasoningEffort =
   const messageIds = [];
   const normalizedMessages = [];
 
+  // Cursor has no system role — fold system/developer messages into user turns first so they
+  // encode as USER (role 1) instead of being silently mapped to ASSISTANT (role 2).
+  const sourceMessages = foldSystemMessagesIntoUserTurns(messages);
+
   // Guardrail: split mixed assistant payload into separate assistant messages
   // This prevents protobuf encoding errors when tool calls and results are in same message
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
+  for (let i = 0; i < sourceMessages.length; i++) {
+    const msg = sourceMessages[i];
     const hasToolCalls = Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0;
     const hasToolResults = Array.isArray(msg?.tool_results) && msg.tool_results.length > 0;
 
@@ -474,7 +508,7 @@ export function encodeRequest(messages, modelName, tools = [], reasoningEffort =
       });
 
       // Avoid inserting duplicate assistant tool-result message if next one already matches
-      const nextMsg = messages[i + 1];
+      const nextMsg = sourceMessages[i + 1];
       const nextHasToolResults =
         nextMsg?.role === "assistant" &&
         Array.isArray(nextMsg?.tool_results) &&

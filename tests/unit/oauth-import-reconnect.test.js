@@ -44,6 +44,13 @@ vi.mock("@/lib/mitm/autoSetupForProvider", () => ({
   autoSetupMitmForProvider: vi.fn().mockResolvedValue({ attempted: false, skipped: true }),
 }));
 
+// Stub the auth gate (cursor/kiro import POST handlers call
+// requireSpawnRouteAuth, which reads NextRequest `.cookies` absent on the
+// plain Request used here) so the reconnect logic is exercised.
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 describe("OAuth import reconnect", () => {
   beforeEach(() => {
     vi.clearAllMocks();

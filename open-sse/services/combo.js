@@ -11,7 +11,7 @@ import { MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
  * @type {Map<string, { index: number, consecutiveUseCount: number }>}
  */
 const comboRotationState = new Map();
-/** @type {Map<string, Promise<void>>} */
+/** @type {Map<string, { current: Promise<void>, queued: Promise<void> }>} */
 const comboRotationLocks = new Map();
 
 async function withComboRotationLock(comboName, fn) {
@@ -20,19 +20,27 @@ async function withComboRotationLock(comboName, fn) {
   // "__default__" rotation counter instead of racing read-modify-write.
   const lockKey = comboName || "__default__";
 
-  const previous = comboRotationLocks.get(lockKey) || Promise.resolve();
+  // `previous.queued` is the promise chain the new waiter must await to respect
+  // ordering.  `current` is a fresh promise used both as the signal released
+  // when this holder finishes and as the identity token for the cleanup check.
+  const previousEntry = comboRotationLocks.get(lockKey);
+  const previous = previousEntry?.queued || Promise.resolve();
   let release;
   const current = new Promise((resolve) => {
     release = resolve;
   });
-  comboRotationLocks.set(lockKey, previous.catch(() => {}).then(() => current));
+  // Store both so the next waiter can chain onto `queued` while the finally
+  // block can compare `current` by identity and correctly evict the entry.
+  const queued = previous.catch(() => {}).then(() => current);
+  comboRotationLocks.set(lockKey, { current, queued });
 
   await previous.catch(() => {});
   try {
     return await fn();
   } finally {
     release();
-    if (comboRotationLocks.get(lockKey) === current) {
+    // Only evict if no later waiter has already overwritten the entry.
+    if (comboRotationLocks.get(lockKey)?.current === current) {
       comboRotationLocks.delete(lockKey);
     }
   }
@@ -284,6 +292,20 @@ export async function isProviderAccountsExhaustedResponse(response) {
  */
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1 }) {
   return withComboRotationLock(comboName, async () => {
+  // Capture current rotation index before getRotatedModels advances the counter.
+  // This is used below to correctly pin back to the successful model's original
+  // position: rotatedModels[i] == models[(currentRotationIndex + i) % models.length].
+  // We hold the lock here, so reading comboRotationState is race-free.
+  let currentRotationIndex = 0;
+  if (comboStrategy === "round-robin" && models && models.length > 1) {
+    const rotationKey = comboName || "__default__";
+    const existingState = comboRotationState.get(rotationKey);
+    const state = typeof existingState === "number"
+      ? { index: existingState }
+      : (existingState || { index: 0 });
+    currentRotationIndex = state.index % models.length;
+  }
+
   // Apply rotation strategy if enabled
   const rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
   
@@ -306,19 +328,34 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // For round-robin strategy, pin the rotation state back to this model so the
         // position does not advance for the next request. getRotatedModels pre-advances
         // the counter, so we must undo that advancement on success.
-        if (comboStrategy === "round-robin" && comboName) {
-          // Use loop index i — models.indexOf() returns the first duplicate entry.
-          comboRotationState.set(comboName, {
-            index: i % models.length,
+        //
+        // rotatedModels[i] == models[(currentRotationIndex + i) % models.length].
+        // Use comboName || "__default__" to match the key getRotatedModels uses, so
+        // unnamed combos are also correctly pinned.
+        if (comboStrategy === "round-robin") {
+          const rotationKey = comboName || "__default__";
+          comboRotationState.set(rotationKey, {
+            index: (currentRotationIndex + i) % models.length,
             consecutiveUseCount: 0,
           });
         }
         return result;
       }
 
+      // Read response body once for all downstream classification — avoids up to
+      // 4 independent clones when the response must not advance the combo.
+      let bodyText = "";
+      let bodyJson = null;
+      try {
+        bodyText = await result.clone().text();
+        try { bodyJson = JSON.parse(bodyText); } catch {}
+      } catch {}
+
+      const errorCode = bodyJson?.error?.code || "";
+      const errorMessage = bodyJson?.error?.message || "";
+
       // Proxy-internal errors (e.g. SSE assembly 502) are not upstream faults — return to client.
-      const proxyInternal = await isProxyInternalResponse(result);
-      if (proxyInternal) {
+      if (isProxyInternalError({ errorCode })) {
         log.info("COMBO", `Model ${modelStr} returned proxy-internal ${result.status}, returning to client without advancing`);
         return result;
       }
@@ -329,9 +366,28 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       if (!shouldComboAdvance(result.status)) {
         // Check for zero-connections 404 — this is provider unavailability, not a client error.
         // The combo should advance past providers with no configured connections.
-        const zeroConns = await isZeroConnectionsResponse(result);
-        const resolutionFailed = await isModelResolutionFailureResponse(result);
-        const accountsExhausted = await isProviderAccountsExhaustedResponse(result);
+        const NO_CREDS_PREFIX = "No active credentials for provider:";
+        const zeroConns = result.status === 404 && (
+          bodyText.includes(NO_CREDS_PREFIX) ||
+          errorMessage.startsWith(NO_CREDS_PREFIX)
+        );
+        // Check for proxy-side model resolution failure (400).
+        const resolutionFailed = result.status === 400 && (
+          errorMessage.startsWith("Failed to resolve model:") ||
+          errorMessage === "Invalid model format" ||
+          errorMessage.includes("has no valid model targets configured")
+        );
+        // Check for provider accounts exhausted (401/403).
+        const hasProxyMarker = result.headers.get(PROXY_EXHAUSTED_HEADER) === "1";
+        const hasRetryAfter = !!result.headers.get("Retry-After");
+        const accountsExhausted = (result.status === 401 || result.status === 403) && (
+          errorMessage.includes("All accounts unavailable") ||
+          errorMessage.includes("No more accounts available") ||
+          errorMessage.includes("Token refresh failed") ||
+          errorMessage.startsWith(NO_CREDS_PREFIX) ||
+          (hasProxyMarker && hasRetryAfter)
+        );
+
         if (!zeroConns && !resolutionFailed && !accountsExhausted) {
           // 4xx (non-429): Return response directly to client, do NOT advance (Req 5.3)
           log.info("COMBO", `Model ${modelStr} returned ${result.status} (client error), returning to client without advancing`);
@@ -351,16 +407,10 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       // Connection-level cooldown was already applied by handleSingleModel internally
       // (exponential backoff for 429, transient 30s cooldown for 5xx).
 
-      // Extract error info from response for logging and final exhaustion message
-      let errorText = result.statusText || "";
-      let retryAfter = null;
-      try {
-        const errorBody = await result.clone().json();
-        errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
-        retryAfter = errorBody?.retryAfter || null;
-      } catch {
-        // Ignore JSON parse errors
-      }
+      // Extract error info from response for logging and final exhaustion message.
+      // Re-use the pre-read body data to avoid an additional clone.
+      let errorText = errorMessage || bodyJson?.error || bodyJson?.message || result.statusText || "";
+      let retryAfter = bodyJson?.retryAfter || null;
 
       // unavailableResponse() puts retry hint in the Retry-After header, not the JSON body
       const retryAfterHeader = result.headers.get("Retry-After");
