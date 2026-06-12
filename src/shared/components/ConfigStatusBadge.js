@@ -8,6 +8,7 @@ const STYLES = {
   not_configured: "bg-warning/10 text-warning",
   other: "bg-info/10 text-info",
   not_installed: "bg-surface-3 text-text-muted",
+  remote_setup: "bg-info/10 text-info",
   unknown: "bg-surface-3 text-text-muted",
 };
 
@@ -17,6 +18,7 @@ const LABELS = {
   not_configured: "Not configured",
   other: "Other",
   not_installed: "Not installed",
+  remote_setup: "Manual setup",
   unknown: "Unknown",
 };
 
@@ -37,9 +39,13 @@ export default function ConfigStatusBadge({ status, className }) {
   );
 }
 
-export function getToolInstallStatus(status) {
-  if (!status) return { status: "unknown" };
-  if (!status.installed) return { status: "not_installed" };
+export function getToolInstallStatus(status, toolConfig) {
+  if (!status) {
+    if (toolConfig?.configType === "guide") return { status: "not_configured" };
+    return { status: "unknown" };
+  }
+  if (status.fetchFailed) return { status: "unknown" };
+  if (!status.installed) return { status: "remote_setup" };
   if (status.has9Router) return { status: "connected" };
   return { status: "not_configured" };
 }

@@ -6,7 +6,7 @@ import { Card } from "@/shared/components";
 import ConfigStatusBadge, { getToolInstallStatus } from "@/shared/components/ConfigStatusBadge";
 
 export default function ToolSummaryCard({ toolId, tool, status }) {
-  const s = getToolInstallStatus(status);
+  const s = getToolInstallStatus(status, tool);
   return (
     <Link href={`/dashboard/cli-tools/${toolId}`} className="block">
       <Card padding="sm" className="h-full overflow-hidden hover:border-primary/50 transition-colors cursor-pointer">

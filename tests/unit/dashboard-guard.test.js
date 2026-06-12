@@ -951,6 +951,94 @@ describe("dashboard guard cli-tools local-only coverage", () => {
     expect(response).toBe(mocks.nextResponse);
   });
 
+  it("allows cli-tools settings on LAN machine hostname with JWT and private socket", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/claude-settings" },
+      method: "GET",
+      headers: new Headers({ host: "dietpi:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://dietpi:20128/api/cli-tools/claude-settings",
+      socket: { remoteAddress: "192.168.8.50" },
+      ip: "192.168.8.50",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("allows cli-tools settings via LAN IP hairpin (loopback socket, same-origin)", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/claude-settings" },
+      method: "GET",
+      headers: new Headers({
+        host: "192.168.8.201:20128",
+        "sec-fetch-site": "same-origin",
+      }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://192.168.8.201:20128/api/cli-tools/claude-settings",
+      socket: { remoteAddress: "127.0.0.1" },
+      ip: "127.0.0.1",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("allows cli-tools settings on LAN host with JWT when middleware omits socket IP", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/claude-settings" },
+      method: "GET",
+      headers: new Headers({
+        host: "192.168.8.201:20128",
+        "sec-fetch-site": "same-origin",
+      }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://192.168.8.201:20128/api/cli-tools/claude-settings",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("allows cli-tools settings on machine hostname with JWT when middleware omits socket IP", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/claude-settings" },
+      method: "GET",
+      headers: new Headers({
+        host: "dietpi:20128",
+        "sec-fetch-site": "same-origin",
+      }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://dietpi:20128/api/cli-tools/claude-settings",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("allows cli-tools settings on LAN host with JWT without fetch metadata headers", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/all-statuses" },
+      method: "GET",
+      headers: new Headers({ host: "dietpi:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://dietpi:20128/api/cli-tools/all-statuses",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
   it("blocks tunnel enable from tunnel host with JWT even when dashboard access is enabled", async () => {
     mocks.getSettings.mockResolvedValue({
       requireLogin: true,

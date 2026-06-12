@@ -2,37 +2,33 @@
 
 import { Button } from "@/shared/components";
 import InlineAlert from "@/shared/components/InlineAlert";
+import { REMOTE_CLI_SETUP_HINT } from "./cliInstallMode";
 
 /**
- * Shared panel when a CLI tool is not installed on the host machine.
+ * Info banner when the CLI is not installed on the 9Router host (typical remote server).
  */
 export default function CliNotDetectedPanel({
   cliName,
-  description = "Remote server? Use manual setup instead.",
-  onManualConfig,
+  description = REMOTE_CLI_SETUP_HINT,
   onToggleInstallGuide,
   showInstallGuide,
   installGuide,
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <InlineAlert variant="caution" title={`${cliName} not detected locally`} message={description} />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="warning"
-          size="sm"
-          onClick={onManualConfig}
-        >
-          <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
-          Manual Config
-        </Button>
-        {onToggleInstallGuide ? (
+      <InlineAlert
+        variant="info"
+        title={`${cliName} not on this server`}
+        message={description}
+      />
+      {onToggleInstallGuide ? (
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={onToggleInstallGuide}>
             <span className="material-symbols-outlined text-[18px] mr-1">download</span>
-            {showInstallGuide ? "Hide install guide" : "How to Install"}
+            {showInstallGuide ? "Hide install guide" : "Install on your machine"}
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       {showInstallGuide && installGuide ? <div className="text-sm text-text-muted">{installGuide}</div> : null}
     </div>
   );

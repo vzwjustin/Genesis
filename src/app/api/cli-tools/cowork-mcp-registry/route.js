@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";

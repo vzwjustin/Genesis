@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { assertSafeFetchUrlWithDns } from "open-sse/utils/ssrfGuard.js";

@@ -9,6 +9,9 @@ import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import { revealApiKey } from "@/shared/utils/revealApiKey";
 import CliNotDetectedPanel from "./CliNotDetectedPanel";
+import InlineAlert from "@/shared/components/InlineAlert";
+import { fetchCliToolStatus } from "./cliToolStatus";
+import { canAutoApplyOnServer } from "./cliInstallMode";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
@@ -72,11 +75,9 @@ export default function ClaudeToolCard({
   const checkClaudeStatus = async () => {
     setCheckingClaude(true);
     try {
-      const res = await fetch("/api/cli-tools/claude-settings");
-      const data = await res.json();
-      setClaudeStatus(data);
+      setClaudeStatus(await fetchCliToolStatus("/api/cli-tools/claude-settings"));
     } catch (error) {
-      setClaudeStatus({ installed: false, error: error.message });
+      setClaudeStatus({ installed: false, fetchFailed: true, error: error.message });
     } finally {
       setCheckingClaude(false);
     }
@@ -257,11 +258,18 @@ useEffect(() => {
             </div>
           )}
 
-          {!checkingClaude && claudeStatus && !claudeStatus.installed && (
+          {!checkingClaude && claudeStatus?.fetchFailed && (
+            <InlineAlert
+              variant="error"
+              title="Could not read Claude CLI status"
+              message={claudeStatus.error || "Request failed. Refresh the page or log in again."}
+            />
+          )}
+
+          {!checkingClaude && claudeStatus && !claudeStatus.fetchFailed && !claudeStatus.installed && (
             <div className="flex flex-col gap-4">
               <CliNotDetectedPanel
                 cliName="Claude CLI"
-                onManualConfig={() => setShowManualConfigModal(true)}
                 onToggleInstallGuide={() => setShowInstallGuide(!showInstallGuide)}
                 showInstallGuide={showInstallGuide}
               />
@@ -280,7 +288,7 @@ useEffect(() => {
             </div>
           )}
 
-          {!checkingClaude && claudeStatus?.installed && (
+          {!checkingClaude && claudeStatus && !claudeStatus.fetchFailed && (
             <>
               <div className="flex flex-col gap-2">
                 {/* Endpoint (selector) */}
@@ -351,13 +359,17 @@ useEffect(() => {
               )}
 
               <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
-                <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!hasActiveProviders} loading={applying}>
+                <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!hasActiveProviders || !canAutoApplyOnServer(claudeStatus)} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!claudeStatus?.has9Router} loading={restoring}>
+                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!claudeStatus?.has9Router || !canAutoApplyOnServer(claudeStatus)} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>
+                <Button
+                  variant={canAutoApplyOnServer(claudeStatus) ? "ghost" : "primary"}
+                  size="sm"
+                  onClick={() => setShowManualConfigModal(true)}
+                >
                   <span className="material-symbols-outlined text-[14px] mr-1">content_copy</span>Manual Config
                 </Button>
               </div>

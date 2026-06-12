@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSettingsSafe, validateApiKey } from "@/lib/localDb";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
-import { normalizeHostHeaderHostname } from "@/shared/utils/host";
+import { normalizeHostHeaderHostname, isLanDashboardHost, isPrivateLanIp } from "@/shared/utils/host";
 import {
   isLoopbackRequest,
   isVerifiableLoopbackRequest,
   isPrivateLanAccessRequest,
   isDashboardLoopbackSession,
+  isLocalDashboardSession,
+  getSocketRemoteIp,
 } from "@/shared/utils/loopbackRequest.js";
 import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
 import { hasValidLocalCliToken } from "@/shared/auth/cliToken";
@@ -125,6 +127,26 @@ async function canAccessLocalOnlyRoute(request) {
   if (isVerifiableLoopbackRequest(request)) return true;
   if (isPrivateLanAccessRequest(request)) return true;
   if (isDashboardLoopbackSession(request)) return true;
+  if (isLocalDashboardSession(request)) return true;
+  // Middleware often omits socket IP; browser fetch may omit Sec-Fetch-Site/Origin on GET.
+  const hostHeader = request.headers.get("host");
+  if (isLanDashboardHost(hostHeader)) {
+    const origin = request.headers.get("origin");
+    if (origin) {
+      try {
+        const originHost = normalizeHostHeaderHostname(new URL(origin).hostname);
+        const requestHost = normalizeHostHeaderHostname(hostHeader);
+        if (originHost !== requestHost) return false;
+      } catch {
+        return false;
+      }
+    }
+    const socketIp = getSocketRemoteIp(request);
+    if (socketIp && !isLoopbackIp(socketIp) && !isPrivateLanIp(socketIp)) {
+      return false;
+    }
+    return true;
+  }
   return false;
 }
 

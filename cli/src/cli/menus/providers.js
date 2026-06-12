@@ -4,6 +4,11 @@ const { clearScreen, showStatus, showHeader } = require("../utils/display");
 const { formatDate, getRelativeTime } = require("../utils/format");
 const { showMenuWithBack } = require("../utils/menuHelper");
 const { copyToClipboard } = require("../utils/clipboard");
+const {
+  formatStatusIcon,
+  formatStatusLabel,
+  needsConnectionTest,
+} = require("../utils/connectionStatus");
 
 // ANSI colors for styling
 const COLORS = {
@@ -287,15 +292,28 @@ async function showProviderDetail(providerId, authType, allConnections, breadcru
         allConnections.length = 0;
         allConnections.push(...(response.data.connections || []));
       }
-      const providerConns = allConnections.filter(conn => 
+      let providerConns = allConnections.filter(conn =>
         (conn.provider || conn.providerId) === providerId
       );
+
+      const untested = providerConns.filter(needsConnectionTest);
+      if (untested.length > 0) {
+        await Promise.all(untested.map((conn) => api.testConnection(conn.id)));
+        const refresh = await api.getProviders();
+        if (refresh.success) {
+          allConnections.length = 0;
+          allConnections.push(...(refresh.data.connections || []));
+          providerConns = allConnections.filter(conn =>
+            (conn.provider || conn.providerId) === providerId
+          );
+        }
+      }
+
       return { items: providerConns };
     },
     formatItem: (conn) => {
-      const status = conn.testStatus === "active" ? "✓" : conn.testStatus === "error" ? "✗" : "?";
       const name = conn.name || conn.email || conn.displayName || "Unnamed";
-      return `${name} (${status})`;
+      return `${name} (${formatStatusIcon(conn)})`;
     },
     onSelect: async (conn) => {
       await showConnectionActions(conn, providerId, breadcrumb);
@@ -317,8 +335,7 @@ async function showProviderDetail(providerId, authType, allConnections, breadcru
  */
 async function showConnectionActions(connection, providerId, breadcrumb = []) {
   const name = connection.name || connection.email || connection.displayName || "Unnamed";
-  const status = connection.testStatus === "active" ? "✓ Active" : 
-                 connection.testStatus === "error" ? "✗ Error" : "? Unknown";
+  const status = formatStatusLabel(connection);
   
   await showMenuWithBack({
     title: `🔌 ${name}`,
@@ -438,7 +455,18 @@ async function handleAddApiKeyConnection(providerId) {
   });
   
   if (result.success) {
-    showStatus("✓ Connection created successfully!", "success");
+    const connectionId = result.data?.connection?.id;
+    if (connectionId) {
+      showStatus("Testing connection...", "info");
+      const testResult = await api.testConnection(connectionId);
+      if (testResult.success) {
+        showStatus("✓ Connection created and verified!", "success");
+      } else {
+        showStatus(`✓ Connection created, but test failed: ${testResult.error}`, "warning");
+      }
+    } else {
+      showStatus("✓ Connection created successfully!", "success");
+    }
   } else {
     showStatus(`✗ Failed: ${result.error}`, "error");
   }
@@ -730,8 +758,7 @@ async function showCustomNodeConnections(node, breadcrumb = []) {
       return { items };
     },
     formatItem: (conn) => {
-      const status = conn.testStatus === "active" ? "✓" : conn.testStatus === "error" ? "✗" : "?";
-      return `${conn.name || "Unnamed"} (${status})`;
+      return `${conn.name || "Unnamed"} (${formatStatusIcon(conn)})`;
     },
     onSelect: async (conn) => {
       await showConnectionActions(conn, node.id, breadcrumb);

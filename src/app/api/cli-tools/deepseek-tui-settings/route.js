@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
@@ -6,12 +5,13 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getCliHomeDir } from "@/shared/utils/cliHome";
 
 const execAsync = promisify(exec);
 
 const PROVIDER_NAME = "9router";
 
-const getDeepSeekDir = () => path.join(os.homedir(), ".deepseek");
+const getDeepSeekDir = () => path.join(getCliHomeDir(), ".deepseek");
 const getDeepSeekConfigPath = () => path.join(getDeepSeekDir(), "config.toml");
 
 // Simple TOML parser for key = "value" and [section] patterns
