@@ -584,3 +584,20 @@ describe("CursorExecutor — bug fixes", () => {
     });
   });
 });
+
+// ===========================================================================
+// 4. chatCore — token refresh rebuilds cache-protected credentials
+// ===========================================================================
+describe("chatCore — token refresh uses fresh exec credentials", () => {
+  it("rebuilds cache-protected credentials after OAuth refresh instead of reusing a stale snapshot", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(root, "../../open-sse/handlers/chatCore.js"), "utf8");
+
+    expect(src).toContain("function buildExecCredentials(credentials, clientHasCacheBreakpoints)");
+    expect(src).toContain("credentials: buildExecCredentials(credentials, clientHasCacheBreakpoints)");
+    expect(src).not.toMatch(/const execCredentials\s*=/);
+  });
+});

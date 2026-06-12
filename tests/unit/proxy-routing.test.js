@@ -8,6 +8,8 @@ import {
   getEnvProxyUrl,
   shouldBypassByNoProxy,
   normalizeProxyUrl,
+  buildProxyOptionsFromCredentials,
+  resolveStrictProxyOption,
 } from "../../open-sse/utils/proxyFetch.js";
 
 const TARGET = "https://api.example.com/v1/chat";
@@ -63,5 +65,35 @@ describe("NO_PROXY bypass (Requirement 10.4)", () => {
     expect(shouldBypassByNoProxy("https://api.example.com/x", "api.example.com")).toBe(true);
     expect(shouldBypassByNoProxy("https://sub.api.example.com/x", ".example.com")).toBe(true);
     expect(shouldBypassByNoProxy("https://other.com/x", "api.example.com")).toBe(false);
+  });
+});
+
+describe("strictProxy tri-state (fail-closed default)", () => {
+  it("resolveStrictProxyOption treats unset as undefined", () => {
+    expect(resolveStrictProxyOption(undefined)).toBeUndefined();
+    expect(resolveStrictProxyOption(null)).toBeUndefined();
+    expect(resolveStrictProxyOption("")).toBeUndefined();
+  });
+
+  it("resolveStrictProxyOption preserves explicit true/false", () => {
+    expect(resolveStrictProxyOption(true)).toBe(true);
+    expect(resolveStrictProxyOption(false)).toBe(false);
+  });
+
+  it("buildProxyOptionsFromCredentials defaults to fail-closed when strictProxy unset", () => {
+    const opts = buildProxyOptionsFromCredentials({
+      providerSpecificData: {
+        connectionProxyEnabled: true,
+        connectionProxyUrl: "http://conn-proxy:3128",
+      },
+    });
+    expect(opts.strictProxy).toBeUndefined();
+  });
+
+  it("buildProxyOptionsFromCredentials allows fallback only when strictProxy is false", () => {
+    const opts = buildProxyOptionsFromCredentials({
+      providerSpecificData: { strictProxy: false },
+    });
+    expect(opts.strictProxy).toBe(false);
   });
 });

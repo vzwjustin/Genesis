@@ -232,7 +232,7 @@ describe("frontend accessibility regressions", () => {
 
     expect(endpoint).toContain("Reach it remotely");
     expect(endpoint).toContain("Give teammates a stable URL");
-    expect(endpoint).toContain("Point coding tools at it");
+    expect(endpoint).toContain("Point Cursor, Cline, and other tools at it");
     expect(providers).toContain("No providers found for this search");
     expect(providers).toContain("No custom endpoints yet. Add an OpenAI- or Anthropic-compatible endpoint above.");
     expect(newProvider).toContain("Add a provider connection for app and CLI traffic.");
