@@ -27,6 +27,21 @@ async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
   let buffer = "";
   const toolCalls = new Map();
 
+  // Emit all accumulated tool calls and clear them. Guarded so a flush on
+  // finish_reason and the end-of-stream flush can't double-emit.
+  const flushToolCalls = () => {
+    if (toolCalls.size === 0) return;
+    for (const entry of toolCalls.values()) {
+      res.write(Buffer.from(encodeToolCallResponseFrame({
+        id: entry.id,
+        name: entry.name || "tool",
+        args: entry.args || "{}",
+        isLast: true,
+      })));
+    }
+    toolCalls.clear();
+  };
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -65,21 +80,17 @@ async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
         if (tc.function?.arguments) entry.args += tc.function.arguments;
       }
 
+      // Flush on ANY finish_reason, not just "tool_calls" — some providers end
+      // an agentic turn with finish_reason "stop" while tool calls are pending.
       const finish = chunk?.choices?.[0]?.finish_reason;
-      if (finish === "tool_calls") {
-        for (const entry of toolCalls.values()) {
-          res.write(Buffer.from(encodeToolCallResponseFrame({
-            id: entry.id,
-            name: entry.name || "tool",
-            args: entry.args || "{}",
-            isLast: true,
-          })));
-        }
-        toolCalls.clear();
+      if (finish) {
+        flushToolCalls();
       }
     }
   }
 
+  // Safety net: stream closed without a terminal finish_reason.
+  flushToolCalls();
   res.end();
 }
 

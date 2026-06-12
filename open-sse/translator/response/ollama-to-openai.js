@@ -76,7 +76,11 @@ export function ollamaToOpenAI(chunk, state) {
   // Convert Ollama tool_calls to OpenAI format
   if (toolCalls) {
     state.hadToolCalls = true;
-    delta.tool_calls = convertToolCalls(toolCalls);
+    // Use a per-stream offset so parallel tool calls split across chunks get
+    // distinct indices instead of each chunk restarting at 0.
+    const offset = state.toolCallIndex || 0;
+    delta.tool_calls = convertToolCalls(toolCalls, offset);
+    state.toolCallIndex = offset + toolCalls.length;
   }
 
   return {
@@ -106,10 +110,10 @@ function extractUsage(ollamaChunk) {
 /**
  * Convert tool_calls from Ollama format to OpenAI format
  */
-function convertToolCalls(toolCalls) {
+function convertToolCalls(toolCalls, indexOffset = 0) {
   return toolCalls.map((tc, i) => ({
-    index: tc.function?.index ?? i,
-    id: tc.id || `call_${i}_${Date.now()}`,
+    index: tc.function?.index ?? (indexOffset + i),
+    id: tc.id || `call_${indexOffset + i}_${Date.now()}`,
     type: "function",
     function: {
       name: tc.function?.name || "",

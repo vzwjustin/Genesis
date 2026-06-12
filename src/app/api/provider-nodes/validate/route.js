@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { isBlockedHostname } from "open-sse/utils/ssrfGuardCore.js";
 
 async function fetchWithTimeout(url, options = {}, timeout = 10000) {
   const controller = new AbortController();
@@ -16,6 +17,8 @@ const isValidUrl = (url) => {
   try {
     const parsed = new URL(url);
     if (parsed.username || parsed.password) return false;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    if (isBlockedHostname(parsed.hostname)) return false;
     return true;
   } catch {
     return false;

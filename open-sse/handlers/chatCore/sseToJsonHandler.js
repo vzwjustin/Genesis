@@ -5,6 +5,27 @@ import { FORMATS } from "../../translator/formats.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 
+// Upper bound on a single content block's accumulated text/thinking/JSON.
+// A compromised or MITM upstream could otherwise stream unbounded deltas into
+// one block and exhaust memory before assembly completes. 64 MiB is far above
+// any legitimate single-block response.
+const MAX_BLOCK_CHARS = 64 * 1024 * 1024;
+
+// Sentinel thrown when a block exceeds the cap. Callers catch this and fail
+// closed (return null) rather than emit a silently-truncated success — a
+// truncated body would violate the same response-validity rule as a malformed
+// frame (Requirement 6.6).
+class BlockSizeExceededError extends Error {}
+
+function appendCapped(existing, addition) {
+  const cur = existing || "";
+  const next = cur + (addition || "");
+  if (next.length > MAX_BLOCK_CHARS) {
+    throw new BlockSizeExceededError("content block exceeded MAX_BLOCK_CHARS");
+  }
+  return next;
+}
+
 function textFromResponsesMessageItem(item) {
   if (!item?.content || !Array.isArray(item.content)) return "";
   const byType = item.content.find((c) => c.type === "output_text");
@@ -53,6 +74,9 @@ export function parseSSEToClaudeResponse(rawSSE) {
     try {
       events.push(JSON.parse(payload));
     } catch {
+      // Fail closed: a malformed frame means the assembled message would be
+      // incomplete. Discard the whole response rather than return a silently
+      // truncated body (Requirement 6.6).
       return null;
     }
   }
@@ -86,6 +110,7 @@ export function parseSSEToClaudeResponse(rawSSE) {
     sawContent = true;
   };
 
+  try {
   for (const ev of events) {
     switch (ev.type) {
       case "message_start":
@@ -103,11 +128,11 @@ export function parseSSEToClaudeResponse(rawSSE) {
         const block = openBlocks.get(ev.index);
         if (!block || !ev.delta) break;
         if (ev.delta.type === "text_delta") {
-          block.text = (block.text || "") + (ev.delta.text || "");
+          block.text = appendCapped(block.text, ev.delta.text);
         } else if (ev.delta.type === "thinking_delta") {
-          block.thinking = (block.thinking || "") + (ev.delta.thinking || "");
+          block.thinking = appendCapped(block.thinking, ev.delta.thinking);
         } else if (ev.delta.type === "input_json_delta") {
-          block._partialJson = (block._partialJson || "") + (ev.delta.partial_json || "");
+          block._partialJson = appendCapped(block._partialJson, ev.delta.partial_json);
         }
         break;
       }
@@ -127,6 +152,11 @@ export function parseSSEToClaudeResponse(rawSSE) {
       default:
         break;
     }
+  }
+  } catch (e) {
+    // Fail closed on block-size overflow rather than returning a truncated body.
+    if (e instanceof BlockSizeExceededError) return null;
+    throw e;
   }
 
   if (openBlocks.size > 0) return null;
@@ -279,6 +309,9 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     try {
       chunks.push(JSON.parse(payload));
     } catch {
+      // Fail closed: a malformed frame means the assembled message would be
+      // incomplete. Discard the whole response rather than return a silently
+      // truncated body (Requirement 6.6).
       return null;
     }
   }

@@ -47,8 +47,11 @@ export function addBufferToUsage(usage) {
   if (result.total_tokens !== undefined) {
     result.total_tokens += BUFFER_TOKENS;
   } else if (result.prompt_tokens !== undefined && result.completion_tokens !== undefined) {
-    // Calculate total_tokens if not exists
+    // OpenAI format: calculate total_tokens if not present
     result.total_tokens = result.prompt_tokens + result.completion_tokens;
+  } else if (result.input_tokens !== undefined && result.output_tokens !== undefined) {
+    // Claude format: recompute total from buffered input + output
+    result.total_tokens = result.input_tokens + result.output_tokens;
   }
 
   return result;

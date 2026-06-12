@@ -33,7 +33,10 @@ const ROOT_CA_CN = "9Router MITM Root CA";
 function getCertFingerprint(certPath) {
   const pem = fs.readFileSync(certPath, "utf-8");
   const der = Buffer.from(pem.replace(/-----[^-]+-----/g, "").replace(/\s/g, ""), "base64");
-  return crypto.createHash("sha1").update(der).digest("hex").toUpperCase().match(/.{2}/g).join(":");
+  const hex = crypto.createHash("sha1").update(der).digest("hex").toUpperCase();
+  const pairs = hex.match(/.{2}/g);
+  if (!pairs) throw new Error(`Invalid certificate, cannot compute fingerprint: ${certPath}`);
+  return pairs.join(":");
 }
 
 /**

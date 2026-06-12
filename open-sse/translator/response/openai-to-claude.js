@@ -61,9 +61,52 @@ function stopTextBlock(state, results) {
   state.textBlockStarted = false;
 }
 
+// Emit buffered tool args + content_block_stop for every open tool block, and
+// close any open thinking/text blocks. Shared by the finish_reason path and the
+// end-of-stream null flush so tool blocks are never left dangling when the
+// upstream closes without a terminal finish_reason.
+function flushOpenBlocks(state, results) {
+  stopThinkingBlock(state, results);
+  stopTextBlock(state, results);
+
+  for (const [idx, toolInfo] of state.toolCalls) {
+    const buffered = state.toolArgBuffers?.get(idx);
+    if (buffered) {
+      const sanitized = sanitizeToolArgs(toolInfo.name, buffered);
+      results.push({
+        type: "content_block_delta",
+        index: toolInfo.blockIndex,
+        delta: { type: "input_json_delta", partial_json: sanitized }
+      });
+    }
+    results.push({
+      type: "content_block_stop",
+      index: toolInfo.blockIndex
+    });
+  }
+  state.toolCalls.clear();
+  state.toolArgBuffers?.clear();
+}
+
 // Convert OpenAI stream chunk to Claude format
 export function openaiToClaudeResponse(chunk, state) {
-  if (!chunk || !chunk.choices?.[0]) return null;
+  // End-of-stream null flush: upstream closed without a terminal finish_reason.
+  // Close any still-open blocks so tool_use blocks aren't dropped.
+  if (!chunk || !chunk.choices?.[0]) {
+    if (chunk == null && state.messageStartSent && !state.finishReason) {
+      const results = [];
+      flushOpenBlocks(state, results);
+      state.finishReason = "stop";
+      results.push({
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: state.usage || { input_tokens: 0, output_tokens: 0 }
+      });
+      results.push({ type: "message_stop" });
+      return results.length > 0 ? results : null;
+    }
+    return null;
+  }
 
   const results = [];
   const choice = chunk.choices[0];
@@ -176,7 +219,13 @@ export function openaiToClaudeResponse(chunk, state) {
   // Tool calls
   if (delta?.tool_calls) {
     for (const tc of delta.tool_calls) {
-      const idx = tc.index ?? 0;
+      // Fall back to a per-stream counter (not 0) so parallel tool calls that
+      // arrive without a per-call index don't collapse onto the same slot.
+      let idx = tc.index;
+      if (idx == null) {
+        if (tc.id) state.nextToolCallIndex = (state.nextToolCallIndex ?? 0) + 1;
+        idx = (state.nextToolCallIndex ?? 1) - 1;
+      }
 
       if (tc.id) {
         stopThinkingBlock(state, results);
@@ -216,25 +265,7 @@ export function openaiToClaudeResponse(chunk, state) {
 
   // Finish
   if (choice.finish_reason) {
-    stopThinkingBlock(state, results);
-    stopTextBlock(state, results);
-
-    for (const [idx, toolInfo] of state.toolCalls) {
-      // Emit buffered + sanitized args as single delta before stop
-      const buffered = state.toolArgBuffers?.get(idx);
-      if (buffered) {
-        const sanitized = sanitizeToolArgs(toolInfo.name, buffered);
-        results.push({
-          type: "content_block_delta",
-          index: toolInfo.blockIndex,
-          delta: { type: "input_json_delta", partial_json: sanitized }
-        });
-      }
-      results.push({
-        type: "content_block_stop",
-        index: toolInfo.blockIndex
-      });
-    }
+    flushOpenBlocks(state, results);
 
     // Mark finish for later usage injection in stream.js
     state.finishReason = choice.finish_reason;

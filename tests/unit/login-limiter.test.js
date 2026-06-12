@@ -25,7 +25,7 @@ describe("login limiter client identity", () => {
     expect(getClientIp(request({}, { socket: { remoteAddress: "::ffff:192.0.2.1" } }))).toBe("192.0.2.1");
   });
 
-  it("uses authorization and user-agent fingerprint when IP is unavailable", () => {
+  it("uses a user-agent fingerprint when IP is unavailable, ignoring authorization", () => {
     const first = getClientIp(request({
       authorization: "Bearer secret",
       "user-agent": "TestAgent/1.0",
@@ -34,14 +34,22 @@ describe("login limiter client identity", () => {
       authorization: "Bearer secret",
       "user-agent": "TestAgent/1.0",
     }));
-    const different = getClientIp(request({
+    // Same UA but a DIFFERENT authorization must map to the SAME bucket —
+    // otherwise an attacker rotates the credential (which is the password
+    // attempt itself) to reset the fail counter and bypass the lockout.
+    const differentAuth = getClientIp(request({
       authorization: "Bearer other",
       "user-agent": "TestAgent/1.0",
+    }));
+    const differentUa = getClientIp(request({
+      authorization: "Bearer secret",
+      "user-agent": "OtherAgent/2.0",
     }));
 
     expect(first).toBe(second);
     expect(first).toMatch(/^fp:[0-9a-f]{16}$/);
-    expect(different).not.toBe(first);
+    expect(differentAuth).toBe(first);
+    expect(differentUa).not.toBe(first);
   });
 
   it("uses socket remoteAddress when proxy headers are not trusted", () => {

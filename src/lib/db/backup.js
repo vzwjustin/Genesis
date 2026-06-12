@@ -26,7 +26,13 @@ export function pruneOldBackups() {
   if (!fs.existsSync(BACKUPS_DIR)) return;
   const entries = fs.readdirSync(BACKUPS_DIR, { withFileTypes: true })
     .filter((e) => e.isDirectory())
-    .map((e) => ({ name: e.name, full: path.join(BACKUPS_DIR, e.name), mtime: fs.statSync(path.join(BACKUPS_DIR, e.name)).mtimeMs }))
+    .map((e) => {
+      const full = path.join(BACKUPS_DIR, e.name);
+      // statSync can throw if the entry is removed mid-prune (TOCTOU); skip it.
+      try { return { name: e.name, full, mtime: fs.statSync(full).mtimeMs }; }
+      catch { return null; }
+    })
+    .filter(Boolean)
     .sort((a, b) => b.mtime - a.mtime);
 
   for (const old of entries.slice(KEEP_BACKUPS)) {

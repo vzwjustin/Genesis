@@ -89,6 +89,29 @@ export function geminiToOpenAIResponse(chunk, state) {
             }]
           });
         }
+
+        // A thought-signed part can also carry an inline image — emit it
+        // before continuing, otherwise the image is silently dropped.
+        const thoughtInline = part.inlineData || part.inline_data;
+        if (thoughtInline?.data) {
+          const mimeType = thoughtInline.mimeType || thoughtInline.mime_type || "image/png";
+          results.push({
+            id: `chatcmpl-${state.messageId}`,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: state.model,
+            choices: [{
+              index: 0,
+              delta: {
+                images: [{
+                  type: "image_url",
+                  image_url: { url: `data:${mimeType};base64,${thoughtInline.data}` }
+                }]
+              },
+              finish_reason: null
+            }]
+          });
+        }
         continue;
       }
 

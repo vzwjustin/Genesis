@@ -15,22 +15,25 @@ const comboRotationState = new Map();
 const comboRotationLocks = new Map();
 
 async function withComboRotationLock(comboName, fn) {
-  if (!comboName) return fn();
+  // Serialize on the same key getRotatedModels uses for rotation state, so
+  // requests with no comboName still mutually exclude on the shared
+  // "__default__" rotation counter instead of racing read-modify-write.
+  const lockKey = comboName || "__default__";
 
-  const previous = comboRotationLocks.get(comboName) || Promise.resolve();
+  const previous = comboRotationLocks.get(lockKey) || Promise.resolve();
   let release;
   const current = new Promise((resolve) => {
     release = resolve;
   });
-  comboRotationLocks.set(comboName, previous.then(() => current));
+  comboRotationLocks.set(lockKey, previous.catch(() => {}).then(() => current));
 
-  await previous;
+  await previous.catch(() => {});
   try {
     return await fn();
   } finally {
     release();
-    if (comboRotationLocks.get(comboName) === current) {
-      comboRotationLocks.delete(comboName);
+    if (comboRotationLocks.get(lockKey) === current) {
+      comboRotationLocks.delete(lockKey);
     }
   }
 }

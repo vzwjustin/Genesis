@@ -11,6 +11,7 @@ const LOCK_STEPS_MS = [30_000, 120_000, 600_000, 1_800_000]; // 30s, 2m, 10m, 30
 const FAIL_WINDOW_MS = 60 * 60 * 1000; // 1h since last fail → auto reset
 
 const attempts = new Map(); // ip → { fails, lockUntil, lockLevel, lastFailAt }
+const MAX_ATTEMPTS_ENTRIES = 10_000;
 const ATTEMPTS_FILE = path.join(DATA_DIR, "auth", "login-attempts.json");
 let attemptsLoaded = false;
 
@@ -38,6 +39,23 @@ function persistAttempts() {
     fs.writeFileSync(ATTEMPTS_FILE, JSON.stringify(Object.fromEntries(attempts)));
   } catch (e) {
     console.warn("[loginLimiter] Failed to persist attempts:", e.message);
+  }
+}
+
+// Bound the in-memory Map so a flood of distinct IPs can't grow it unbounded.
+// Evict expired entries first, then oldest insertions until under the cap.
+function evictIfNeeded() {
+  if (attempts.size < MAX_ATTEMPTS_ENTRIES) return;
+  const t = now();
+  for (const [ip, e] of attempts) {
+    if (e && e.lastFailAt && t - e.lastFailAt > FAIL_WINDOW_MS && (!e.lockUntil || t >= e.lockUntil)) {
+      attempts.delete(ip);
+    }
+  }
+  while (attempts.size >= MAX_ATTEMPTS_ENTRIES) {
+    const oldest = attempts.keys().next().value;
+    if (oldest === undefined) break;
+    attempts.delete(oldest);
   }
 }
 
@@ -71,6 +89,7 @@ export function recordFail(ip) {
     e.lockLevel += 1;
     e.fails = 0;
   }
+  evictIfNeeded();
   attempts.set(ip, e);
   persistAttempts();
   return { remainingBeforeLock: Math.max(0, MAX_FAILS_BEFORE_LOCK - e.fails) };
@@ -82,17 +101,28 @@ export function recordSuccess(ip) {
   persistAttempts();
 }
 
+// When no socket IP is available, fall back to a coarse fingerprint. The
+// authorization header is deliberately EXCLUDED: it carries the password
+// attempt, so including it would give every guess a fresh key and the
+// fail counter could never accumulate — defeating the lockout entirely.
+// User-Agent alone is spoofable; the resulting bucket is intentionally
+// shared so a single client can't trivially escape its own counter by
+// rotating one credential. Operators behind a proxy should set
+// TRUST_PROXY_HEADERS=true so the real client IP is used instead.
 function getFallbackClientKey(request) {
-  const auth = request.headers.get("authorization") || "";
   const ua = request.headers.get("user-agent") || "";
-  const hash = crypto.createHash("sha256").update(`${auth}\0${ua}`).digest("hex").slice(0, 16);
+  const hash = crypto.createHash("sha256").update(ua).digest("hex").slice(0, 16);
   return `fp:${hash}`;
 }
 
 export function getClientIp(request) {
   if (process.env.TRUST_PROXY_HEADERS === "true") {
     const xff = request.headers.get("x-forwarded-for");
-    if (xff) return xff.split(",")[0].trim();
+    if (xff) {
+      // Leftmost entry is the originating client (trusted because TRUST_PROXY_HEADERS gates this).
+      const ip = xff.split(",").map((s) => s.trim()).filter(Boolean)[0];
+      if (ip) return ip;
+    }
     const realIp = request.headers.get("x-real-ip");
     if (realIp) return realIp.trim();
   }

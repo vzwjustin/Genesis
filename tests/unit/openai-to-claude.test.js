@@ -23,6 +23,28 @@ describe("openaiToClaudeRequest", () => {
     expect(result.tool_choice).toEqual({ type: "tool", name: "my_tool" });
   });
 
+  it("maps OpenAI tool_choice 'none' to Claude 'none' (must not call tools)", () => {
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "my_tool", parameters: {} } }],
+      tool_choice: "none",
+    };
+
+    const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
+    expect(result.tool_choice).toEqual({ type: "none" });
+  });
+
+  it("maps OpenAI tool_choice 'auto' to Claude 'auto'", () => {
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "my_tool", parameters: {} } }],
+      tool_choice: "auto",
+    };
+
+    const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
+    expect(result.tool_choice).toEqual({ type: "auto" });
+  });
+
   describe("response_format handling", () => {
     it("should inject JSON schema instructions for json_schema type", () => {
       const body = {

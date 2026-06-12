@@ -522,8 +522,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Streaming response
   // Destructure streamDetailId so both the initial placeholder save and the
   // onStreamComplete update reference the same DB record.
-  const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx, onRequestSuccess });
-  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId });
+  const { onStreamComplete, streamDetailId, fireRequestSuccess } = buildOnStreamComplete({ ...sharedCtx, onRequestSuccess });
+  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId, fireRequestSuccess });
 }
 
 export function isTokenExpiringSoon(expiresAt, bufferMs = 5 * 60 * 1000) {

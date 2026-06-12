@@ -26,7 +26,20 @@ function processSSEMessage(msg, state) {
     state.responseId = parsed.response?.id || state.responseId;
     state.created = parsed.response?.created_at || state.created;
   } else if (eventType === "response.output_item.done") {
-    state.items.set(parsed.output_index ?? 0, parsed.item);
+    // Some translators reuse output_index across distinct items (e.g. a tool_call
+    // emitted at index 0 alongside a message/reasoning item also at index 0).
+    // A plain set() would overwrite the earlier item and lose it. If the slot is
+    // already taken by a different item id, append at the next free numeric slot
+    // so every item survives (consumer below builds the output array by index).
+    const idx = parsed.output_index ?? 0;
+    const existing = state.items.get(idx);
+    if (existing && existing.id !== parsed.item?.id) {
+      let free = idx;
+      while (state.items.has(free)) free++;
+      state.items.set(free, parsed.item);
+    } else {
+      state.items.set(idx, parsed.item);
+    }
   } else if (eventType === "response.completed") {
     state.status = "completed";
     if (parsed.response?.usage) {

@@ -63,9 +63,12 @@ export class IFlowExecutor extends BaseExecutor {
       "x-iflow-signature": signature
     };
 
-    // Add authorization
-    if (credentials.apiKey) {
-      headers["Authorization"] = `Bearer ${credentials.apiKey}`;
+    // Add authorization. Use the same apiKey||accessToken fallback the
+    // signature uses — after an OAuth refresh only accessToken is set, so
+    // gating on apiKey alone would send the request unauthenticated → 401.
+    const authToken = credentials.apiKey || credentials.accessToken;
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
     }
 
     // Add streaming header

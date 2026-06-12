@@ -40,7 +40,9 @@ export function geminiToOpenAIRequest(model, body, stream) {
   if (body.contents && Array.isArray(body.contents)) {
     for (const content of body.contents) {
       const converted = convertGeminiContent(content);
-      if (converted) {
+      if (Array.isArray(converted)) {
+        result.messages.push(...converted);
+      } else if (converted) {
         result.messages.push(converted);
       }
     }
@@ -78,6 +80,7 @@ function convertGeminiContent(content) {
 
   const parts = [];
   const toolCalls = [];
+  const toolResponses = [];
 
   for (const part of content.parts) {
     if (part.text !== undefined) {
@@ -105,12 +108,19 @@ function convertGeminiContent(content) {
     }
 
     if (part.functionResponse) {
-      return {
+      // Collect every functionResponse — a Gemini content can carry several
+      // (parallel tool results). Returning on the first one dropped siblings.
+      toolResponses.push({
         role: "tool",
         tool_call_id: part.functionResponse.id || part.functionResponse.name,
         content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
-      };
+      });
     }
+  }
+
+  // A turn is either tool-results or assistant/user content, not both.
+  if (toolResponses.length > 0) {
+    return toolResponses;
   }
 
   if (toolCalls.length > 0) {

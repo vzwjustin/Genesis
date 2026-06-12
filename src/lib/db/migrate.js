@@ -24,8 +24,19 @@ export class MigrationAborted extends Error {
   }
 }
 
+// Allowlist guard: table identifiers are interpolated into SQL (no bind support
+// for identifiers). Callers are static today, but assert against declared TABLES
+// so a future dynamic caller cannot inject SQL via a table name.
+function assertTableName(tableName) {
+  if (!Object.prototype.hasOwnProperty.call(TABLES, tableName)) {
+    throw new Error(`[DB][migrate] illegal table identifier: ${tableName}`);
+  }
+  return tableName;
+}
+
 // Insert rows one-by-one, collect failures, then assert COUNT(*) matches input length.
 function importWithAssertion(adapter, tableName, rows, insertFn, rowMeta) {
+  assertTableName(tableName);
   const dropped = [];
   for (const row of rows) {
     try { insertFn(row); }
@@ -78,6 +89,7 @@ function runVersionedMigrations(adapter) {
 // ─── Auto-sync (additive only): add missing tables/columns/indexes ───────
 function syncSchemaFromTables(adapter) {
   for (const [tableName, def] of Object.entries(TABLES)) {
+    assertTableName(tableName);
     // Create table if absent
     adapter.exec(buildCreateTableSql(tableName, def));
 
@@ -86,6 +98,10 @@ function syncSchemaFromTables(adapter) {
     const existingNames = new Set(existing.map((r) => r.name));
     for (const [colName, colDef] of Object.entries(def.columns)) {
       if (!existingNames.has(colName)) {
+        // colName is an interpolated identifier — assert it is a declared column.
+        if (!Object.prototype.hasOwnProperty.call(def.columns, colName)) {
+          throw new Error(`[DB][migrate] illegal column identifier: ${tableName}.${colName}`);
+        }
         // SQLite ADD COLUMN restrictions: no PRIMARY KEY / UNIQUE w/o NULL ok.
         // We strip PRIMARY KEY / UNIQUE since those are only valid at create time.
         const safeDef = colDef

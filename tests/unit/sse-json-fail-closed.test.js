@@ -255,4 +255,22 @@ describe("parseSSEToClaudeResponse — truncated stream fail-closed", () => {
     ].join("\n");
     expect(parseSSEToClaudeResponse(sse)).toBeNull();
   });
+
+  it("fails closed (null) when a text block exceeds the size cap instead of truncating", () => {
+    // > 64 MiB of text across deltas must not assemble into a successful-but-
+    // truncated response — it must be rejected like any other invalid assembly.
+    const huge = "a".repeat(8 * 1024 * 1024);
+    const deltas = [];
+    for (let i = 0; i < 9; i++) { // 9 × 8 MiB = 72 MiB > 64 MiB cap
+      deltas.push(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"${huge}"}}`);
+    }
+    const sse = [
+      'data: {"type":"message_start","message":{"id":"msg_big","type":"message","role":"assistant","content":[]}}',
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+      ...deltas,
+      'data: {"type":"content_block_stop","index":0}',
+      'data: {"type":"message_stop"}',
+    ].join("\n");
+    expect(parseSSEToClaudeResponse(sse)).toBeNull();
+  });
 });

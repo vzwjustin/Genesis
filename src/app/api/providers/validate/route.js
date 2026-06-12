@@ -9,8 +9,6 @@ import { normalizeProviderId } from "@/lib/providerNormalization";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 
-let _validateProxyOptions = null;
-
 async function buildValidateProxyOptions(providerSpecificData) {
   if (!providerSpecificData) return null;
   const proxyConfig = await resolveConnectionProxyConfig(providerSpecificData);
@@ -23,13 +21,13 @@ async function buildValidateProxyOptions(providerSpecificData) {
   };
 }
 
-function validateFetch(url, init) {
-  return proxyAwareFetch(url, init, _validateProxyOptions);
+function validateFetch(url, init, proxyOptions) {
+  return proxyAwareFetch(url, init, proxyOptions);
 }
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
-async function probeWebProvider(provider, apiKey) {
+async function probeWebProvider(provider, apiKey, proxyOptions) {
   const p = AI_PROVIDERS[provider];
   if (!p) return null;
   // Skip if provider has dual-purpose (LLM + search), let LLM validate handle it
@@ -58,13 +56,13 @@ async function probeWebProvider(provider, apiKey) {
     body = JSON.stringify({ query: "ping", q: "ping", url: "https://example.com" });
   }
 
-  const res = await validateFetch(url, { method: cfg.method, headers, body, signal: AbortSignal.timeout(8000) });
+  const res = await validateFetch(url, { method: cfg.method, headers, body, signal: AbortSignal.timeout(8000) }, proxyOptions);
   return res.status !== 401 && res.status !== 403;
 }
 
 // Probe a media provider (tts/embedding/stt/image/video) using *Config.
 // Returns true if API key is accepted; null to skip (let default handler decide).
-async function probeMediaProvider(provider, apiKey) {
+async function probeMediaProvider(provider, apiKey, proxyOptions) {
   const p = AI_PROVIDERS[provider];
   if (!p) return null;
   const MEDIA_KINDS = new Set(["tts", "embedding", "stt", "image", "video", "music", "imageToText"]);
@@ -97,7 +95,7 @@ async function probeMediaProvider(provider, apiKey) {
     headers,
     body: method === "GET" ? undefined : JSON.stringify({ input: "ping", text: "ping", prompt: "ping", model: cfg.models?.[0]?.id || "test" }),
     signal: AbortSignal.timeout(8000),
-  });
+  }, proxyOptions);
   return res.status !== 401 && res.status !== 403;
 }
 
@@ -108,7 +106,7 @@ export async function POST(request) {
     const provider = normalizeProviderId(body.provider);
     const { apiKey, providerSpecificData } = body;
 
-    _validateProxyOptions = await buildValidateProxyOptions(providerSpecificData);
+    const proxyOptions = await buildValidateProxyOptions(providerSpecificData);
 
     const isNoAuth = AI_PROVIDERS[provider]?.noAuth === true;
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
@@ -128,7 +126,7 @@ export async function POST(request) {
         const modelsUrl = `${node.baseUrl?.replace(/\/$/, "")}/models`;
         const res = await validateFetch(modelsUrl, {
           headers: { "Authorization": `Bearer ${apiKey}` },
-        });
+        }, proxyOptions);
         isValid = res.ok;
         return NextResponse.json({
           valid: isValid,
@@ -145,7 +143,7 @@ export async function POST(request) {
         const baseUrl = node.baseUrl?.replace(/\/$/, "");
         const modelsRes = await validateFetch(`${baseUrl}/models`, {
           headers: { "Authorization": `Bearer ${apiKey}` },
-        });
+        }, proxyOptions);
         if (modelsRes.ok) {
           return NextResponse.json({ valid: true });
         }
@@ -158,7 +156,7 @@ export async function POST(request) {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "test", input: "ping" }),
-        });
+        }, proxyOptions);
         // 401/403 = bad key; anything else (including 400 "model not found") means key works
         isValid = embedRes.status !== 401 && embedRes.status !== 403;
         return NextResponse.json({
@@ -186,7 +184,7 @@ export async function POST(request) {
             "anthropic-version": "2023-06-01",
             "Authorization": `Bearer ${apiKey}`
           },
-        });
+        }, proxyOptions);
 
         isValid = res.ok;
         return NextResponse.json({
@@ -210,7 +208,7 @@ export async function POST(request) {
             messages: [{ role: "user", content: "test" }],
             max_tokens: 1,
           }),
-        });
+        }, proxyOptions);
         isValid = cfRes.status !== 401 && cfRes.status !== 403 && cfRes.status !== 404;
         return NextResponse.json({
           valid: isValid,
@@ -239,7 +237,7 @@ export async function POST(request) {
             messages: [{ role: "user", content: "test" }],
             max_tokens: 1,
           }),
-        });
+        }, proxyOptions);
         isValid = azureRes.status !== 401 && azureRes.status !== 403;
         return NextResponse.json({
           valid: isValid,
@@ -248,7 +246,7 @@ export async function POST(request) {
       }
 
       // Generic probe for webSearch/webFetch providers (config-driven)
-      const webResult = await probeWebProvider(provider, apiKey);
+      const webResult = await probeWebProvider(provider, apiKey, proxyOptions);
       if (webResult !== null) {
         return NextResponse.json({
           valid: webResult,
@@ -257,7 +255,7 @@ export async function POST(request) {
       }
 
       // Generic probe for tts/embedding providers (config-driven)
-      const mediaResult = await probeMediaProvider(provider, apiKey);
+      const mediaResult = await probeMediaProvider(provider, apiKey, proxyOptions);
       if (mediaResult !== null) {
         return NextResponse.json({
           valid: mediaResult,
@@ -269,14 +267,14 @@ export async function POST(request) {
         case "openai":
           const openaiRes = await validateFetch("https://api.openai.com/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` },
-          });
+          }, proxyOptions);
           isValid = openaiRes.ok;
           break;
 
         case "vercel-ai-gateway":
           const vercelAiGatewayRes = await validateFetch("https://ai-gateway.vercel.sh/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` },
-          });
+          }, proxyOptions);
           isValid = vercelAiGatewayRes.ok;
           break;
 
@@ -293,19 +291,19 @@ export async function POST(request) {
               max_tokens: 1,
               messages: [{ role: "user", content: "test" }],
             }),
-          });
+          }, proxyOptions);
           isValid = anthropicRes.status !== 401;
           break;
 
         case "gemini":
-          const geminiRes = await validateFetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`);
+          const geminiRes = await validateFetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`, proxyOptions);
           isValid = geminiRes.ok;
           break;
 
         case "openrouter":
           const openrouterRes = await validateFetch("https://openrouter.ai/api/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` },
-          });
+          }, proxyOptions);
           isValid = openrouterRes.ok;
           break;
 
@@ -327,7 +325,7 @@ export async function POST(request) {
               method: "POST",
               headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
               body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-            });
+            }, proxyOptions);
             isValid = res.status !== 401 && res.status !== 403;
           } else {
             const testModel = getDefaultModel(provider) || "claude-sonnet-4-20250514";
@@ -340,7 +338,7 @@ export async function POST(request) {
                 ...(cfg.headers || {}),
               },
               body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-            });
+            }, proxyOptions);
             // 400 = model resolution error but auth passed (e.g. agentrouter "no available channel")
             isValid = res.status !== 401 && res.status !== 403;
           }
@@ -359,7 +357,7 @@ export async function POST(request) {
               max_tokens: 1,
               messages: [{ role: "user", content: "test" }],
             }),
-          });
+          }, proxyOptions);
           isValid = res.status !== 401 && res.status !== 403;
           break;
         }
@@ -408,7 +406,7 @@ export async function POST(request) {
           };
           const headers = {};
           if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-          const res = await validateFetch(endpoints[provider], { headers });
+          const res = await validateFetch(endpoints[provider], { headers }, proxyOptions);
           // xai returns 400 for bad key, 403 for valid-but-no-credit. Other providers use 401.
           if (provider === "xai") {
             isValid = res.status === 200 || res.status === 403;
@@ -428,7 +426,7 @@ export async function POST(request) {
               max_tokens: 1,
               stream: false,
             }),
-          });
+          }, proxyOptions);
           isValid = res.status !== 401 && res.status !== 403;
           break;
         }
@@ -450,7 +448,7 @@ export async function POST(request) {
               "Authorization": `Bearer ${apiKey}`,
             },
             body: JSON.stringify(payload),
-          });
+          }, proxyOptions);
           isValid = res.status !== 401 && res.status !== 403;
           break;
         }
@@ -458,7 +456,7 @@ export async function POST(request) {
         case "deepgram": {
           const res = await validateFetch("https://api.deepgram.com/v1/projects", {
             headers: { "Authorization": `Token ${apiKey}` },
-          });
+          }, proxyOptions);
           isValid = res.ok;
           break;
         }
@@ -475,7 +473,7 @@ export async function POST(request) {
               messages: [{ role: "user", content: "test" }],
               max_tokens: 10,
             }),
-          });
+          }, proxyOptions);
           // Returns 401 for invalid key, 200 for valid, 400 for malformed
           isValid = res.status === 200 || res.status === 400;
           break;
@@ -493,7 +491,7 @@ export async function POST(request) {
             const probeRes = await validateFetch(
               `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
               { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-            );
+            , proxyOptions);
             isValid = probeRes.status !== 401 && probeRes.status !== 403;
           }
           break;
@@ -507,7 +505,7 @@ export async function POST(request) {
             const probeRes = await validateFetch(
               `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
               { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-            );
+            , proxyOptions);
             isValid = probeRes.status !== 401 && probeRes.status !== 403;
           }
           break;
@@ -556,7 +554,7 @@ export async function POST(request) {
               isReasoning: false, disableTextFollowUps: true, disableMemory: true,
               forceSideBySide: false, isAsyncChat: false, disableSelfHarmShortCircuit: false,
             }),
-          });
+          }, proxyOptions);
           // Cookie valid = any non-401/403 response (200, 400, 429 all mean cookie accepted)
           if (res.status === 401 || res.status === 403) {
             isValid = false;
@@ -595,7 +593,7 @@ export async function POST(request) {
                 search_recency_filter: null, is_incognito: true, use_schematized_api: true, last_backend_uuid: null,
               },
             }),
-          });
+          }, proxyOptions);
           if (res.status === 401 || res.status === 403) {
             isValid = false;
             error = "Invalid session cookie — re-paste __Secure-next-auth.session-token from perplexity.ai";
@@ -623,7 +621,7 @@ export async function POST(request) {
           const modelsUrl = cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
           let probeOk = null;
           try {
-            const probeRes = await validateFetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
+            const probeRes = await validateFetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) }, proxyOptions);
             if (probeRes.status === 401 || probeRes.status === 403) probeOk = false;
             else if (probeRes.ok) probeOk = true;
           } catch { /* fallback to chat */ }
@@ -638,7 +636,7 @@ export async function POST(request) {
             headers,
             body: JSON.stringify({ model: defaultModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1 }),
             signal: AbortSignal.timeout(10000),
-          });
+          }, proxyOptions);
           isValid = chatRes.status !== 401 && chatRes.status !== 403;
           break;
         }
@@ -655,7 +653,5 @@ export async function POST(request) {
   } catch (error) {
     console.error("Error validating API key:", error?.message);
     return NextResponse.json({ error: "Validation failed" }, { status: 500 });
-  } finally {
-    _validateProxyOptions = null;
   }
 }
