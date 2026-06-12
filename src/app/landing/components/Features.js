@@ -27,8 +27,8 @@ const FEATURES = [
   },
   { 
     icon: "shield_with_heart", 
-    title: "Model Fallback", 
-    desc: "Automatically switch providers on failure or high latency.", 
+    title: "Automatic Failover",
+    desc: "If a provider fails or gets slow, requests switch to a backup automatically.",
     colors: {
       border: "hover:border-rose-500/50",
       bg: "hover:bg-rose-500/5",

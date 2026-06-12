@@ -127,7 +127,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-text-muted">
-        OpenRouter supports any model. Add models and create aliases for quick access.
+        OpenRouter supports any model. Add a model, then give it a short nickname (alias) so it's easier to type in your tools.
       </p>
 
       {/* Add new model */}

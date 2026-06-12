@@ -281,7 +281,7 @@ export default function ProvidersPage() {
         <EmptyState
           icon="dns"
           title="No providers connected yet"
-          description="Connect an OAuth account or add an API key to start routing requests."
+          description="Sign in with an OAuth account or paste an API key to start sending AI requests through 9router."
           action={{ label: "Browse providers below", href: "#oauth-providers" }}
         />
       )}
@@ -927,7 +927,7 @@ function AddOpenAICompatibleModal({ isOpen, onClose, onCreated }) {
           value={checkModelId}
           onChange={(e) => setCheckModelId(e.target.value)}
           placeholder="e.g. gpt-4, claude-3-opus"
-          hint="If provider lacks /models endpoint, enter a model ID to validate via chat/completions instead."
+          hint="Leave blank to test by listing the provider's models. If the provider can't list models, enter one model ID here and we'll test by sending it a small chat request instead."
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button
@@ -1097,7 +1097,7 @@ function AddAnthropicCompatibleModal({ isOpen, onClose, onCreated }) {
             setFormData({ ...formData, baseUrl: e.target.value })
           }
           placeholder="https://api.anthropic.com/v1"
-          hint="Use the base URL (ending in /v1) for your Anthropic-compatible API. The system will append /messages."
+          hint="Enter the base URL of your Anthropic-compatible API (usually ends in /v1). 9router adds /messages automatically, so don't include it here."
         />
         <Input
           label="API Key (for Check)"
@@ -1110,7 +1110,7 @@ function AddAnthropicCompatibleModal({ isOpen, onClose, onCreated }) {
           value={checkModelId}
           onChange={(e) => setCheckModelId(e.target.value)}
           placeholder="e.g. claude-3-opus"
-          hint="If provider lacks /models endpoint, enter a model ID to validate via chat/completions instead."
+          hint="Leave blank to test by listing the provider's models. If the provider can't list models, enter one model ID here and we'll test by sending it a small chat request instead."
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button

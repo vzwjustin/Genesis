@@ -590,7 +590,7 @@ export default function ProviderDetailPage() {
     if (!mitm) return;
 
     if (mitm.success) {
-      notify.success(mitm.message || "MITM proxy enabled for this IDE. Restart the IDE to apply.");
+      notify.success(mitm.message || "Traffic interception enabled for this IDE. Restart the IDE for it to take effect.");
       return;
     }
 
@@ -602,7 +602,7 @@ export default function ProviderDetailPage() {
     if (mitm.reason === "needs_privilege" || mitm.reason === "setup_failed") {
       notify.addNotification({
         type: "warning",
-        message: mitm.message || mitm.error || "Finish MITM setup in the dashboard.",
+        message: mitm.message || mitm.error || "Finish setting up traffic interception on the MITM Proxy page.",
         duration: 8000,
       });
     }
@@ -1060,7 +1060,7 @@ export default function ProviderDetailPage() {
         {/* Disabled models — restorable */}
         {disabledDisplayModels.length > 0 && (
           <div className="w-full mt-2">
-            <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
+            <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}) — click one to turn it back on:</p>
             <div className="flex flex-wrap gap-2">
               {disabledDisplayModels.map((m) => (
                 <button
@@ -1307,14 +1307,24 @@ export default function ProviderDetailPage() {
               )} */}
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-text-muted font-medium">Round Robin</span>
+                <span
+                  className="text-xs text-text-muted font-medium"
+                  title="Rotate requests across this provider's connections instead of always using the first one. Helps spread load and stay within rate limits."
+                >
+                  Round Robin
+                </span>
                 <Toggle
                   checked={providerStrategy === "round-robin"}
                   onChange={handleRoundRobinToggle}
                 />
                 {providerStrategy === "round-robin" && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-text-muted">Sticky:</span>
+                    <span
+                      className="text-xs text-text-muted"
+                      title="How many requests in a row to keep using the same connection before rotating to the next one."
+                    >
+                      Sticky:
+                    </span>
                     <input
                       type="number"
                       min={1}

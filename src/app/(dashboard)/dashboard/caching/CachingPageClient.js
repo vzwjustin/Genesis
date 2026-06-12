@@ -35,9 +35,9 @@ const CACHE_PERIODS = [
 ];
 
 const CAVEMAN_LEVELS = [
-  { id: "lite", label: "Lite", desc: "Drop filler, keep grammar" },
-  { id: "full", label: "Full", desc: "Drop articles, fragments OK" },
-  { id: "ultra", label: "Ultra", desc: "Telegraphic, max compression" },
+  { id: "lite", label: "Lite", desc: "Removes filler words but keeps normal grammar" },
+  { id: "full", label: "Full", desc: "Also drops small words like 'the' and 'a'; allows sentence fragments" },
+  { id: "ultra", label: "Ultra", desc: "Strips text down to keywords for the biggest token savings" },
 ];
 
 const SUBSYSTEMS = [
