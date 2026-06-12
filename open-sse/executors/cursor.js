@@ -9,7 +9,7 @@ import {
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { FORMATS } from "../translator/formats.js";
-import { proxyAwareFetch, shouldBypassMitmDns } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, shouldBypassMitmDns, resolveRealIP } from "../utils/proxyFetch.js";
 import { stripRedactedToolCalls, extractRedactedToolCalls } from "../utils/composerRedactedTools.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 import zlib from "zlib";
@@ -21,13 +21,15 @@ const isCloudEnv = () => {
   return false;
 };
 
-// Lazy import http2 (only in Node.js environment)
+// Lazy import http2 + tls (only in Node.js environment)
 let http2 = null;
+let tls = null;
 if (!isCloudEnv()) {
   try {
     http2 = await import("http2");
+    tls = await import("tls");
   } catch {
-    // http2 not available
+    // http2/tls not available
   }
 }
 
@@ -224,7 +226,7 @@ export class CursorExecutor extends BaseExecutor {
     };
   }
 
-  makeHttp2Request(url, headers, body, signal) {
+  makeHttp2Request(url, headers, body, signal, realIP = null) {
     if (!http2) {
       throw new Error("http2 module not available");
     }
@@ -233,7 +235,21 @@ export class CursorExecutor extends BaseExecutor {
 
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
-      const client = http2.connect(`https://${urlObj.host}`);
+      // MITM DNS bypass: when a real IP is supplied (host is in MITM_BYPASS_HOSTS so
+      // system DNS may be spoofed via /etc/hosts), connect the TLS socket to that IP
+      // while keeping SNI + :authority = hostname. Cursor's ALB only speaks HTTP/2 on
+      // this Connect-RPC endpoint and rejects HTTP/1.1 with 464, so we must stay on h2
+      // instead of falling back to the HTTP/1.1 bypass fetch.
+      const connectOpts = {};
+      if (realIP && tls) {
+        connectOpts.createConnection = () => tls.connect({
+          host: realIP,
+          port: Number(urlObj.port) || 443,
+          servername: urlObj.hostname,
+          ALPNProtocols: ["h2"],
+        });
+      }
+      const client = http2.connect(`https://${urlObj.host}`, connectOpts);
       const chunks = [];
       let responseHeaders = {};
       let settled = false;
@@ -300,12 +316,24 @@ export class CursorExecutor extends BaseExecutor {
     }
 
     try {
-      const shouldForceFetch = proxyOptions?.enabled === true
+      // A real proxy / relay must use the fetch path (dispatcher-based). DNS bypass alone
+      // does NOT force fetch: Cursor's endpoint is HTTP/2-only and returns 464 over HTTP/1.1,
+      // so for bypass hosts we resolve the real IP and keep HTTP/2, pinning the socket to it.
+      const usingProxy = proxyOptions?.enabled === true
         || proxyOptions?.connectionProxyEnabled === true
-        || !!proxyOptions?.vercelRelayUrl
-        || shouldBypassMitmDns(url);
+        || !!proxyOptions?.vercelRelayUrl;
+      const needsDnsBypass = shouldBypassMitmDns(url);
+      let bypassIP = null;
+      if (needsDnsBypass && !usingProxy && http2) {
+        try {
+          bypassIP = await resolveRealIP(new URL(url).hostname);
+        } catch {
+          bypassIP = null;
+        }
+      }
+      const shouldForceFetch = usingProxy || (needsDnsBypass && !bypassIP);
       const response = (http2 && !shouldForceFetch)
-        ? await this.makeHttp2Request(url, headers, transformedBody, signal)
+        ? await this.makeHttp2Request(url, headers, transformedBody, signal, bypassIP)
         : await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
       const status = Number(response.status);
 
