@@ -88,12 +88,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // PASSTHROUGH GUARD: Do NOT inject thinking config in passthrough mode — only model + auth are swapped.
   if (!passthrough && providerThinking?.mode && providerThinking.mode !== "auto") {
     const mode = providerThinking.mode;
-    if (mode === "on" && !body.thinking) {
-      console.log("Injecting provider-level thinking config override: on");
-      body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
-    } else if (mode === "off" && !body.thinking) {
-      body = { ...body, thinking: { type: "disabled" } };
+    const isThinkingMode = mode === "on" || mode === "off";
+    if (isThinkingMode) {
+      // Extended thinking toggle — only inject if the client hasn't already configured it.
+      // Do NOT fall through to reasoning_effort: "on"/"off" are not valid effort values.
+      if (!body.thinking) {
+        if (mode === "on") {
+          console.log("Injecting provider-level thinking config override: on");
+          body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
+        } else {
+          body = { ...body, thinking: { type: "disabled" } };
+        }
+      }
     } else if (!body.reasoning_effort) {
+      // Effort-based thinking (none/low/medium/high) — only inject if not already set.
       body = { ...body, reasoning_effort: mode };
     }
   }
@@ -426,6 +434,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       streamController.handleDisconnect("client_aborted");
     } else {
       clientSignal.addEventListener("abort", () => {
+        // On runtimes without AbortSignal.any, propagate the client abort to
+        // the upstream signal immediately (no 500 ms delay from handleDisconnect).
+        streamController.abort();
         streamController.handleDisconnect("client_aborted");
       }, { once: true });
     }
@@ -534,12 +545,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         if (onCredentialsRefreshed) {
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
+        // Rebuild execCredentials so the retry carries the refreshed token.
+        // When clientHasCacheBreakpoints is true, execCredentials was a spread
+        // copy made before the refresh and does not pick up the mutation above.
+        const refreshedExecCredentials = clientHasCacheBreakpoints
+          ? { ...credentials, _preserveClientCache: true }
+          : credentials;
         try {
           const retryResult = await executor.execute({
             model,
             body: translatedBody,
             stream,
-            credentials: execCredentials,
+            credentials: refreshedExecCredentials,
             signal: upstreamSignal,
             log,
             proxyOptions,

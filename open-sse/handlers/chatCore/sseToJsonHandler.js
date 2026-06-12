@@ -153,6 +153,10 @@ export function parseSSEToClaudeResponse(rawSSE) {
         sawMessageStop = true;
         break;
       case "error":
+        // Log upstream error detail before failing closed so it is visible in
+        // server logs and not silently swallowed as a generic 502.
+        console.warn("[SSE] parseSSEToClaudeResponse: upstream error event received:",
+          ev.error?.type || "unknown", "|", ev.error?.message || "(no message)");
         return null;
       default:
         break;
@@ -160,7 +164,10 @@ export function parseSSEToClaudeResponse(rawSSE) {
   }
   } catch (e) {
     // Fail closed on block-size overflow rather than returning a truncated body.
-    if (e instanceof BlockSizeExceededError) return null;
+    if (e instanceof BlockSizeExceededError) {
+      console.warn("[SSE] parseSSEToClaudeResponse: content block exceeded MAX_BLOCK_CHARS limit; returning null to fail closed");
+      return null;
+    }
     throw e;
   }
 

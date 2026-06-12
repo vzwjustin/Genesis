@@ -1,17 +1,9 @@
 import { handleChat } from "@/sse/handlers/chat.js";
+// initTranslators is synchronous and guarded by its own module-level flag;
+// no route-level wrapper is needed.
 import { initTranslators } from "open-sse/translator/index.js";
 
-let initialized = false;
-
-/**
- * Initialize translators once
- */
-async function ensureInitialized() {
-  if (!initialized) {
-    await initTranslators();
-    initialized = true;
-  }
-}
+initTranslators();
 
 /**
  * Handle CORS preflight
@@ -26,10 +18,7 @@ export async function OPTIONS() {
   });
 }
 
-export async function POST(request) {  
-  // Fallback to local handling
-  await ensureInitialized();
-  
+export async function POST(request) {
   return await handleChat(request);
 }
 
