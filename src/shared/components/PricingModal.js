@@ -1,31 +1,40 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getDefaultPricing, formatCost } from "@/shared/constants/pricing.js";
+import { getDefaultPricing } from "@/shared/constants/pricing.js";
+import { diffPricingOverrides } from "@/shared/utils/dashboardHelpers";
 import { confirmDialog } from "@/store/confirmStore";
 import { useNotificationStore } from "@/store/notificationStore";
 
 export default function PricingModal({ isOpen, onClose, onSave }) {
   const notify = useNotificationStore();
   const [pricingData, setPricingData] = useState({});
+  const [userOverrides, setUserOverrides] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const loadPricing = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/pricing");
-      if (response.ok) {
-        const data = await response.json();
+      const [pricingRes, overridesRes] = await Promise.all([
+        fetch("/api/pricing"),
+        fetch("/api/pricing/user-overrides"),
+      ]);
+      if (pricingRes.ok) {
+        const data = await pricingRes.json();
         setPricingData(data);
       } else {
-        const defaults = getDefaultPricing();
-        setPricingData(defaults);
+        setPricingData(getDefaultPricing());
+      }
+      if (overridesRes.ok) {
+        setUserOverrides(await overridesRes.json());
+      } else {
+        setUserOverrides({});
       }
     } catch (error) {
       console.error("Failed to load pricing:", error);
-      const defaults = getDefaultPricing();
-      setPricingData(defaults);
+      setPricingData(getDefaultPricing());
+      setUserOverrides({});
     } finally {
       setLoading(false);
     }
@@ -54,10 +63,11 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const overrides = diffPricingOverrides(pricingData, getDefaultPricing(), userOverrides);
       const response = await fetch("/api/pricing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pricingData)
+        body: JSON.stringify(overrides)
       });
 
       if (response.ok) {
@@ -88,6 +98,11 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
       if (response.ok) {
         const defaults = getDefaultPricing();
         setPricingData(defaults);
+        setUserOverrides({});
+        onSave?.();
+      } else {
+        const error = await response.json().catch(() => ({}));
+        notify.error(error.error || "Failed to reset pricing");
       }
     } catch (error) {
       console.error("Failed to reset pricing:", error);
@@ -98,8 +113,21 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
   if (!isOpen) return null;
 
   // Get all unique providers and models for display
-  const allProviders = Object.keys(pricingData).sort();
+  const providerLabel = (provider) => {
+    if (provider === "models") return "Canonical models (all providers)";
+    return provider.toUpperCase();
+  };
+
+  const allProviders = Object.keys(pricingData).sort((a, b) => {
+    if (a === "models") return -1;
+    if (b === "models") return 1;
+    return a.localeCompare(b);
+  });
   const pricingFields = ["input", "output", "cached", "reasoning", "cache_creation"];
+  const totalModels = allProviders.reduce(
+    (sum, provider) => sum + Object.keys(pricingData[provider] || {}).length,
+    0,
+  );
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -127,6 +155,9 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                 <p className="text-text-muted">
                   All rates are in <strong>dollars per million tokens</strong> ($/1M tokens).
                   Example: Input rate of 2.50 means $2.50 per 1,000,000 input tokens.
+                  {" "}
+                  <strong>{totalModels}</strong> model{totalModels === 1 ? "" : "s"} in catalog;
+                  provider sections override canonical rates for that provider only.
                 </p>
               </div>
 
@@ -136,7 +167,10 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                 return (
                   <div key={provider} className="border border-border rounded-lg overflow-hidden">
                     <div className="bg-bg-alt px-4 py-2 font-semibold text-sm">
-                      {provider.toUpperCase()}
+                      {providerLabel(provider)}
+                      <span className="ml-2 text-text-muted font-normal">
+                        ({models.length} model{models.length === 1 ? "" : "s"})
+                      </span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">

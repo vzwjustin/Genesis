@@ -49,23 +49,33 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
  * duplicate DB records for the same streaming request.
  */
 export function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, streamController, onStreamComplete, fireRequestSuccess, passthrough, streamDetailId }) {
-  // Ensure billing/rotation accounting runs once even when the client
-  // disconnects or the stream errors before clean completion. onStreamComplete
-  // already fires fireRequestSuccess on the happy path; the once-guard inside
-  // it prevents a double-fire when both paths trigger.
-  if (fireRequestSuccess && streamController) {
-    const origDisconnect = streamController.handleDisconnect?.bind(streamController);
-    const origError = streamController.handleError?.bind(streamController);
-    if (origDisconnect) {
-      streamController.handleDisconnect = (reason) => { try { origDisconnect(reason); } finally { fireRequestSuccess(); } };
-    }
-    if (origError) {
-      streamController.handleError = (err) => { try { origError(err); } finally { fireRequestSuccess(); } };
-    }
-  }
+  let streamCompleteCalled = false;
+  const safeOnStreamComplete = (contentObj, usage, ttftAt) => {
+    if (streamCompleteCalled) return;
+    streamCompleteCalled = true;
+    onStreamComplete?.(contentObj, usage, ttftAt);
+  };
+  const markIncomplete = () => {
+    if (streamCompleteCalled) return;
+    safeOnStreamComplete({ content: "", thinking: null, clean: false }, null, null);
+  };
 
-  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, passthrough });
-  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController);
+  const wiredStreamController = {
+    ...streamController,
+    handleDisconnect: (info) => {
+      markIncomplete();
+      fireRequestSuccess?.();
+      streamController?.handleDisconnect?.(info);
+    },
+    handleError: (error) => {
+      markIncomplete();
+      fireRequestSuccess?.();
+      streamController?.handleError?.(error);
+    },
+  };
+
+  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete: safeOnStreamComplete, apiKey, passthrough });
+  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, wiredStreamController, { onIncomplete: markIncomplete });
 
   // Use the streamDetailId provided by buildOnStreamComplete so the initial placeholder
   // and the completion update resolve to the same record.
@@ -109,6 +119,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
   };
 
   const onStreamComplete = (contentObj, usage, ttftAt) => {
+    const clean = contentObj?.clean === true;
     const latency = {
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
       total: Date.now() - requestStartTime
@@ -124,14 +135,15 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       providerRequest: finalBody || translatedBody || null,
       providerResponse: safeContent,
       response: { content: safeContent, thinking: safeThinking, type: "streaming" },
-      status: "success"
+      status: clean ? "success" : "incomplete"
     }, { id: streamDetailId })).catch(err => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
 
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE" });
-
-    fireRequestSuccess();
+    if (clean) {
+      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE" });
+      fireRequestSuccess();
+    }
   };
 
   return { onStreamComplete, streamDetailId, fireRequestSuccess };

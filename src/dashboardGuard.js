@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSettingsSafe, validateApiKey } from "@/lib/localDb";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
-import { normalizeHostHeaderHostname } from "@/shared/utils/host";
-import { isLoopbackRequest, isVerifiableLoopbackRequest, isPrivateLanAccessRequest } from "@/shared/utils/loopbackRequest.js";
+import { normalizeHostHeaderHostname, isLanDashboardHost, isPrivateLanIp } from "@/shared/utils/host";
+import {
+  isLoopbackRequest,
+  isVerifiableLoopbackRequest,
+  isPrivateLanAccessRequest,
+  isDashboardLoopbackSession,
+  isLocalDashboardSession,
+  getSocketRemoteIp,
+} from "@/shared/utils/loopbackRequest.js";
 import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
 import { hasValidLocalCliToken } from "@/shared/auth/cliToken";
 import {
@@ -118,7 +125,29 @@ async function canAccessLocalOnlyRoute(request) {
   if (await hasValidLocalCliToken(request)) return true;
   if (!(await hasValidToken(request))) return false;
   if (isVerifiableLoopbackRequest(request)) return true;
-  return isPrivateLanAccessRequest(request);
+  if (isPrivateLanAccessRequest(request)) return true;
+  if (isDashboardLoopbackSession(request)) return true;
+  if (isLocalDashboardSession(request)) return true;
+  // Middleware often omits socket IP; browser fetch may omit Sec-Fetch-Site/Origin on GET.
+  const hostHeader = request.headers.get("host");
+  if (isLanDashboardHost(hostHeader)) {
+    const origin = request.headers.get("origin");
+    if (origin) {
+      try {
+        const originHost = normalizeHostHeaderHostname(new URL(origin).hostname);
+        const requestHost = normalizeHostHeaderHostname(hostHeader);
+        if (originHost !== requestHost) return false;
+      } catch {
+        return false;
+      }
+    }
+    const socketIp = getSocketRemoteIp(request);
+    if (socketIp && !isLoopbackIp(socketIp) && !isPrivateLanIp(socketIp)) {
+      return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 async function hasValidToken(request) {
@@ -150,14 +179,6 @@ function rejectTunnelDashboardAuth(request, settings) {
     return NextResponse.redirect(new URL("/login?error=tunnel_dashboard_disabled", request.url));
   }
   return NextResponse.json({ error: TUNNEL_DASHBOARD_DISABLED_ERROR }, { status: 403 });
-}
-
-/** Dashboard UI / local-only routes: JWT or requireLogin disabled. */
-async function isDashboardAccessAllowed(request) {
-  if (await hasValidToken(request)) return true;
-  const settings = await loadSettings();
-  if (settings && settings.requireLogin === false) return true;
-  return false;
 }
 
 /** Management API routes: JWT, CLI token, or verifiable loopback when requireLogin=false. */

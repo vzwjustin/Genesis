@@ -86,7 +86,7 @@ describe("combo Invalid model format advancement", () => {
 });
 
 describe("passthrough SSE [DONE] sentinel", () => {
-  it("appends [DONE] only for OpenAI chat-completions source format", async () => {
+  it("does not append [DONE] without upstream terminal signal", async () => {
     const { createPassthroughStreamWithLogger } = await import("../../open-sse/utils/stream.js");
     const chunk = 'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n';
 
@@ -94,13 +94,28 @@ describe("passthrough SSE [DONE] sentinel", () => {
       createPassthroughStreamWithLogger("openai", null, "gpt-4", "c1", null, null, null, FORMATS.OPENAI),
       chunk
     );
-    expect(openaiOut).toContain("data: [DONE]\n\n");
+    expect(openaiOut).toContain("hi");
+    expect(openaiOut).not.toContain("data: [DONE]\n\n");
 
     const claudeOut = await drainPassthroughStream(
       createPassthroughStreamWithLogger("claude", null, "claude-sonnet", "c1", null, null, null, FORMATS.CLAUDE),
       chunk
     );
     expect(claudeOut).not.toContain("data: [DONE]\n\n");
+  });
+
+  it("appends [DONE] for OpenAI when finish_reason is present", async () => {
+    const { createPassthroughStreamWithLogger } = await import("../../open-sse/utils/stream.js");
+    const chunk = [
+      'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":null}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+    ].join("\n\n") + "\n\n";
+
+    const openaiOut = await drainPassthroughStream(
+      createPassthroughStreamWithLogger("openai", null, "gpt-4", "c1", null, null, null, FORMATS.OPENAI),
+      chunk
+    );
+    expect(openaiOut).toContain("data: [DONE]\n\n");
   });
 });
 

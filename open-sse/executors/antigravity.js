@@ -6,6 +6,7 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { deriveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { cleanJSONSchemaForAntigravity } from "../translator/helpers/geminiHelper.js";
+import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
 function sanitizeFunctionName(name) {
@@ -203,7 +204,7 @@ export class AntigravityExecutor extends BaseExecutor {
     return totalMs > 0 ? totalMs : null;
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false, cacheProtectedSnapshot = null }) {
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
@@ -217,6 +218,7 @@ export class AntigravityExecutor extends BaseExecutor {
       // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
       // Only model name + auth header are swapped (Requirement 1.2).
       const transformedBody = passthrough ? body : this.transformRequest(model, body, stream, credentials);
+      throwOnCacheViolation(transformedBody, cacheProtectedSnapshot, "antigravity executor");
       const sessionId = transformedBody.request?.sessionId;
       const headers = this.buildHeaders(credentials, stream, sessionId);
 

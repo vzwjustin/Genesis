@@ -71,11 +71,20 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
   );
 }
 
-export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, copied, onCopy, onSetAlias, onDeleteAlias, connections, isAnthropic }) {
+export default function CompatibleModelsSection({
+  providerStorageAlias,
+  providerDisplayAlias,
+  modelAliases,
+  copied,
+  onCopy,
+  onSetAlias,
+  onDeleteAlias,
+  connections,
+  isAnthropic,
+}) {
   const notify = useNotificationStore();
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
 
@@ -88,6 +97,10 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` }),
       });
+      if (!res.ok) {
+        setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
+        return;
+      }
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
     } catch {
@@ -134,49 +147,12 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
     setAdding(true);
     try {
-      await onSetAlias(modelId, resolvedAlias, providerStorageAlias);
-      setNewModel("");
+      const ok = await onSetAlias(modelId, resolvedAlias, providerStorageAlias);
+      if (ok) setNewModel("");
     } catch (error) {
       notify.error(error?.message || "Failed to add model");
     } finally {
       setAdding(false);
-    }
-  };
-
-  const handleImport = async () => {
-    if (importing) return;
-    const activeConnection = connections.find((conn) => conn.isActive !== false);
-    if (!activeConnection) return;
-
-    setImporting(true);
-    try {
-      const res = await fetch(`/api/providers/${activeConnection.id}/models`);
-      const data = await res.json();
-      if (!res.ok) {
-        notify.error(data.error || "Failed to import models");
-        return;
-      }
-      const models = data.models || [];
-      if (models.length === 0) {
-        notify.info("No models returned from /models.");
-        return;
-      }
-      let importedCount = 0;
-      for (const model of models) {
-        const modelId = model.id || model.name || model.model;
-        if (!modelId) continue;
-        const resolvedAlias = resolveAlias(modelId);
-        if (!resolvedAlias) continue;
-        await onSetAlias(modelId, resolvedAlias, providerStorageAlias);
-        importedCount += 1;
-      }
-      if (importedCount === 0) {
-        notify.info("No new models were added.");
-      }
-    } catch (error) {
-      notify.error(error?.message || "Failed to import models");
-    } finally {
-      setImporting(false);
     }
   };
 
@@ -185,7 +161,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-text-muted">
-        Add {isAnthropic ? "Anthropic" : "OpenAI"}-compatible models manually or import them from the /models endpoint.
+        Add {isAnthropic ? "Anthropic" : "OpenAI"}-compatible models by entering their IDs below, or use Import Models above to pull the full list the provider offers.
       </p>
 
       <div className="flex items-end gap-2 flex-wrap">
@@ -203,9 +179,6 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         </div>
         <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
           {adding ? "Adding..." : "Add"}
-        </Button>
-        <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
-          {importing ? "Importing..." : "Import from /models"}
         </Button>
       </div>
 

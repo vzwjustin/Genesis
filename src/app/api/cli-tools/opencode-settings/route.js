@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
@@ -7,10 +6,11 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getCliHomeDir } from "@/shared/utils/cliHome";
 
 const execAsync = promisify(exec);
 
-const getConfigDir = () => path.join(os.homedir(), ".config", "opencode");
+const getConfigDir = () => path.join(getCliHomeDir(), ".config", "opencode");
 const getConfigPath = () => path.join(getConfigDir(), "opencode.json");
 
 // Check if opencode CLI is installed (via which/where or config file exists)

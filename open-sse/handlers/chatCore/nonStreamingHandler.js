@@ -2,7 +2,7 @@ import { FORMATS } from "../../translator/formats.js";
 import { needsTranslation } from "../../translator/index.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
-import { createErrorResult } from "../../utils/error.js";
+import { createErrorResult, PROXY_INTERNAL_ERROR_CODES } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { parseSSEToOpenAIResponse, parseSSEToNativeResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats } from "./requestDetail.js";
@@ -357,7 +357,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       : parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request", undefined, {
+        errorCode: PROXY_INTERNAL_ERROR_CODES.SSE_ASSEMBLY_FAILED,
+        proxyInternal: true,
+      });
     }
     responseBody = parsed;
     parsedFromSSE = !passthrough;
@@ -367,22 +370,28 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     } catch (err) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       console.error(`[ChatCore] Failed to parse JSON from ${provider}:`, err.message);
-      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`, undefined, {
+        errorCode: PROXY_INTERNAL_ERROR_CODES.RESPONSE_PARSE_FAILED,
+        proxyInternal: true,
+      });
     }
   }
 
   reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
 
-  if (!passthrough) {
-    const hasOpenAIChoices = Array.isArray(responseBody?.choices) && responseBody.choices.length > 0;
-    const hasClaudeContent = Array.isArray(responseBody?.content);
-    const hasGeminiCandidates =
-      Array.isArray(responseBody?.candidates) ||
-      Array.isArray(responseBody?.response?.candidates);
-    if (!hasOpenAIChoices && !hasClaudeContent && !hasGeminiCandidates) {
-      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Empty or malformed completion response");
-    }
+  const hasOpenAIChoices = Array.isArray(responseBody?.choices) && responseBody.choices.length > 0;
+  const hasClaudeContent = Array.isArray(responseBody?.content);
+  const hasGeminiCandidates =
+    Array.isArray(responseBody?.candidates) ||
+    Array.isArray(responseBody?.response?.candidates);
+  const hasResponsesOutput =
+    responseBody?.object === "response" && Array.isArray(responseBody?.output);
+  if (!hasOpenAIChoices && !hasClaudeContent && !hasGeminiCandidates && !hasResponsesOutput) {
+    appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Empty or malformed completion response", undefined, {
+      errorCode: PROXY_INTERNAL_ERROR_CODES.RESPONSE_PARSE_FAILED,
+      proxyInternal: true,
+    });
   }
 
   if (onRequestSuccess) await onRequestSuccess();

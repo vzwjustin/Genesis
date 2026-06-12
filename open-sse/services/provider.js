@@ -99,8 +99,7 @@ export function detectFormat(body, headers) {
     body.n !== undefined ||           // Number of completions
     body.presence_penalty !== undefined ||  // Penalties
     body.frequency_penalty !== undefined ||
-    body.logit_bias ||                // Token biasing
-    body.user                         // User identifier
+    body.logit_bias                   // Token biasing
   ) {
     return "openai";
   }
@@ -146,6 +145,11 @@ export function detectFormat(body, headers) {
     if (body.system !== undefined || body.anthropic_version) {
       return "claude";
     }
+  }
+
+  // OpenAI user identifier — after Claude heuristics so Claude-shaped bodies are not misclassified
+  if (body.user) {
+    return "openai";
   }
 
   // Default to OpenAI format
@@ -270,7 +274,9 @@ export function buildProviderHeaders(provider, credentials, stream = true, body 
       case "antigravity":
       case "gemini-cli":
         // Antigravity and Gemini CLI use OAuth access token
-        headers["Authorization"] = `Bearer ${credentials.accessToken}`;
+        if (credentials.accessToken) {
+          headers["Authorization"] = `Bearer ${credentials.accessToken}`;
+        }
         break;
   
       case "claude":

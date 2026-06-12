@@ -51,16 +51,18 @@ export async function PATCH(request) {
       }
 
       for (const [model, pricing] of Object.entries(models)) {
-        if (typeof pricing !== "object" || pricing === null) {
+        if (pricing === null) continue;
+
+        if (typeof pricing !== "object") {
           return NextResponse.json(
             { error: `Invalid pricing for model: ${provider}/${model}` },
             { status: 400 }
           );
         }
 
-        // Validate pricing fields
         const validFields = ["input", "output", "cached", "reasoning", "cache_creation"];
         for (const [key, value] of Object.entries(pricing)) {
+          if (value === null) continue;
           if (!validFields.includes(key)) {
             return NextResponse.json(
               { error: `Invalid pricing field: ${key} for ${provider}/${model}` },

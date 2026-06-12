@@ -2,6 +2,7 @@ import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FET
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
+import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 
 /**
  * Normalize an expiry value to epoch milliseconds.
@@ -129,7 +130,7 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false, cacheProtectedSnapshot = null }) {
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
@@ -154,6 +155,9 @@ export class BaseExecutor {
       const transformedBody = passthrough
         ? body
         : await Promise.resolve(this.transformRequest(model, body, stream, credentials));
+
+      throwOnCacheViolation(transformedBody, cacheProtectedSnapshot, "executor transform");
+
       const headers = this.buildHeaders(credentials, stream);
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;

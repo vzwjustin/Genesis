@@ -53,3 +53,24 @@ export function isPrivateLanHostname(hostname) {
 export function isPrivateLanIp(ip) {
   return isPrivateLanIPv4(ip);
 }
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function isLoopbackHost(hostname) {
+  const h = normalizeHostHeaderHostname(hostname);
+  return LOOPBACK_HOSTS.has(h) || h.startsWith("127.");
+}
+
+/**
+ * Host header looks like a local/LAN dashboard (IP, loopback, or machine name like dietpi).
+ * Excludes public DNS names used for tunnels (e.g. router.example.com).
+ */
+export function isLanDashboardHost(hostHeader) {
+  const host = normalizeHostHeaderHostname(hostHeader);
+  if (!host) return false;
+  if (isLoopbackHost(host)) return true;
+  if (isPrivateLanIPv4(host)) return true;
+  if (!host.includes(".")) return true;
+  if (host.endsWith(".local") || host.endsWith(".lan")) return true;
+  return false;
+}

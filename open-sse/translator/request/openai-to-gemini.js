@@ -22,17 +22,31 @@ import { deriveSessionId } from "../../utils/sessionManager.js";
 
 // Sanitize function names for Gemini API.
 // Gemini requires: starts with [a-zA-Z_], followed by [a-zA-Z0-9_.:\-], max 64 chars.
-// Replace any invalid character with '_' and truncate to 64.
+// Different original names can collide after sanitization (e.g. "my-tool" and "my_tool" → "my_tool").
+// Callers that need uniqueness should pass a seen-name set via disambiguateGeminiFunctionName.
 function sanitizeGeminiFunctionName(name) {
   if (!name) return "_unknown";
-  // Replace any char not in [a-zA-Z0-9_.:\-] with '_'
   let sanitized = name.replace(/[^a-zA-Z0-9_.:\-]/g, "_");
-  // First char must be letter or underscore
   if (!/^[a-zA-Z_]/.test(sanitized)) {
     sanitized = "_" + sanitized;
   }
-  // Truncate to 64 chars
   return sanitized.substring(0, 64);
+}
+
+function disambiguateGeminiFunctionName(name, seenNames) {
+  const base = sanitizeGeminiFunctionName(name);
+  if (!seenNames || !seenNames.has(base)) {
+    seenNames?.add(base);
+    return base;
+  }
+  let suffix = 2;
+  let candidate = `${base.slice(0, Math.max(1, 60 - String(suffix).length))}_${suffix}`;
+  while (seenNames.has(candidate) && suffix < 100) {
+    suffix += 1;
+    candidate = `${base.slice(0, Math.max(1, 60 - String(suffix).length))}_${suffix}`;
+  }
+  seenNames.add(candidate);
+  return candidate;
 }
 
 // Core: Convert OpenAI request to Gemini format (base for all variants)
@@ -42,6 +56,17 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     contents: [],
     generationConfig: {},
     safetySettings: DEFAULT_SAFETY_SETTINGS
+  };
+  const seenToolNames = new Set();
+  const geminiToolNameByOriginal = new Map();
+  const resolveGeminiToolName = (originalName) => {
+    if (!originalName) return "_unknown";
+    if (geminiToolNameByOriginal.has(originalName)) {
+      return geminiToolNameByOriginal.get(originalName);
+    }
+    const geminiName = disambiguateGeminiFunctionName(originalName, seenToolNames);
+    geminiToolNameByOriginal.set(originalName, geminiName);
+    return geminiName;
   };
 
   // Generation config
@@ -65,7 +90,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       if (msg.role === "assistant" && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           if (tc.type === "function" && tc.id && tc.function?.name) {
-            tcID2Name[tc.id] = tc.function.name;
+            tcID2Name[tc.id] = resolveGeminiToolName(tc.function.name);
           }
         }
       }
@@ -137,7 +162,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
               thoughtSignature: signature,
               functionCall: {
                 id: tc.id,
-                name: sanitizeGeminiFunctionName(tc.function.name),
+                name: resolveGeminiToolName(tc.function.name),
                 args: args
               }
             });
@@ -177,7 +202,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
               toolParts.push({
                 functionResponse: {
                   id: fid,
-                  name: sanitizeGeminiFunctionName(name),
+                  name: resolveGeminiToolName(name),
                   response: { result: parsedResp }
                 }
               });
@@ -201,7 +226,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       if (t.name && t.input_schema) {
         const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(t.input_schema || { type: "object", properties: {} }));
         functionDeclarations.push({
-          name: sanitizeGeminiFunctionName(t.name),
+          name: resolveGeminiToolName(t.name),
           description: t.description || "",
           parameters: cleanedSchema
         });
@@ -211,7 +236,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
         const fn = t.function;
         const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(fn.parameters || { type: "object", properties: {} }));
         functionDeclarations.push({
-          name: sanitizeGeminiFunctionName(fn.name),
+          name: resolveGeminiToolName(fn.name),
           description: fn.description || "",
           parameters: cleanedSchema
         });

@@ -1,6 +1,18 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 
+// Tool-call arguments arrive as a JSON string. Malformed/partial JSON must not
+// throw and abort the whole request translation — fall back to empty args.
+function safeParseJson(value) {
+  if (value == null) return {};
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Convert OpenAI request to Ollama format
  *
@@ -99,20 +111,14 @@ function normalizeMessages(messages) {
       const content = normalizeContent(msg.content) || "";
       
       // Convert OpenAI tool_calls format to Ollama format
-      const ollamaToolCalls = msg.tool_calls.map(tc => {
-        let args = tc.function?.arguments || {};
-        if (typeof args === "string") {
-          try { args = JSON.parse(args); } catch { args = {}; }
-        }
-        return {
-          type: "function",
-          function: {
-            index: tc.index || 0,
-            name: tc.function?.name || "",
-            arguments: args,
-          },
-        };
-      });
+      const ollamaToolCalls = msg.tool_calls.map(tc => ({
+        type: "function",
+        function: {
+          index: tc.index || 0,
+          name: tc.function?.name || "",
+          arguments: safeParseJson(tc.function?.arguments),
+        },
+      }));
 
       result.push({
         role: "assistant",

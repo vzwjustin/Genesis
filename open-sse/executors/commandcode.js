@@ -73,7 +73,10 @@ function wrapNdjsonAsOpenAISse(originalResponse, model) {
       if (trimmed) {
         emitChunks(convertCommandCodeToOpenAI(trimmed, state), controller);
       }
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      // Fail closed: only emit [DONE] after upstream finish event (or terminal error).
+      if (state.finishSeen) {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      }
     },
   });
 

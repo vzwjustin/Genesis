@@ -1,6 +1,33 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 
+function buildGeminiToolCallDelta(state, fcName, fcArgs, functionCallId) {
+  const toolCallIndex = state.functionIndex++;
+  return {
+    id: functionCallId || `${fcName}-${Date.now()}-${toolCallIndex}`,
+    index: toolCallIndex,
+    type: "function",
+    function: {
+      name: fcName,
+      arguments: JSON.stringify(fcArgs)
+    }
+  };
+}
+
+function makeToolCallChunk(state, toolCall) {
+  return {
+    id: `chatcmpl-${state.messageId}`,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: state.model,
+    choices: [{
+      index: 0,
+      delta: { tool_calls: [toolCall] },
+      finish_reason: null
+    }]
+  };
+}
+
 // Convert Gemini response chunk to OpenAI format
 export function geminiToOpenAIResponse(chunk, state) {
   if (!chunk) return null;
@@ -63,20 +90,16 @@ export function geminiToOpenAIResponse(chunk, state) {
           // Restore original tool name from mapping (AG cloaking)
           const fcName = state.toolNameMap?.get(rawName) || rawName;
           const fcArgs = part.functionCall.args || {};
-          const toolCallIndex = state.functionIndex++;
-          
-          const toolCall = {
-            id: `${fcName}-${Date.now()}-${toolCallIndex}`,
-            index: toolCallIndex,
-            type: "function",
-            function: {
-              name: fcName,
-              arguments: JSON.stringify(fcArgs)
-            }
-          };
-          
-          state.toolCalls.set(toolCallIndex, toolCall);
-          
+          const toolCall = buildGeminiToolCallDelta(state, fcName, fcArgs, part.functionCall?.id);
+          state.toolCalls.set(toolCall.index, toolCall);
+          results.push(makeToolCallChunk(state, toolCall));
+        }
+
+        // A thought-signed part can also carry an inline image — emit it
+        // before continuing, otherwise the image is silently dropped.
+        const thoughtInline = part.inlineData || part.inline_data;
+        if (thoughtInline?.data) {
+          const mimeType = thoughtInline.mimeType || thoughtInline.mime_type || "image/png";
           results.push({
             id: `chatcmpl-${state.messageId}`,
             object: "chat.completion.chunk",
@@ -84,7 +107,12 @@ export function geminiToOpenAIResponse(chunk, state) {
             model: state.model,
             choices: [{
               index: 0,
-              delta: { tool_calls: [toolCall] },
+              delta: {
+                images: [{
+                  type: "image_url",
+                  image_url: { url: `data:${mimeType};base64,${thoughtInline.data}` }
+                }]
+              },
               finish_reason: null
             }]
           });
@@ -92,7 +120,7 @@ export function geminiToOpenAIResponse(chunk, state) {
         continue;
       }
 
-      // Text content (non-thinking)
+      // Text content (thought parts without signature still map to reasoning_content)
       if (part.text !== undefined && part.text !== "") {
         results.push({
           id: `chatcmpl-${state.messageId}`,
@@ -101,7 +129,9 @@ export function geminiToOpenAIResponse(chunk, state) {
           model: state.model,
           choices: [{
             index: 0,
-            delta: { content: part.text },
+            delta: isThought
+              ? { reasoning_content: part.text }
+              : { content: part.text },
             finish_reason: null
           }]
         });
@@ -115,29 +145,9 @@ export function geminiToOpenAIResponse(chunk, state) {
         const fcArgs = part.functionCall.args || {};
         const toolCallIndex = state.functionIndex++;
         
-        const toolCall = {
-          id: `${fcName}-${Date.now()}-${toolCallIndex}`,
-          index: toolCallIndex,
-          type: "function",
-          function: {
-            name: fcName,
-            arguments: JSON.stringify(fcArgs)
-          }
-        };
-        
-        state.toolCalls.set(toolCallIndex, toolCall);
-        
-        results.push({
-          id: `chatcmpl-${state.messageId}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model: state.model,
-          choices: [{
-            index: 0,
-            delta: { tool_calls: [toolCall] },
-            finish_reason: null
-          }]
-        });
+        const toolCall = buildGeminiToolCallDelta(state, fcName, fcArgs, part.functionCall?.id);
+        state.toolCalls.set(toolCall.index, toolCall);
+        results.push(makeToolCallChunk(state, toolCall));
       }
 
       // Inline data (images)

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchCliToolStatus } from "./cliToolStatus";
 
 export function useToolCard({ initialStatus, apiKeys, statusEndpoint }) {
   const [status, setStatus] = useState(initialStatus || null);
@@ -22,11 +23,9 @@ export function useToolCard({ initialStatus, apiKeys, statusEndpoint }) {
     if (!statusEndpoint) return;
     setChecking(true);
     try {
-      const res = await fetch(statusEndpoint);
-      const data = await res.json();
-      setStatus(data);
+      setStatus(await fetchCliToolStatus(statusEndpoint));
     } catch (error) {
-      setStatus({ installed: false, error: error.message });
+      setStatus({ installed: false, fetchFailed: true, error: error.message });
     } finally {
       setChecking(false);
     }

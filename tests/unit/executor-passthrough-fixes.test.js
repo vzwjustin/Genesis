@@ -199,8 +199,7 @@ describe("KiroExecutor — messageStopEvent before metering", () => {
     const frames = [
       buildKiroFrame({ ":event-type": "assistantResponseEvent" }, { content: "Hello" }),
       buildKiroFrame({ ":event-type": "messageStopEvent" }, {}),
-      buildKiroFrame({ ":event-type": "contextUsageEvent" }, { contextUsagePercentage: 5 }),
-      buildKiroFrame({ ":event-type": "meteringEvent" }, {}),
+      buildKiroFrame({ ":event-type": "metricsEvent" }, { metricsEvent: { inputTokens: 10, outputTokens: 3 } }),
     ];
 
     const fakeResponse = {
@@ -218,6 +217,27 @@ describe("KiroExecutor — messageStopEvent before metering", () => {
   });
 });
 
+describe("KiroExecutor — flush fail-closed without messageStopEvent", () => {
+  it("does not fabricate finish_reason or [DONE] when stream ends early", async () => {
+    const executor = new KiroExecutor();
+    const frames = [
+      buildKiroFrame({ ":event-type": "assistantResponseEvent" }, { content: "partial" }),
+    ];
+    const fakeResponse = {
+      status: 200,
+      statusText: "OK",
+      body: makeKiroStream(frames),
+    };
+
+    const sseResponse = executor.transformEventStreamToSSE(fakeResponse, "kiro-model");
+    const text = await sseResponse.text();
+
+    expect(text).toContain("partial");
+    expect(text).not.toMatch(/"finish_reason":"(stop|tool_calls)"/);
+    expect(text).not.toContain("[DONE]");
+  });
+});
+
 describe("KiroExecutor — stream=false assembles JSON", () => {
   it("returns a non-streaming JSON completion when stream=false", async () => {
     const executor = new KiroExecutor();
@@ -226,8 +246,7 @@ describe("KiroExecutor — stream=false assembles JSON", () => {
     const frames = [
       buildKiroFrame({ ":event-type": "assistantResponseEvent" }, { content: "Hi there" }),
       buildKiroFrame({ ":event-type": "messageStopEvent" }, {}),
-      buildKiroFrame({ ":event-type": "contextUsageEvent" }, { contextUsagePercentage: 2 }),
-      buildKiroFrame({ ":event-type": "meteringEvent" }, {}),
+      buildKiroFrame({ ":event-type": "metricsEvent" }, { metricsEvent: { inputTokens: 5, outputTokens: 2 } }),
     ];
 
     const fakeStream = makeKiroStream(frames);
@@ -464,5 +483,44 @@ describe("filterToOpenAIFormat — tool_use → tool_calls conversion", () => {
     };
     const result = filterToOpenAIFormat(body);
     expect(result.messages).toHaveLength(1);
+  });
+});
+
+describe("filterToOpenAIFormat — tool_result → role:tool hoisting", () => {
+  it("hoists tool_result blocks to separate role:tool messages", () => {
+    const body = {
+      messages: [{
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: "call_abc",
+          content: "file contents here",
+        }],
+      }],
+    };
+    const result = filterToOpenAIFormat(body);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]).toEqual({
+      role: "tool",
+      tool_call_id: "call_abc",
+      content: "file contents here",
+    });
+  });
+
+  it("keeps trailing user text after hoisted tool_result blocks", () => {
+    const body = {
+      messages: [{
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "call_1", content: "done" },
+          { type: "text", text: "What next?" },
+        ],
+      }],
+    };
+    const result = filterToOpenAIFormat(body);
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].role).toBe("tool");
+    expect(result.messages[0].tool_call_id).toBe("call_1");
+    expect(result.messages[1]).toEqual({ role: "user", content: "What next?" });
   });
 });

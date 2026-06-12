@@ -3,7 +3,7 @@
  */
 
 import { formatRetryAfter } from "./accountFallback.js";
-import { unavailableResponse, PROXY_EXHAUSTED_HEADER } from "../utils/error.js";
+import { unavailableResponse, PROXY_EXHAUSTED_HEADER, isProxyInternalError } from "../utils/error.js";
 import { MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
 
 /**
@@ -192,10 +192,17 @@ export function shouldComboAdvance(status) {
  */
 export async function isZeroConnectionsResponse(response) {
   if (response.status !== 404) return false;
+  const NO_CREDS_PREFIX = "No active credentials for provider:";
+  let raw = "";
   try {
-    const body = await response.clone().json();
-    const message = body?.error?.message || "";
-    return message.startsWith("No active credentials for provider:");
+    raw = await response.clone().text();
+  } catch {
+    return false;
+  }
+  if (raw.includes(NO_CREDS_PREFIX)) return true;
+  try {
+    const body = JSON.parse(raw);
+    return (body?.error?.message || "").startsWith(NO_CREDS_PREFIX);
   } catch {
     return false;
   }
@@ -225,6 +232,21 @@ export async function isModelResolutionFailureResponse(response) {
  * Distinguished from upstream semantic 401/403 by Retry-After or known proxy messages.
  * Combo should advance — this is provider-level unavailability, not a client auth error.
  */
+/**
+ * Detect proxy-generated errors (SSE assembly, parse failures, etc.).
+ * These are not upstream provider faults — combo must not advance on them.
+ */
+export async function isProxyInternalResponse(response) {
+  if (response.ok) return false;
+  try {
+    const body = await response.clone().json();
+    const code = body?.error?.code || "";
+    return isProxyInternalError({ errorCode: code });
+  } catch {
+    return false;
+  }
+}
+
 export async function isProviderAccountsExhaustedResponse(response) {
   if (response.status !== 401 && response.status !== 403) return false;
 
@@ -285,14 +307,19 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // position does not advance for the next request. getRotatedModels pre-advances
         // the counter, so we must undo that advancement on success.
         if (comboStrategy === "round-robin" && comboName) {
-          const originalIndex = models.indexOf(modelStr);
-          if (originalIndex >= 0) {
-            comboRotationState.set(comboName, {
-              index: originalIndex,
-              consecutiveUseCount: 0,
-            });
-          }
+          // Use loop index i — models.indexOf() returns the first duplicate entry.
+          comboRotationState.set(comboName, {
+            index: i % models.length,
+            consecutiveUseCount: 0,
+          });
         }
+        return result;
+      }
+
+      // Proxy-internal errors (e.g. SSE assembly 502) are not upstream faults — return to client.
+      const proxyInternal = await isProxyInternalResponse(result);
+      if (proxyInternal) {
+        log.info("COMBO", `Model ${modelStr} returned proxy-internal ${result.status}, returning to client without advancing`);
         return result;
       }
 

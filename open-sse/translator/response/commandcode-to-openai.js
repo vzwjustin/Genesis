@@ -30,6 +30,7 @@ function ensureState(state, model) {
     state.openText = false;
     state.finishReason = null;
     state.usage = null;
+    state.finishSeen = false;
   }
 }
 
@@ -164,6 +165,7 @@ export function convertCommandCodeToOpenAI(chunk, state) {
       break;
     }
     case "finish": {
+      state.finishSeen = true;
       const finishReason = state.finishReason || mapFinishReason(event.finishReason || "stop");
       const finalChunk = makeChunk(state, {}, finishReason);
       const totalUsage = event.totalUsage || state.usage;
@@ -178,6 +180,7 @@ export function convertCommandCodeToOpenAI(chunk, state) {
       break;
     }
     case "error": {
+      state.finishSeen = true;
       state.finishReason = "stop";
       const errVal = event.error ?? event.message ?? "unknown";
       const errStr = typeof errVal === "string" ? errVal : JSON.stringify(errVal);

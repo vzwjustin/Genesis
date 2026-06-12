@@ -6,6 +6,30 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "*"
 };
 
+function estimateContentLength(content) {
+  if (content == null) return 0;
+  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return JSON.stringify(content).length;
+
+  let total = 0;
+  for (const part of content) {
+    if (!part || typeof part !== "object") continue;
+    if (part.type === "text" && part.text) {
+      total += part.text.length;
+    } else {
+      total += JSON.stringify(part).length;
+    }
+  }
+  return total;
+}
+
+function estimateSystemLength(system) {
+  if (system == null) return 0;
+  if (typeof system === "string") return system.length;
+  if (Array.isArray(system)) return estimateContentLength(system);
+  return JSON.stringify(system).length;
+}
+
 /**
  * Handle CORS preflight
  */
@@ -30,22 +54,23 @@ export async function POST(request) {
     });
   }
 
-  // Estimate token count based on content length
+  let totalChars = estimateSystemLength(body.system);
+
+  if (Array.isArray(body.tools)) {
+    totalChars += JSON.stringify(body.tools).length;
+  }
+
   const messages = body.messages || [];
-  let totalChars = 0;
   for (const msg of messages) {
-    if (typeof msg.content === "string") {
-      totalChars += msg.content.length;
-    } else if (Array.isArray(msg.content)) {
-      for (const part of msg.content) {
-        if (part.type === "text" && part.text) {
-          totalChars += part.text.length;
-        }
-      }
+    totalChars += estimateContentLength(msg.content);
+    if (msg.tool_calls) {
+      totalChars += JSON.stringify(msg.tool_calls).length;
+    }
+    if (msg.tool_use_id) {
+      totalChars += String(msg.tool_use_id).length;
     }
   }
 
-  // Rough estimate: ~4 chars per token
   const inputTokens = Math.ceil(totalChars / 4);
 
   return new Response(JSON.stringify({
@@ -54,4 +79,3 @@ export async function POST(request) {
     headers: { "Content-Type": "application/json", ...CORS_HEADERS }
   });
 }
-

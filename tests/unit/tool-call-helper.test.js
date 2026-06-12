@@ -22,6 +22,6 @@ describe("fixMissingToolResponses", () => {
     const toolMessages = body.messages.filter((m) => m.role === "tool");
     expect(toolMessages).toHaveLength(2);
     expect(toolMessages.map((m) => m.tool_call_id).sort()).toEqual(["call_a", "call_b"]);
-    expect(toolMessages.find((m) => m.tool_call_id === "call_b")?.content).toBe("");
+    expect(toolMessages.find((m) => m.tool_call_id === "call_b")?.content).toBe("[No response received]");
   });
 });

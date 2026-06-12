@@ -29,6 +29,15 @@ export async function PUT(request) {
       return NextResponse.json({ error: "Model and alias required" }, { status: 400 });
     }
 
+    const aliases = await getModelAliases();
+    const existing = aliases[alias];
+    if (existing && existing !== model) {
+      return NextResponse.json(
+        { error: `Alias "${alias}" already maps to ${existing}` },
+        { status: 409 },
+      );
+    }
+
     await setModelAlias(alias, model);
 
     return NextResponse.json({ success: true, model, alias });

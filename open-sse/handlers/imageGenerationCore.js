@@ -1,4 +1,5 @@
-import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
+import { Buffer } from "node:buffer";
+import { createErrorResult, parseUpstreamError, formatProviderError, PROXY_INTERNAL_ERROR_CODES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { getExecutor } from "../executors/index.js";
@@ -98,7 +99,7 @@ export async function handleImageGenerationCore({
       log
     );
 
-    if (newCredentials?.accessToken || newCredentials?.apiKey) {
+    if (newCredentials?.accessToken || newCredentials?.copilotToken || newCredentials?.apiKey) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for image generation`);
       Object.assign(credentials, newCredentials);
       if (onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
@@ -155,7 +156,10 @@ export async function handleImageGenerationCore({
       parsed = await providerResponse.json();
     }
   } catch (parseError) {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, parseError.message || `Invalid response from ${provider}`);
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, parseError.message || `Invalid response from ${provider}`, undefined, {
+      errorCode: PROXY_INTERNAL_ERROR_CODES.RESPONSE_PARSE_FAILED,
+      proxyInternal: true,
+    });
   }
 
   if (onRequestSuccess) await onRequestSuccess();
@@ -171,7 +175,13 @@ export async function handleImageGenerationCore({
     const first = finalBody.data?.[0];
     let b64 = first?.b64_json;
     if (!b64 && first?.url) {
-      try { b64 = await urlToBase64(first.url, proxyOptions); } catch {}
+      try {
+        b64 = await urlToBase64(first.url, proxyOptions);
+      } catch (fetchError) {
+        const errMsg = fetchError?.message || "Failed to fetch image from URL";
+        log?.debug?.("IMAGE", `URL fetch error: ${errMsg}`);
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
+      }
     }
     if (b64) {
       const buf = Buffer.from(b64, "base64");

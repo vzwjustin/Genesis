@@ -188,6 +188,14 @@ describe("gemini adapter — normalize", () => {
   });
 });
 
+describe("embeddings handler — input validation (source)", () => {
+  it("rejects empty input arrays and invalid element types before core", () => {
+    const src = readFileSync(join(root, "../../src/sse/handlers/embeddings.js"), "utf8");
+    expect(src).toContain("input array must not be empty");
+    expect(src).toContain("input[${i}] must be a string");
+  });
+});
+
 describe("handleEmbeddingsCore — input validation", () => {
   it("missing input → 400 Bad Request", async () => {
     const result = await handleEmbeddingsCore(makeOptions({
@@ -230,6 +238,24 @@ describe("handleEmbeddingsCore — input validation", () => {
     }));
     expect(result.success).toBe(false);
     expect(result.status).toBe(400);
+  });
+
+  it("empty array input → 400 Bad Request", async () => {
+    const result = await handleEmbeddingsCore(makeOptions({
+      body: { model: "text-embedding-ada-002", input: [] },
+    }));
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(400);
+    expect(result.error).toMatch(/empty/i);
+  });
+
+  it("array with non-string element → 400 Bad Request", async () => {
+    const result = await handleEmbeddingsCore(makeOptions({
+      body: { model: "text-embedding-ada-002", input: ["hello", 42] },
+    }));
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(400);
+    expect(result.error).toMatch(/input\[1\] must be a string/i);
   });
 
   it("unsupported provider → 400 without upstream call", async () => {

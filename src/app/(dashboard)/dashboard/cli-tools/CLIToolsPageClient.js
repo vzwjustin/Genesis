@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Button, CardSkeleton, SegmentedControl, EmptyState } from "@/shared/components";
+import { Button, CardSkeleton, SegmentedControl, EmptyState, InlineAlert } from "@/shared/components";
 import { CLI_TOOLS, MITM_TOOLS } from "@/shared/constants/cliTools";
 import { isCliToolConfigured } from "@/shared/components/ConfigStatusBadge";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
@@ -29,18 +29,29 @@ export default function CLIToolsPageClient({ machineId }) {
   const [toolStatuses, setToolStatuses] = useState({});
   const [mitmStatus, setMitmStatus] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [statusError, setStatusError] = useState(null);
 
   const fetchStatuses = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     else setRefreshing(true);
     try {
+      const fetchOpts = { cache: "no-store", credentials: "same-origin" };
       const [statusRes, mitmRes] = await Promise.all([
-        fetch(ALL_STATUSES_URL, { cache: "no-store" }),
-        fetch(MITM_STATUS_URL, { cache: "no-store" }),
+        fetch(ALL_STATUSES_URL, fetchOpts),
+        fetch(MITM_STATUS_URL, fetchOpts),
       ]);
-      if (statusRes.ok) setToolStatuses(await statusRes.json());
+      if (statusRes.ok) {
+        setToolStatuses(await statusRes.json());
+        setStatusError(null);
+      } else {
+        const errBody = await statusRes.json().catch(() => ({}));
+        const message = errBody?.error || `HTTP ${statusRes.status}`;
+        setStatusError(message);
+        notify.error(message);
+      }
       if (mitmRes.ok) setMitmStatus(await mitmRes.json());
     } catch (error) {
+      setStatusError(error?.message || "Failed to refresh tool statuses");
       notify.error(error?.message || "Failed to refresh tool statuses");
     } finally {
       setLoading(false);
@@ -86,6 +97,13 @@ export default function CLIToolsPageClient({ machineId }) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-1 sm:px-0">
+      {statusError && (
+        <InlineAlert
+          variant="error"
+          title="Could not load CLI tool statuses"
+          message={`${statusError}. Try logging out and back in, then click Refresh.`}
+        />
+      )}
       <div className="flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-text-muted">
           <span className="font-medium text-text-main">{configuredCount}/{toolIds.length}</span> CLI tools configured
@@ -125,9 +143,14 @@ export default function CLIToolsPageClient({ machineId }) {
       )}
 
       <div className="flex flex-col gap-3 sm:gap-4">
-        <div className="flex items-center gap-2 px-1">
-          <span className="material-symbols-outlined text-[18px] text-primary">security</span>
-          <h2 className="text-sm font-semibold text-text-main">MITM Tools</h2>
+        <div className="flex flex-col gap-0.5 px-1">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[18px] text-primary">security</span>
+            <h2 className="text-sm font-semibold text-text-main">MITM Tools</h2>
+          </div>
+          <p className="text-xs text-text-muted">
+            IDE tools that need traffic interception (MITM) to route their requests through 9router.
+          </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {mitmTools.map(([toolId, tool]) => (

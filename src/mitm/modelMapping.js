@@ -74,9 +74,13 @@ function getMappedModel(tool, model) {
   lookup = MODEL_SYNONYMS?.[tool]?.[lookup] || lookup;
   if (aliases[lookup]) return aliases[lookup];
 
-  const prefixKey = Object.keys(aliases).find(
-    k => k && aliases[k] && (lookup.startsWith(k) || k.startsWith(lookup))
-  );
+  // Only match keys that are a prefix OF the lookup (lookup.startsWith(k)),
+  // never the reverse — `k.startsWith(lookup)` let a short/partial id like
+  // "claude" greedily match an unrelated longer key and rewrite to the wrong
+  // model. Among valid prefixes, pick the longest (most specific) match.
+  const prefixKey = Object.keys(aliases)
+    .filter(k => k && aliases[k] && lookup.startsWith(k))
+    .sort((a, b) => b.length - a.length)[0];
   if (prefixKey) return aliases[prefixKey];
 
   const patterns = MODEL_PATTERNS?.[tool] || [];

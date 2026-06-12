@@ -18,12 +18,33 @@ function flattenTextOnlyContent(blocks) {
   return blocks.map((block) => block.text || "").join("\n");
 }
 
+function toolResultBlockToOpenAIMessage(block) {
+  let resultContent = "";
+  if (typeof block.content === "string") {
+    resultContent = block.content;
+  } else if (Array.isArray(block.content)) {
+    resultContent = block.content
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
+      .join("\n") || JSON.stringify(block.content);
+  } else if (block.content) {
+    resultContent = JSON.stringify(block.content);
+  }
+
+  return {
+    role: "tool",
+    tool_call_id: block.tool_use_id,
+    content: resultContent,
+  };
+}
+
 // Filter messages to OpenAI standard format
 // Remove: thinking, redacted_thinking, signature, and other non-OpenAI blocks
 export function filterToOpenAIFormat(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
   
-  body.messages = body.messages.map(msg => {
+  body.messages = body.messages.flatMap(msg => {
+    const converted = (() => {
     // Normalize developer role to system (many providers don't support developer)
     if (msg.role === "developer") msg = { ...msg, role: "system" };
     
@@ -40,6 +61,7 @@ export function filterToOpenAIFormat(body) {
     if (Array.isArray(msg.content)) {
       const filteredContent = [];
       const toolUseCalls = [];
+      const toolResultMessages = [];
       
       for (const block of msg.content) {
         // Skip thinking blocks
@@ -60,43 +82,57 @@ export function filterToOpenAIFormat(body) {
           continue;
         }
 
+        if (block.type === "tool_result") {
+          toolResultMessages.push(toolResultBlockToOpenAIMessage(block));
+          continue;
+        }
+
         // Only keep valid OpenAI content types
         if (VALID_OPENAI_CONTENT_TYPES.includes(block.type)) {
           // Remove signature field if exists
           const { signature, cache_control, ...cleanBlock } = block;
           filteredContent.push(cleanBlock);
-        } else if (block.type === "tool_result") {
-          // Keep tool_result but clean it
-          const { signature, cache_control, ...cleanBlock } = block;
-          filteredContent.push(cleanBlock);
         }
       }
 
-      // If tool_use blocks were found, build an assistant message with tool_calls
-      if (toolUseCalls.length > 0) {
-        const outMsg = { ...msg, tool_calls: toolUseCalls };
+      const buildRemainingMessage = () => {
+        if (toolUseCalls.length > 0) {
+          const outMsg = { ...msg, tool_calls: toolUseCalls };
+          if (filteredContent.length === 0) {
+            outMsg.content = null;
+          } else {
+            const textOnly = flattenTextOnlyContent(filteredContent);
+            outMsg.content = textOnly !== null ? textOnly : filteredContent;
+          }
+          return outMsg;
+        }
+
         if (filteredContent.length === 0) {
-          outMsg.content = null;
-        } else {
-          const textOnly = flattenTextOnlyContent(filteredContent);
-          outMsg.content = textOnly !== null ? textOnly : filteredContent;
+          return null;
         }
-        return outMsg;
-      }
-      
-      // If all content was filtered, add empty text
-      if (filteredContent.length === 0) {
-        filteredContent.push({ type: "text", text: "" });
+
+        const textOnly = flattenTextOnlyContent(filteredContent);
+        if (textOnly !== null) return { ...msg, content: textOnly };
+
+        const parts = flattenTextOnlyParts(filteredContent);
+        return { ...msg, content: typeof parts === "string" ? parts : filteredContent };
+      };
+
+      if (toolResultMessages.length > 0) {
+        const remaining = buildRemainingMessage();
+        return remaining ? [...toolResultMessages, remaining] : toolResultMessages;
       }
 
-      const textOnly = flattenTextOnlyContent(filteredContent);
-      if (textOnly !== null) return { ...msg, content: textOnly };
+      const remainingOnly = buildRemainingMessage();
+      if (remainingOnly) return remainingOnly;
 
-      const parts = flattenTextOnlyParts(filteredContent);
-      return { ...msg, content: typeof parts === "string" ? parts : filteredContent };
+      return { ...msg, content: "" };
     }
     
     return msg;
+    })();
+
+    return Array.isArray(converted) ? converted : [converted];
   });
   
   // Filter out messages with only empty text (but NEVER filter tool messages)

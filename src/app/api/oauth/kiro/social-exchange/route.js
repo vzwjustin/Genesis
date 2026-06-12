@@ -46,7 +46,9 @@ export async function POST(request) {
       authType: "oauth",
       accessToken: tokenData.accessToken,
       refreshToken: tokenData.refreshToken,
-      expiresAt: new Date(Date.now() + tokenData.expiresIn * 1000).toISOString(),
+      expiresAt: tokenData.expiresIn
+        ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
+        : null,
       email: email || null,
       providerSpecificData: {
         profileArn: tokenData.profileArn,

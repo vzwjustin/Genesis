@@ -1,14 +1,14 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getCliHomeDir } from "@/shared/utils/cliHome";
 
 // Resolve chatLanguageModels.json path per OS
 const getConfigPath = () => {
-  const home = os.homedir();
+  const home = getCliHomeDir();
   const platform = os.platform();
   if (platform === "win32") {
     return path.join(process.env.APPDATA || home, "Code", "User", "chatLanguageModels.json");

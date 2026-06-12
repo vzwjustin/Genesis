@@ -181,9 +181,14 @@ function closeReasoning(state, emit) {
 
 function emitTextContent(state, emit, idx, content) {
   if (!state.msgItemAdded[idx]) {
+    // Close any still-open reasoning item before opening the message item —
+    // strict streaming Responses clients reject a message item that opens
+    // while a reasoning item is unclosed (item collision). Idempotent.
+    closeReasoning(state, emit);
+
     state.msgItemAdded[idx] = true;
     const msgId = `msg_${state.responseId}_${idx}`;
-    
+
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: idx,

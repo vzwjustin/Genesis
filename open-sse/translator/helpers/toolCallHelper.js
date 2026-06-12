@@ -1,4 +1,8 @@
 // Tool call helper functions for translator
+import { findLastCacheBoundary, shouldSkipMessageForCache } from "../../rtk/cacheBoundary.js";
+
+/** Minimal non-empty placeholder for backfilled tool results (Anthropic rejects empty content). */
+const MISSING_TOOL_RESPONSE_PLACEHOLDER = "[No response received]";
 
 // Anthropic tool_use.id must match: ^[a-zA-Z0-9_-]+$
 const TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -39,8 +43,10 @@ export function ensureToolCallIds(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
 
   const idRemap = new Map();
+  const cacheFloor = findLastCacheBoundary(body.messages);
 
   for (let i = 0; i < body.messages.length; i++) {
+    if (shouldSkipMessageForCache(i, body.messages, cacheFloor)) continue;
     const msg = body.messages[i];
     if (msg.role === "assistant" && msg.tool_calls && Array.isArray(msg.tool_calls)) {
       for (let j = 0; j < msg.tool_calls.length; j++) {
@@ -68,6 +74,7 @@ export function ensureToolCallIds(body) {
   }
 
   for (let i = 0; i < body.messages.length; i++) {
+    if (shouldSkipMessageForCache(i, body.messages, cacheFloor)) continue;
     const msg = body.messages[i];
 
     if (msg.role === "tool" && msg.tool_call_id) {
@@ -110,27 +117,6 @@ export function getToolCallIds(msg) {
   }
 
   return ids;
-}
-
-// Check if user message has tool_result for given ids (OpenAI format: role=tool, Claude format: tool_result in content)
-export function hasToolResults(msg, toolCallIds) {
-  if (!msg || !toolCallIds.length) return false;
-
-  // OpenAI format: role = "tool" with tool_call_id
-  if (msg.role === "tool" && msg.tool_call_id) {
-    return toolCallIds.includes(msg.tool_call_id);
-  }
-
-  // Claude format: tool_result blocks in user message content
-  if (msg.role === "user" && Array.isArray(msg.content)) {
-    for (const block of msg.content) {
-      if (block.type === "tool_result" && toolCallIds.includes(block.tool_use_id)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
 }
 
 function collectRespondedToolIds(messages, startIndex, toolCallIds) {
@@ -179,6 +165,7 @@ export function fixMissingClaudeToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
 
   const messages = [...body.messages];
+  const cacheFloor = findLastCacheBoundary(messages);
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -189,12 +176,14 @@ export function fixMissingClaudeToolResponses(body) {
     const missingIds = toolCallIds.filter((id) => !respondedIds.has(id));
     if (missingIds.length === 0) continue;
 
+    if (cacheFloor >= 0 && insertPosition <= cacheFloor) continue;
+
     const missingResponse = {
       role: "user",
       content: missingIds.map((id) => ({
         type: "tool_result",
         tool_use_id: id,
-        content: ""
+        content: MISSING_TOOL_RESPONSE_PLACEHOLDER
       }))
     };
     messages.splice(insertPosition, 0, missingResponse);
@@ -205,8 +194,59 @@ export function fixMissingClaudeToolResponses(body) {
   return body;
 }
 
+function fixMissingGeminiContentsToolResponses(contents) {
+  if (!Array.isArray(contents)) return contents;
+
+  for (let i = 0; i < contents.length; i++) {
+    const content = contents[i];
+    if (content.role !== "model" || !Array.isArray(content.parts)) continue;
+
+    const functionCalls = content.parts
+      .filter((part) => part.functionCall)
+      .map((part) => ({
+        id: part.functionCall.id || part.functionCall.name,
+        name: part.functionCall.name,
+      }));
+    if (functionCalls.length === 0) continue;
+
+    const respondedIds = new Set();
+    for (let j = i + 1; j < contents.length; j++) {
+      if (contents[j].role === "model") break;
+      if (contents[j].role !== "user" || !Array.isArray(contents[j].parts)) continue;
+      for (const part of contents[j].parts) {
+        if (!part.functionResponse) continue;
+        respondedIds.add(part.functionResponse.id || part.functionResponse.name);
+      }
+    }
+
+    const missing = functionCalls.filter((fc) => !respondedIds.has(fc.id) && !respondedIds.has(fc.name));
+    if (missing.length === 0) continue;
+
+    const placeholderParts = missing.map((fc) => ({
+      functionResponse: {
+        id: fc.id,
+        name: fc.name,
+        response: { result: MISSING_TOOL_RESPONSE_PLACEHOLDER },
+      },
+    }));
+    contents.splice(i + 1, 0, { role: "user", parts: placeholderParts });
+    i += 1;
+  }
+
+  return contents;
+}
+
 // Fix missing tool responses - insert empty tool_result if assistant has tool_use but next message has no tool_result
 export function fixMissingToolResponses(body) {
+  if (body.contents && Array.isArray(body.contents)) {
+    body.contents = fixMissingGeminiContentsToolResponses([...body.contents]);
+    return body;
+  }
+  if (body.request?.contents && Array.isArray(body.request.contents)) {
+    body.request.contents = fixMissingGeminiContentsToolResponses([...body.request.contents]);
+    return body;
+  }
+
   if (!body.messages || !Array.isArray(body.messages)) return body;
 
   if (usesClaudeNativeToolFormat(body.messages)) {
@@ -214,6 +254,7 @@ export function fixMissingToolResponses(body) {
   }
 
   const messages = [...body.messages];
+  const cacheFloor = findLastCacheBoundary(messages);
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -224,10 +265,12 @@ export function fixMissingToolResponses(body) {
     const missingIds = toolCallIds.filter((id) => !respondedIds.has(id));
     if (missingIds.length === 0) continue;
 
+    if (cacheFloor >= 0 && insertPosition <= cacheFloor) continue;
+
     const missingResponses = missingIds.map((id) => ({
       role: "tool",
       tool_call_id: id,
-      content: ""
+      content: MISSING_TOOL_RESPONSE_PLACEHOLDER
     }));
     messages.splice(insertPosition, 0, ...missingResponses);
     i = insertPosition + missingResponses.length - 1;

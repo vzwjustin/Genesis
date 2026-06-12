@@ -6,6 +6,7 @@ export {
   createProviderConnection, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,
   reorderProviderConnections, cleanupProviderConnections,
+  swapProviderConnectionPriorities,
   getProviderNodes, getProviderNodeById,
   createProviderNode, updateProviderNode, deleteProviderNode,
   getProxyPools, getProxyPoolById,
@@ -16,6 +17,7 @@ export {
   getModelAliases, setModelAlias, deleteModelAlias,
   getCustomModels, addCustomModel, deleteCustomModel,
   getMitmAlias, setMitmAliasAll,
-  getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
+  getPricing, getPricingForModel, getUserPricingOverrides,
+  updatePricing, resetPricing, resetAllPricing,
   exportDb, importDb,
 } from "@/lib/db/index.js";

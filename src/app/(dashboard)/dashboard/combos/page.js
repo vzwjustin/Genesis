@@ -108,22 +108,28 @@ export default function CombosPage() {
   };
 
   const handleToggleRoundRobin = async (comboName, enabled) => {
+    const prevStrategies = comboStrategies;
+    const updated = { ...comboStrategies };
+    if (enabled) {
+      updated[comboName] = { fallbackStrategy: "round-robin" };
+    } else {
+      updated[comboName] = null;
+    }
+
+    setComboStrategies(updated);
     try {
-      const updated = { ...comboStrategies };
-      if (enabled) {
-        updated[comboName] = { fallbackStrategy: "round-robin" };
-      } else {
-        delete updated[comboName];
-      }
-      
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comboStrategies: updated }),
       });
-      
-      setComboStrategies(updated);
+      if (!res.ok) {
+        setComboStrategies(prevStrategies);
+        const err = await res.json().catch(() => ({}));
+        notify.error(err.error || "Failed to update combo strategy");
+      }
     } catch (error) {
+      setComboStrategies(prevStrategies);
       notify.error(error?.message || "Failed to update combo strategy");
     }
   };
@@ -149,7 +155,7 @@ export default function CombosPage() {
         <EmptyState
           icon="layers"
           title="No combos yet"
-          description="Create model combos with fallback support for ordered failover."
+          description="A combo is an ordered list of models. If the first model fails, 9router automatically tries the next one."
           action={{ label: "Create Combo", onClick: () => setShowCreateModal(true) }}
         />
       ) : (
@@ -237,7 +243,10 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
         {/* Actions */}
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0">
           {/* Round Robin Toggle — always visible */}
-          <div className="flex items-center justify-between gap-1.5 rounded-brand bg-bg-alt px-2 py-1.5 sm:justify-start sm:bg-transparent sm:px-0 sm:py-0">
+          <div
+            className="flex items-center justify-between gap-1.5 rounded-brand bg-bg-alt px-2 py-1.5 sm:justify-start sm:bg-transparent sm:px-0 sm:py-0"
+            title="Spread requests evenly across the models in this combo instead of always starting with the first one."
+          >
             <span className="text-xs text-text-muted font-medium">Round Robin</span>
             <Toggle
               size="sm"
@@ -280,7 +289,7 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
   );
 }
 
-function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, allModels, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -292,8 +301,17 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   const [draft, setDraft] = useState(model);
   const commit = () => {
     const trimmed = draft.trim();
-    if (trimmed && trimmed !== model) onEdit(trimmed);
-    else setDraft(model);
+    if (trimmed && trimmed !== model) {
+      const isDuplicate = allModels.some((m, i) => i !== index && m === trimmed);
+      if (isDuplicate) {
+        setDraft(model);
+        setEditing(false);
+        return;
+      }
+      onEdit(trimmed);
+    } else {
+      setDraft(model);
+    }
     setEditing(false);
   };
 
@@ -520,9 +538,11 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                       id={uid}
                       index={index}
                       model={model}
+                      allModels={models}
                       isFirst={index === 0}
                       isLast={index === modelItems.length - 1}
                       onEdit={(newVal) => {
+                        if (models.some((m, i) => i !== index && m === newVal)) return;
                         const updated = [...models];
                         updated[index] = newVal;
                         setModels(updated);

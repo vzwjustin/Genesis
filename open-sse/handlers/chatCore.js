@@ -1,4 +1,5 @@
 import { detectFormat, getTargetFormat } from "../services/provider.js";
+import { parseModel } from "../services/model.js";
 import { translateRequest } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { COLORS } from "../utils/stream.js";
@@ -6,7 +7,7 @@ import { createStreamController } from "../utils/streamHandler.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
-import { createErrorResult, parseUpstreamError, formatProviderError, VALIDATION_ERROR_TYPES } from "../utils/error.js";
+import { createErrorResult, parseUpstreamError, formatProviderError, VALIDATION_ERROR_TYPES, PROXY_INTERNAL_ERROR_CODES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -18,8 +19,17 @@ import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/strea
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { cleanAnthropicToolDefinitions } from "../translator/helpers/claudeHelper.js";
+import { applyCloaking } from "../utils/claudeCloaking.js";
+import { deriveSessionId } from "../utils/sessionManager.js";
+import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
+import {
+  hasAnthropicCacheBreakpoints,
+  snapshotCacheProtectedBody,
+  verifyCacheProtectedBody,
+  restoreBodyFromJsonSnapshot,
+} from "../rtk/cacheBoundary.js";
 import { compressWithHeadroom } from "../rtk/headroom.js";
 import { recordCompressionStats, saveCompressionStats } from "@/lib/compressionStats.js";
 
@@ -121,18 +131,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     try {
       translatedBody = structuredClone(body);
-    } catch (cloneError) {
-      const errMsg = cloneError?.message || "Passthrough body could not be cloned";
-      return createErrorResult(HTTP_STATUS.BAD_REQUEST, errMsg, undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
-    }
-    translatedBody.model = model;
-    // Anthropic compatibility: strip provider prefixes from built-in tool model fields.
-    // Passthrough preserves request shape except for this known upstream rejection fix.
-    if ((provider === "claude" || provider?.startsWith("anthropic-compatible")) && Array.isArray(translatedBody.tools)) {
-      translatedBody.tools = cleanAnthropicToolDefinitions(translatedBody.tools, provider);
-      if (translatedBody.tools.length === 0) {
-        delete translatedBody.tools;
-        delete translatedBody.tool_choice;
+    } catch {
+      try {
+        translatedBody = JSON.parse(JSON.stringify(body));
+      } catch (cloneError) {
+        const errMsg = cloneError?.message || "Passthrough body could not be cloned";
+        return createErrorResult(HTTP_STATUS.BAD_REQUEST, errMsg, undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
       }
     }
   } else {
@@ -147,18 +151,67 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
     toolNameMap = translatedBody._toolNameMap;
     delete translatedBody._toolNameMap;
-    translatedBody.model = model;
 
     // Post-translation validation: ensure translated body is a valid object with content
     if (!translatedBody || typeof translatedBody !== "object") {
-      trackPendingRequest(model, provider, connectionId, false, true);
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Translation produced invalid output for ${targetFormat}`, undefined, { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED });
     }
   }
 
+  const clientHasCacheBreakpoints = hasAnthropicCacheBreakpoints(translatedBody);
+
+  // Pristine client snapshot — before model swap, OAuth metadata, tool cleaning, dedupe, or compression.
+  const cacheProtectedSnapshot = clientHasCacheBreakpoints
+    ? snapshotCacheProtectedBody(translatedBody)
+    : null;
+
+  // Keep the client's upstream model id when they own cache layout — rewriting breaks KV hits.
+  if (clientHasCacheBreakpoints && typeof translatedBody.model === "string") {
+    const parsed = parseModel(translatedBody.model);
+    translatedBody.model = parsed.model || model;
+  } else {
+    translatedBody.model = model;
+  }
+
+  // OAuth metadata alignment for passthrough (translated path uses prepareClaudeRequest).
+  if (passthrough && (provider === "claude" || provider?.startsWith("anthropic-compatible"))) {
+    const apiKey = credentials?.accessToken || credentials?.apiKey;
+    if (apiKey?.includes("sk-ant-oat")) {
+      const cached = getCachedClaudeHeaders(connectionId, credentials?._requestHeaders);
+      const sessionId = cached?.["x-claude-code-session-id"]
+        || (connectionId ? deriveSessionId(connectionId) : null);
+      Object.assign(translatedBody, applyCloaking(translatedBody, apiKey, sessionId));
+    }
+  }
+
+  const isClaudeFormatProvider = provider === "claude" || provider?.startsWith("anthropic-compatible");
+
+  // Tool cleaning: protected prefix stays byte-identical; uncached tail still gets compatibility fixes.
+  if (isClaudeFormatProvider && Array.isArray(translatedBody.tools)) {
+    translatedBody.tools = cleanAnthropicToolDefinitions(translatedBody.tools, provider, {
+      preserveClientCache: clientHasCacheBreakpoints,
+    });
+    if (translatedBody.tools.length === 0 && !clientHasCacheBreakpoints) {
+      delete translatedBody.tools;
+      delete translatedBody.tool_choice;
+    }
+  }
+
+  const assertCacheIntegrity = (stage) => {
+    if (!cacheProtectedSnapshot) return null;
+    if (verifyCacheProtectedBody(translatedBody, cacheProtectedSnapshot)) return null;
+    console.error(`[CACHE] CRITICAL: ${stage} — cache-protected content is no longer byte-identical`);
+    return createErrorResult(
+      HTTP_STATUS.BAD_GATEWAY,
+      "Cache-protected request content was modified",
+      undefined,
+      { errorCode: PROXY_INTERNAL_ERROR_CODES.CACHE_INTEGRITY_FAILED, proxyInternal: true }
+    );
+  };
+
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
   // Passthrough (passthru) mode: do NOT alter tool definitions — preserve client's intended request shape.
-  if (!passthrough && clientTool === "claude" && Array.isArray(translatedBody.tools)) {
+  if (!passthrough && !clientHasCacheBreakpoints && clientTool === "claude" && Array.isArray(translatedBody.tools)) {
     const { tools: deduped, stripped } = dedupeTools(translatedBody.tools);
     if (stripped.length > 0) {
       translatedBody.tools = deduped;
@@ -166,31 +219,54 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
+  const preCompressionCacheErr = assertCacheIntegrity("claude pre-compression mutations");
+  if (preCompressionCacheErr) return preCompressionCacheErr;
+
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
 
-  // Passthrough compression guard: do NOT compress unless passthrough compression
-  // is explicitly enabled. This preserves provider-native message arrays in passthrough
-  // mode per AGENTS.md and Requirements 1.2, 7.3.
-  let compressionAllowed = !passthrough || passthroughCompression === true;
+  const allowPassthroughCompression = !passthrough || passthroughCompression === true;
+  const saversEnabled = rtkEnabled || headroomEnabled || (cavemanEnabled && cavemanLevel);
+  // Hard rule: never compress when the client placed cache_control breakpoints.
+  const compressionActive = !clientHasCacheBreakpoints
+    && allowPassthroughCompression
+    && saversEnabled;
+  if (clientHasCacheBreakpoints && saversEnabled) {
+    log?.debug?.("CACHE", "skipping compression — client owns cache_control layout");
+  }
 
-  // Snapshot original body for recovery if compression fails
+  // Snapshot full body for recovery if compression fails
   let originalBodySnapshot = null;
-  if (compressionAllowed) {
+  if (compressionActive) {
     try {
       originalBodySnapshot = JSON.stringify(translatedBody);
     } catch (snapshotError) {
       console.warn(`[COMPRESSION] Could not snapshot body for restore: ${snapshotError.message}`);
-      compressionAllowed = false;
     }
   }
 
   const chainStages = [];
 
+  let cacheIntegrityFailed = false;
+
+  const enforceCacheIntegrity = (stage) => {
+    if (!cacheProtectedSnapshot) return true;
+    if (verifyCacheProtectedBody(translatedBody, cacheProtectedSnapshot)) return true;
+    console.error(`[CACHE] CRITICAL: ${stage} mutated cache-protected content — reverting body`);
+    cacheIntegrityFailed = true;
+    if (originalBodySnapshot) {
+      const restored = restoreBodyFromJsonSnapshot(translatedBody, originalBodySnapshot);
+      if (!restored) {
+        console.error(`[CACHE] CRITICAL: ${stage} — could not restore body after cache violation`);
+      }
+    }
+    return false;
+  };
+
   try {
     // Stage 1 — RTK: sync tool-output compression (cheap, no network)
-    if (compressionAllowed && rtkEnabled) {
+    if (rtkEnabled && compressionActive) {
       const rtkStats = compressMessages(translatedBody, rtkEnabled, rtkFilterConfig);
       const rtkLine = formatRtkLog(rtkStats);
       if (rtkLine) console.log(rtkLine);
@@ -214,10 +290,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           filterHits: filters ? JSON.stringify(rtkStats.hits.map((h) => h.filter)) : null,
         }).catch(() => {});
       }
+      if (!enforceCacheIntegrity("RTK")) {
+        cacheIntegrityFailed = true;
+      }
     }
 
     // Stage 2 — Headroom: ML history compression (runs after RTK sees shrunk tool blobs)
-    if (compressionAllowed && headroomEnabled) {
+    if (headroomEnabled && compressionActive && !cacheIntegrityFailed) {
       const hrStats = await compressWithHeadroom(translatedBody, model);
       if (hrStats && (hrStats.before || 0) > 0) {
         const saved = Math.max(0, hrStats.saved || 0);
@@ -243,25 +322,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       } else {
         log?.debug?.("HEADROOM", "skipped (unavailable or empty tail)");
       }
-    }
-
-    // Stage 3 — Caveman: output-style system prompt injection (always last)
-    if (compressionAllowed && cavemanEnabled && cavemanLevel) {
-      const cavemanInjected = injectCaveman(translatedBody, finalFormat, cavemanLevel);
-      if (cavemanInjected) {
-        log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
-        chainStages.push(`caveman:${cavemanLevel}`);
-        recordCompressionStats("caveman", {
-          hits: 1,
-          detail: `level=${cavemanLevel}`,
-        }).catch(() => {});
-        saveCompressionStats({
-          subsystem: "caveman",
-          provider,
-          bytesBefore: 0,
-          bytesAfter: 0,
-          level: cavemanLevel,
-        }).catch(() => {});
+      if (!enforceCacheIntegrity("Headroom")) {
+        cacheIntegrityFailed = true;
       }
     }
 
@@ -277,16 +339,67 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           if (!(key in restored)) delete translatedBody[key];
         }
         Object.assign(translatedBody, restored);
+        if (cacheProtectedSnapshot && !verifyCacheProtectedBody(translatedBody, cacheProtectedSnapshot)) {
+          return createErrorResult(
+            HTTP_STATUS.BAD_GATEWAY,
+            "Cache-protected request content was modified after compression restore",
+            undefined,
+            { errorCode: PROXY_INTERNAL_ERROR_CODES.CACHE_INTEGRITY_FAILED, proxyInternal: true }
+          );
+        }
+        console.warn(`[COMPRESSION] Compression failed, continuing with original content: ${compressionError.message}`);
       } catch (restoreError) {
         console.error(`[COMPRESSION] Failed to restore body after compression error: ${restoreError.message}`);
+        return createErrorResult(
+          HTTP_STATUS.BAD_GATEWAY,
+          "Compression failed and request body could not be restored",
+          undefined,
+          { errorCode: PROXY_INTERNAL_ERROR_CODES.COMPRESSION_RESTORE_FAILED, proxyInternal: true }
+        );
       }
-      console.warn(`[COMPRESSION] Compression failed, continuing with original content: ${compressionError.message}`);
-    } else if (compressionAllowed) {
-      console.warn(`[COMPRESSION] Error during compression with no body snapshot, continuing with current body: ${compressionError.message}`);
+    } else if (compressionActive) {
+      return createErrorResult(
+        HTTP_STATUS.BAD_GATEWAY,
+        "Compression failed with no recoverable body snapshot",
+        undefined,
+        { errorCode: PROXY_INTERNAL_ERROR_CODES.COMPRESSION_RESTORE_FAILED, proxyInternal: true }
+      );
     } else {
       console.warn(`[COMPRESSION] Error during compression, continuing: ${compressionError.message}`);
     }
   }
+
+  // Caveman mutates the request body — never run when client cache breakpoints are present.
+  if (cavemanEnabled && cavemanLevel && compressionActive) {
+    try {
+      const cavemanInjected = injectCaveman(translatedBody, finalFormat, cavemanLevel);
+      if (cavemanInjected) {
+        log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
+        console.log(`[COMPRESSION] chain: caveman:${cavemanLevel}`);
+        recordCompressionStats("caveman", {
+          hits: 1,
+          detail: `level=${cavemanLevel}`,
+        }).catch(() => {});
+        saveCompressionStats({
+          subsystem: "caveman",
+          provider,
+          bytesBefore: 0,
+          bytesAfter: 0,
+          level: cavemanLevel,
+        }).catch(() => {});
+      }
+    } catch (cavemanError) {
+      console.warn(`[CAVEMAN] Injection failed, continuing without caveman: ${cavemanError.message}`);
+    }
+  }
+
+  if (cacheIntegrityFailed) {
+    const compressionCacheErr = assertCacheIntegrity("compression pipeline");
+    if (compressionCacheErr) return compressionCacheErr;
+  }
+
+  const preDispatchCacheErr = assertCacheIntegrity("pre-dispatch");
+  if (preDispatchCacheErr) return preDispatchCacheErr;
 
   const executor = getExecutor(provider);
   trackPendingRequest(model, provider, connectionId, true);
@@ -355,8 +468,21 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
+  const execCredentials = clientHasCacheBreakpoints
+    ? { ...credentials, _preserveClientCache: true }
+    : credentials;
   try {
-    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: upstreamSignal, log, proxyOptions, passthrough });
+    const result = await executor.execute({
+      model,
+      body: translatedBody,
+      stream,
+      credentials: execCredentials,
+      signal: upstreamSignal,
+      log,
+      proxyOptions,
+      passthrough,
+      cacheProtectedSnapshot,
+    });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
@@ -364,6 +490,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     trackPendingRequest(model, provider, connectionId, false, true);
+    reqLogger.logError(error, translatedBody);
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,
@@ -378,6 +505,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (error.name === "AbortError") {
       streamController.handleError(error);
       return createErrorResult(499, "Request aborted");
+    }
+    if (error.code === PROXY_INTERNAL_ERROR_CODES.CACHE_INTEGRITY_FAILED) {
+      return createErrorResult(
+        HTTP_STATUS.BAD_GATEWAY,
+        error.message || "Cache-protected request content was modified",
+        undefined,
+        { errorCode: PROXY_INTERNAL_ERROR_CODES.CACHE_INTEGRITY_FAILED, proxyInternal: true }
+      );
     }
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
     console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
@@ -400,7 +535,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
         try {
-          const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, passthrough });
+          const retryResult = await executor.execute({
+            model,
+            body: translatedBody,
+            stream,
+            credentials: execCredentials,
+            signal: upstreamSignal,
+            log,
+            proxyOptions,
+            passthrough,
+            cacheProtectedSnapshot,
+          });
           providerResponse = retryResult.response;
           providerUrl = retryResult.url;
           providerHeaders = retryResult.headers;
@@ -466,6 +611,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         success: false,
         status: providerResponse.status,
         error: errorBodyText || `Upstream error: ${providerResponse.status}`,
+        proxyInternal: false,
         response: new Response(errorBodyText || "", {
           status: providerResponse.status,
           headers: responseHeaders
@@ -474,6 +620,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
 
     const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
+    let upstreamErrorCode;
+    try {
+      const errBody = await providerResponse.clone().json();
+      upstreamErrorCode = errBody?.error?.code;
+    } catch {
+      upstreamErrorCode = undefined;
+    }
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,
@@ -488,7 +641,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
     reqLogger.logError(new Error(message), finalBody || translatedBody);
-    return createErrorResult(statusCode, errMsg, resetsAtMs);
+    return createErrorResult(statusCode, errMsg, resetsAtMs, { errorCode: upstreamErrorCode });
   }
 
   const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, passthrough };

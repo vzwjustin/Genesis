@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
@@ -39,9 +38,12 @@ export async function GET(request) {
       try {
         const res = await getter();
         const data = await res.json();
+        if (!res.ok) {
+          return [toolId, { installed: false, error: data?.error || `HTTP ${res.status}` }];
+        }
         return [toolId, data];
-      } catch {
-        return [toolId, null];
+      } catch (error) {
+        return [toolId, { installed: false, error: error?.message || "status_check_failed" }];
       }
     })
   );

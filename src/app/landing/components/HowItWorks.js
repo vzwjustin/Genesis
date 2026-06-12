@@ -36,7 +36,7 @@ export default function HowItWorks() {
             <div>
               <h3 className="text-xl font-bold mb-2 text-[#f97815]">2. 9Router Hub</h3>
               <p className="text-sm text-gray-400">
-                Our engine analyzes the prompt, checks provider health, and routes for lowest latency or cost.
+                9Router checks which providers are healthy and sends each request to the fastest or cheapest one.
               </p>
             </div>
           </div>

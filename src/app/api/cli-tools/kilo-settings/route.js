@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
@@ -7,12 +6,13 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getCliHomeDir } from "@/shared/utils/cliHome";
 
 const execAsync = promisify(exec);
 
-const getDataDir = () => path.join(os.homedir(), ".local", "share", "kilo");
+const getDataDir = () => path.join(getCliHomeDir(), ".local", "share", "kilo");
 const getAuthPath = () => path.join(getDataDir(), "auth.json");
-const getVscodeSettingsPath = () => path.join(os.homedir(), ".config", "Code", "User", "settings.json");
+const getVscodeSettingsPath = () => path.join(getCliHomeDir(), ".config", "Code", "User", "settings.json");
 
 const checkInstalled = async () => {
   try {

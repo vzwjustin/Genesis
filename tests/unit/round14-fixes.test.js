@@ -12,7 +12,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 describe("GET /api/providers/[id]/models proxy migration", () => {
   it("uses proxyAwareFetch with connection proxy options", () => {
     const src = readFileSync(
-      join(root, "../../src/app/api/providers/[id]/models/route.js"),
+      join(root, "../../src/lib/models/fetchConnectionModels.js"),
       "utf8"
     );
     expect(src).toContain("proxyAwareFetch");

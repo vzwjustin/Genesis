@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
@@ -7,10 +6,11 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getCliHomeDir } from "@/shared/utils/cliHome";
 
 const execAsync = promisify(exec);
 
-const getDataDir = () => path.join(os.homedir(), ".cline", "data");
+const getDataDir = () => path.join(getCliHomeDir(), ".cline", "data");
 const getGlobalStatePath = () => path.join(getDataDir(), "globalState.json");
 const getSecretsPath = () => path.join(getDataDir(), "secrets.json");
 

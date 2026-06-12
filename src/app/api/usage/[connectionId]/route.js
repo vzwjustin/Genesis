@@ -125,7 +125,10 @@ export async function GET(request, { params }) {
       USAGE_APIKEY_PROVIDERS.includes(connection.provider);
 
     if (!isOAuth && !isApikeyEligible) {
-      return Response.json({ message: "Usage not available for this connection" });
+      return Response.json(
+        { error: "Usage not available for this connection" },
+        { status: 422 },
+      );
     }
 
     // Resolve connection proxy config; force strictProxy=false so quota/refresh fall back to direct on failure

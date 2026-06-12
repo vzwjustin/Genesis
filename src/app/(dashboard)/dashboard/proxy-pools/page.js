@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal, EmptyState, MobileStickyActionBar } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
+import { parseProxyLine } from "@/shared/utils/dashboardHelpers";
 
 function getStatusVariant(status) {
   if (status === "active") return "success";
@@ -158,7 +159,7 @@ export default function ProxyPoolsPage() {
 
           const data = await res.json();
           if (res.status === 409) {
-            notify.warning(`Cannot delete: ${data.boundConnectionCount || 0} connection(s) are still using this pool.`);
+            notify.warning(`Can't delete this pool yet — ${data.boundConnectionCount || 0} provider connection(s) still use it. Remove it from them first.`);
           } else {
             notify.error(data.error || "Failed to delete proxy pool");
           }
@@ -450,37 +451,6 @@ export default function ProxyPoolsPage() {
     }
   };
 
-  const parseProxyLine = (line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-
-    if (trimmed.includes("://")) {
-      const parsed = new URL(trimmed);
-      const hostLabel = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
-      return {
-        proxyUrl: parsed.toString(),
-        name: `Imported ${hostLabel}`,
-      };
-    }
-
-    const parts = trimmed.split(":");
-    if (parts.length === 4) {
-      const [host, port, username, password] = parts;
-      if (!host || !port || !username || !password) {
-        throw new Error("Invalid host:port:user:pass format");
-      }
-
-      const proxyUrl = `http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
-      const parsed = new URL(proxyUrl);
-      return {
-        proxyUrl: parsed.toString(),
-        name: `Imported ${host}:${port}`,
-      };
-    }
-
-    throw new Error("Unsupported format");
-  };
-
   const handleBatchImport = async () => {
     const lines = batchImportText
       .split(/\r?\n/)
@@ -691,7 +661,7 @@ export default function ProxyPoolsPage() {
           <EmptyState
             icon="lan"
             title="No proxy pool entries yet"
-            description="Create a proxy pool entry, then assign it to provider connections."
+            description="Add a proxy pool here, then choose it on a provider connection to route that provider's traffic through the proxy."
             action={{ label: "Add Proxy Pool", onClick: openCreateModal }}
           />
         ) : (
@@ -815,7 +785,7 @@ export default function ProxyPoolsPage() {
           <div className="rounded-lg bg-info/5 border border-info/10 p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Vercel Relay?</p>
             <p className="text-xs text-text-muted">
-              Deploys an edge relay function to Vercel. All AI provider requests will be forwarded through Vercel&apos;s edge network, masking your real IP from providers.
+              Deploys a small relay function to Vercel. Your AI provider requests are forwarded through Vercel&apos;s global network, so providers see Vercel&apos;s IP instead of your real one.
             </p>
             <ul className="text-xs text-text-muted list-disc pl-4 space-y-0.5">
               <li>Your IP is replaced by Vercel&apos;s dynamic edge IPs (hundreds of IPs across 20+ global regions)</li>
@@ -866,9 +836,9 @@ export default function ProxyPoolsPage() {
               Deploys a Cloudflare Worker as a proxy relay. All AI provider requests will be forwarded through Cloudflare&apos;s global edge network.
             </p>
             <ul className="text-xs text-text-muted list-disc pl-4 space-y-0.5">
-              <li>High performance global routing and IP masking via Cloudflare Workers</li>
+              <li>Fast global routing that hides your real IP, using Cloudflare Workers</li>
               <li>Free tier: 100,000 requests per day</li>
-              <li>Requires Cloudflare Account ID and a Workers API Token (Edit Workers permission)</li>
+              <li>Requires your Cloudflare Account ID and an API token with the &quot;Edit Workers&quot; permission</li>
             </ul>
             <div className="mt-2 pt-2 border-t border-info/10 text-xs text-text-muted">
               <p className="font-medium text-text-main mb-1">How to generate your API Token:</p>
@@ -927,7 +897,7 @@ export default function ProxyPoolsPage() {
           <div className="rounded-brand bg-bg-alt border border-border p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Deno Relay?</p>
             <p className="text-xs text-text-muted">
-              Deploys a relay worker to Deno Deploy&apos;s global edge network. All AI provider requests are forwarded through Deno&apos;s edge, masking your real IP.
+              Deploys a relay worker to Deno Deploy&apos;s global network. Your AI provider requests are forwarded through it, so providers see Deno&apos;s IP instead of your real one.
             </p>
             <ul className="text-xs text-text-muted list-disc pl-4 space-y-0.5">
               <li>Deno Deploy v2 runs on a high-performance global edge network</li>
@@ -1011,7 +981,7 @@ export default function ProxyPoolsPage() {
           <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-medium text-sm">Active</p>
-              <p className="text-xs text-text-muted">Inactive pools are ignored by runtime resolution.</p>
+              <p className="text-xs text-text-muted">Inactive pools won&apos;t be used when routing requests.</p>
             </div>
             <Toggle
               checked={formData.isActive === true}
@@ -1023,7 +993,7 @@ export default function ProxyPoolsPage() {
           <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-medium text-sm">Strict Proxy</p>
-              <p className="text-xs text-text-muted">Fail request if proxy is unreachable instead of falling back to direct.</p>
+              <p className="text-xs text-text-muted">If the proxy is unreachable, fail the request instead of sending it directly (which would reveal your real IP).</p>
             </div>
             <Toggle
               checked={formData.strictProxy === true}

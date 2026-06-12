@@ -1,5 +1,16 @@
 import { NextResponse } from "next/server";
-import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
+import {
+  getComboById,
+  updateCombo,
+  deleteCombo,
+  getComboByName,
+  getSettings,
+  updateSettings,
+} from "@/lib/localDb";
+import {
+  buildComboStrategyDeletePatch,
+  buildComboStrategyRenamePatch,
+} from "@/shared/utils/dashboardHelpers";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
@@ -58,6 +69,18 @@ export async function PUT(request, { params }) {
     if (prev?.name) resetComboRotation(prev.name);
     if (combo.name && combo.name !== prev?.name) resetComboRotation(combo.name);
 
+    if (prev?.name && combo.name && combo.name !== prev.name) {
+      const settings = await getSettings();
+      const patch = buildComboStrategyRenamePatch(
+        prev.name,
+        combo.name,
+        settings.comboStrategies || {},
+      );
+      if (patch) {
+        await updateSettings({ comboStrategies: patch });
+      }
+    }
+
     return NextResponse.json(combo);
   } catch (error) {
     console.log("Error updating combo:", error);
@@ -79,7 +102,14 @@ export async function DELETE(request, { params }) {
     }
 
     if (prev?.name) resetComboRotation(prev.name);
-    
+
+    if (prev?.name) {
+      const patch = buildComboStrategyDeletePatch(prev.name);
+      if (patch) {
+        await updateSettings({ comboStrategies: patch });
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.log("Error deleting combo:", error);

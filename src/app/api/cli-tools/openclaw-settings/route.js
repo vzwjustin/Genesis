@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
@@ -7,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getCliHomeDir } from "@/shared/utils/cliHome";
 
 const execAsync = promisify(exec);
 
@@ -19,7 +19,7 @@ const resolveAgentModel = (m) => {
   return "";
 };
 
-const getOpenClawDir = () => path.join(os.homedir(), ".openclaw");
+const getOpenClawDir = () => path.join(getCliHomeDir(), ".openclaw");
 const getOpenClawSettingsPath = () => path.join(getOpenClawDir(), "openclaw.json");
 
 // Check if openclaw CLI is installed (via which/where or config file exists)

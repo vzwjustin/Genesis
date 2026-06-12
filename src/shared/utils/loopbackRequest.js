@@ -84,12 +84,76 @@ export function isLoopbackRequest(request) {
  * Unlike isLoopbackRequest, never grants access from loopback Host alone when
  * socket IP is unavailable — Host is trivially spoofable by remote clients.
  */
-/** Private LAN Host plus matching RFC1918 socket (Host alone is spoofable). */
-export function isPrivateLanAccessRequest(request) {
-  const host = normalizeHostHeaderHostname(request.headers.get("host"));
-  if (!isPrivateLanHostname(host)) return false;
+/** Browser dashboard fetch from the same page (sec-fetch-site / matching Origin). */
+export function isSameOriginDashboardFetch(request) {
+  const secFetchSite = request.headers.get("sec-fetch-site");
+  if (secFetchSite === "same-origin" || secFetchSite === "none") return true;
+
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      const originHost = normalizeHostHeaderHostname(new URL(origin).hostname);
+      const requestHost = normalizeHostHeaderHostname(request.headers.get("host"));
+      return originHost === requestHost;
+    } catch {
+      return false;
+    }
+  }
+
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      const refererHost = normalizeHostHeaderHostname(new URL(referer).hostname);
+      const requestHost = normalizeHostHeaderHostname(request.headers.get("host"));
+      return refererHost === requestHost;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Logged-in dashboard on loopback or LAN socket with same-origin fetch.
+ * Covers hairpin access (browser on the 9Router host via its LAN IP → 127.0.0.1 socket).
+ */
+export function isLocalDashboardSession(request) {
+  const forwardedIp = getForwardedClientIp(request);
+  if (forwardedIp && !isPrivateLanIp(forwardedIp) && !isLoopbackIp(forwardedIp)) {
+    return false;
+  }
+
   const socketIp = getSocketRemoteIp(request);
-  return socketIp ? isPrivateLanIp(socketIp) : false;
+  if (!socketIp) return false;
+  if (!isLoopbackIp(socketIp) && !isPrivateLanIp(socketIp)) return false;
+
+  return isSameOriginDashboardFetch(request);
+}
+
+/** Private LAN socket (RFC1918). Host may be a LAN IP or machine hostname (e.g. dietpi). */
+export function isPrivateLanAccessRequest(request) {
+  const forwardedIp = getForwardedClientIp(request);
+  if (forwardedIp && !isPrivateLanIp(forwardedIp) && !isLoopbackIp(forwardedIp)) {
+    return false;
+  }
+
+  const socketIp = getSocketRemoteIp(request);
+  if (!socketIp) return false;
+
+  const host = normalizeHostHeaderHostname(request.headers.get("host"));
+  if (!host) return false;
+
+  if (isPrivateLanIp(socketIp)) {
+    return isPrivateLanHostname(host) || isLoopbackHostname(host) || Boolean(host);
+  }
+
+  // Same-host browser via LAN IP or hostname (hairpin → loopback socket)
+  if (isLoopbackIp(socketIp) && isSameOriginDashboardFetch(request)) {
+    return true;
+  }
+
+  return false;
 }
 
 export function isVerifiableLoopbackRequest(request) {
@@ -103,6 +167,40 @@ export function isVerifiableLoopbackRequest(request) {
   }
 
   const socketIp = getSocketRemoteIp(request);
-  if (!socketIp) return false;
-  return isLoopbackIp(socketIp);
+  if (socketIp) return isLoopbackIp(socketIp);
+
+  return false;
+}
+
+/**
+ * Logged-in dashboard fetch from the local UI (browser sends loopback Origin).
+ * Used when Next middleware omits socket.remoteAddress but Host is localhost.
+ */
+export function isDashboardLoopbackSession(request) {
+  if (!isLoopbackHostname(request.headers.get("host"))) return false;
+
+  const forwardedIp = getForwardedClientIp(request);
+  if (forwardedIp && !isLoopbackIp(forwardedIp)) return false;
+
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      return isLoopbackHostname(new URL(origin).hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  const secFetchSite = request.headers.get("sec-fetch-site");
+  return secFetchSite === "same-origin" || secFetchSite === "none";
+}
+
+/**
+ * Local CLI HTTP client: loopback Host, valid CLI token header, no browser Origin.
+ */
+export function isCliLoopbackClient(request) {
+  if (!isLoopbackRequest(request)) return false;
+  if (request.headers.get("origin")) return false;
+  if (request.headers.get("sec-fetch-site")) return false;
+  return true;
 }

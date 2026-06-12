@@ -18,6 +18,12 @@ import AddApiKeyModal from "./AddApiKeyModal";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import { useNotificationStore } from "@/store/notificationStore";
+import {
+  swapConnectionPriorityUpdates,
+  pickHighestPriorityActiveConnection,
+  isAbortError,
+  isImportModelsAuthFailure,
+} from "@/shared/utils/dashboardHelpers";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -52,8 +58,6 @@ export default function ProviderDetailPage() {
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelId, setTestingModelId] = useState(null);
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
-  const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
-  const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
@@ -68,7 +72,9 @@ export default function ProviderDetailPage() {
   const [oneByOneCurrentConnectionId, setOneByOneCurrentConnectionId] = useState(null);
   const [oneByOneResults, setOneByOneResults] = useState({});
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
+  const [importingModels, setImportingModels] = useState(false);
   const stopOneByOneRef = useRef(false);
+  const stickyLimitDebounceRef = useRef(null);
   const { copied, copy } = useCopyToClipboard();
   const notify = useNotificationStore();
 
@@ -254,7 +260,13 @@ export default function ProviderDetailPage() {
       const proxyPoolsData = await proxyPoolsRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
+        const filtered = (connectionsData.connections || [])
+          .filter((c) => c.provider === providerId)
+          .sort((a, b) => {
+            const pDiff = (a.priority ?? 999) - (b.priority ?? 999);
+            if (pDiff !== 0) return pDiff;
+            return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+          });
         setConnections(filtered);
       }
       if (proxyPoolsRes.ok) {
@@ -275,7 +287,8 @@ export default function ProviderDetailPage() {
         if (!node && isCompatible) {
           for (let attempt = 0; attempt < 3; attempt += 1) {
             await new Promise((resolve) => setTimeout(resolve, 150));
-            const retryRes = await fetch("/api/provider-nodes", { cache: "no-store" });
+            if (signal?.aborted) return;
+            const retryRes = await fetch("/api/provider-nodes", { cache: "no-store", signal });
             if (!retryRes.ok) continue;
             const retryData = await retryRes.json();
             node = (retryData.nodes || []).find((entry) => entry.id === providerId) || null;
@@ -286,6 +299,7 @@ export default function ProviderDetailPage() {
         setProviderNode(node);
       }
     } catch (error) {
+      if (isAbortError(error)) return;
       actionError(notify, "Failed to fetch connections", error);
     } finally {
       setLoading(false);
@@ -312,45 +326,55 @@ export default function ProviderDetailPage() {
 
   const saveProviderStrategy = async (strategy, stickyLimit) => {
     try {
-      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
-      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
-      const current = settingsData.providerStrategies || {};
-
-      // Build override: null strategy means remove override, use global
       const override = {};
       if (strategy) override.fallbackStrategy = strategy;
       if (strategy === "round-robin" && stickyLimit !== "") {
-        override.stickyRoundRobinLimit = Number(stickyLimit) || 3;
+        const n = Number(stickyLimit);
+        if (Number.isFinite(n) && n >= 1) override.stickyRoundRobinLimit = n;
       }
 
-      const updated = { ...current };
-      if (Object.keys(override).length === 0) {
-        delete updated[providerId];
-      } else {
-        updated[providerId] = override;
-      }
+      const providerPatch = Object.keys(override).length === 0
+        ? { [providerId]: null }
+        : { [providerId]: override };
 
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerStrategies: updated }),
+        body: JSON.stringify({ providerStrategies: providerPatch }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to save provider strategy");
+        return false;
+      }
+      return true;
     } catch (error) {
       actionError(notify, "Failed to save provider strategy", error);
+      return false;
     }
   };
 
-  const handleRoundRobinToggle = (enabled) => {
+  const handleRoundRobinToggle = async (enabled) => {
+    const prevStrategy = providerStrategy;
+    const prevSticky = providerStickyLimit;
     const strategy = enabled ? "round-robin" : null;
     const sticky = enabled ? (providerStickyLimit || "1") : providerStickyLimit;
     if (enabled && !providerStickyLimit) setProviderStickyLimit("1");
     setProviderStrategy(strategy);
-    saveProviderStrategy(strategy, sticky);
+    const ok = await saveProviderStrategy(strategy, sticky);
+    if (!ok) {
+      setProviderStrategy(prevStrategy);
+      setProviderStickyLimit(prevSticky);
+    }
   };
 
   const handleStickyLimitChange = (value) => {
     setProviderStickyLimit(value);
-    saveProviderStrategy("round-robin", value);
+    if (stickyLimitDebounceRef.current) clearTimeout(stickyLimitDebounceRef.current);
+    stickyLimitDebounceRef.current = setTimeout(async () => {
+      const ok = await saveProviderStrategy("round-robin", value);
+      if (!ok) await fetchConnections();
+    }, 400);
   };
 
   const saveThinkingConfig = async (mode) => {
@@ -360,23 +384,34 @@ export default function ProviderDetailPage() {
       const current = settingsData.providerThinking || {};
       const updated = { ...current };
       if (!mode || mode === "auto") {
-        delete updated[providerId];
+        updated[providerId] = null;
       } else {
         updated[providerId] = { mode };
       }
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerThinking: updated }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || "Failed to save thinking config");
+        return false;
+      }
+      return true;
     } catch (error) {
       actionError(notify, "Failed to save thinking config", error);
+      return false;
     }
   };
 
-  const handleThinkingModeChange = (mode) => {
+  const handleThinkingModeChange = async (mode) => {
+    const prevMode = thinkingMode;
     setThinkingMode(mode);
-    saveThinkingConfig(mode);
+    const ok = await saveThinkingConfig(mode);
+    if (!ok) {
+      setThinkingMode(prevMode);
+    }
   };
 
   useEffect(() => {
@@ -409,12 +444,14 @@ export default function ProviderDetailPage() {
       });
       if (res.ok) {
         await fetchAliases();
-      } else {
-        const data = await res.json();
-        notify.error(data.error || "Failed to set alias");
+        return true;
       }
+      const data = await res.json();
+      notify.error(data.error || "Failed to set alias");
+      return false;
     } catch (error) {
       actionError(notify, "Failed to set alias", error);
+      return false;
     }
   };
 
@@ -425,9 +462,14 @@ export default function ProviderDetailPage() {
       });
       if (res.ok) {
         await fetchAliases();
+        return true;
       }
+      const data = await res.json().catch(() => ({}));
+      notify.error(data.error || "Failed to delete alias");
+      return false;
     } catch (error) {
       actionError(notify, "Failed to delete alias", error);
+      return false;
     }
   };
 
@@ -532,7 +574,7 @@ export default function ProviderDetailPage() {
         try {
           const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
           if (res.ok) {
-            setConnections(connections.filter(c => c.id !== id));
+            setConnections((prev) => prev.filter((c) => c.id !== id));
           }
         } catch (error) {
           actionError(notify, "Failed to delete connection", error);
@@ -548,7 +590,7 @@ export default function ProviderDetailPage() {
     if (!mitm) return;
 
     if (mitm.success) {
-      notify.success(mitm.message || "MITM proxy enabled for this IDE. Restart the IDE to apply.");
+      notify.success(mitm.message || "Traffic interception enabled for this IDE. Restart the IDE for it to take effect.");
       return;
     }
 
@@ -560,7 +602,7 @@ export default function ProviderDetailPage() {
     if (mitm.reason === "needs_privilege" || mitm.reason === "setup_failed") {
       notify.addNotification({
         type: "warning",
-        message: mitm.message || mitm.error || "Finish MITM setup in the dashboard.",
+        message: mitm.message || mitm.error || "Finish setting up traffic interception on the MITM Proxy page.",
         duration: 8000,
       });
     }
@@ -632,79 +674,30 @@ export default function ProviderDetailPage() {
   };
 
   const handleSwapPriority = async (index1, index2) => {
-    // Optimistic update state
+    const conn1 = connections[index1];
+    const conn2 = connections[index2];
+    const updates = swapConnectionPriorityUpdates(conn1, conn2);
+
     const newConnections = [...connections];
-    [newConnections[index1], newConnections[index2]] = [newConnections[index2], newConnections[index1]];
+    newConnections[index1] = { ...conn1, priority: updates[0].priority };
+    newConnections[index2] = { ...conn2, priority: updates[1].priority };
     setConnections(newConnections);
 
     try {
-      const [res1, res2] = await Promise.all([
-        fetch(`/api/providers/${newConnections[index1].id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index1 }),
-        }),
-        fetch(`/api/providers/${newConnections[index2].id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index2 }),
-        }),
-      ]);
-      if (!res1.ok || !res2.ok) {
-        throw new Error(`HTTP ${res1.status}/${res2.status}`);
+      const res = await fetch("/api/providers/swap-priority", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId1: conn1.id, connectionId2: conn2.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
       }
+      await fetchConnections();
     } catch (error) {
       actionError(notify, "Failed to swap priority", error);
       await fetchConnections();
     }
-  };
-
-  const selectedConnections = connections.filter((conn) => selectedConnectionIds.includes(conn.id));
-  const allSelected = connections.length > 0 && selectedConnectionIds.length === connections.length;
-
-  const toggleSelectConnection = (connectionId) => {
-    setSelectedConnectionIds((prev) => (
-      prev.includes(connectionId)
-        ? prev.filter((id) => id !== connectionId)
-        : [...prev, connectionId]
-    ));
-  };
-
-  const toggleSelectAllConnections = () => {
-    if (allSelected) {
-      setSelectedConnectionIds([]);
-      return;
-    }
-    setSelectedConnectionIds(connections.map((conn) => conn.id));
-  };
-
-  const clearSelection = () => {
-    setSelectedConnectionIds([]);
-    setBulkProxyPoolId("__none__");
-  };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedConnectionIds((prev) => prev.filter((id) => connections.some((conn) => conn.id === id)));
-  }, [connections]);
-
-  const selectedProxySummary = (() => {
-    if (selectedConnections.length === 0) return "";
-    const poolIds = new Set(selectedConnections.map((conn) => conn.providerSpecificData?.proxyPoolId || "__none__"));
-    if (poolIds.size === 1) {
-      const onlyId = [...poolIds][0];
-      if (onlyId === "__none__") return "All selected currently unbound";
-      const pool = proxyPools.find((p) => p.id === onlyId);
-      return `All selected currently bound to ${pool?.name || onlyId}`;
-    }
-    return "Selected connections have mixed proxy bindings";
-  })();
-
-  const openBulkProxyModal = () => {
-    if (selectedConnections.length === 0) return;
-    const uniquePoolIds = [...new Set(selectedConnections.map((conn) => conn.providerSpecificData?.proxyPoolId || "__none__"))];
-    setBulkProxyPoolId(uniquePoolIds.length === 1 ? uniquePoolIds[0] : "__none__");
-    setShowBulkProxyModal(true);
   };
 
   const closeBulkProxyModal = () => {
@@ -755,8 +748,6 @@ export default function ProviderDetailPage() {
     return applyProxyAssignments(targets);
   };
 
-
-  const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
 
   const connectionsList = (
     <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
@@ -859,6 +850,64 @@ export default function ProviderDetailPage() {
       </div>
     </Modal>
   );
+
+  const activeConnection = pickHighestPriorityActiveConnection(connections);
+  const canImportModels = !!activeConnection;
+
+  const handleImportModels = async () => {
+    if (importingModels) return;
+
+    const sortedActive = [...connections]
+      .filter((c) => c.isActive !== false)
+      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+
+    if (sortedActive.length === 0) return;
+
+    setImportingModels(true);
+    try {
+      let lastAuthFailure = null;
+      let lastError = null;
+
+      for (const conn of sortedActive) {
+        const res = await fetch(`/api/providers/${conn.id}/models/import`, { method: "POST" });
+        const data = await res.json();
+
+        if (!res.ok) {
+          lastError = data.error || data.warning || `HTTP ${res.status}`;
+          continue;
+        }
+        if (isImportModelsAuthFailure(data)) {
+          lastAuthFailure = data.warning || data.error || "Authentication failed";
+          continue;
+        }
+
+        await fetchAliases();
+
+        if (data.ok === false || data.status === "degraded") {
+          notify.warning(data.warning || "Model import completed with upstream degradation.");
+          return;
+        }
+        if (data.imported > 0) {
+          notify.success(`Imported ${data.imported} model${data.imported === 1 ? "" : "s"}.`);
+        } else if (data.total > 0) {
+          notify.info(`Fetched ${data.total} upstream models; all are already in the catalog.`);
+        } else {
+          notify.info(data.warning || "No new models were added.");
+        }
+        return;
+      }
+
+      if (lastAuthFailure) {
+        notify.error(lastAuthFailure);
+      } else {
+        notify.error(lastError || "Failed to import models from all connections");
+      }
+    } catch (error) {
+      actionError(notify, "Failed to import models", error);
+    } finally {
+      setImportingModels(false);
+    }
+  };
 
   const handleTestModel = async (modelId) => {
     if (testingModelId) return;
@@ -1011,7 +1060,7 @@ export default function ProviderDetailPage() {
         {/* Disabled models — restorable */}
         {disabledDisplayModels.length > 0 && (
           <div className="w-full mt-2">
-            <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
+            <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}) — click one to turn it back on:</p>
             <div className="flex flex-wrap gap-2">
               {disabledDisplayModels.map((m) => (
                 <button
@@ -1258,14 +1307,24 @@ export default function ProviderDetailPage() {
               )} */}
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-text-muted font-medium">Round Robin</span>
+                <span
+                  className="text-xs text-text-muted font-medium"
+                  title="Rotate requests across this provider's connections instead of always using the first one. Helps spread load and stay within rate limits."
+                >
+                  Round Robin
+                </span>
                 <Toggle
                   checked={providerStrategy === "round-robin"}
                   onChange={handleRoundRobinToggle}
                 />
                 {providerStrategy === "round-robin" && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-text-muted">Sticky:</span>
+                    <span
+                      className="text-xs text-text-muted"
+                      title="How many requests in a row to keep using the same connection before rotating to the next one."
+                    >
+                      Sticky:
+                    </span>
                     <input
                       type="number"
                       min={1}
@@ -1400,27 +1459,40 @@ export default function ProviderDetailPage() {
           <h2 className="text-lg font-semibold">
             {"Available Models"}
           </h2>
-          {!isCompatible && (() => {
-            const allIds = [
-              ...models,
-              ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-            ].filter((m) => !m.type || m.type === "llm").map((m) => m.id);
-            const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
-            return (
-              <div className="flex gap-2">
-                {disabledModelIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
-                    Active All
-                  </Button>
-                )}
-                {activeIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
-                    Disable All
-                  </Button>
-                )}
-              </div>
-            );
-          })()}
+          <div className="flex flex-wrap gap-2">
+            {canImportModels && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="download"
+                onClick={handleImportModels}
+                disabled={importingModels}
+              >
+                {importingModels ? "Importing..." : "Import Models"}
+              </Button>
+            )}
+            {!isCompatible && (() => {
+              const allIds = [
+                ...models,
+                ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
+              ].filter((m) => !m.type || m.type === "llm").map((m) => m.id);
+              const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
+              return (
+                <>
+                  {disabledModelIds.length > 0 && (
+                    <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
+                      Active All
+                    </Button>
+                  )}
+                  {activeIds.length > 0 && (
+                    <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
+                      Disable All
+                    </Button>
+                  )}
+                </>
+              );
+            })()}
+          </div>
         </div>
         {!!modelsTestError && (
           <p className="text-xs text-danger mb-3 break-words">{modelsTestError}</p>

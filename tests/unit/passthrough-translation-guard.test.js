@@ -122,8 +122,9 @@ const mockInjectCaveman = vi.fn();
 vi.mock("open-sse/rtk/caveman.js", () => ({
   injectCaveman: (...args) => mockInjectCaveman(...args),
 }));
+const mockCompressWithHeadroom = vi.fn(() => Promise.resolve(null));
 vi.mock("open-sse/rtk/headroom.js", () => ({
-  compressWithHeadroom: vi.fn(() => Promise.resolve(null)),
+  compressWithHeadroom: (...args) => mockCompressWithHeadroom(...args),
 }));
 vi.mock("@/lib/compressionStats.js", () => ({
   recordCompressionStats: vi.fn(() => Promise.resolve()),
@@ -209,19 +210,47 @@ describe("Task 1.5: Translation does NOT run when passthrough mode is active", (
   });
 
   describe("Compression guard in passthrough mode", () => {
-    it("RTK compressMessages is NOT called when passthrough and passthroughCompression is false", async () => {
-      await handleChatCore(makeOptions({ passthroughCompression: false }));
+    it("RTK compressMessages IS called in passthrough when rtkEnabled and passthroughCompression", async () => {
+      await handleChatCore(makeOptions({ rtkEnabled: true, passthroughCompression: true }));
+      expect(mockCompressMessages).toHaveBeenCalled();
+    });
+
+    it("RTK is skipped in passthrough when passthroughCompression is false", async () => {
+      await handleChatCore(makeOptions({ rtkEnabled: true, passthroughCompression: false }));
       expect(mockCompressMessages).not.toHaveBeenCalled();
     });
 
-    it("Caveman injectCaveman is NOT called when passthrough and passthroughCompression is false", async () => {
-      await handleChatCore(makeOptions({ passthroughCompression: false }));
+    it("Caveman injectCaveman IS called in passthrough when cavemanEnabled and passthroughCompression", async () => {
+      await handleChatCore(makeOptions({ cavemanEnabled: true, cavemanLevel: "lite", passthroughCompression: true }));
+      expect(mockInjectCaveman).toHaveBeenCalled();
+    });
+
+    it("Caveman is skipped in passthrough when body has cache_control", async () => {
+      const opts = makeOptions({ cavemanEnabled: true, cavemanLevel: "lite" });
+      opts.body.system = [{ type: "text", text: "sys", cache_control: { type: "ephemeral" } }];
+      await handleChatCore(opts);
       expect(mockInjectCaveman).not.toHaveBeenCalled();
     });
 
-    it("RTK compressMessages IS called when passthrough and passthroughCompression is explicitly enabled", async () => {
-      await handleChatCore(makeOptions({ passthroughCompression: true }));
-      expect(mockCompressMessages).toHaveBeenCalled();
+    it("skips all savers when cache_control present even if passthroughCompression is true", async () => {
+      const opts = makeOptions({
+        rtkEnabled: true,
+        headroomEnabled: true,
+        cavemanEnabled: true,
+        cavemanLevel: "lite",
+        passthroughCompression: true,
+      });
+      opts.body.system = [{ type: "text", text: "sys", cache_control: { type: "ephemeral" } }];
+      await handleChatCore(opts);
+      expect(mockCompressMessages).not.toHaveBeenCalled();
+      expect(mockCompressWithHeadroom).not.toHaveBeenCalled();
+      expect(mockInjectCaveman).not.toHaveBeenCalled();
+    });
+
+    it("skips RTK and Caveman when all savers disabled", async () => {
+      await handleChatCore(makeOptions({ rtkEnabled: false, cavemanEnabled: false, headroomEnabled: false }));
+      expect(mockCompressMessages).not.toHaveBeenCalled();
+      expect(mockInjectCaveman).not.toHaveBeenCalled();
     });
   });
 

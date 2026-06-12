@@ -1,5 +1,9 @@
 // Transform OpenAI SSE stream to Ollama JSON lines format
 export function transformToOllama(response, model) {
+  if (!response.ok) {
+    return response;
+  }
+
   let buffer = "";
   let pendingToolCalls = {};
   
@@ -79,6 +83,7 @@ export function transformToOllama(response, model) {
     return new Response("", { status: response.status, headers: { "Content-Type": "application/x-ndjson" } });
   }
   return new Response(response.body.pipeThrough(transform), {
+    status: response.status,
     headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*" }
   });
 }

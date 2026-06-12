@@ -42,7 +42,7 @@ describe("passthrough stream byte-forward", () => {
       sse
     );
     expect(out).toContain("prompt_tokens");
-    expect(out).toContain("data: [DONE]\n\n");
+    expect(out).not.toContain("data: [DONE]\n\n");
   });
 
   it("does not inject object/created fields into passthrough chunks", async () => {

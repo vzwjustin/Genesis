@@ -139,6 +139,8 @@ let codexProxyTimeout = null;
 
 const CODEX_PROXY_TIMEOUT_MS = 300000; // 5 minutes
 const CODEX_PORT = 1455;
+/** Grace period before purging poll-status sessions after terminal state. */
+export const OAUTH_POLL_STATUS_GRACE_MS = 60_000;
 
 // Pending exchange sessions keyed by state — used by server-side exchange mode
 const pendingExchanges = new Map();
@@ -187,7 +189,18 @@ export function getCodexSessionStatus(state) {
 }
 
 /**
- * Clear a session (called after modal consumes status).
+ * Mark a terminal session consumed; purge after grace so duplicate polls still work.
+ */
+export function consumeCodexSession(state) {
+  const session = pendingExchanges.get(state);
+  if (!session || session.consumed) return;
+  session.consumed = true;
+  session.consumedAt = Date.now();
+  setTimeout(() => clearCodexSession(state), OAUTH_POLL_STATUS_GRACE_MS);
+}
+
+/**
+ * Clear a session immediately.
  */
 export function clearCodexSession(state) {
   pendingExchanges.delete(state);
@@ -344,6 +357,14 @@ export function registerXaiSession({ state, codeVerifier, redirectUri }) {
 
 export function getXaiSessionStatus(state) {
   return readSessionWithTtl(xaiPendingExchanges, state);
+}
+
+export function consumeXaiSession(state) {
+  const session = xaiPendingExchanges.get(state);
+  if (!session || session.consumed) return;
+  session.consumed = true;
+  session.consumedAt = Date.now();
+  setTimeout(() => clearXaiSession(state), OAUTH_POLL_STATUS_GRACE_MS);
 }
 
 export function clearXaiSession(state) {

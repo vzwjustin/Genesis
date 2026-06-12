@@ -1,4 +1,3 @@
-"use server";
 
 import { NextResponse } from "next/server";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
@@ -7,10 +6,11 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getCliHomeDir } from "@/shared/utils/cliHome";
 
 const execAsync = promisify(exec);
 
-const getDroidDir = () => path.join(os.homedir(), ".factory");
+const getDroidDir = () => path.join(getCliHomeDir(), ".factory");
 const getDroidSettingsPath = () => path.join(getDroidDir(), "settings.json");
 
 // Check if droid CLI is installed (via which/where or config file exists)

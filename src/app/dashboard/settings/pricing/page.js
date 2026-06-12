@@ -5,23 +5,37 @@ import { useRouter } from "next/navigation";
 import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
 import PricingModal from "@/shared/components/PricingModal";
+import { useNotificationStore } from "@/store/notificationStore";
 
 export default function PricingSettingsPage() {
   const router = useRouter();
+  const notify = useNotificationStore();
   const [showModal, setShowModal] = useState(false);
   const [currentPricing, setCurrentPricing] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   const loadPricing = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await fetch("/api/pricing");
       if (response.ok) {
         const data = await response.json();
         setCurrentPricing(data);
+      } else {
+        const error = await response.json().catch(() => ({}));
+        const message = error.error || "Failed to load pricing";
+        setLoadError(message);
+        setCurrentPricing(null);
+        notify.error(message);
       }
     } catch (error) {
       console.error("Failed to load pricing:", error);
+      const message = error?.message || "Failed to load pricing";
+      setLoadError(message);
+      setCurrentPricing(null);
+      notify.error(message);
     } finally {
       setLoading(false);
     }
@@ -49,8 +63,16 @@ export default function PricingSettingsPage() {
   // Get providers list
   const getProviders = () => {
     if (!currentPricing) return [];
-    return Object.keys(currentPricing).sort();
+    return Object.keys(currentPricing).sort((a, b) => {
+      if (a === "models") return -1;
+      if (b === "models") return 1;
+      return a.localeCompare(b);
+    });
   };
+
+  const formatProviderLabel = (provider) => (
+    provider === "models" ? "Canonical models" : provider.toUpperCase()
+  );
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -89,8 +111,8 @@ export default function PricingSettingsPage() {
           <div className="text-text-muted text-sm uppercase font-semibold">
             Status
           </div>
-          <div className="text-2xl font-bold mt-1 text-success">
-            {loading ? <span className="inline-block h-7 w-16 animate-pulse rounded bg-surface-2" /> : "Active"}
+          <div className={`text-2xl font-bold mt-1 ${loadError ? "text-danger" : "text-success"}`}>
+            {loading ? <span className="inline-block h-7 w-16 animate-pulse rounded bg-surface-2" /> : loadError ? "Error" : "Active"}
           </div>
         </Card>
       </div>
@@ -100,8 +122,11 @@ export default function PricingSettingsPage() {
         <h2 className="text-xl font-semibold mb-4">How Pricing Works</h2>
         <div className="space-y-3 text-sm text-text-muted">
           <p>
-            <strong>Cost Calculation:</strong> Costs are calculated based on token usage and pricing rates.
-            Each request&apos;s cost is determined by: (input_tokens × input_rate) + (output_tokens × output_rate) + (cached_tokens × cached_rate)
+            A <strong>token</strong> is a small chunk of text (roughly ¾ of a word). Models bill by the number of tokens they read and write.
+          </p>
+          <p>
+            <strong>Cost Calculation:</strong> Each request&apos;s cost adds up the tokens it used at each rate:
+            (input tokens × input rate) + (output tokens × output rate) + (cached tokens × cached rate)
           </p>
           <p>
             <strong>Pricing Format:</strong> All rates are in <strong>dollars per million tokens</strong> ($/1M tokens).
@@ -111,11 +136,11 @@ export default function PricingSettingsPage() {
             <strong>Token Types:</strong>
           </p>
           <ul className="list-disc list-inside ml-4 space-y-1">
-            <li><strong>Input:</strong> Standard prompt tokens</li>
-            <li><strong>Output:</strong> Completion/response tokens</li>
-            <li><strong>Cached:</strong> Cached input tokens (typically 50% of input rate)</li>
-            <li><strong>Reasoning:</strong> Special reasoning/thinking tokens (fallback to output rate)</li>
-            <li><strong>Cache Creation:</strong> Tokens used to create cache entries (fallback to input rate)</li>
+            <li><strong>Input:</strong> Tokens in the prompt you send</li>
+            <li><strong>Output:</strong> Tokens in the model&apos;s reply</li>
+            <li><strong>Cached:</strong> Input tokens reused from an earlier request (usually cheaper than fresh input)</li>
+            <li><strong>Reasoning:</strong> Internal &quot;thinking&quot; tokens some models use (billed at the output rate if no separate rate is set)</li>
+            <li><strong>Cache Creation:</strong> Tokens spent saving content so it can be reused later (billed at the input rate if no separate rate is set)</li>
           </ul>
           <p>
             <strong>Custom Pricing:</strong> You can override default pricing for specific models.
@@ -139,11 +164,13 @@ export default function PricingSettingsPage() {
               <div key={i} className="h-5 animate-pulse rounded bg-surface-2" style={{ width: `${70 - i * 10}%` }} />
             ))}
           </div>
+        ) : loadError ? (
+          <div className="text-center py-4 text-danger">{loadError}</div>
         ) : currentPricing ? (
           <div className="space-y-3">
             {Object.keys(currentPricing).slice(0, 5).map(provider => (
               <div key={provider} className="text-sm">
-                <span className="font-semibold">{provider.toUpperCase()}:</span>{" "}
+                <span className="font-semibold">{formatProviderLabel(provider)}:</span>{" "}
                 <span className="text-text-muted">
                   {Object.keys(currentPricing[provider]).length} models
                 </span>
