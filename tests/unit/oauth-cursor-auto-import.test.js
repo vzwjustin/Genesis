@@ -1,7 +1,26 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 import * as fsPromises from "fs/promises";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+
+// Importing the route transitively loads src/lib/dataDir.js, which runs
+// fs.mkdirSync(DATA_DIR) at module load. os.homedir() is mocked to /mock/home
+// below, so without an explicit DATA_DIR that init would try to create
+// /mock/home/.9router (real fs) and throw, breaking the route import. Point
+// DATA_DIR at a real, writable temp dir before any dynamic import runs.
+const tmpBase = process.env.TMPDIR || process.env.TEMP || process.env.TMP || "/tmp";
+const originalDataDir = process.env.DATA_DIR;
+const tempDataDir = mkdtempSync(join(tmpBase, "9router-cursor-import-"));
+process.env.DATA_DIR = tempDataDir;
 
 const mockExecFile = vi.fn();
+
+// Route is gated by requireSpawnRouteAuth(request). These tests call GET() with
+// no request object, so the real auth helper would crash reading request.headers.
+// Mock it to a pass-through — auth itself is covered by its own unit tests.
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
 
 vi.mock("child_process", () => ({
   execFile: (...args) => mockExecFile(...args),
@@ -86,6 +105,12 @@ describe("GET /api/oauth/cursor/auto-import", () => {
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+  });
+
+  afterAll(() => {
+    if (originalDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = originalDataDir;
+    try { rmSync(tempDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
   it("returns not-found when no macOS cursor db paths are accessible", async () => {

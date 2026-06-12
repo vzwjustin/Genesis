@@ -3,6 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from "vitest";
 
+// Isolate route logic from the auth gate: combos [id] PUT/DELETE call
+// requireSpawnRouteAuth, which reads NextRequest `.cookies` (absent on the
+// plain Request used here). Stub it so the comboStrategies lifecycle is tested.
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 

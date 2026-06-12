@@ -25,6 +25,12 @@ vi.mock("open-sse/utils/requestLogger.js", () => ({
   listRequestLogSessions: mocks.listRequestLogSessions,
 }));
 
+// Stub the auth gate (requireSpawnRouteAuth reads NextRequest `.cookies`,
+// absent on the plain Request used in these tests).
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 describe("extended compression APIs", () => {
   it("GET /api/compression/provider-cache returns aggregated data", async () => {
     mocks.getProviderCacheStats.mockResolvedValue({ requests: 1, hitRate: 100 });

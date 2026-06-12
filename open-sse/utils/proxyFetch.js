@@ -621,7 +621,10 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
         const dispatcher = await getDispatcher(proxyUrl);
         return await originalFetch(url, { ...options, dispatcher });
       } catch (proxyError) {
-        if (proxyOptions?.strictProxy === true || connectionProxyUrl) {
+        // Use the same default-strict rule as the regular host path: throw unless
+        // strictProxy is explicitly opt-out (false). This keeps proxy routing
+        // unambiguous across all host types (AGENTS.md § outbound proxy routing).
+        if (proxyOptions?.strictProxy !== false) {
           throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
         }
         console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);
