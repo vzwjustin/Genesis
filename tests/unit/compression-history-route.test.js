@@ -25,6 +25,12 @@ vi.mock("@/lib/compressionStats", () => ({
   resetCompressionStats: mocks.resetCompressionStats,
 }));
 
+// Stub the auth gate (the reset route's POST calls requireSpawnRouteAuth,
+// which reads NextRequest `.cookies` absent on the plain Request used here).
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 describe("compression history API", () => {
   it("GET returns normalized history rows", async () => {
     const { GET } = await import("../../src/app/api/compression/history/route.js");

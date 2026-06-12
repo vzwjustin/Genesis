@@ -8,6 +8,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/models", () => mocks);
 
+// Isolate the route logic under test: stub the auth gate so a plain Request
+// (no NextRequest `.cookies`) reaches the alias-conflict handler.
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 describe("PUT /api/models/alias conflict handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();

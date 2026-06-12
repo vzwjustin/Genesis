@@ -21,6 +21,12 @@ vi.mock("open-sse/executors/index.js", () => ({
   getExecutor: vi.fn(),
 }));
 
+// Stub the auth gate (requireSpawnRouteAuth reads `.cookies`, absent on the
+// minimal request stub here) so the cache-integrity guard logic is reached.
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 const { POST } = await import("../../src/app/api/translator/translate/route.js");
 
 describe("translator debug route — cache guards", () => {
