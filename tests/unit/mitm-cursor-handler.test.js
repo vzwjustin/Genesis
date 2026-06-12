@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   decodeCursorRequest,
   encodeTextResponseFrame,
+  encodeEndStreamFrame,
   generateCursorBody,
   generateToolResultBody,
   wrapConnectRPCFrame,
@@ -84,6 +85,17 @@ describe("encodeTextResponseFrame", () => {
     const frame = encodeTextResponseFrame("hi");
     expect(frame.length).toBeGreaterThan(5);
     expect(frame[0]).toBe(0);
+  });
+});
+
+describe("encodeEndStreamFrame", () => {
+  // Cursor terminates every stream with a flag-0x02 EndStreamResponse frame carrying
+  // JSON `{}`. A re-encoded MITM stream that omits it makes connect-es raise
+  // "Unparsable stream error chunk" and leak raw frames to the user. The encoder must
+  // be byte-identical to the real upstream trailer: 02 00 00 00 02 7b 7d.
+  it("emits the byte-exact EndStreamResponse trailer", () => {
+    const frame = encodeEndStreamFrame();
+    expect([...frame]).toEqual([0x02, 0x00, 0x00, 0x00, 0x02, 0x7b, 0x7d]);
   });
 });
 

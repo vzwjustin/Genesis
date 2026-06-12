@@ -15,7 +15,7 @@ function cursorRequiresPassthrough(decoded) {
 }
 
 async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
-  const { encodeTextResponseFrame, encodeToolCallResponseFrame } = protobuf;
+  const { encodeTextResponseFrame, encodeToolCallResponseFrame, encodeEndStreamFrame } = protobuf;
   const reader = routerRes.body?.getReader?.();
   if (!reader) {
     const text = await routerRes.text().catch(() => "");
@@ -91,6 +91,12 @@ async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
 
   // Safety net: stream closed without a terminal finish_reason.
   flushToolCalls();
+  // Connect-RPC requires a terminal EndStreamResponse (flag 0x02) frame. Without it
+  // the connect-es client in Cursor IDE treats the stream as incomplete and raises
+  // "Unparsable stream error chunk", leaking the raw frames to the user.
+  if (typeof encodeEndStreamFrame === "function") {
+    res.write(Buffer.from(encodeEndStreamFrame()));
+  }
   res.end();
 }
 

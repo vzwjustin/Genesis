@@ -1005,6 +1005,25 @@ export function encodeToolCallResponseFrame({ id, name, args = "{}", isLast = fa
   return wrapConnectRPCFrame(outer, false);
 }
 
+/**
+ * Encode the Connect-RPC EndStreamResponse trailer frame.
+ * Cursor's streaming protocol terminates every response with a flag-0x02 frame
+ * carrying a JSON payload (`{}` on success). connect-es clients treat the stream
+ * as incomplete — "Unparsable stream error chunk" — if it closes without this
+ * trailer, so re-encoded streams (MITM SSE→ConnectRPC) must emit it before end.
+ */
+export function encodeEndStreamFrame() {
+  const payload = new TextEncoder().encode("{}");
+  const frame = new Uint8Array(5 + payload.length);
+  frame[0] = 0x02; // EndStreamResponse flag
+  frame[1] = (payload.length >> 24) & 0xFF;
+  frame[2] = (payload.length >> 16) & 0xFF;
+  frame[3] = (payload.length >> 8) & 0xFF;
+  frame[4] = payload.length & 0xFF;
+  frame.set(payload, 5);
+  return frame;
+}
+
 // ==================== EXPORTS ====================
 
 export default {
@@ -1022,4 +1041,5 @@ export default {
   decodeCursorRequest,
   encodeTextResponseFrame,
   encodeToolCallResponseFrame,
+  encodeEndStreamFrame,
 };
