@@ -68,6 +68,7 @@ export default function ProviderDetailPage() {
   const [oneByOneCurrentConnectionId, setOneByOneCurrentConnectionId] = useState(null);
   const [oneByOneResults, setOneByOneResults] = useState({});
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
+  const [importingModels, setImportingModels] = useState(false);
   const stopOneByOneRef = useRef(false);
   const { copied, copy } = useCopyToClipboard();
   const notify = useNotificationStore();
@@ -860,6 +861,35 @@ export default function ProviderDetailPage() {
     </Modal>
   );
 
+  const activeConnection = connections.find((conn) => conn.isActive !== false);
+  const canImportModels = !!activeConnection;
+
+  const handleImportModels = async () => {
+    if (importingModels || !activeConnection) return;
+
+    setImportingModels(true);
+    try {
+      const res = await fetch(`/api/providers/${activeConnection.id}/models/import`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        notify.error(data.error || data.warning || "Failed to import models");
+        return;
+      }
+      await fetchAliases();
+      if (data.imported > 0) {
+        notify.success(`Imported ${data.imported} model${data.imported === 1 ? "" : "s"}.`);
+      } else if (data.total > 0) {
+        notify.info(`Fetched ${data.total} upstream models; all are already in the catalog.`);
+      } else {
+        notify.info(data.warning || "No new models were added.");
+      }
+    } catch (error) {
+      actionError(notify, "Failed to import models", error);
+    } finally {
+      setImportingModels(false);
+    }
+  };
+
   const handleTestModel = async (modelId) => {
     if (testingModelId) return;
     setTestingModelId(modelId);
@@ -1400,27 +1430,40 @@ export default function ProviderDetailPage() {
           <h2 className="text-lg font-semibold">
             {"Available Models"}
           </h2>
-          {!isCompatible && (() => {
-            const allIds = [
-              ...models,
-              ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-            ].filter((m) => !m.type || m.type === "llm").map((m) => m.id);
-            const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
-            return (
-              <div className="flex gap-2">
-                {disabledModelIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
-                    Active All
-                  </Button>
-                )}
-                {activeIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
-                    Disable All
-                  </Button>
-                )}
-              </div>
-            );
-          })()}
+          <div className="flex flex-wrap gap-2">
+            {canImportModels && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="download"
+                onClick={handleImportModels}
+                disabled={importingModels}
+              >
+                {importingModels ? "Importing..." : "Import Models"}
+              </Button>
+            )}
+            {!isCompatible && (() => {
+              const allIds = [
+                ...models,
+                ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
+              ].filter((m) => !m.type || m.type === "llm").map((m) => m.id);
+              const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
+              return (
+                <>
+                  {disabledModelIds.length > 0 && (
+                    <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
+                      Active All
+                    </Button>
+                  )}
+                  {activeIds.length > 0 && (
+                    <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
+                      Disable All
+                    </Button>
+                  )}
+                </>
+              );
+            })()}
+          </div>
         </div>
         {!!modelsTestError && (
           <p className="text-xs text-danger mb-3 break-words">{modelsTestError}</p>

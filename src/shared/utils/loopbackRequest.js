@@ -103,6 +103,40 @@ export function isVerifiableLoopbackRequest(request) {
   }
 
   const socketIp = getSocketRemoteIp(request);
-  if (!socketIp) return false;
-  return isLoopbackIp(socketIp);
+  if (socketIp) return isLoopbackIp(socketIp);
+
+  return false;
+}
+
+/**
+ * Logged-in dashboard fetch from the local UI (browser sends loopback Origin).
+ * Used when Next middleware omits socket.remoteAddress but Host is localhost.
+ */
+export function isDashboardLoopbackSession(request) {
+  if (!isLoopbackHostname(request.headers.get("host"))) return false;
+
+  const forwardedIp = getForwardedClientIp(request);
+  if (forwardedIp && !isLoopbackIp(forwardedIp)) return false;
+
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      return isLoopbackHostname(new URL(origin).hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  const secFetchSite = request.headers.get("sec-fetch-site");
+  return secFetchSite === "same-origin" || secFetchSite === "none";
+}
+
+/**
+ * Local CLI HTTP client: loopback Host, valid CLI token header, no browser Origin.
+ */
+export function isCliLoopbackClient(request) {
+  if (!isLoopbackRequest(request)) return false;
+  if (request.headers.get("origin")) return false;
+  if (request.headers.get("sec-fetch-site")) return false;
+  return true;
 }

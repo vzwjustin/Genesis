@@ -48,8 +48,16 @@ export default function PricingSettingsPage() {
   // Get providers list
   const getProviders = () => {
     if (!currentPricing) return [];
-    return Object.keys(currentPricing).sort();
+    return Object.keys(currentPricing).sort((a, b) => {
+      if (a === "models") return -1;
+      if (b === "models") return 1;
+      return a.localeCompare(b);
+    });
   };
+
+  const formatProviderLabel = (provider) => (
+    provider === "models" ? "Canonical models" : provider.toUpperCase()
+  );
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -144,7 +152,7 @@ export default function PricingSettingsPage() {
           <div className="space-y-3">
             {Object.keys(currentPricing).slice(0, 5).map(provider => (
               <div key={provider} className="text-sm">
-                <span className="font-semibold">{provider.toUpperCase()}:</span>{" "}
+                <span className="font-semibold">{formatProviderLabel(provider)}:</span>{" "}
                 <span className="text-text-muted">
                   {Object.keys(currentPricing[provider]).length} models
                 </span>

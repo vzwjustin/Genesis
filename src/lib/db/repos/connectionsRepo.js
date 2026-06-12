@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { autoImportProviderModels } from "@/lib/models/autoImportProviderModels.js";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
@@ -149,6 +150,14 @@ export async function createProviderConnection(data) {
     reorderInTx(db, data.provider);
     result = conn;
   });
+
+  if (result) {
+    try {
+      await autoImportProviderModels(result);
+    } catch (error) {
+      console.error("[createProviderConnection] autoImportProviderModels:", error?.message || error);
+    }
+  }
 
   return result;
 }

@@ -20,27 +20,15 @@ export async function getPricing() {
   if (cache.value && cache.expiresAt > now) return cache.value;
 
   const userPricing = await getUserPricing();
-  const { PROVIDER_PRICING } = await import("@/shared/constants/pricing.js");
-  const merged = {};
-
-  for (const [provider, models] of Object.entries(PROVIDER_PRICING)) {
-    merged[provider] = { ...models };
-    if (userPricing[provider]) {
-      for (const [model, pricing] of Object.entries(userPricing[provider])) {
-        merged[provider][model] = merged[provider][model]
-          ? { ...merged[provider][model], ...pricing }
-          : pricing;
-      }
-    }
-  }
+  const { buildDefaultPricingCatalog } = await import("@/shared/constants/pricing.js");
+  const merged = buildDefaultPricingCatalog();
 
   for (const [provider, models] of Object.entries(userPricing)) {
-    if (!merged[provider]) {
-      merged[provider] = { ...models };
-    } else {
-      for (const [model, pricing] of Object.entries(models)) {
-        if (!merged[provider][model]) merged[provider][model] = pricing;
-      }
+    if (!merged[provider]) merged[provider] = {};
+    for (const [model, pricing] of Object.entries(models)) {
+      merged[provider][model] = merged[provider][model]
+        ? { ...merged[provider][model], ...pricing }
+        : { ...pricing };
     }
   }
 
@@ -51,7 +39,21 @@ export async function getPricing() {
 export async function getPricingForModel(provider, model) {
   if (!model) return null;
   const userPricing = await getUserPricing();
-  if (provider && userPricing[provider]?.[model]) return userPricing[provider][model];
+  const baseModel = model.includes("/") ? model.split("/").pop() : model;
+  const { getProviderAlias, resolveProviderId } = await import("@/shared/constants/providers.js");
+
+  const providerKeys = provider
+    ? [...new Set([provider, getProviderAlias(provider), resolveProviderId(provider)])]
+    : [];
+
+  for (const key of providerKeys) {
+    if (userPricing[key]?.[model]) return userPricing[key][model];
+    if (userPricing[key]?.[baseModel]) return userPricing[key][baseModel];
+  }
+
+  if (userPricing.models?.[baseModel]) return userPricing.models[baseModel];
+  if (userPricing.models?.[model]) return userPricing.models[model];
+
   const { getPricingForModel: resolveConst } = await import("@/shared/constants/pricing.js");
   return resolveConst(provider, model);
 }

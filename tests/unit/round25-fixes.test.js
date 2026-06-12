@@ -9,7 +9,12 @@ import {
   cleanAnthropicToolDefinitions,
   stripProviderModelPrefix,
 } from "../../open-sse/translator/helpers/claudeHelper.js";
-import { isLoopbackRequest, isVerifiableLoopbackRequest } from "../../src/shared/utils/loopbackRequest.js";
+import {
+  isLoopbackRequest,
+  isVerifiableLoopbackRequest,
+  isDashboardLoopbackSession,
+  isCliLoopbackClient,
+} from "../../src/shared/utils/loopbackRequest.js";
 import {
   isBlockedHostname,
   assertSafeResolvedHostname,
@@ -186,6 +191,33 @@ describe("Round 25 — verifiable loopback for management API", () => {
   it("still allows CLI-style loopback for public LLM auth when socket is unavailable", () => {
     expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(true);
     expect(isVerifiableLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(false);
+  });
+});
+
+describe("dashboard loopback session detection", () => {
+  it("allows dashboard fetch with loopback Origin and no socket", () => {
+    expect(isDashboardLoopbackSession(makeRequest({
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }))).toBe(true);
+  });
+
+  it("rejects dashboard fetch with remote Origin", () => {
+    expect(isDashboardLoopbackSession(makeRequest({
+      host: "localhost:20128",
+      origin: "http://evil.example.com",
+    }))).toBe(false);
+  });
+
+  it("treats CLI HTTP client as loopback when Origin is absent", () => {
+    expect(isCliLoopbackClient(makeRequest({
+      host: "localhost:20128",
+      "x-9r-cli-token": "abc",
+    }))).toBe(true);
+    expect(isCliLoopbackClient(makeRequest({
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }))).toBe(false);
   });
 });
 

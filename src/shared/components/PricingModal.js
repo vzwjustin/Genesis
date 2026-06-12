@@ -98,8 +98,21 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
   if (!isOpen) return null;
 
   // Get all unique providers and models for display
-  const allProviders = Object.keys(pricingData).sort();
+  const providerLabel = (provider) => {
+    if (provider === "models") return "Canonical models (all providers)";
+    return provider.toUpperCase();
+  };
+
+  const allProviders = Object.keys(pricingData).sort((a, b) => {
+    if (a === "models") return -1;
+    if (b === "models") return 1;
+    return a.localeCompare(b);
+  });
   const pricingFields = ["input", "output", "cached", "reasoning", "cache_creation"];
+  const totalModels = allProviders.reduce(
+    (sum, provider) => sum + Object.keys(pricingData[provider] || {}).length,
+    0,
+  );
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -127,6 +140,9 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                 <p className="text-text-muted">
                   All rates are in <strong>dollars per million tokens</strong> ($/1M tokens).
                   Example: Input rate of 2.50 means $2.50 per 1,000,000 input tokens.
+                  {" "}
+                  <strong>{totalModels}</strong> model{totalModels === 1 ? "" : "s"} in catalog;
+                  provider sections override canonical rates for that provider only.
                 </p>
               </div>
 
@@ -136,7 +152,10 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                 return (
                   <div key={provider} className="border border-border rounded-lg overflow-hidden">
                     <div className="bg-bg-alt px-4 py-2 font-semibold text-sm">
-                      {provider.toUpperCase()}
+                      {providerLabel(provider)}
+                      <span className="ml-2 text-text-muted font-normal">
+                        ({models.length} model{models.length === 1 ? "" : "s"})
+                      </span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
