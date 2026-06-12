@@ -458,7 +458,12 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h2 className="text-lg font-semibold">Connections</h2>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-text-muted font-medium">Round Robin</span>
+            <span
+              className="text-xs text-text-muted font-medium"
+              title="Rotate requests across this provider's connections instead of always using the first one. Helps spread load and stay within rate limits."
+            >
+              Round Robin
+            </span>
             <Toggle
               checked={providerStrategy === "round-robin"}
               onChange={async (enabled) => {
@@ -472,7 +477,12 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
             />
             {providerStrategy === "round-robin" && (
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-text-muted">Sticky:</span>
+                <span
+                  className="text-xs text-text-muted"
+                  title="How many requests in a row to keep using the same connection before rotating to the next one."
+                >
+                  Sticky:
+                </span>
                 <input
                   type="number" min={1} value={providerStickyLimit}
                   onChange={(e) => handleStickyLimitChange(e.target.value)}

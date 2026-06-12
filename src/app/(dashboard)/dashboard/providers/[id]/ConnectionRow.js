@@ -211,7 +211,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               )}
               {noProxyText && (
                 <span className="max-w-full truncate text-[11px] text-text-muted sm:max-w-[320px]" title={noProxyText}>
-                  no_proxy: {noProxyText}
+                  Skips proxy for: {noProxyText}
                 </span>
               )}
             </div>
