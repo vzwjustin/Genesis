@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { internalApiPost } from "@/lib/internalApi.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 function failurePayload({ latencyMs, res, rawText, parsed, parseError, defaultError }) {
   if (!res.ok) {
@@ -20,6 +21,9 @@ function failurePayload({ latencyMs, res, rawText, parsed, parseError, defaultEr
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { model, kind } = await request.json();
     if (!model) return NextResponse.json({ error: "Model required" }, { status: 400 });
 

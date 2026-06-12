@@ -12,12 +12,15 @@ import {
   buildComboStrategyRenamePatch,
 } from "@/shared/utils/dashboardHelpers";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
 // GET /api/combos/[id] - Get combo by ID
 export async function GET(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const combo = await getComboById(id);
@@ -35,10 +38,12 @@ export async function GET(request, { params }) {
 
 // PUT /api/combos/[id] - Update combo
 export async function PUT(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const body = await request.json();
-    
+
     // Validate name format if provided
     if (body.name) {
       if (!VALID_NAME_REGEX.test(body.name)) {
@@ -85,6 +90,8 @@ export async function PUT(request, { params }) {
 
 // DELETE /api/combos/[id] - Delete combo
 export async function DELETE(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const prev = await getComboById(id);

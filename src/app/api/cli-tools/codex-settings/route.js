@@ -1,5 +1,6 @@
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -80,7 +81,9 @@ const has9RouterConfig = (config) => {
 };
 
 // GET - Check codex CLI and read current settings
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const isInstalled = await checkCodexInstalled();
     
@@ -108,6 +111,8 @@ export async function GET() {
 
 // POST - Update 9Router settings (merge with existing config)
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { baseUrl, apiKey, model, subagentModel } = await request.json();
     
@@ -176,7 +181,9 @@ export async function POST(request) {
 }
 
 // DELETE - Remove 9Router settings only (keep other settings)
-export async function DELETE() {
+export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const configPath = getCodexConfigPath();
 

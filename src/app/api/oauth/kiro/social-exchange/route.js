@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
 import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 /**
  * POST /api/oauth/kiro/social-exchange
@@ -9,6 +10,8 @@ import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
  * Callback URL will be in format: kiro://kiro.kiroAgent/authenticate-success?code=XXX&state=YYY
  */
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { code, codeVerifier, provider } = await request.json();
 

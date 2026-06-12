@@ -3,6 +3,7 @@ import { getProviderConnectionById } from "@/lib/localDb";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { internalApiGet, internalApiPost } from "@/lib/internalApi.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 /**
  * Ping a single model via internal completions endpoint (OpenAI format).
@@ -44,6 +45,8 @@ async function pingModel(modelId) {
  * Actual requests go through /api/v1/chat/completions (open-sse handles everything).
  */
 export async function POST(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const connection = await getProviderConnectionById(id);

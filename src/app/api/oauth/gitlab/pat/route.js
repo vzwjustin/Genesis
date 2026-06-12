@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { assertSafeFetchUrlWithDns } from "open-sse/utils/ssrfGuard.js";
 import { oauthFetch } from "@/lib/oauth/utils/oauthFetch.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";
 
@@ -11,6 +12,9 @@ const GITLAB_DEFAULT_BASE = "https://gitlab.com";
  */
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     let body;
     try {
       body = await request.json();

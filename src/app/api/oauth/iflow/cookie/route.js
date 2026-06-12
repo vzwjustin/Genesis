@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { oauthFetch } from "@/lib/oauth/utils/oauthFetch.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 /**
  * iFlow Cookie-Based Authentication
@@ -9,6 +10,9 @@ import { oauthFetch } from "@/lib/oauth/utils/oauthFetch.js";
  */
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { cookie } = await request.json();
 
     if (!cookie || typeof cookie !== "string") {

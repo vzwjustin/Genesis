@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +8,9 @@ export const dynamic = "force-dynamic";
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
 // GET /api/combos - Get all combos
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const combos = await getCombos();
     return NextResponse.json({ combos });
@@ -19,6 +22,8 @@ export async function GET() {
 
 // POST /api/combos - Create new combo
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const { name, models, kind } = body;

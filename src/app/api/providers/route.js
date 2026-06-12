@@ -10,6 +10,7 @@ import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,9 @@ async function normalizeProxyPoolId(proxyPoolId) {
 }
 
 // GET /api/providers - List all connections
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const connections = await getProviderConnections();
 
@@ -94,6 +97,8 @@ export async function GET() {
 
 // POST /api/providers - Create new connection (API Key only, OAuth via separate flow)
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);

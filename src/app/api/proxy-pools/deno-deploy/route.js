@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { buildDenoRelayCode, generateRelayAuthSecret } from "@/lib/network/relayDeploy.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 const DENO_V2_API = "https://api.deno.com/v2";
 
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const body = await request.json();
     const denoToken = body.denoToken?.trim();
     const orgDomain = body.orgDomain?.trim();

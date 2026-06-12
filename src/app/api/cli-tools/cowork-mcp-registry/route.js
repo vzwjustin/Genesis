@@ -1,5 +1,6 @@
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const REGISTRY_URL = "https://api.anthropic.com/mcp-registry/v0/servers";
@@ -97,6 +98,8 @@ async function fetchAll() {
 }
 
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { searchParams } = new URL(request.url);
   const force = searchParams.get("refresh") === "1";
   const cache = gcache();

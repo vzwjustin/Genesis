@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { exportDb, getSettings, importDb } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const payload = await exportDb();
     return NextResponse.json(payload);
@@ -13,6 +16,8 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const payload = await request.json();
     await importDb(payload);

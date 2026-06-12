@@ -3,10 +3,13 @@ import {
   getRequestLogSession,
   readRequestLogSessionFile,
 } from "open-sse/utils/requestLogger.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { name } = await params;
   const { searchParams } = new URL(request.url);
   const file = searchParams.get("file");

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { testProxyUrl } from "@/lib/network/proxyTest";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const result = await testProxyUrl({

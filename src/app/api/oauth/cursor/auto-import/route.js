@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { access, constants } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -183,8 +184,11 @@ async function extractTokensViaCLI(dbPath) {
  * Auto-detect and extract Cursor tokens from local SQLite database.
  * Strategy: better-sqlite3 → sqlite3 CLI → manual fallback
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const platform = process.platform;
     const candidates = getCandidatePaths(platform);
 

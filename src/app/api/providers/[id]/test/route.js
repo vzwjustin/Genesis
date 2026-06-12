@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { testSingleConnection } from "./testUtils.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 // POST /api/providers/[id]/test - Test connection
 export async function POST(request, { params }) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { id } = await params;
     const result = await testSingleConnection(id);
 

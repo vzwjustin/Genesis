@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getProxyPoolById, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 async function testVercelRelay(relayUrl, timeoutMs = 10000) {
   const controller = new AbortController();
@@ -36,6 +37,9 @@ async function testVercelRelay(relayUrl, timeoutMs = 10000) {
 // POST /api/proxy-pools/[id]/test - Test proxy pool entry
 export async function POST(request, { params }) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { id } = await params;
     const proxyPool = await getProxyPoolById(id);
 

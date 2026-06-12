@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
 import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -50,6 +51,8 @@ function buildUsageMap(connections = []) {
 
 // GET /api/proxy-pools - List proxy pools
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { searchParams } = new URL(request.url);
     const isActive = toBoolean(searchParams.get("isActive"));
@@ -83,6 +86,8 @@ export async function GET(request) {
 
 // POST /api/proxy-pools - Create proxy pool
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const normalized = normalizeProxyPoolInput(body);

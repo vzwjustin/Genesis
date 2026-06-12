@@ -1,5 +1,6 @@
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { assertSafeFetchUrlWithDns } from "open-sse/utils/ssrfGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
@@ -83,6 +84,8 @@ async function probeMcp(url) {
 }
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { url } = await request.json();
     if (!url || typeof url !== "string") {

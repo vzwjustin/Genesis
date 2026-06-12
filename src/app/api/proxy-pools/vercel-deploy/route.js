@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { buildVercelRelayCode, generateRelayAuthSecret } from "@/lib/network/relayDeploy.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 const VERCEL_API = "https://api.vercel.com";
 
@@ -25,6 +26,9 @@ async function pollDeployment(deploymentId, token, maxMs = 120000) {
 // POST /api/proxy-pools/vercel-deploy
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const body = await request.json();
     const vercelToken = body.vercelToken;
     const projectName = body.projectName?.trim() || `relay-${Date.now().toString(36)}`;

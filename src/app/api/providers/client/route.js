@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
 import { backfillCodexEmails } from "@/lib/oauth/providers";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 const SAFE_FIELDS = [
   "id", "provider", "authType", "name", "email", "displayName",
@@ -74,6 +75,8 @@ function sortConnections(connections, sort) {
 }
 
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     await backfillCodexEmails();
 

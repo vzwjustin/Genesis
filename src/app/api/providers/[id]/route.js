@@ -6,6 +6,7 @@ import {
   deleteProviderConnection,
 } from "@/models";
 import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -70,6 +71,8 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
 
 // GET /api/providers/[id] - Get single connection
 export async function GET(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const connection = await getProviderConnectionById(id);
@@ -94,6 +97,8 @@ export async function GET(request, { params }) {
 
 // PUT /api/providers/[id] - Update connection
 export async function PUT(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const body = await request.json();
@@ -177,6 +182,8 @@ export async function PUT(request, { params }) {
 
 // DELETE /api/providers/[id] - Delete connection
 export async function DELETE(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
 

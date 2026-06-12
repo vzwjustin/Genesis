@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { readFile, readdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -7,8 +8,11 @@ import { join } from "path";
  * GET /api/oauth/kiro/auto-import
  * Auto-detect and extract Kiro refresh token from AWS SSO cache
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const cachePath = join(homedir(), ".aws/sso/cache");
 
     // Try to read cache directory

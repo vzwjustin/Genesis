@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { file, content } = await request.json();
 

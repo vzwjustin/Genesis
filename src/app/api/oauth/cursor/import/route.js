@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { CursorService } from "@/lib/oauth/services/cursor";
 import { createProviderConnection, getProviderConnectionById, updateProviderConnection } from "@/models";
 import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 /**
  * POST /api/oauth/cursor/import
@@ -13,6 +14,9 @@ import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
  */
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { accessToken, machineId, existingConnectionId } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {
@@ -97,7 +101,10 @@ export async function POST(request) {
  * GET /api/oauth/cursor/import
  * Get instructions for importing Cursor token
  */
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   const cursorService = new CursorService();
   const instructions = cursorService.getTokenStorageInstructions();
 
