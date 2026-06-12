@@ -8,6 +8,7 @@ import { PROVIDER_ENDPOINTS } from "@/shared/constants/config";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 async function buildValidateProxyOptions(providerSpecificData) {
   if (!providerSpecificData) return null;
@@ -102,6 +103,9 @@ async function probeMediaProvider(provider, apiKey, proxyOptions) {
 // POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
     const { apiKey, providerSpecificData } = body;

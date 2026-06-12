@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -102,7 +103,9 @@ const has9RouterConfig = (config) => {
     return /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(openaiSection.base_url);
 };
 
-export async function GET() {
+export async function GET(request) {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     try {
         const installed = await checkDeepSeekInstalled();
         if (!installed) {
@@ -123,6 +126,8 @@ export async function GET() {
 }
 
 export async function POST(request) {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     try {
         const { baseUrl, apiKey, model } = await request.json();
         if (!baseUrl || !model) {
@@ -146,7 +151,9 @@ export async function POST(request) {
     }
 }
 
-export async function DELETE() {
+export async function DELETE(request) {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     try {
         const configPath = getDeepSeekConfigPath();
         try {

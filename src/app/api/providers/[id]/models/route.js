@@ -9,6 +9,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { refreshGoogleToken as refreshGoogleTokenWithProxy } from "open-sse/services/tokenRefresh.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 async function buildProxyOptionsFromConnection(connection) {
   const proxyConfig = await resolveConnectionProxyConfig(connection?.providerSpecificData || {});
@@ -390,6 +391,8 @@ const PROVIDER_MODELS_CONFIG = {
  * GET /api/providers/[id]/models - Get models list from provider
  */
 export async function GET(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const connection = await getProviderConnectionById(id);

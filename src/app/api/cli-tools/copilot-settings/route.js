@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -39,7 +40,9 @@ const get9RouterEntry = (config) => {
 };
 
 // GET - Read current copilot config
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const config = await readConfig();
     const entry = get9RouterEntry(config);
@@ -60,6 +63,8 @@ export async function GET() {
 
 // POST - Apply 9Router config to chatLanguageModels.json
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { baseUrl, apiKey, models } = await request.json();
 
@@ -118,7 +123,9 @@ export async function POST(request) {
 }
 
 // DELETE - Remove 9Router entry from chatLanguageModels.json
-export async function DELETE() {
+export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const configPath = getConfigPath();
 

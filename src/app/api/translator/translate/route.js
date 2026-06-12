@@ -5,8 +5,11 @@ import { FORMATS } from "open-sse/translator/formats.js";
 import { parseModel } from "open-sse/services/model.js";
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor } from "open-sse/executors/index.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { step, body } = await request.json();
 

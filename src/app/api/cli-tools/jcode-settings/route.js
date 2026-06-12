@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -107,7 +108,9 @@ const writeProviderEnv = async (env) => {
   await fs.writeFile(envPath, content, "utf-8");
 };
 
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const isInstalled = await checkJcodeInstalled();
 
   if (!isInstalled) {
@@ -129,6 +132,8 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { baseUrl, apiKey, models } = await request.json();
 
@@ -186,7 +191,9 @@ export async function POST(request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const config = await readConfig();
 

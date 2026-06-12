@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { buildCloudflareRelayCode, generateRelayAuthSecret } from "@/lib/network/relayDeploy.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 // POST /api/proxy-pools/cloudflare-deploy
 export async function POST(request) {
   try {
+    const auth = await requireSpawnRouteAuth(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const body = await request.json();
     const accountId = body.accountId?.trim();
     const apiToken = body.apiToken?.trim();

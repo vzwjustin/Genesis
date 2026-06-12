@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -48,7 +49,9 @@ const has9RouterConfig = (config) => {
 };
 
 // GET - Check opencode CLI and read current settings
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const isInstalled = await checkOpenCodeInstalled();
 
@@ -83,6 +86,8 @@ export async function GET() {
 
 // POST - Apply 9Router as openai-compatible provider (multi-model support)
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { baseUrl, apiKey, model, models, activeModel, subagentModel } = await request.json();
 
@@ -168,6 +173,8 @@ export async function POST(request) {
 
 // PATCH - Update specific settings (e.g., clear active model)
 export async function PATCH(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { clearActiveModel } = await request.json();
     const configPath = getConfigPath();
@@ -204,6 +211,8 @@ export async function PATCH(request) {
 
 // DELETE - Remove 9Router provider or specific models from config
 export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { searchParams } = new URL(request.url);
     const modelToRemove = searchParams.get("model");

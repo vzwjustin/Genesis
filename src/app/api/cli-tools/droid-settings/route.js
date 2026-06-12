@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -51,7 +52,9 @@ const has9RouterConfig = (settings) => {
 };
 
 // GET - Check droid CLI and read current settings
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const isInstalled = await checkDroidInstalled();
     
@@ -81,6 +84,8 @@ export async function GET() {
 // Accepts either `model` (string, legacy single-model) or `models` (array of strings, multi-model)
 // Also accepts `activeModel` to set which model is active/primary
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { baseUrl, apiKey, model, models, activeModel } = await request.json();
     
@@ -170,7 +175,9 @@ export async function POST(request) {
 }
 
 // DELETE - Remove 9Router customModels only (keep other settings)
-export async function DELETE() {
+export async function DELETE(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const settingsPath = getDroidSettingsPath();
 

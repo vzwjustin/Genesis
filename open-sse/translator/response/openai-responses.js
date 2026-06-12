@@ -253,7 +253,7 @@ function closeMessage(state, emit, idx) {
 }
 
 function emitToolCall(state, emit, tc) {
-  const tcIdx = tc.index ?? 0;
+  const tcIdx = tc.index ?? (state._nextToolCallIdx = (state._nextToolCallIdx ?? -1) + 1);
   const newCallId = tc.id;
   const funcName = tc.function?.name;
 

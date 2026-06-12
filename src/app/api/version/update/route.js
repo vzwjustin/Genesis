@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { killAppProcesses, spawnUpdaterAndExit } from "@/lib/appUpdater";
 import { formatUpdaterPackageSpec } from "@/shared/constants/config";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 function normalizeTargetVersion(version) {
   if (typeof version !== "string") return "";
@@ -9,6 +10,8 @@ function normalizeTargetVersion(version) {
 }
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   if (process.env.NODE_ENV !== "production") {
     return NextResponse.json(
       { success: false, message: "Update is only available in production build (9router CLI)" },

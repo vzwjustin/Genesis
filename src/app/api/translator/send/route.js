@@ -1,7 +1,10 @@
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor, refreshTokenByProvider } from "open-sse/index.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
   try {
     const { provider, model, body } = await request.json();
 

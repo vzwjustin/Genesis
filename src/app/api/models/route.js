@@ -3,9 +3,12 @@ import { getModelAliases, setModelAlias } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias } from "@/shared/constants/providers";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 // GET /api/models - Get models with aliases
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const modelAliases = await getModelAliases();
     const disabled = await getDisabledModels();
@@ -34,6 +37,8 @@ export async function GET() {
 
 // PUT /api/models - Update model alias
 export async function PUT(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const { model, alias } = body;

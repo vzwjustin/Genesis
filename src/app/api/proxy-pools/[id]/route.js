@@ -6,6 +6,7 @@ import {
   updateProxyPool,
 } from "@/models";
 import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
@@ -56,6 +57,8 @@ function countBoundConnections(connections = [], proxyPoolId) {
 
 // GET /api/proxy-pools/[id] - Get proxy pool
 export async function GET(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const proxyPool = await getProxyPoolById(id);
@@ -73,6 +76,8 @@ export async function GET(request, { params }) {
 
 // PUT /api/proxy-pools/[id] - Update proxy pool
 export async function PUT(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const existing = await getProxyPoolById(id);
@@ -98,6 +103,8 @@ export async function PUT(request, { params }) {
 
 // DELETE /api/proxy-pools/[id] - Delete proxy pool
 export async function DELETE(request, { params }) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
     const existing = await getProxyPoolById(id);

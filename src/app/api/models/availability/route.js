@@ -3,6 +3,7 @@ import {
   getProviderConnections,
   updateProviderConnection,
 } from "@/lib/localDb";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 const MODEL_LOCK_PREFIX = "modelLock_";
 
@@ -19,7 +20,9 @@ function getActiveModelLocks(connection) {
     .filter((lock) => lock.active);
 }
 
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const connections = await getProviderConnections();
     const models = [];
@@ -64,6 +67,8 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { action, provider, model } = await request.json();
 

@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { killAppProcesses } from "@/lib/appUpdater";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 // Shutdown app to release file locks for manual update
-export async function POST() {
+export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     await killAppProcesses();
   } catch { /* best effort */ }
