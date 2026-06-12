@@ -290,13 +290,13 @@ describe("bypassHandler — Claude delta merge", () => {
 });
 
 describe("openai-to-claude — prefix and tool_choice none", () => {
-  it("maps tool_choice none to disabled", () => {
+  it("maps tool_choice none to Claude none (must not call tools)", () => {
     const out = openaiToClaudeRequest("claude-sonnet", {
       messages: [{ role: "user", content: "hi" }],
       tools: [{ type: "function", function: { name: "Read", parameters: { type: "object", properties: {} } } }],
       tool_choice: "none",
     }, false);
-    expect(out.tool_choice).toEqual({ type: "disabled" });
+    expect(out.tool_choice).toEqual({ type: "none" });
   });
 
   it("does not add proxy_ prefix to tool names", () => {

@@ -131,9 +131,16 @@ function convertGeminiContent(content) {
     }
   }
 
-  // A turn is either tool-results or assistant/user content, not both.
   if (toolResponses.length > 0) {
-    return toolResponses;
+    const messages = [];
+    if (parts.length > 0) {
+      messages.push({
+        role: "user",
+        content: parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts
+      });
+    }
+    messages.push(...toolResponses);
+    return messages.length === 1 ? messages[0] : messages;
   }
 
   if (toolCalls.length > 0) {
