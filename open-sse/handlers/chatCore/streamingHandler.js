@@ -64,12 +64,10 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
     ...streamController,
     handleDisconnect: (info) => {
       markIncomplete();
-      fireRequestSuccess?.();
       streamController?.handleDisconnect?.(info);
     },
     handleError: (error) => {
       markIncomplete();
-      fireRequestSuccess?.();
       streamController?.handleError?.(error);
     },
   };
@@ -105,8 +103,8 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
 export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, onRequestSuccess }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-  // Fire accounting/rotation at most once — on clean completion OR early
-  // client disconnect/abort. Guards against double-fire across both paths.
+  // Fire accounting/rotation at most once — only on clean stream completion.
+  // Incomplete streams (stall, disconnect, upstream error) must not clear account cooldown.
   let accountingFired = false;
   const fireRequestSuccess = () => {
     if (accountingFired) return;

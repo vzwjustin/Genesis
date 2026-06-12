@@ -200,7 +200,7 @@ function mergeGeminiParts(existingParts, incomingParts) {
     if (typeof part.text === "string") {
       const last = parts[parts.length - 1];
       if (last && typeof last.text === "string" && !last.thought && !part.thought) {
-        last.text += part.text;
+        last.text = appendCapped(last.text, part.text);
       } else {
         parts.push({ ...part });
       }
@@ -246,6 +246,7 @@ export function parseSSEToGeminiResponse(rawSSE, wrapInResponse = false) {
   let modelVersion = null;
   let responseId = null;
 
+  try {
   for (const chunk of chunks) {
     const body = unwrapGeminiStreamChunk(chunk);
     if (!body) continue;
@@ -277,6 +278,10 @@ export function parseSSEToGeminiResponse(rawSSE, wrapInResponse = false) {
     };
     if (candidate.finishReason) mergedCandidate.finishReason = candidate.finishReason;
     if (candidate.index !== undefined) mergedCandidate.index = candidate.index;
+  }
+  } catch (e) {
+    if (e instanceof BlockSizeExceededError) return null;
+    throw e;
   }
 
   if (!mergedCandidate) return null;
@@ -340,17 +345,22 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   if (chunks.length === 0) return null;
 
   const first = chunks[0];
-  const contentParts = [];
-  const reasoningParts = [];
+  let contentJoined = "";
+  let reasoningJoined = "";
   const toolCallMap = new Map(); // index -> { id, type, function: { name, arguments } }
   let finishReason = "stop";
   let usage = null;
 
+  try {
   for (const chunk of chunks) {
     const choice = chunk?.choices?.[0];
     const delta = choice?.delta || {};
-    if (typeof delta.content === "string" && delta.content.length > 0) contentParts.push(delta.content);
-    if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) reasoningParts.push(delta.reasoning_content);
+    if (typeof delta.content === "string" && delta.content.length > 0) {
+      contentJoined = appendCapped(contentJoined, delta.content);
+    }
+    if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) {
+      reasoningJoined = appendCapped(reasoningJoined, delta.reasoning_content);
+    }
     if (choice?.finish_reason) { finishReason = choice.finish_reason; sawTerminal = true; }
     if (chunk?.usage && typeof chunk.usage === "object") usage = chunk.usage;
 
@@ -363,10 +373,14 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
         }
         const existing = toolCallMap.get(idx);
         if (tc.id) existing.id = tc.id;
-        if (tc.function?.name) existing.function.name += tc.function.name;
-        if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+        if (tc.function?.name) existing.function.name = appendCapped(existing.function.name, tc.function.name);
+        if (tc.function?.arguments) existing.function.arguments = appendCapped(existing.function.arguments, tc.function.arguments);
       }
     }
+  }
+  } catch (e) {
+    if (e instanceof BlockSizeExceededError) return null;
+    throw e;
   }
 
   // Fail closed: stream never signalled completion (no finish_reason, no [DONE]).
@@ -375,8 +389,8 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     return null;
   }
 
-  const message = { role: "assistant", content: contentParts.join("") || (toolCallMap.size > 0 ? null : "") };
-  if (reasoningParts.length > 0) message.reasoning_content = reasoningParts.join("");
+  const message = { role: "assistant", content: contentJoined || (toolCallMap.size > 0 ? null : "") };
+  if (reasoningJoined.length > 0) message.reasoning_content = reasoningJoined;
   if (toolCallMap.size > 0) {
     message.tool_calls = [...toolCallMap.entries()].sort((a, b) => a[0] - b[0]).map(([, tc]) => tc);
   }

@@ -229,7 +229,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const allowPassthroughCompression = !passthrough || passthroughCompression === true;
   const saversEnabled = rtkEnabled || headroomEnabled || (cavemanEnabled && cavemanLevel);
   // Hard rule: never compress when the client placed cache_control breakpoints.
-  const compressionActive = !clientHasCacheBreakpoints
+  let compressionActive = !clientHasCacheBreakpoints
     && allowPassthroughCompression
     && saversEnabled;
   if (clientHasCacheBreakpoints && saversEnabled) {
@@ -243,6 +243,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       originalBodySnapshot = JSON.stringify(translatedBody);
     } catch (snapshotError) {
       console.warn(`[COMPRESSION] Could not snapshot body for restore: ${snapshotError.message}`);
+      compressionActive = false;
     }
   }
 
@@ -581,6 +582,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (passthrough) {
       let errorBody;
       let errorBodyText;
+      let resetsAtMs;
+      let upstreamErrorCode;
       const upstreamContentType = providerResponse.headers.get("content-type") || "";
       try {
         errorBodyText = await providerResponse.text();
@@ -588,6 +591,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       } catch {
         errorBodyText = "";
         errorBody = null;
+      }
+      if (executor && typeof executor.parseError === "function") {
+        try {
+          const parsed = executor.parseError(providerResponse, errorBodyText);
+          if (parsed && typeof parsed === "object") {
+            resetsAtMs = parsed.resetsAtMs;
+            upstreamErrorCode = parsed.code || parsed.errorCode;
+          }
+        } catch { /* preserve native body path */ }
+      }
+      if (!upstreamErrorCode && errorBody?.error?.code) {
+        upstreamErrorCode = errorBody.error.code;
       }
       appendRequestLog({ model, provider, connectionId, status: `FAILED ${providerResponse.status}` }).catch(() => { });
       saveRequestDetail(buildRequestDetail({
@@ -611,6 +626,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         success: false,
         status: providerResponse.status,
         error: errorBodyText || `Upstream error: ${providerResponse.status}`,
+        resetsAtMs,
+        errorCode: upstreamErrorCode,
         proxyInternal: false,
         response: new Response(errorBodyText || "", {
           status: providerResponse.status,
@@ -619,14 +636,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       };
     }
 
-    const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
-    let upstreamErrorCode;
-    try {
-      const errBody = await providerResponse.clone().json();
-      upstreamErrorCode = errBody?.error?.code;
-    } catch {
-      upstreamErrorCode = undefined;
-    }
+    const { statusCode, message, resetsAtMs, errorCode: upstreamErrorCode } = await parseUpstreamError(providerResponse, executor);
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,
