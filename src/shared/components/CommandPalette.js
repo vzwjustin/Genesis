@@ -93,7 +93,10 @@ export default function CommandPalette() {
           <input
             autoFocus
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveIndex(0);
+            }}
             placeholder="Go to page…"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-text-muted"
             aria-label="Search pages"
