@@ -189,6 +189,97 @@ describe("stream.js — translated flush terminal semantics", () => {
     const out = await pipeSseThroughTransform(sse, transform);
     expect((out.match(/\[DONE\]/g) || []).length).toBe(1);
   });
+
+  it("fails closed on malformed OpenAI data before a terminal frame", async () => {
+    const onStreamComplete = vi.fn();
+    const sse = [
+      "data: {malformed",
+      'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      "data: [DONE]",
+    ].join("\n");
+
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "openai",
+      null,
+      null,
+      "gpt-4",
+      null,
+      { messages: [] },
+      onStreamComplete,
+      null
+    );
+    await expect(pipeSseThroughTransform(sse, transform)).rejects.toThrow("Malformed SSE data frame");
+    expect(onStreamComplete).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on malformed Responses data before a terminal frame", async () => {
+    const onStreamComplete = vi.fn();
+    const sse = [
+      "event: response.output_item.done\ndata: {malformed",
+      'event: response.completed\ndata: {"response":{"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}',
+      "data: [DONE]",
+    ].join("\n\n");
+
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI_RESPONSES,
+      FORMATS.OPENAI,
+      "codex",
+      null,
+      null,
+      "gpt-5-codex",
+      null,
+      { messages: [] },
+      onStreamComplete,
+      null
+    );
+    await expect(pipeSseThroughTransform(sse, transform)).rejects.toThrow("Malformed SSE data frame");
+    expect(onStreamComplete).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on malformed Gemini data before a terminal frame", async () => {
+    const onStreamComplete = vi.fn();
+    const sse = [
+      "data: {malformed",
+      'data: {"response":{"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}}',
+    ].join("\n");
+
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      "antigravity",
+      null,
+      null,
+      "gemini-model",
+      null,
+      { messages: [] },
+      onStreamComplete,
+      null
+    );
+    await expect(pipeSseThroughTransform(sse, transform)).rejects.toThrow("Malformed SSE data frame");
+    expect(onStreamComplete).not.toHaveBeenCalled();
+  });
+
+  it("still ignores harmless blank comment and non-data SSE lines", async () => {
+    const sse = [
+      ": keepalive",
+      "event: message",
+      "",
+      'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}',
+      'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      "data:",
+    ].join("\n");
+
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "openai"
+    );
+    const out = await pipeSseThroughTransform(sse, transform);
+    expect(out).toContain("Hi");
+    expect(out).toContain("[DONE]");
+  });
 });
 
 describe("streamHandler — incomplete callback on error", () => {
@@ -207,6 +298,61 @@ describe("streamHandler — incomplete callback on error", () => {
     const readable = pipeWithDisconnect(providerResponse, broken, controller, { onIncomplete });
     await expect(collectStreamText(readable)).rejects.toThrow();
     expect(onIncomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run success accounting when translated streaming sees malformed data", async () => {
+    vi.clearAllMocks();
+    const onRequestSuccess = vi.fn();
+    const { onStreamComplete, streamDetailId } = buildOnStreamComplete({
+      provider: "openai",
+      model: "gpt-4",
+      connectionId: "conn-1",
+      apiKey: "key-1",
+      requestStartTime: Date.now(),
+      body: { messages: [] },
+      stream: true,
+      finalBody: null,
+      translatedBody: { messages: [], stream: true },
+      clientRawRequest: { endpoint: "/v1/chat/completions" },
+      onRequestSuccess,
+    });
+    const providerResponse = {
+      body: sseStream([
+        "data: {malformed",
+        'data: {"response":{"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}}',
+      ].join("\n")),
+    };
+
+    const result = handleStreamingResponse({
+      providerResponse,
+      provider: "openai",
+      model: "gpt-4",
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.ANTIGRAVITY,
+      userAgent: "",
+      body: { messages: [] },
+      stream: true,
+      translatedBody: { messages: [], stream: true },
+      finalBody: null,
+      requestStartTime: Date.now(),
+      connectionId: "conn-1",
+      apiKey: "key-1",
+      clientRawRequest: { endpoint: "/v1/chat/completions" },
+      onRequestSuccess,
+      reqLogger: null,
+      toolNameMap: null,
+      streamController: createStreamController({ provider: "openai", model: "gpt-4" }),
+      onStreamComplete,
+      passthrough: false,
+      streamDetailId,
+    });
+
+    await expect(result.response.text()).rejects.toThrow("Malformed SSE data frame");
+    await Promise.resolve();
+
+    expect(onRequestSuccess).not.toHaveBeenCalled();
+    expect(saveUsageStats).not.toHaveBeenCalled();
+    expect(saveRequestDetail).not.toHaveBeenCalledWith(expect.objectContaining({ status: "success" }));
   });
 });
 

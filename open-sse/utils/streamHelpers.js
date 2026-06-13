@@ -1,7 +1,15 @@
 import { FORMATS } from "../translator/formats.js";
 
+export class MalformedSSEDataError extends Error {
+  constructor(data) {
+    super("Malformed SSE data frame");
+    this.name = "MalformedSSEDataError";
+    this.data = data;
+  }
+}
+
 // Parse SSE data line
-export function parseSSELine(line, format = null) {
+export function parseSSELine(line, format = null, options = {}) {
   if (!line) return null;
 
   const trimmed = line.trim();
@@ -22,6 +30,7 @@ export function parseSSELine(line, format = null) {
   if (line.charCodeAt(0) !== 100) return null; // 'd' = 100
 
   const data = line.slice(5).trim();
+  if (!data) return null;
   if (data === "[DONE]") return { done: true };
 
   try {
@@ -29,6 +38,9 @@ export function parseSSELine(line, format = null) {
   } catch (error) {
     if (data.length > 0 && data.length < 1000) {
       console.log(`[WARN] Failed to parse SSE line (${data.length} chars): ${data.substring(0, 100)}...`);
+    }
+    if (options.failOnMalformedData) {
+      throw new MalformedSSEDataError(data);
     }
     return null;
   }

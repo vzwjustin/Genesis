@@ -183,4 +183,11 @@ describe("request normalization", () => {
     const parsed = parseSSELine('data: {"choices":[{"delta":{"content":"hi"}}]}');
     expect(parsed.choices[0].delta.content).toBe("hi");
   });
+
+  it("parseSSELine can distinguish malformed data frames from ignorable lines", () => {
+    expect(parseSSELine(": keepalive", "openai", { failOnMalformedData: true })).toBeNull();
+    expect(parseSSELine("data:", "openai", { failOnMalformedData: true })).toBeNull();
+    expect(() => parseSSELine("data: {malformed", "openai", { failOnMalformedData: true }))
+      .toThrow("Malformed SSE data frame");
+  });
 });

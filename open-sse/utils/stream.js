@@ -2,7 +2,7 @@ import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
-import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
+import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, MalformedSSEDataError } from "./streamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
 export { COLORS, formatSSE };
@@ -392,7 +392,9 @@ export function createSSEStream(options = {}) {
         }
       } catch (error) {
         console.error("Error in flush:", error);
-        controller.error(error);
+        if (error instanceof MalformedSSEDataError) {
+          controller.error(error);
+        }
       } finally {
         await reqLogger?.flushStreamLogs?.();
       }
