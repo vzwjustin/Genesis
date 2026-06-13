@@ -219,9 +219,14 @@ export class CodexExecutor extends BaseExecutor {
     return headers;
   }
 
-  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+  buildUrl(model, stream, urlIndex = 0, credentials = null, requestContext = {}) {
     const base = super.buildUrl(model, stream, urlIndex, credentials);
-    return this._isCompact ? `${base}/compact` : base;
+    return requestContext?.body?._compact ? `${base}/compact` : base;
+  }
+
+  transformPassthroughRequest(model, body, stream, credentials) {
+    delete body._compact;
+    return body;
   }
 
   /**
@@ -402,7 +407,6 @@ export class CodexExecutor extends BaseExecutor {
    * Image fetching is handled separately in prefetchImages() so this stays sync.
    */
   async transformRequest(model, body, stream, credentials) {
-    this._isCompact = !!body._compact;
     delete body._compact;
     const machineId = await getMachineId();
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)

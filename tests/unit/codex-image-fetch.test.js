@@ -183,4 +183,63 @@ describe("CodexExecutor image handling", () => {
 
     expect(prefetchSpy).not.toHaveBeenCalled();
   });
+
+  it("routes compact requests to /compact without leaking state to later requests", async () => {
+    const urls = [];
+    const sentBodies = [];
+    vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockImplementation(async (url, init) => {
+      urls.push(String(url));
+      sentBodies.push(JSON.parse(init.body));
+      return { ok: true, status: 200, headers: new Map() };
+    });
+
+    const executor = new CodexExecutor();
+    const credentials = { accessToken: "test" };
+
+    await executor.execute({
+      model: "gpt-5.3-codex",
+      body: { _compact: true, input: [{ role: "user", content: [{ type: "input_text", text: "compact" }] }] },
+      stream: true,
+      credentials,
+    });
+
+    await executor.execute({
+      model: "gpt-5.3-codex",
+      body: { input: [{ role: "user", content: [{ type: "input_text", text: "normal" }] }] },
+      stream: true,
+      credentials,
+    });
+
+    expect(urls[0]).toMatch(/\/compact$/);
+    expect(urls[1]).not.toMatch(/\/compact$/);
+    expect(sentBodies[0]._compact).toBeUndefined();
+    expect(sentBodies[1]._compact).toBeUndefined();
+  });
+
+  it("routes passthrough compact requests to /compact and strips only the local marker", async () => {
+    let capturedUrl = null;
+    let capturedBody = null;
+    vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockImplementation(async (url, init) => {
+      capturedUrl = String(url);
+      capturedBody = JSON.parse(init.body);
+      return { ok: true, status: 200, headers: new Map() };
+    });
+
+    const executor = new CodexExecutor();
+    await executor.execute({
+      model: "gpt-5.3-codex",
+      body: {
+        _compact: true,
+        input: [{ role: "user", content: [{ type: "input_text", text: "compact" }] }],
+        custom_provider_field: "preserve-me",
+      },
+      stream: true,
+      credentials: { accessToken: "test" },
+      passthrough: true,
+    });
+
+    expect(capturedUrl).toMatch(/\/compact$/);
+    expect(capturedBody._compact).toBeUndefined();
+    expect(capturedBody.custom_provider_field).toBe("preserve-me");
+  });
 });

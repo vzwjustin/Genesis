@@ -106,6 +106,11 @@ export class BaseExecutor {
     return body;
   }
 
+  // Override in subclass to remove local proxy metadata from passthrough requests.
+  transformPassthroughRequest(model, body, stream, credentials) {
+    return body;
+  }
+
   shouldRetry(status, urlIndex) {
     return status === HTTP_STATUS.RATE_LIMITED && urlIndex + 1 < this.getFallbackCount();
   }
@@ -150,10 +155,10 @@ export class BaseExecutor {
     };
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
-      const url = this.buildUrl(model, stream, urlIndex, credentials);
-      // Passthrough (passthru) mode: skip transformRequest — body is already provider-native.
+      const url = this.buildUrl(model, stream, urlIndex, credentials, { body, passthrough });
+      // Passthrough (passthru) mode: skip normal translation; only strip local proxy metadata.
       const transformedBody = passthrough
-        ? body
+        ? await Promise.resolve(this.transformPassthroughRequest(model, body, stream, credentials))
         : await Promise.resolve(this.transformRequest(model, body, stream, credentials));
 
       throwOnCacheViolation(transformedBody, cacheProtectedSnapshot, "executor transform");
