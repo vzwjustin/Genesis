@@ -580,6 +580,11 @@ export class CursorExecutor extends BaseExecutor {
     let totalContent = "";
     let totalThinking = "";
     let emittedComposerThinkingContentLength = 0;
+    // Track whether the opening role:"assistant" delta has been emitted. The prior
+    // `chunks.length === 0` guard was unreliable — a leading/tool-call chunk is usually
+    // already pushed by the first content delta, so role was silently omitted and strict
+    // OpenAI clients rejected the stream.
+    let roleEmitted = false;
     const toolCalls = [];
     const toolCallsMap = new Map(); // Track streaming tool calls by ID
     const finalizedIds = new Set();
@@ -664,7 +669,8 @@ export class CursorExecutor extends BaseExecutor {
       if (result.toolCall) {
         const tc = result.toolCall;
 
-        if (chunks.length === 0) {
+        if (!roleEmitted) {
+          roleEmitted = true;
           chunks.push(
             `data: ${JSON.stringify({
               id: responseId,
@@ -781,8 +787,8 @@ export class CursorExecutor extends BaseExecutor {
                 {
                   index: 0,
                   delta:
-                    chunks.length === 0 && toolCalls.length === 0
-                      ? { role: "assistant", content: cleanText }
+                    !roleEmitted
+                      ? ((roleEmitted = true), { role: "assistant", content: cleanText })
                       : { content: cleanText },
                   finish_reason: null
                 }
@@ -809,8 +815,8 @@ export class CursorExecutor extends BaseExecutor {
                 {
                   index: 0,
                   delta:
-                    chunks.length === 0 && toolCalls.length === 0
-                      ? { role: "assistant", content: deltaContent }
+                    !roleEmitted
+                      ? ((roleEmitted = true), { role: "assistant", content: deltaContent })
                       : { content: deltaContent },
                   finish_reason: null
                 }

@@ -185,12 +185,14 @@ function resolveCacheSessionId(body, credentials, machineId) {
 }
 
 // Cleanup expired entries periodically
-setInterval(() => {
+const _assistantSessionCleanup = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of assistantSessionMap) {
     if (now - entry.lastUsed > SESSION_TTL_MS) assistantSessionMap.delete(key);
   }
 }, 10 * 60 * 1000);
+// Unref so the timer doesn't keep the Node process alive on shutdown
+_assistantSessionCleanup?.unref?.();
 
 /**
  * Codex Executor - handles OpenAI Codex API (Responses API format)

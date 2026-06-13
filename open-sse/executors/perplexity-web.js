@@ -214,17 +214,20 @@ function buildQuery(parsed, followUpUuid, tools) {
   // clamp the longest instruction entry, then the query, until it fits. Trimming
   // a single string field preserves valid JSON.
   const BUDGET = 96000;
-  while (JSON.stringify(obj).length > BUDGET && Array.isArray(obj.instructions) && obj.instructions.some((s) => s.length > 0)) {
+  let serializedLen = JSON.stringify(obj).length;
+  while (serializedLen > BUDGET && Array.isArray(obj.instructions) && obj.instructions.some((s) => s.length > 0)) {
     let idx = 0;
     for (let i = 1; i < obj.instructions.length; i++) {
       if (obj.instructions[i].length > obj.instructions[idx].length) idx = i;
     }
-    const over = JSON.stringify(obj).length - BUDGET;
+    const over = serializedLen - BUDGET;
     obj.instructions[idx] = obj.instructions[idx].slice(0, Math.max(0, obj.instructions[idx].length - over));
+    serializedLen = JSON.stringify(obj).length;
   }
-  while (JSON.stringify(obj).length > BUDGET && typeof obj.query === "string" && obj.query.length > 0) {
-    const over = JSON.stringify(obj).length - BUDGET;
+  while (serializedLen > BUDGET && typeof obj.query === "string" && obj.query.length > 0) {
+    const over = serializedLen - BUDGET;
     obj.query = obj.query.slice(0, Math.max(0, obj.query.length - over));
+    serializedLen = JSON.stringify(obj).length;
   }
   return JSON.stringify(obj);
 }

@@ -158,6 +158,11 @@ async function resolveRealIP(hostname) {
     resolver.setServers(await getMitmDnsServers());
     const resolve4 = promisify(resolver.resolve4.bind(resolver));
     const addresses = await resolve4(hostname);
+    // A NODATA result ([]) must not poison the cache with an undefined IP for the TTL.
+    if (!addresses || addresses.length === 0) {
+      console.warn(`[ProxyFetch] DNS returned no A records for ${hostname}`);
+      return null;
+    }
     DNS_CACHE.set(hostname, { ip: addresses[0], expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
     return addresses[0];
   } catch (error) {
@@ -391,12 +396,21 @@ async function createBypassRequest(parsedUrl, realIP, options) {
         const bodyChunks = [];
         let bodyEnded = false;
         let bodyError = null;
+        // Set once the ReadableStream body getter starts draining. While streaming
+        // we free each chunk after it is enqueued so memory is bounded to the
+        // unconsumed backlog instead of the whole response. Buffered (json/text/
+        // clone) consumers must not be mixed with the stream — materializeBody
+        // throws if streamConsumed is set.
+        let streamConsumed = false;
 
         res.on("data", (chunk) => bodyChunks.push(Buffer.from(chunk)));
         res.on("end", () => { bodyEnded = true; });
         res.on("error", (err) => { bodyError = err; });
 
         const materializeBody = async () => {
+          if (streamConsumed) {
+            throw new Error("Body already consumed by the streaming reader");
+          }
           if (bodyError) throw bodyError;
           if (bodyEnded) return Buffer.concat(bodyChunks);
           await new Promise((resolvePromise, rejectPromise) => {
@@ -422,6 +436,15 @@ async function createBypassRequest(parsedUrl, realIP, options) {
             headers: new Map(Object.entries(res.headers)),
             get body() {
               let offset = 0;
+              streamConsumed = true;
+              // Enqueue the chunk at `offset`, then release it so the buffered
+              // backlog does not grow unbounded for the response's lifetime.
+              const drain = (controller) => {
+                const chunk = bodyChunks[offset];
+                bodyChunks[offset] = null;
+                offset++;
+                controller.enqueue(new Uint8Array(chunk));
+              };
               return new ReadableStream({
                 pull(controller) {
                   if (bodyError) {
@@ -429,7 +452,7 @@ async function createBypassRequest(parsedUrl, realIP, options) {
                     return;
                   }
                   if (offset < bodyChunks.length) {
-                    controller.enqueue(new Uint8Array(bodyChunks[offset++]));
+                    drain(controller);
                     return;
                   }
                   if (bodyEnded) {
@@ -441,7 +464,7 @@ async function createBypassRequest(parsedUrl, realIP, options) {
                     res.off("end", onEnd);
                     res.off("error", onErr);
                     if (offset < bodyChunks.length) {
-                      controller.enqueue(new Uint8Array(bodyChunks[offset++]));
+                      drain(controller);
                     } else if (bodyEnded) {
                       controller.close();
                     }
@@ -451,7 +474,7 @@ async function createBypassRequest(parsedUrl, realIP, options) {
                     res.off("end", onEnd);
                     res.off("error", onErr);
                     if (offset < bodyChunks.length) {
-                      controller.enqueue(new Uint8Array(bodyChunks[offset++]));
+                      drain(controller);
                     } else {
                       controller.close();
                     }

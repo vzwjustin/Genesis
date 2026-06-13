@@ -720,6 +720,7 @@ export async function refreshTokenByProvider(provider, credentials, log, proxyOp
   const resolvedProxy = resolveProxyOptions(credentials, proxyOptions);
 
   switch (provider) {
+    case "gemini":
     case "gemini-cli":
     case "antigravity":
       return refreshGoogleToken(

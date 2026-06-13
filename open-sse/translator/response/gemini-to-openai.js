@@ -143,8 +143,6 @@ export function geminiToOpenAIResponse(chunk, state) {
         // Restore original tool name from mapping (AG cloaking)
         const fcName = state.toolNameMap?.get(rawName) || rawName;
         const fcArgs = part.functionCall.args || {};
-        const toolCallIndex = state.functionIndex++;
-        
         const toolCall = buildGeminiToolCallDelta(state, fcName, fcArgs, part.functionCall?.id);
         state.toolCalls.set(toolCall.index, toolCall);
         results.push(makeToolCallChunk(state, toolCall));

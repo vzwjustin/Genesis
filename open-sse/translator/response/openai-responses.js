@@ -4,6 +4,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { trailingPartialTagLen } from "../../utils/thinkTag.js";
 
 /**
  * Translate OpenAI chunk to Responses API events
@@ -26,6 +27,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   const choice = chunk.choices[0];
   const idx = choice.index || 0;
+  state.lastIdx = idx;
   const delta = choice.delta || {};
 
   // Emit initial events
@@ -65,7 +67,16 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   // Handle text content
   if (delta.content) {
-    let content = delta.content;
+    // Prepend any partial tag held back from the previous chunk, then hold back
+    // a new trailing partial so a <think>/</think> tag split across two deltas
+    // is still detected as a whole.
+    let content = (state.thinkCarry || "") + delta.content;
+    state.thinkCarry = "";
+    const holdLen = trailingPartialTagLen(content);
+    if (holdLen > 0) {
+      state.thinkCarry = content.slice(content.length - holdLen);
+      content = content.slice(0, content.length - holdLen);
+    }
 
     if (content.includes("<think>")) {
       state.inThinking = true;
@@ -103,6 +114,13 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   // Handle finish_reason
   if (choice.finish_reason) {
+    // Any held-back fragment never completed into a tag — it is real text.
+    if (state.thinkCarry) {
+      const carry = state.thinkCarry;
+      state.thinkCarry = "";
+      if (state.inThinking) emitReasoningDelta(state, emit, carry);
+      else emitTextContent(state, emit, idx, carry);
+    }
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
@@ -352,11 +370,18 @@ function flushEvents(state) {
     events.push({ event: eventType, data });
   };
 
+  // Emit any held-back partial tag as real text — it never completed.
+  if (state.thinkCarry) {
+    const carry = state.thinkCarry;
+    state.thinkCarry = "";
+    if (state.inThinking) emitReasoningDelta(state, emit, carry);
+    else emitTextContent(state, emit, state.lastIdx || 0, carry);
+  }
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);
   sendCompleted(state, emit);
-  
+
   return events;
 }
 

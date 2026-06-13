@@ -80,8 +80,8 @@ function translateTargetToOpenAI(responseBody, targetFormat) {
 
     if (usage) {
       result.usage = {
-        prompt_tokens: (usage.promptTokenCount || 0) + (usage.thoughtsTokenCount || 0),
-        completion_tokens: usage.candidatesTokenCount || 0,
+        prompt_tokens: usage.promptTokenCount || 0,
+        completion_tokens: (usage.candidatesTokenCount || 0) + (usage.thoughtsTokenCount || 0),
         total_tokens: usage.totalTokenCount || 0
       };
       if (usage.thoughtsTokenCount > 0) {
@@ -98,11 +98,17 @@ function translateTargetToOpenAI(responseBody, targetFormat) {
     let textContent = "", thinkingContent = "";
     const toolCalls = [];
 
+    // Only Kimi wraps its JSON answers in ```json fences. Stripping fences for
+    // every Claude-format provider would corrupt a legitimate fenced code block
+    // in a normal Claude answer, so gate the workaround on the Kimi model.
+    const isKimi = /kimi/i.test(responseBody.model || "");
+
     for (const block of responseBody.content) {
       if (block.type === "text") {
-        // Strip markdown code block markers (e.g. kimi wraps JSON in ```json...```)
         const raw = block.text ?? "";
-        const text = raw.replace(/^\s*```\s*json\s*\n?/i, "").replace(/\n?\s*```\s*$/i, "");
+        const text = isKimi
+          ? raw.replace(/^\s*```\s*json\s*\n?/i, "").replace(/\n?\s*```\s*$/i, "")
+          : raw;
         textContent += text;
       } else if (block.type === "thinking") thinkingContent += block.thinking || "";
       else if (block.type === "tool_use") {

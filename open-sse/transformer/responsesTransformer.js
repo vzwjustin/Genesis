@@ -6,6 +6,7 @@
 
 import fs from "fs";
 import path from "path";
+import { trailingPartialTagLen } from "../utils/thinkTag.js";
 
 // Create log directory for responses (Node.js only)
 export function createResponsesLogger(model, logsDir = null) {
@@ -74,7 +75,9 @@ export function createResponsesApiTransformStream(logger = null) {
     funcItemDone: {},
     buffer: "",
     completedSent: false,
-    finishReasonSeen: false
+    finishReasonSeen: false,
+    thinkCarry: "",
+    lastIdx: 0
   };
 
   const encoder = new TextEncoder();
@@ -156,6 +159,44 @@ export function createResponsesApiTransformStream(logger = null) {
         }
       });
     }
+  };
+
+  const emitTextDelta = (controller, idx, content) => {
+    if (!content) return;
+    if (!state.msgItemAdded[idx]) {
+      state.msgItemAdded[idx] = true;
+      const msgId = `msg_${state.responseId}_${idx}`;
+
+      emit(controller, "response.output_item.added", {
+        type: "response.output_item.added",
+        output_index: idx,
+        item: { id: msgId, type: "message", content: [], role: "assistant" }
+      });
+    }
+
+    if (!state.msgContentAdded[idx]) {
+      state.msgContentAdded[idx] = true;
+
+      emit(controller, "response.content_part.added", {
+        type: "response.content_part.added",
+        item_id: `msg_${state.responseId}_${idx}`,
+        output_index: idx,
+        content_index: 0,
+        part: { type: "output_text", annotations: [], logprobs: [], text: "" }
+      });
+    }
+
+    emit(controller, "response.output_text.delta", {
+      type: "response.output_text.delta",
+      item_id: `msg_${state.responseId}_${idx}`,
+      output_index: idx,
+      content_index: 0,
+      delta: content,
+      logprobs: []
+    });
+
+    if (!state.msgTextBuf[idx]) state.msgTextBuf[idx] = "";
+    state.msgTextBuf[idx] += content;
   };
 
   const closeMessage = (controller, idx) => {
@@ -269,6 +310,7 @@ export function createResponsesApiTransformStream(logger = null) {
         
         const choice = parsed.choices[0];
         const idx = choice.index || 0;
+        state.lastIdx = idx;
         const delta = choice.delta || {};
 
         // Emit initial events
@@ -308,7 +350,17 @@ export function createResponsesApiTransformStream(logger = null) {
 
         // Handle text content (may contain <think> tags)
         if (delta.content) {
-          let content = delta.content;
+          // Prepend any partial tag held back from the previous chunk, then
+          // hold back a new trailing partial so a <think>/</think> tag split
+          // across two deltas is still detected as a whole.
+          let content = (state.thinkCarry || "") + delta.content;
+          state.thinkCarry = "";
+          const holdLen = trailingPartialTagLen(content);
+          if (holdLen > 0) {
+            state.thinkCarry = content.slice(content.length - holdLen);
+            content = content.slice(0, content.length - holdLen);
+          }
+          if (!content) continue;
 
           if (content.includes("<think>")) {
             state.inThinking = true;
@@ -334,40 +386,7 @@ export function createResponsesApiTransformStream(logger = null) {
 
           // Regular text content
           if (content) {
-            if (!state.msgItemAdded[idx]) {
-              state.msgItemAdded[idx] = true;
-              const msgId = `msg_${state.responseId}_${idx}`;
-              
-              emit(controller, "response.output_item.added", {
-                type: "response.output_item.added",
-                output_index: idx,
-                item: { id: msgId, type: "message", content: [], role: "assistant" }
-              });
-            }
-
-            if (!state.msgContentAdded[idx]) {
-              state.msgContentAdded[idx] = true;
-              
-              emit(controller, "response.content_part.added", {
-                type: "response.content_part.added",
-                item_id: `msg_${state.responseId}_${idx}`,
-                output_index: idx,
-                content_index: 0,
-                part: { type: "output_text", annotations: [], logprobs: [], text: "" }
-              });
-            }
-
-            emit(controller, "response.output_text.delta", {
-              type: "response.output_text.delta",
-              item_id: `msg_${state.responseId}_${idx}`,
-              output_index: idx,
-              content_index: 0,
-              delta: content,
-              logprobs: []
-            });
-
-            if (!state.msgTextBuf[idx]) state.msgTextBuf[idx] = "";
-            state.msgTextBuf[idx] += content;
+            emitTextDelta(controller, idx, content);
           }
         }
 
@@ -418,6 +437,13 @@ export function createResponsesApiTransformStream(logger = null) {
         // Handle finish_reason
         if (choice.finish_reason) {
           state.finishReasonSeen = true;
+          // Any held-back fragment never completed into a tag — it is real text.
+          if (state.thinkCarry) {
+            const carry = state.thinkCarry;
+            state.thinkCarry = "";
+            if (state.inThinking) emitReasoningDelta(controller, carry);
+            else emitTextDelta(controller, idx, carry);
+          }
           for (const i in state.msgItemAdded) closeMessage(controller, i);
           closeReasoning(controller);
           for (const i in state.funcCallIds) closeToolCall(controller, i);
@@ -427,6 +453,13 @@ export function createResponsesApiTransformStream(logger = null) {
     },
 
     flush(controller) {
+      // Emit any held-back partial tag as real text — it never completed.
+      if (state.thinkCarry) {
+        const carry = state.thinkCarry;
+        state.thinkCarry = "";
+        if (state.inThinking) emitReasoningDelta(controller, carry);
+        else emitTextDelta(controller, state.lastIdx || 0, carry);
+      }
       for (const i in state.msgItemAdded) closeMessage(controller, i);
       closeReasoning(controller);
       for (const i in state.funcCallIds) closeToolCall(controller, i);
