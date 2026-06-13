@@ -424,7 +424,68 @@ function readResponseHeader(headers, name) {
   return headers[name] || headers[lower] || "";
 }
 
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, passthrough }) {
+function openAIChatCompletionToResponsesJson(openaiResponse) {
+  const choice = openaiResponse?.choices?.[0] || {};
+  const message = choice.message || {};
+  const output = [];
+  const responseId = openaiResponse?.id ? `resp_${openaiResponse.id}` : `resp_${Date.now()}`;
+
+  if (message.reasoning_content) {
+    output.push({
+      id: `rs_${responseId}_0`,
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: message.reasoning_content }]
+    });
+  }
+
+  if (Array.isArray(message.tool_calls)) {
+    for (const toolCall of message.tool_calls) {
+      output.push({
+        id: `fc_${toolCall.id || Date.now()}`,
+        type: "function_call",
+        call_id: toolCall.id || `call_${Date.now()}`,
+        name: toolCall.function?.name || "",
+        arguments: toolCall.function?.arguments || "{}"
+      });
+    }
+  }
+
+  if (typeof message.content === "string") {
+    output.push({
+      id: `msg_${responseId}_0`,
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", annotations: [], logprobs: [], text: message.content }]
+    });
+  }
+
+  const usage = openaiResponse?.usage || {};
+  return {
+    id: responseId,
+    object: "response",
+    created_at: openaiResponse?.created || Math.floor(Date.now() / 1000),
+    status: "completed",
+    output,
+    usage: {
+      input_tokens: usage.prompt_tokens || 0,
+      output_tokens: usage.completion_tokens || 0,
+      total_tokens: usage.total_tokens || ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0))
+    }
+  };
+}
+
+function providerRequestLooksLikeResponsesApi(providerRequest) {
+  return Boolean(
+    providerRequest &&
+    typeof providerRequest === "object" &&
+    !Array.isArray(providerRequest) &&
+    !Array.isArray(providerRequest.messages) &&
+    (Object.prototype.hasOwnProperty.call(providerRequest, "input") ||
+      Object.prototype.hasOwnProperty.call(providerRequest, "instructions"))
+  );
+}
+
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, passthrough }) {
   const contentType = readResponseHeader(providerResponse.headers, "content-type");
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && provider === "codex");
   if (!isSSE) return null; // not handled here
@@ -437,9 +498,15 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     providerRequest: finalBody || translatedBody || null
   };
 
-  // Codex/Responses API SSE path
-  const isCodexResponsesApi = provider === "codex" || sourceFormat === FORMATS.OPENAI_RESPONSES;
-  if (isCodexResponsesApi) {
+  // Responses API SSE path. Key this off the upstream target response shape,
+  // not the client source format: /v1/responses can be translated to OpenAI
+  // Chat Completions upstream, whose SSE frames must use the OpenAI parser.
+  const providerRequest = finalBody || translatedBody || null;
+  const isResponsesApiSSE =
+    provider === "codex" ||
+    targetFormat === FORMATS.OPENAI_RESPONSES ||
+    providerRequestLooksLikeResponsesApi(providerRequest);
+  if (isResponsesApiSSE) {
     try {
       const jsonResponse = await convertResponsesStreamToJson(providerResponse.body);
 
@@ -547,10 +614,13 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
   // Standard Chat Completions SSE path
   try {
     const sseText = await providerResponse.text();
-    const parsed = passthrough
+    let parsed = passthrough
       ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
       : parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request", undefined, PROXY_INTERNAL_SSE);
+    if (!passthrough && sourceFormat === FORMATS.OPENAI_RESPONSES) {
+      parsed = openAIChatCompletionToResponsesJson(parsed);
+    }
 
     if (onRequestSuccess) await onRequestSuccess();
 
@@ -585,9 +655,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
             finish_reason: parsed.stop_reason || "unknown",
           }
         : {
-            content: parsed.choices?.[0]?.message?.content || null,
+            content: parsed.choices?.[0]?.message?.content || textFromResponsesMessageItem(parsed.output?.find((item) => item.type === "message")) || null,
             thinking: parsed.choices?.[0]?.message?.reasoning_content || null,
-            finish_reason: parsed.choices?.[0]?.finish_reason || "unknown",
+            finish_reason: parsed.choices?.[0]?.finish_reason || (parsed.status === "completed" ? "stop" : "unknown"),
           },
       status: "success"
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
