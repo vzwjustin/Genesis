@@ -176,11 +176,19 @@ useEffect(() => {
     }
   };
 
+  const toCodexNativeModel = (value) => {
+    if (!value) return value;
+    if (value.startsWith("cx/")) return value.slice(3);
+    const slash = value.indexOf("/");
+    return slash > 0 ? value.slice(slash + 1) : value;
+  };
+
   const handleModelSelect = (model) => {
-    setSelectedModel(model.value);
+    const nativeModel = toCodexNativeModel(model.value);
+    setSelectedModel(nativeModel);
     // Auto-set subagent model if not set
     if (!subagentModel) {
-      setSubagentModel(model.value);
+      setSubagentModel(nativeModel);
     }
     setModalOpen(false);
   };
@@ -405,7 +413,7 @@ model = "${effectiveSubagentModel}"
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSelect={handleModelSelect}
-        selectedModel={selectedModel}
+        selectedModel={selectedModel && !selectedModel.includes("/") ? `cx/${selectedModel}` : selectedModel}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
         title="Select Model for Codex"
@@ -414,8 +422,8 @@ model = "${effectiveSubagentModel}"
       <ModelSelectModal
         isOpen={subagentModalOpen}
         onClose={() => setSubagentModalOpen(false)}
-        onSelect={(model) => { setSubagentModel(model.value); setSubagentModalOpen(false); }}
-        selectedModel={subagentModel}
+        onSelect={(model) => { setSubagentModel(toCodexNativeModel(model.value)); setSubagentModalOpen(false); }}
+        selectedModel={subagentModel && !subagentModel.includes("/") ? `cx/${subagentModel}` : subagentModel}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
         title="Select Subagent Model for Codex"

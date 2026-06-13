@@ -114,6 +114,11 @@ export const CLI_TOOLS = {
     color: "#10A37F",
     description: "Connect Codex CLI and app requests",
     configType: "custom",
+    defaultModels: [
+      { id: "gpt-5.5", name: "GPT 5.5", alias: "gpt5", defaultValue: "cx/gpt-5.5" },
+      { id: "gpt-5.4", name: "GPT 5.4", alias: "gpt54", defaultValue: "cx/gpt-5.4" },
+      { id: "gpt-5.3-codex", name: "GPT 5.3 Codex", alias: "codex53", defaultValue: "cx/gpt-5.3-codex" },
+    ],
   },
   opencode: {
     id: "opencode",

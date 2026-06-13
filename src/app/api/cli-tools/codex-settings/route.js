@@ -8,8 +8,24 @@ import path from "path";
 import os from "os";
 import { getCliHomeDir } from "@/shared/utils/cliHome";
 import { parseTOML, stringifyTOML } from "confbox";
+import { setModelAlias } from "@/models";
 
 const execAsync = promisify(exec);
+
+/** Codex config.toml uses native OpenAI model ids (gpt-5.5), not 9router routing ids (cx/gpt-5.5). */
+export function toCodexNativeModel(model) {
+  if (!model || typeof model !== "string") return model;
+  if (model.startsWith("cx/")) return model.slice(3);
+  const slash = model.indexOf("/");
+  if (slash > 0 && model.slice(0, slash) === "codex") return model.slice(slash + 1);
+  return model;
+}
+
+/** Register alias so bare Codex model names resolve through 9router (gpt-5.5 → cx/gpt-5.5). */
+async function ensureCodexModelAlias(nativeModel) {
+  if (!nativeModel || typeof nativeModel !== "string" || nativeModel.includes("/")) return;
+  await setModelAlias(nativeModel, `cx/${nativeModel}`);
+}
 
 const getCodexDir = () => path.join(getCliHomeDir(), ".codex");
 const getCodexConfigPath = () => path.join(getCodexDir(), "config.toml");
@@ -133,8 +149,11 @@ export async function POST(request) {
       parsed = parsedToWritable(parseTOML(existingConfig));
     } catch { /* No existing config */ }
 
+    const nativeModel = toCodexNativeModel(model);
+    const nativeSubagentModel = toCodexNativeModel(subagentModel || model);
+
     // Update only 9Router related fields (api_key goes to auth.json, not config.toml)
-    parsed.model = model;
+    parsed.model = nativeModel;
     parsed.model_provider = "9router";
 
     // Update or create 9router provider section (no api_key - Codex reads from auth.json)
@@ -147,14 +166,18 @@ export async function POST(request) {
     });
 
     // Add subagent configuration
-    const effectiveSubagentModel = subagentModel || model;
     setNestedSection(parsed, "agents.subagent", {
-      model: effectiveSubagentModel,
+      model: nativeSubagentModel,
     });
 
     // Write merged config
     const configContent = stringifyTOML(parsed);
     await fs.writeFile(configPath, configContent);
+
+    await ensureCodexModelAlias(nativeModel);
+    if (nativeSubagentModel !== nativeModel) {
+      await ensureCodexModelAlias(nativeSubagentModel);
+    }
 
     // Update auth.json with OPENAI_API_KEY (Codex reads this first)
     const authPath = getCodexAuthPath();
