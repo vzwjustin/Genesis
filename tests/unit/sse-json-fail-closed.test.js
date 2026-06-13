@@ -181,6 +181,73 @@ describe("handleForcedSSEToJson — Codex branch fails closed (Bug B)", () => {
   });
 });
 
+describe("handleForcedSSEToJson — upstream SSE format selection", () => {
+  function baseArgs(providerResponse, overrides = {}) {
+    return {
+      providerResponse,
+      sourceFormat: "openai-responses",
+      targetFormat: "openai",
+      provider: "openai",
+      model: "gpt-4",
+      body: { input: "Hi", stream: false },
+      stream: true,
+      translatedBody: { messages: [{ role: "user", content: "Hi" }], stream: true },
+      finalBody: null,
+      requestStartTime: Date.now(),
+      connectionId: "conn-1",
+      apiKey: "test-key",
+      clientRawRequest: { headers: {}, body: "{}", endpoint: "/v1/responses" },
+      onRequestSuccess: vi.fn(),
+      trackDone: vi.fn(),
+      appendLog: vi.fn(),
+      passthrough: false,
+      ...overrides,
+    };
+  }
+
+  it("uses Chat Completions assembly for /v1/responses translated to OpenAI chat SSE", async () => {
+    const chatSSE = [
+      'data: {"id":"chatcmpl-resp","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}',
+      'data: {"id":"chatcmpl-resp","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}',
+      "data: [DONE]",
+    ].join("\n");
+
+    const providerResponse = {
+      headers: new Map([["content-type", "text/event-stream"]]),
+      text: () => Promise.resolve(chatSSE),
+    };
+
+    const result = await handleForcedSSEToJson(baseArgs(providerResponse));
+    expect(result.success).toBe(true);
+    const json = await result.response.json();
+    expect(json.object).toBe("response");
+    expect(json.status).toBe("completed");
+    expect(json.output[0].content[0].text).toBe("Hello");
+    expect(json.usage).toEqual({ input_tokens: 7, output_tokens: 1, total_tokens: 8 });
+  });
+
+  it("keeps true Responses-format upstream streams on the Responses converter", async () => {
+    const responsesSSE = [
+      'event: response.created\ndata: {"response":{"id":"resp_true","created_at":1700000000}}',
+      'event: response.output_item.done\ndata: {"output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Native"}]}}',
+      'event: response.completed\ndata: {"response":{"usage":{"input_tokens":4,"output_tokens":1,"total_tokens":5}}}',
+      "data: [DONE]",
+    ].join("\n\n");
+
+    const providerResponse = {
+      headers: new Map([["content-type", "text/event-stream"]]),
+      body: sseStream(responsesSSE),
+    };
+
+    const result = await handleForcedSSEToJson(baseArgs(providerResponse, { targetFormat: "openai-responses" }));
+    expect(result.success).toBe(true);
+    const json = await result.response.json();
+    expect(json.object).toBe("response");
+    expect(json.id).toBe("resp_true");
+    expect(json.output[0].content[0].text).toBe("Native");
+  });
+});
+
 // ===========================================================================
 // Bug C: parseSSEToOpenAIResponse fails closed on missing terminal signal
 // ===========================================================================
