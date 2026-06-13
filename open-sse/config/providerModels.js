@@ -29,7 +29,7 @@ function withCodexReviewModels(models) {
 export const PROVIDER_MODELS = {
   // OAuth Providers (using alias)
   cc: [  // Claude Code
-    { id: "claude-opus-4-8", name: "Claude Opus 4.8" },
+    { id: "claude-opus-4-8", name: "Claude Opus 4.8", contextWindow: 1000000 },
     { id: "claude-opus-4-7", name: "Claude Opus 4.7" },
     { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
     { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
