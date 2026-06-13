@@ -3,7 +3,6 @@ import createOpenAIAdapter from "./openai.js";
 import gemini from "./gemini.js";
 import codex from "./codex.js";
 import sdwebui from "./sdwebui.js";
-import comfyui from "./comfyui.js";
 import huggingface from "./huggingface.js";
 import nanobanana from "./nanobanana.js";
 import falAi from "./falAi.js";
@@ -21,7 +20,6 @@ const ADAPTERS = {
   gemini,
   codex,
   sdwebui,
-  comfyui,
   huggingface,
   nanobanana,
   "fal-ai": falAi,

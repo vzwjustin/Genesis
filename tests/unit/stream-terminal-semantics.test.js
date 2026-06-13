@@ -210,6 +210,29 @@ describe("streamHandler — incomplete callback on error", () => {
   });
 });
 
+describe("stream.js — translate flush parsing", () => {
+  it("uses targetFormat when parsing a final buffered SSE line", async () => {
+    const onStreamComplete = vi.fn();
+    const sse = 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"tail"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}}';
+
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      "antigravity",
+      null,
+      null,
+      "gemini-model",
+      null,
+      { messages: [] },
+      onStreamComplete,
+      null
+    );
+
+    const out = await pipeSseThroughTransform(sse, transform);
+    expect(out).toContain("tail");
+  });
+});
+
 describe("responsesTransformer — flush without finish_reason", () => {
   it("emits response.failed instead of response.completed when truncated", async () => {
     const sse = [

@@ -325,7 +325,7 @@ export function createSSEStream(options = {}) {
         }
 
         if (buffer.trim()) {
-          const parsed = parseSSELine(buffer.trim());
+          const parsed = parseSSELine(buffer.trim(), targetFormat);
           if (parsed && !parsed.done) {
             markTerminalFromParsed(parsed);
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);

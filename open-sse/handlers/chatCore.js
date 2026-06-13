@@ -495,6 +495,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       proxyOptions,
       passthrough,
       cacheProtectedSnapshot,
+      sourceFormat,
     });
     providerResponse = result.response;
     providerUrl = result.url;
@@ -561,6 +562,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
             proxyOptions,
             passthrough,
             cacheProtectedSnapshot,
+            sourceFormat,
           });
           providerResponse = retryResult.response;
           providerUrl = retryResult.url;

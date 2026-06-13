@@ -13,6 +13,7 @@ import gemini from "../../open-sse/handlers/imageProviders/gemini.js";
 import nanobanana from "../../open-sse/handlers/imageProviders/nanobanana.js";
 import sdwebui from "../../open-sse/handlers/imageProviders/sdwebui.js";
 import cloudflareAi from "../../open-sse/handlers/imageProviders/cloudflareAi.js";
+import { getProvidersByKind } from "../../src/shared/constants/providers.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +30,13 @@ describe("handleImageGenerationCore — validation", () => {
     expect(result.error).toContain("Missing required field: prompt");
   });
 
+  it("passes abort signal to upstream image fetches (source)", () => {
+    const src = readFileSync(join(root, "../../open-sse/handlers/imageGenerationCore.js"), "utf8");
+    expect(src).toContain("signal,");
+    expect(src).toContain("proxyAwareFetch(url");
+    expect(src).toContain("proxyAwareFetch(retryUrl");
+  });
+
   it("rejects unsupported provider", async () => {
     const result = await handleImageGenerationCore({
       body: { prompt: "test" },
@@ -39,6 +47,11 @@ describe("handleImageGenerationCore — validation", () => {
     expect(result.success).toBe(false);
     expect(result.status).toBe(400);
     expect(result.error).toContain("does not support image generation");
+  });
+
+  it("does not register or advertise incomplete ComfyUI placeholder support", () => {
+    expect(getImageAdapter("comfyui")).toBeNull();
+    expect(getProvidersByKind("image").some((provider) => provider.id === "comfyui")).toBe(false);
   });
 });
 

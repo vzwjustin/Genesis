@@ -37,6 +37,7 @@ export async function handleImageGenerationCore({
   binaryOutput = false,
   onCredentialsRefreshed,
   onRequestSuccess,
+  signal,
 }) {
   const { provider, model } = modelInfo;
 
@@ -73,6 +74,7 @@ export async function handleImageGenerationCore({
       method: "POST",
       headers,
       body: serializeRequestBody(requestBody),
+      signal,
     }, proxyOptions);
   } catch (error) {
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
@@ -112,6 +114,7 @@ export async function handleImageGenerationCore({
           method: "POST",
           headers: retryHeaders,
           body: serializeRequestBody(retryBody),
+          signal,
         }, proxyOptions);
       } catch (retryError) {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);

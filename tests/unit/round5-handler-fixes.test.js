@@ -131,8 +131,8 @@ describe("imageGeneration.js — no-auth from adapter config", () => {
     expect(fn).toContain("handleComboChat({");
   });
 
-  it("sdwebui and comfyui adapters declare noAuth", () => {
+  it("sdwebui declares noAuth and incomplete comfyui is not registered", () => {
     expect(getImageAdapter("sdwebui")?.noAuth).toBe(true);
-    expect(getImageAdapter("comfyui")?.noAuth).toBe(true);
+    expect(getImageAdapter("comfyui")).toBeNull();
   });
 });

@@ -53,7 +53,7 @@ export class BaseExecutor {
     return this.getBaseUrls().length || 1;
   }
 
-  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+  buildUrl(model, stream, urlIndex = 0, credentials = null, requestContext = {}) {
     if (this.provider?.startsWith?.("openai-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "https://api.openai.com/v1";
       const normalized = validateProviderBaseUrl(baseUrl);
@@ -66,7 +66,15 @@ export class BaseExecutor {
       return `${normalized}/messages`;
     }
     const baseUrls = this.getBaseUrls();
-    return baseUrls[urlIndex] || baseUrls[0] || this.config.baseUrl;
+    const baseUrl = baseUrls[urlIndex] || baseUrls[0] || this.config.baseUrl;
+    if (
+      this.provider === "openai" &&
+      requestContext?.passthrough === true &&
+      requestContext?.sourceFormat === "openai-responses"
+    ) {
+      return String(baseUrl).replace(/\/chat\/completions\/?$/, "/responses");
+    }
+    return baseUrl;
   }
 
   buildHeaders(credentials, stream = true) {
@@ -135,7 +143,7 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false, cacheProtectedSnapshot = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false, cacheProtectedSnapshot = null, sourceFormat = null }) {
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
@@ -155,7 +163,7 @@ export class BaseExecutor {
     };
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
-      const url = this.buildUrl(model, stream, urlIndex, credentials, { body, passthrough });
+      const url = this.buildUrl(model, stream, urlIndex, credentials, { body, passthrough, sourceFormat });
       // Passthrough (passthru) mode: skip normal translation; only strip local proxy metadata.
       const transformedBody = passthrough
         ? await Promise.resolve(this.transformPassthroughRequest(model, body, stream, credentials))

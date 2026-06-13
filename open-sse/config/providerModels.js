@@ -741,10 +741,6 @@ export const PROVIDER_MODELS = {
     { id: "stable-diffusion-v1-5", name: "Stable Diffusion v1.5", type: "image", params: ["n", "size"] },
     { id: "sdxl-base-1.0", name: "SDXL Base 1.0", type: "image", params: ["n", "size"] },
   ],
-  comfyui: [
-    { id: "flux-dev", name: "FLUX Dev", type: "image", params: ["n", "size"] },
-    { id: "sdxl", name: "SDXL", type: "image", params: ["n", "size"] },
-  ],
   huggingface: [
     { id: "black-forest-labs/FLUX.1-schnell", name: "FLUX.1 Schnell", type: "image", params: [] },
     { id: "stabilityai/stable-diffusion-xl-base-1.0", name: "SDXL Base 1.0", type: "image", params: [] },

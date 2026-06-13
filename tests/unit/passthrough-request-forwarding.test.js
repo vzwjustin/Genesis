@@ -24,7 +24,7 @@ vi.mock("open-sse/translator/index.js", () => ({
   translateRequest: (...args) => mockTranslateRequest(...args),
 }));
 vi.mock("open-sse/translator/formats.js", () => ({
-  FORMATS: { CLAUDE: "claude", OPENAI: "openai", GEMINI: "gemini", GEMINI_CLI: "gemini-cli", ANTIGRAVITY: "antigravity" },
+  FORMATS: { CLAUDE: "claude", OPENAI: "openai", OPENAI_RESPONSES: "openai-responses", GEMINI: "gemini", GEMINI_CLI: "gemini-cli", ANTIGRAVITY: "antigravity" },
 }));
 vi.mock("open-sse/utils/stream.js", () => ({
   COLORS: { red: "", reset: "" },
@@ -71,12 +71,14 @@ vi.mock("@/lib/usageDb.js", () => ({
 let executorReceivedBody = null;
 let executorReceivedPassthrough = null;
 let executorReceivedStream = null;
+let executorReceivedSourceFormat = null;
 vi.mock("open-sse/executors/index.js", () => ({
   getExecutor: () => ({
-    execute: vi.fn(({ body, passthrough, stream }) => {
+    execute: vi.fn(({ body, passthrough, stream, sourceFormat }) => {
       executorReceivedBody = body;
       executorReceivedPassthrough = passthrough;
       executorReceivedStream = stream;
+      executorReceivedSourceFormat = sourceFormat;
       return Promise.resolve({
         response: { ok: true, status: 200, headers: new Map() },
         url: "https://api.anthropic.com/v1/messages",
@@ -259,6 +261,23 @@ describe("Passthrough request forwarding (task 2.2)", () => {
 
     expect(executorReceivedBody.stream).toBeUndefined();
     expect(executorReceivedStream).toBe(false);
+  });
+
+  it("passes openai-responses source format through to executor URL selection", async () => {
+    mockDetectClientTool.mockReturnValue("openai");
+    const opts = makeOptions({
+      modelInfo: { provider: "openai", model: "gpt-5.4" },
+      clientRawRequest: { headers: { "user-agent": "OpenAI/Node 6.0" }, body: "{}", endpoint: "/v1/responses" },
+      sourceFormatOverride: "openai-responses",
+    });
+    delete opts.body.stream;
+    opts.body.input = [{ role: "user", content: "hi" }];
+    delete opts.body.messages;
+
+    await handleChatCore(opts);
+
+    expect(executorReceivedPassthrough).toBe(true);
+    expect(executorReceivedSourceFormat).toBe("openai-responses");
   });
 
   it("preserves provider-native fields that translation would normally drop (top_k, top_p, system, etc.)", async () => {
