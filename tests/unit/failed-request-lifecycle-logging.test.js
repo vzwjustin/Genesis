@@ -62,15 +62,15 @@ describe("failed request lifecycle logging", () => {
     expect(trackDone).toHaveBeenCalled();
     expect(appendLog).toHaveBeenCalledWith({ status: "FAILED 502" });
     expect(mocks.saveRequestDetail).toHaveBeenCalledTimes(1);
-    expect(mocks.buildRequestDetail).toHaveBeenCalledWith(
+    expect(mocks.saveRequestDetail).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "error",
         response: expect.objectContaining({
           error: "Invalid SSE response for non-streaming request",
           status: 502,
         }),
-      }),
-      { endpoint: "/v1/chat/completions" }
+        endpoint: "/v1/chat/completions",
+      })
     );
   });
 
