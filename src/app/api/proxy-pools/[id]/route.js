@@ -7,6 +7,7 @@ import {
 } from "@/models";
 import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { normalizeProxyPoolType } from "@/lib/network/proxyPoolTypes";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
@@ -44,8 +45,11 @@ function normalizeProxyPoolUpdate(body = {}) {
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "type")) {
-    const validTypes = ["http", "vercel", "cloudflare"];
-    updates.type = validTypes.includes(body?.type) ? body.type : "http";
+    const typeResult = normalizeProxyPoolType(body?.type);
+    if (typeResult.error) {
+      return { error: typeResult.error };
+    }
+    updates.type = typeResult.type;
   }
 
   return { updates };
