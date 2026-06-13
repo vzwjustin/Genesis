@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
 import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { normalizeProxyPoolType } from "@/lib/network/proxyPoolTypes";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -9,15 +10,17 @@ function toBoolean(value) {
   return undefined;
 }
 
-const VALID_PROXY_TYPES = ["http", "vercel", "cloudflare", "deno"];
-
 function normalizeProxyPoolInput(body = {}) {
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const proxyUrl = typeof body?.proxyUrl === "string" ? body.proxyUrl.trim() : "";
   const noProxy = typeof body?.noProxy === "string" ? body.noProxy.trim() : "";
   const isActive = body?.isActive === undefined ? true : body.isActive === true;
   const strictProxy = body?.strictProxy === true;
-  const type = VALID_PROXY_TYPES.includes(body?.type) ? body.type : "http";
+  const typeResult = normalizeProxyPoolType(body?.type, { defaultType: "http" });
+  if (typeResult.error) {
+    return { error: typeResult.error };
+  }
+  const type = typeResult.type;
 
   if (!name) {
     return { error: "Name is required" };
