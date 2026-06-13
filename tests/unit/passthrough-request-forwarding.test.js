@@ -70,11 +70,13 @@ vi.mock("@/lib/usageDb.js", () => ({
 // Capture the body sent to the executor
 let executorReceivedBody = null;
 let executorReceivedPassthrough = null;
+let executorReceivedStream = null;
 vi.mock("open-sse/executors/index.js", () => ({
   getExecutor: () => ({
-    execute: vi.fn(({ body, passthrough }) => {
+    execute: vi.fn(({ body, passthrough, stream }) => {
       executorReceivedBody = body;
       executorReceivedPassthrough = passthrough;
+      executorReceivedStream = stream;
       return Promise.resolve({
         response: { ok: true, status: 200, headers: new Map() },
         url: "https://api.anthropic.com/v1/messages",
@@ -163,6 +165,7 @@ describe("Passthrough request forwarding (task 2.2)", () => {
     mockDetectClientTool.mockReturnValue("claude");
     executorReceivedBody = null;
     executorReceivedPassthrough = null;
+    executorReceivedStream = null;
   });
 
   it("does NOT call translateRequest in passthrough mode", async () => {
@@ -246,6 +249,16 @@ describe("Passthrough request forwarding (task 2.2)", () => {
     await handleChatCore(opts);
 
     expect(executorReceivedBody.stream).toBe(true);
+    expect(executorReceivedStream).toBe(true);
+  });
+
+  it("treats omitted stream as non-streaming in passthrough mode", async () => {
+    const opts = makeOptions();
+    delete opts.body.stream;
+    await handleChatCore(opts);
+
+    expect(executorReceivedBody.stream).toBeUndefined();
+    expect(executorReceivedStream).toBe(false);
   });
 
   it("preserves provider-native fields that translation would normally drop (top_k, top_p, system, etc.)", async () => {

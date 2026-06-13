@@ -394,10 +394,13 @@ describe("providerRequiresStreaming logic (Requirements 6.3, 1.2)", () => {
   const ALWAYS_STREAMING_PROVIDERS = ["openai", "codex", "commandcode"];
   const NON_STREAMING_PROVIDERS = ["claude", "gemini", "cursor", "kiro"];
 
-  function computeStreamDecision(provider, bodyStreamValue) {
-    // Mirrors chatCore.js logic: providerRequiresStreaming ? true : (body.stream !== false)
+  function computeStreamDecision(provider, bodyStreamValue, passthrough = false, sourceFormat = "openai") {
+    // Mirrors chatCore.js stream decision.
     const providerRequiresStreaming = ALWAYS_STREAMING_PROVIDERS.includes(provider);
-    return providerRequiresStreaming ? true : (bodyStreamValue !== false);
+    const clientRequestedStreaming = computeClientRequestedStreaming(bodyStreamValue, sourceFormat);
+    let stream = providerRequiresStreaming ? true : (bodyStreamValue !== false);
+    if (passthrough && !providerRequiresStreaming) stream = clientRequestedStreaming;
+    return stream;
   }
 
   function computeClientRequestedStreaming(bodyStream, sourceFormat) {
@@ -462,5 +465,15 @@ describe("providerRequiresStreaming logic (Requirements 6.3, 1.2)", () => {
     const provider = "claude"; // non-always-streaming
     const stream = computeStreamDecision(provider, clientStream);
     expect(stream).toBe(true); // Client's streaming preference preserved
+  });
+
+  it("passthrough treats omitted stream as non-streaming for non-always-streaming providers", () => {
+    expect(computeStreamDecision("claude", undefined, true, "claude")).toBe(false);
+  });
+
+  it("passthrough keeps native streaming formats streaming even when stream is omitted", () => {
+    expect(computeStreamDecision("gemini", undefined, true, "gemini")).toBe(true);
+    expect(computeStreamDecision("gemini-cli", undefined, true, "gemini-cli")).toBe(true);
+    expect(computeStreamDecision("antigravity", undefined, true, "antigravity")).toBe(true);
   });
 });

@@ -117,6 +117,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const providerRequiresStreaming = provider === "openai" || provider === "codex" || provider === "commandcode";
   let stream = providerRequiresStreaming ? true : (body.stream !== false);
 
+  // Passthrough preserves the client contract: omitted stream is non-streaming,
+  // explicit stream:true streams, and native streaming formats keep their stream.
+  if (passthrough && !providerRequiresStreaming) stream = clientRequestedStreaming;
+
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
   // Only force non-streaming when client didn't explicitly request it.
