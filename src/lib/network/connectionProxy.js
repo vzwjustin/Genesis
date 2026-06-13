@@ -8,7 +8,7 @@ function normalizeString(value) {
 
 // Validate a proxy URL. The undici-based dispatcher only supports http/https
 // proxies, so reject anything else. Returns "" (treat as no-proxy) on invalid.
-const SUPPORTED_PROXY_SCHEMES = new Set(["http:", "https:", "socks5:", "socks4:"]);
+const SUPPORTED_PROXY_SCHEMES = new Set(["http:", "https:"]);
 function validateProxyUrl(value) {
   const raw = normalizeString(value);
   if (!raw) return "";

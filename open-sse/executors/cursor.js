@@ -9,7 +9,7 @@ import {
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { FORMATS } from "../translator/formats.js";
-import { proxyAwareFetch, shouldBypassMitmDns, resolveRealIP } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, shouldBypassMitmDns, resolveRealIP, hasApplicableEnvProxy } from "../utils/proxyFetch.js";
 import { stripRedactedToolCalls, extractRedactedToolCalls } from "../utils/composerRedactedTools.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 import zlib from "zlib";
@@ -321,7 +321,8 @@ export class CursorExecutor extends BaseExecutor {
       // so for bypass hosts we resolve the real IP and keep HTTP/2, pinning the socket to it.
       const usingProxy = proxyOptions?.enabled === true
         || proxyOptions?.connectionProxyEnabled === true
-        || !!proxyOptions?.vercelRelayUrl;
+        || !!proxyOptions?.vercelRelayUrl
+        || hasApplicableEnvProxy(url);
       const needsDnsBypass = shouldBypassMitmDns(url);
       let bypassIP = null;
       if (needsDnsBypass && !usingProxy && http2) {

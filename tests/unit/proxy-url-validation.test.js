@@ -35,6 +35,16 @@ describe("proxy URL validation", () => {
     warnSpy.mockRestore();
   });
 
+  it("keeps SOCKS rejected consistently in config, runtime, and examples", () => {
+    const connectionProxySrc = readFileSync(join(root, "../../src/lib/network/connectionProxy.js"), "utf8");
+    const envExample = readFileSync(join(root, "../../.env.example"), "utf8");
+
+    expect(connectionProxySrc).toContain('new Set(["http:", "https:"])');
+    expect(connectionProxySrc).not.toContain('"socks5:"');
+    expect(connectionProxySrc).not.toContain('"socks4:"');
+    expect(envExample).not.toMatch(/socks[45]:\/\//);
+  });
+
   it("normalizes proxy URLs before provider and proxy-pool config is saved", () => {
     const files = [
       "../../src/app/api/providers/route.js",

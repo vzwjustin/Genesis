@@ -284,6 +284,10 @@ function normalizeRuntimeProxyUrl(proxyUrl, source) {
   return normalized;
 }
 
+function hasApplicableEnvProxy(targetUrl) {
+  return normalizeRuntimeProxyUrl(getEnvProxyUrl(targetUrl), "environment") !== null;
+}
+
 function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
   const enabled = proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true;
   if (!enabled) return null;
@@ -623,6 +627,10 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // Vercel relay is lower precedence than per-connection proxy (AGENTS.md § outbound proxy routing)
   const vercelRelayUrl = !connectionProxyUrl ? normalizeString(proxyOptions?.vercelRelayUrl) : null;
   if (!proxyUrl && vercelRelayUrl) {
+    const relayNoProxy = normalizeString(proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy);
+    if (relayNoProxy && shouldBypassByNoProxy(targetUrl, relayNoProxy)) {
+      return safeRedirectFetch(url, options, originalFetch);
+    }
     const parsed = new URL(targetUrl);
     const relayHeaders = {
       ...options.headers,
@@ -732,6 +740,7 @@ export function buildProxyOptionsFromCredentials(credentials) {
 export {
   resolveConnectionProxyUrl,
   getEnvProxyUrl,
+  hasApplicableEnvProxy,
   shouldBypassMitmDns,
   shouldBypassByNoProxy,
   normalizeProxyUrl,
