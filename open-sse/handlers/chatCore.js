@@ -31,7 +31,7 @@ import {
   restoreBodyFromJsonSnapshot,
 } from "../rtk/cacheBoundary.js";
 import { compressWithHeadroom } from "../rtk/headroom.js";
-import { recordCompressionStats, saveCompressionStats } from "@/lib/compressionStats.js";
+import { saveCompressionStats } from "@/lib/compressionStats.js";
 import { buildProxyOptionsFromCredentials } from "../utils/proxyFetch.js";
 
 function buildExecCredentials(credentials, clientHasCacheBreakpoints) {
@@ -296,12 +296,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         const filters = Array.from(new Set((rtkStats?.hits || []).map((hit) => hit.filter))).join(",");
         const saved = (rtkStats?.bytesBefore || 0) - (rtkStats?.bytesAfter || 0);
         if (rtkSaved) chainStages.push(`rtk:${saved}B`);
-        recordCompressionStats("rtk", {
-          bytesBefore: rtkStats?.bytesBefore || 0,
-          bytesAfter: rtkStats?.bytesAfter || 0,
-          hits: rtkStats?.hits?.length || 0,
-          detail: filters || (rtkSaved ? "compressed" : "scanned, no savings"),
-        }).catch(() => {});
         saveCompressionStats({
           subsystem: "rtk",
           provider,
@@ -327,12 +321,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         } else {
           log?.debug?.("HEADROOM", "ran but no savings");
         }
-        recordCompressionStats("headroom", {
-          bytesBefore: hrStats.before || 0,
-          bytesAfter: hrStats.after ?? hrStats.before ?? 0,
-          hits: saved > 0 ? 1 : 0,
-          detail: saved > 0 ? model : `${model}: no savings`,
-        }).catch(() => {});
         saveCompressionStats({
           subsystem: "headroom",
           provider,
@@ -396,10 +384,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       if (cavemanInjected) {
         log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
         console.log(`[COMPRESSION] chain: caveman:${cavemanLevel}`);
-        recordCompressionStats("caveman", {
-          hits: 1,
-          detail: `level=${cavemanLevel}`,
-        }).catch(() => {});
         saveCompressionStats({
           subsystem: "caveman",
           provider,

@@ -82,6 +82,7 @@ describe("legacy request logger redaction", () => {
     logger.appendProviderChunk('data: {"token":"provider-stream-token","safe":"stream-safe"}\n\n');
     logger.appendOpenAIChunk('data: {"client_secret":"openai-stream-secret","safe":"openai-stream-safe"}\n\n');
     logger.appendConvertedChunk("authorization: Bearer converted-stream-secret\nx-9r-cli-token: cli-stream-secret\nconverted-safe");
+    await logger.flushStreamLogs();
 
     const logText = readAllLogText(tmp);
     for (const secret of [
@@ -115,6 +116,29 @@ describe("legacy request logger redaction", () => {
     expect(logText).toContain("error-safe");
     expect(logText).toContain("stream-safe");
     expect(logText).toContain("openai-stream-safe");
+    expect(logText).toContain("converted-safe");
+  });
+
+  it("buffers streaming chunks without synchronous per-chunk appends", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "9router-request-logs-"));
+    vi.spyOn(process, "cwd").mockReturnValue(tmp);
+    vi.stubEnv("ENABLE_REQUEST_LOGS", "true");
+    vi.resetModules();
+
+    const appendFileSyncSpy = vi.spyOn(fs, "appendFileSync");
+    const { createRequestLogger } = await import("../../open-sse/utils/requestLogger.js");
+    const logger = await createRequestLogger("openai", "claude", "claude-test");
+
+    logger.appendProviderChunk("provider-safe");
+    logger.appendOpenAIChunk("openai-safe");
+    logger.appendConvertedChunk("converted-safe");
+
+    expect(appendFileSyncSpy).not.toHaveBeenCalled();
+
+    await logger.flushStreamLogs();
+    const logText = readAllLogText(tmp);
+    expect(logText).toContain("provider-safe");
+    expect(logText).toContain("openai-safe");
     expect(logText).toContain("converted-safe");
   });
 });

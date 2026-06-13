@@ -83,6 +83,8 @@ function writeJsonFile(sessionPath, filename, data) {
   }
 }
 
+const STREAM_LOG_FLUSH_THRESHOLD_BYTES = 64 * 1024;
+
 // No-op logger when logging is disabled
 function createNoOpLogger() {
   return {
@@ -96,6 +98,7 @@ function createNoOpLogger() {
     appendOpenAIChunk() {},
     logConvertedResponse() {},
     appendConvertedChunk() {},
+    flushStreamLogs() { return Promise.resolve(); },
     logError() {}
   };
 }
@@ -115,6 +118,66 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
   
   // Wait for session to be created before returning logger
   const sessionPath = await createLogSession(sourceFormat, targetFormat, model, options);
+  const streamBuffers = new Map();
+  let streamFlushScheduled = false;
+  let streamFlushQueue = Promise.resolve();
+
+  const queueStreamChunk = (filename, chunk) => {
+    if (!fs || !sessionPath) return;
+    try {
+      const redacted = redactSensitiveText(chunk);
+      const existing = streamBuffers.get(filename) || { chunks: [], bytes: 0 };
+      existing.chunks.push(redacted);
+      existing.bytes += Buffer.byteLength(redacted);
+      streamBuffers.set(filename, existing);
+      if (existing.bytes >= STREAM_LOG_FLUSH_THRESHOLD_BYTES) {
+        scheduleStreamFlush();
+      }
+    } catch {
+      // Ignore logging errors
+    }
+  };
+
+  const drainStreamBuffers = () => {
+    const drained = [];
+    for (const [filename, buffer] of streamBuffers.entries()) {
+      if (!buffer.chunks.length) continue;
+      drained.push([filename, buffer.chunks.join("")]);
+    }
+    streamBuffers.clear();
+    return drained;
+  };
+
+  const flushStreamLogs = async () => {
+    if (!fs || !sessionPath) return;
+    const entries = drainStreamBuffers();
+    if (!entries.length) return;
+    await Promise.all(entries.map(async ([filename, text]) => {
+      try {
+        await fs.promises.appendFile(path.join(sessionPath, filename), text);
+      } catch {
+        // Ignore append errors
+      }
+    }));
+  };
+
+  const scheduleStreamFlush = () => {
+    if (streamFlushScheduled) return;
+    streamFlushScheduled = true;
+    queueMicrotask(() => {
+      streamFlushScheduled = false;
+      streamFlushQueue = streamFlushQueue
+        .catch(() => {})
+        .then(flushStreamLogs)
+        .catch(() => {});
+    });
+  };
+
+  const flushQueuedStreamLogs = async () => {
+    await streamFlushQueue.catch(() => {});
+    await flushStreamLogs().catch(() => {});
+    await streamFlushQueue.catch(() => {});
+  };
   
   return {
     get sessionPath() { return sessionPath; },
@@ -170,24 +233,12 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
     
     // 5. Append streaming chunk to provider response
     appendProviderChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "5_res_provider.txt");
-        fs.appendFileSync(filePath, redactSensitiveText(chunk));
-      } catch (err) {
-        // Ignore append errors
-      }
+      queueStreamChunk("5_res_provider.txt", chunk);
     },
     
     // 6. Append OpenAI intermediate chunks (target → openai)
     appendOpenAIChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "6_res_openai.txt");
-        fs.appendFileSync(filePath, redactSensitiveText(chunk));
-      } catch (err) {
-        // Ignore append errors
-      }
+      queueStreamChunk("6_res_openai.txt", chunk);
     },
     
     // 7. Log converted response to client (for non-streaming)
@@ -200,14 +251,10 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
     
     // 7. Append streaming chunk to converted response
     appendConvertedChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "7_res_client.txt");
-        fs.appendFileSync(filePath, redactSensitiveText(chunk));
-      } catch (err) {
-        // Ignore append errors
-      }
+      queueStreamChunk("7_res_client.txt", chunk);
     },
+
+    flushStreamLogs: flushQueuedStreamLogs,
     
     // 8. Log error (failed or incomplete request)
     logError(error, requestBody = null, logOptions = {}) {
