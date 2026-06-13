@@ -8,6 +8,7 @@ import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import CliNotDetectedPanel from "./CliNotDetectedPanel";
+import { toCodexNativeModel, toCodexRoutingModel } from "@/shared/utils/codexModel";
 
 export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [codexStatus, setCodexStatus] = useState(initialStatus || null);
@@ -174,13 +175,6 @@ useEffect(() => {
     } finally {
       setRestoring(false);
     }
-  };
-
-  const toCodexNativeModel = (value) => {
-    if (!value) return value;
-    if (value.startsWith("cx/")) return value.slice(3);
-    const slash = value.indexOf("/");
-    return slash > 0 ? value.slice(slash + 1) : value;
   };
 
   const handleModelSelect = (model) => {
@@ -413,7 +407,7 @@ model = "${effectiveSubagentModel}"
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSelect={handleModelSelect}
-        selectedModel={selectedModel && !selectedModel.includes("/") ? `cx/${selectedModel}` : selectedModel}
+        selectedModel={toCodexRoutingModel(selectedModel)}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
         title="Select Model for Codex"
@@ -423,7 +417,7 @@ model = "${effectiveSubagentModel}"
         isOpen={subagentModalOpen}
         onClose={() => setSubagentModalOpen(false)}
         onSelect={(model) => { setSubagentModel(toCodexNativeModel(model.value)); setSubagentModalOpen(false); }}
-        selectedModel={subagentModel && !subagentModel.includes("/") ? `cx/${subagentModel}` : subagentModel}
+        selectedModel={toCodexRoutingModel(subagentModel)}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
         title="Select Subagent Model for Codex"

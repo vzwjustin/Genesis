@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCodexNativeModel } from "../../src/app/api/cli-tools/codex-settings/route.js";
+import { toCodexNativeModel } from "../../src/shared/utils/codexModel.js";
 
 describe("toCodexNativeModel", () => {
   it("strips cx/ prefix for Codex config", () => {
