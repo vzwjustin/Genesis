@@ -1,4 +1,5 @@
 import { handleChat } from "@/sse/handlers/chat.js";
+import { isInvalidJsonObjectBody } from "@/sse/utils/jsonBody.js";
 import { initTranslators } from "open-sse/translator/index.js";
 
 let initialized = false;
@@ -30,6 +31,12 @@ export async function POST(request) {
   try {
     body = await request.json();
   } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+    });
+  }
+  if (isInvalidJsonObjectBody(body)) {
     return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
       status: 400,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }

@@ -25,6 +25,7 @@ import {
   noActiveCredentialsResponse,
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
+import { isInvalidJsonObjectBody } from "../utils/jsonBody.js";
 
 /**
  * Handle chat completion request
@@ -36,6 +37,10 @@ export async function handleChat(request, clientRawRequest = null) {
   try {
     body = await request.json();
   } catch {
+    log.warn("CHAT", "Invalid JSON body");
+    return validationErrorResponse(VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, "Invalid JSON body");
+  }
+  if (isInvalidJsonObjectBody(body)) {
     log.warn("CHAT", "Invalid JSON body");
     return validationErrorResponse(VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, "Invalid JSON body");
   }

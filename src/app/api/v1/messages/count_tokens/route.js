@@ -1,4 +1,5 @@
 import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
+import { isInvalidJsonObjectBody } from "@/sse/utils/jsonBody.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +49,12 @@ export async function POST(request) {
   try {
     body = await request.json();
   } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json", ...CORS_HEADERS }
+    });
+  }
+  if (isInvalidJsonObjectBody(body)) {
     return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
       status: 400,
       headers: { "Content-Type": "application/json", ...CORS_HEADERS }

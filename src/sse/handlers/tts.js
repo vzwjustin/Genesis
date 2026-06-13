@@ -16,6 +16,7 @@ import {
   noActiveCredentialsResponse,
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
+import { isInvalidJsonObjectBody } from "../utils/jsonBody.js";
 import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 
@@ -31,6 +32,9 @@ export async function handleTts(request) {
   try {
     body = await request.json();
   } catch {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  }
+  if (isInvalidJsonObjectBody(body)) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 

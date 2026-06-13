@@ -15,6 +15,7 @@ import {
   noActiveCredentialsResponse,
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
+import { isInvalidJsonObjectBody } from "../utils/jsonBody.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 
@@ -29,6 +30,10 @@ export async function handleEmbeddings(request) {
   try {
     body = await request.json();
   } catch {
+    log.warn("EMBEDDINGS", "Invalid JSON body");
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  }
+  if (isInvalidJsonObjectBody(body)) {
     log.warn("EMBEDDINGS", "Invalid JSON body");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }

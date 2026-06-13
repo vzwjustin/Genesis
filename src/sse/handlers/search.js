@@ -17,6 +17,7 @@ import {
   noActiveCredentialsResponse,
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
+import { isInvalidJsonObjectBody } from "../utils/jsonBody.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -29,6 +30,10 @@ export async function handleSearch(request) {
   try {
     body = await request.json();
   } catch {
+    log.warn("SEARCH", "Invalid JSON body");
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  }
+  if (isInvalidJsonObjectBody(body)) {
     log.warn("SEARCH", "Invalid JSON body");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
