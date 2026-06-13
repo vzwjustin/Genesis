@@ -281,7 +281,7 @@ export function createSSEStream(options = {}) {
       }
     },
 
-    flush(controller) {
+    async flush(controller) {
       const evtSummary = Object.entries(eventTypeCounts).map(([k, v]) => `${k}=${v}`).join(",") || "none";
       dbg("SSE", `flush | provider=${provider} | model=${model} | recvLines=${sseLineCount} | emitted=${sseEmittedCount} | events=[${evtSummary}]`);
       trackPendingRequest(model, provider, connectionId, false);
@@ -321,6 +321,7 @@ export function createSSEStream(options = {}) {
               clean: sawTerminal
             }, usage, ttftAt);
           }
+          await reqLogger?.flushStreamLogs?.();
           return;
         }
 
@@ -391,6 +392,8 @@ export function createSSEStream(options = {}) {
         }
       } catch (error) {
         console.error("Error in flush:", error);
+      } finally {
+        await reqLogger?.flushStreamLogs?.();
       }
     }
   });
