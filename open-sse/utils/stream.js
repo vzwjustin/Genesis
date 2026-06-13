@@ -181,7 +181,7 @@ export function createSSEStream(options = {}) {
         // Translate mode
         if (!trimmed) continue;
 
-        const parsed = parseSSELine(trimmed, targetFormat);
+        const parsed = parseSSELine(trimmed, targetFormat, { failOnMalformedData: true });
         if (!parsed) continue;
 
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate
@@ -326,7 +326,7 @@ export function createSSEStream(options = {}) {
         }
 
         if (buffer.trim()) {
-          const parsed = parseSSELine(buffer.trim(), targetFormat);
+          const parsed = parseSSELine(buffer.trim(), targetFormat, { failOnMalformedData: true });
           if (parsed && !parsed.done) {
             markTerminalFromParsed(parsed);
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
@@ -392,6 +392,7 @@ export function createSSEStream(options = {}) {
         }
       } catch (error) {
         console.error("Error in flush:", error);
+        controller.error(error);
       } finally {
         await reqLogger?.flushStreamLogs?.();
       }
