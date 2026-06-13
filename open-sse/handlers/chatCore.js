@@ -412,6 +412,25 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
   log?.debug?.("REQUEST", `${provider.toUpperCase()} | ${model} | ${msgCount} msgs`);
 
+  const finalizeFailedRequest = (message, status = HTTP_STATUS.BAD_GATEWAY) => {
+    try {
+      trackPendingRequest(model, provider, connectionId, false, true);
+      appendRequestLog({ model, provider, connectionId, status: `FAILED ${status}` }).catch(() => { });
+      saveRequestDetail(buildRequestDetail({
+        provider, model, connectionId,
+        latency: { ttft: 0, total: Date.now() - requestStartTime },
+        tokens: { prompt_tokens: 0, completion_tokens: 0 },
+        request: extractRequestConfig(body, stream),
+        providerRequest: finalBody || translatedBody || null,
+        response: { error: message, status, thinking: null },
+        status: "error"
+      }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => { });
+      reqLogger.logError(new Error(message), finalBody || translatedBody);
+    } catch {
+      // Failure persistence is diagnostic only and must not alter the client response.
+    }
+  };
+
   const streamController = createStreamController({
     onDisconnect: (reason) => {
       trackPendingRequest(model, provider, connectionId, false);
@@ -520,8 +539,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Handle 401/403 - try token refresh (skip for noAuth / non-refreshable providers)
   if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
     if (executor.supportsTokenRefresh === false) {
-      trackPendingRequest(model, provider, connectionId, false, true);
       const { message } = await parseUpstreamError(providerResponse, executor);
+      finalizeFailedRequest(message, providerResponse.status);
       return createErrorResult(providerResponse.status, message);
     }
     try {
@@ -554,7 +573,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           finalBody = retryResult.transformedBody;
         } catch (retryError) {
           log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
-          trackPendingRequest(model, provider, connectionId, false, true);
+          finalizeFailedRequest(`Retry after token refresh failed: ${retryError.message}`, HTTP_STATUS.BAD_GATEWAY);
           return createErrorResult(
             HTTP_STATUS.BAD_GATEWAY,
             `Retry after token refresh failed: ${retryError.message}`
@@ -562,14 +581,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         }
       } else {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
-        trackPendingRequest(model, provider, connectionId, false, true);
         const { message } = await parseUpstreamError(providerResponse, executor);
+        finalizeFailedRequest(message, providerResponse.status);
         return createErrorResult(providerResponse.status, message);
       }
     } catch (e) {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh threw: ${e.message}`);
-      trackPendingRequest(model, provider, connectionId, false, true);
       const { message } = await parseUpstreamError(providerResponse, executor);
+      finalizeFailedRequest(message, providerResponse.status);
       return createErrorResult(providerResponse.status, message);
     }
   }
