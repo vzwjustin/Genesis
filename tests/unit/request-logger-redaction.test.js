@@ -22,6 +22,24 @@ afterEach(() => {
 });
 
 describe("legacy request logger redaction", () => {
+  it("creates distinct log sessions for same-millisecond requests", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "9router-request-logs-"));
+    vi.spyOn(process, "cwd").mockReturnValue(tmp);
+    vi.stubEnv("ENABLE_REQUEST_LOGS", "true");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    vi.resetModules();
+
+    const { createRequestLogger } = await import("../../open-sse/utils/requestLogger.js");
+    const first = await createRequestLogger("openai", "claude", "claude-test");
+    const second = await createRequestLogger("openai", "claude", "claude-test");
+
+    expect(first.sessionPath).toBeTruthy();
+    expect(second.sessionPath).toBeTruthy();
+    expect(first.sessionPath).not.toBe(second.sessionPath);
+    expect(fs.readdirSync(path.join(tmp, "logs"))).toHaveLength(2);
+  });
+
   it("redacts sensitive nested values before writing request log files", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "9router-request-logs-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmp);

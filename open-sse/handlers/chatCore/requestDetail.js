@@ -85,9 +85,11 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
   const cacheCreate = tokens.cache_creation_input_tokens;
   const reasoning = tokens.reasoning_tokens;
 
+  const providerName = provider || "unknown";
+  const accountId = connectionId == null ? "" : String(connectionId);
   const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
-  let logLine = `${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}`;
+  const accountSuffix = accountId ? ` | account=${accountId.slice(0, 8)}...` : "";
+  let logLine = `${COLORS.green}[${time}] 📊 [${label}] ${providerName.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}`;
   if (cacheRead) logLine += ` | cache_read=${cacheRead}`;
   if (cacheCreate) logLine += ` | cache_create=${cacheCreate}`;
   if (reasoning) logLine += ` | reasoning=${reasoning}`;
@@ -103,13 +105,17 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     ...(tokens.estimated === true ? { estimated: true } : {}),
   };
 
-  saveRequestUsage({
-    provider: provider || "unknown",
-    model: model || "unknown",
-    tokens: normalized,
-    timestamp: new Date().toISOString(),
-    connectionId: connectionId || undefined,
-    apiKey: apiKey || undefined,
-    endpoint: endpoint || null
-  }).catch(() => {});
+  try {
+    Promise.resolve(saveRequestUsage({
+      provider: providerName,
+      model: model || "unknown",
+      tokens: normalized,
+      timestamp: new Date().toISOString(),
+      connectionId: connectionId || undefined,
+      apiKey: apiKey || undefined,
+      endpoint: endpoint || null
+    })).catch(() => {});
+  } catch {
+    // Usage persistence is optional; request handling must continue.
+  }
 }

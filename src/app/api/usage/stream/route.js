@@ -1,44 +1,39 @@
-import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
+import { getUsageStats, statsEmitter } from "@/lib/usageDb";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request) {
   const encoder = new TextEncoder();
-  const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
+  const state = { closed: false, keepalive: null, send: null, sendPending: null };
+
+  const cleanup = () => {
+    if (state.closed) return;
+    state.closed = true;
+    if (state.send) statsEmitter.off("update", state.send);
+    if (state.sendPending) statsEmitter.off("pending", state.sendPending);
+    if (state.keepalive) clearInterval(state.keepalive);
+  };
+
+  request?.signal?.addEventListener?.("abort", cleanup, { once: true });
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Full stats refresh (heavy) + immediate lightweight push
-      state.send = async () => {
+      const sendStats = async () => {
         if (state.closed) return;
         try {
           const stats = await getUsageStats();
-          state.cachedStats = stats;
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
-          state.closed = true;
-          statsEmitter.off("update", state.send);
-          statsEmitter.off("pending", state.sendPending);
-          clearInterval(state.keepalive);
+          cleanup();
         }
       };
 
-      // Pending changes: always send a full stats snapshot (never merge partial fields into stale cache)
-      state.sendPending = async () => {
-        if (state.closed) return;
-        try {
-          const stats = await getUsageStats();
-          state.cachedStats = stats;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
-        } catch {
-          state.closed = true;
-          statsEmitter.off("update", state.send);
-          statsEmitter.off("pending", state.sendPending);
-          clearInterval(state.keepalive);
-        }
-      };
+      // Pending changes send a full stats snapshot, never a partial merge into stale cache.
+      state.send = sendStats;
+      state.sendPending = sendStats;
 
       await state.send();
+      if (state.closed) return;
 
       statsEmitter.on("update", state.send);
       statsEmitter.on("pending", state.sendPending);
@@ -48,17 +43,13 @@ export async function GET() {
         try {
           controller.enqueue(encoder.encode(": ping\n\n"));
         } catch {
-          state.closed = true;
-          clearInterval(state.keepalive);
+          cleanup();
         }
       }, 25000);
     },
 
     cancel() {
-      state.closed = true;
-      statsEmitter.off("update", state.send);
-      statsEmitter.off("pending", state.sendPending);
-      clearInterval(state.keepalive);
+      cleanup();
     },
   });
 

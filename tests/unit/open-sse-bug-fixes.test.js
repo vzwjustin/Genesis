@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { isZeroConnectionsResponse } from "../../open-sse/services/combo.js";
 import { fixMissingToolResponses } from "../../open-sse/translator/helpers/toolCallHelper.js";
 import { initTranslators, translateRequest } from "../../open-sse/translator/index.js";
@@ -14,6 +15,19 @@ const root = join(import.meta.dirname, "..", "..");
 
 beforeEach(async () => {
   await initTranslators();
+});
+
+describe("translator init", () => {
+  it("initializes under direct Node ESM import", () => {
+    const result = spawnSync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      "import('./open-sse/translator/index.js').then(m=>{m.initTranslators(); console.log('ok')}).catch(e=>{console.error(e?.stack||e); process.exit(1)})",
+    ], { cwd: root, encoding: "utf8" });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("ok");
+  });
 });
 
 describe("isZeroConnectionsResponse — plain text 404", () => {

@@ -13,6 +13,7 @@ const LOGGING_ENABLED = typeof process !== "undefined" && process.env?.ENABLE_RE
 let fs = null;
 let path = null;
 let LOGS_DIR = null;
+let logSessionCounter = 0;
 
 // Lazy load Node.js modules (avoid top-level await)
 async function ensureNodeModules() {
@@ -56,7 +57,9 @@ async function createLogSession(sourceFormat, targetFormat, model, options = {})
     }
     
     const timestamp = formatTimestamp();
-    const folderName = `${formatLogFolderPrefix(sourceFormat, targetFormat, model, options)}_${timestamp}`;
+    logSessionCounter = (logSessionCounter + 1) % Number.MAX_SAFE_INTEGER;
+    const uniqueSuffix = `${timestamp}_${logSessionCounter}`;
+    const folderName = `${formatLogFolderPrefix(sourceFormat, targetFormat, model, options)}_${uniqueSuffix}`;
     const sessionPath = path.join(LOGS_DIR, folderName);
     
     fs.mkdirSync(sessionPath, { recursive: true });

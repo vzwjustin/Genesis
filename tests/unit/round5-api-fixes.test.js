@@ -116,6 +116,7 @@ vi.mock("open-sse/utils/requestLogger.js", () => ({
 const usageStreamMocks = vi.hoisted(() => ({
   getUsageStats: vi.fn(),
   getActiveRequests: vi.fn(),
+  saveRequestUsage: vi.fn(() => Promise.resolve()),
   statsEmitter: {
     on: vi.fn(),
     off: vi.fn(),
@@ -375,17 +376,70 @@ describe("round-5: v1beta models list", () => {
   });
 });
 
-// ── 10. usage stream no stale merge ─────────────────────────────────────────
+// ── 10. usage stats optional labels ────────────────────────────────────────
+
+describe("round-5: usage stats optional labels", () => {
+  it("saveUsageStats tolerates synchronous persistence failure", async () => {
+    usageStreamMocks.saveRequestUsage.mockImplementationOnce(() => { throw new Error("db down"); });
+    const { saveUsageStats } = await import("../../open-sse/handlers/chatCore/requestDetail.js?sync-persist-failure");
+    expect(() => saveUsageStats({
+      provider: "openai",
+      model: "gpt-test",
+      tokens: { prompt_tokens: 1, completion_tokens: 2 },
+    })).not.toThrow();
+  });
+
+  it("saveUsageStats tolerates missing optional labels", async () => {
+    const { saveUsageStats } = await import("../../open-sse/handlers/chatCore/requestDetail.js?optional-labels");
+    expect(() => saveUsageStats({
+      provider: undefined,
+      model: "gpt-test",
+      tokens: { prompt_tokens: 1, completion_tokens: 2 },
+      connectionId: 12345,
+    })).not.toThrow();
+    expect(usageStreamMocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "unknown",
+      model: "gpt-test",
+    }));
+  });
+});
+
+// ── 11. usage stream no stale merge ─────────────────────────────────────────
 
 describe("round-5: usage stream", () => {
+  beforeEach(() => {
+    usageStreamMocks.getUsageStats.mockResolvedValue({ activeRequests: [], recentRequests: [] });
+    usageStreamMocks.statsEmitter.on.mockClear();
+    usageStreamMocks.statsEmitter.off.mockClear();
+  });
+
   it("does not merge cachedStats with partial activeRequests", () => {
     const src = read("src/app/api/usage/stream/route.js");
     expect(src).not.toMatch(/\.\.\.state\.cachedStats,\s*activeRequests/);
     expect(src).toContain("const stats = await getUsageStats()");
   });
+
+  it("removes usage stream listeners when the request aborts", async () => {
+    const { GET } = await import("../../src/app/api/usage/stream/route.js?abort-cleanup");
+    const abortController = new AbortController();
+    const req = new Request("http://localhost/api/usage/stream", { signal: abortController.signal });
+
+    const response = await GET(req);
+    expect(response.headers.get("Content-Type")).toBe("text/event-stream");
+
+    await Promise.resolve();
+    expect(usageStreamMocks.statsEmitter.on).toHaveBeenCalledWith("update", expect.any(Function));
+    expect(usageStreamMocks.statsEmitter.on).toHaveBeenCalledWith("pending", expect.any(Function));
+
+    abortController.abort();
+
+    expect(usageStreamMocks.statsEmitter.off).toHaveBeenCalledWith("update", expect.any(Function));
+    expect(usageStreamMocks.statsEmitter.off).toHaveBeenCalledWith("pending", expect.any(Function));
+    await response.body.cancel();
+  });
 });
 
-// ── 11. importDb validation ─────────────────────────────────────────────────
+// ── 12. importDb validation ─────────────────────────────────────────────────
 
 describe("round-5: importDb validation", () => {
   const originalDataDir = process.env.DATA_DIR;

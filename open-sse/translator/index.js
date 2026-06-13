@@ -1,3 +1,4 @@
+import { createRequire } from "module";
 import { FORMATS } from "./formats.js";
 import { ensureToolCallIds, fixMissingToolResponses } from "./helpers/toolCallHelper.js";
 import { prepareClaudeRequest, hasAnthropicCacheBreakpoints } from "./helpers/claudeHelper.js";
@@ -5,6 +6,8 @@ import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./helpers/openaiHelper.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
+
+const require = createRequire(import.meta.url);
 
 // Registry for translators
 const requestRegistry = new Map();
