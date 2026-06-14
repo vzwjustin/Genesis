@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
 
 const langNames = new Intl.DisplayNames(["en"], { type: "language" });
@@ -10,6 +11,8 @@ const langNames = new Intl.DisplayNames(["en"], { type: "language" });
  * Each Deepgram voice = one model (canonical_name like "aura-2-thalia-en")
  */
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { searchParams } = new URL(request.url);
     const langFilter = searchParams.get("lang");

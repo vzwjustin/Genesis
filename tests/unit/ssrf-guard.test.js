@@ -54,4 +54,24 @@ describe("ssrfGuard", () => {
       })
     ).toThrow(/not allowed/);
   });
+
+  it("blocks multicast, reserved, and documentation/benchmark IPv4 ranges", () => {
+    // Multicast 224.0.0.0/4 + reserved/broadcast 240.0.0.0/4 (mirrors the v6 ff00::/8 block)
+    expect(isBlockedHostname("224.0.0.1")).toBe(true);
+    expect(isBlockedHostname("239.255.255.250")).toBe(true);
+    expect(isBlockedHostname("240.0.0.1")).toBe(true);
+    expect(isBlockedHostname("255.255.255.255")).toBe(true);
+    // Benchmark 198.18.0.0/15 (RFC 2544)
+    expect(isBlockedHostname("198.18.0.1")).toBe(true);
+    expect(isBlockedHostname("198.19.255.255")).toBe(true);
+    // Documentation / TEST-NET blocks (RFC 5737) + 192.0.0.0/24 (RFC 6890)
+    expect(isBlockedHostname("192.0.2.1")).toBe(true);
+    expect(isBlockedHostname("192.0.0.8")).toBe(true);
+    expect(isBlockedHostname("198.51.100.1")).toBe(true);
+    expect(isBlockedHostname("203.0.113.1")).toBe(true);
+    // Regression: ordinary public IPs still allowed
+    expect(isBlockedHostname("8.8.8.8")).toBe(false);
+    expect(isBlockedHostname("198.20.0.1")).toBe(false);
+    expect(isBlockedHostname("203.1.0.1")).toBe(false);
+  });
 });

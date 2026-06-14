@@ -12,6 +12,15 @@ function isPrivateOrReservedIpv4(a, b) {
   if (a === 127) return true;
   if (a === 169 && b === 254) return true;
   if (a === 0) return true;
+  // Multicast 224.0.0.0/4 + reserved/broadcast 240.0.0.0/4 (incl. 255.255.255.255).
+  // The IPv6 path already blocks ff00::/8 multicast — mirror it here.
+  if (a >= 224) return true;
+  // Benchmark 198.18.0.0/15 (RFC 2544) and documentation/TEST-NET blocks (RFC 5737):
+  // 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24.
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 192 && b === 0) return true; // covers 192.0.0.0/24 (IETF) + 192.0.2.0/24 TEST-NET-1
+  if (a === 198 && b === 51) return true; // 198.51.100.0/24 TEST-NET-2
+  if (a === 203 && b === 0) return true; // 203.0.113.0/24 TEST-NET-3
   return false;
 }
 
