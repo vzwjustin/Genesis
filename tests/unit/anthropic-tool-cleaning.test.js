@@ -8,6 +8,7 @@ import {
   cleanAnthropicToolDefinitions,
   hasAnthropicCacheBreakpoints,
   prepareClaudeRequest,
+  usesAnthropicToolCleaning,
 } from "../../open-sse/translator/helpers/claudeHelper.js";
 
 describe("cleanAnthropicToolDefinitions — client tools (Requirement 1.6)", () => {
@@ -106,6 +107,78 @@ describe("cleanAnthropicToolDefinitions — built-in tools (Requirement 1.6)", (
     expect(cleaned).toHaveLength(2);
     expect(cleaned[1].type).toBe("web_search_20250305");
     expect(cleaned[1].model).toBe("claude-opus-4-6");
+  });
+});
+
+describe("cleanAnthropicToolDefinitions — MiniMax cache-protected built-ins", () => {
+  it("keeps cached built-in tools byte-identical on minimax instead of dropping them", () => {
+    const tools = [
+      { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6", cache_control: { type: "ephemeral" } },
+      { type: "function", name: "fn", model: "strip-me", input_schema: {} },
+    ];
+    const out = cleanAnthropicToolDefinitions(tools, "minimax", { preserveClientCache: true });
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual(tools[0]);
+    expect(out[1].model).toBeUndefined();
+  });
+
+  it("still drops uncached built-in tools on minimax when client owns no cache layout", () => {
+    const tools = [
+      { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6" },
+      { type: "function", name: "fn", input_schema: {} },
+    ];
+    const out = cleanAnthropicToolDefinitions(tools, "minimax");
+    expect(out).toHaveLength(1);
+    expect(out[0].name).toBe("fn");
+  });
+
+  it("does not change claude cached built-in prefix behavior", () => {
+    const tools = [
+      { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6", cache_control: { type: "ephemeral" } },
+      { type: "function", name: "fn", model: "x", input_schema: {} },
+    ];
+    const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
+    expect(out[0]).toEqual(tools[0]);
+    expect(out[1].model).toBeUndefined();
+  });
+
+  it("keeps cached built-in tools byte-identical on openai provider", () => {
+    const tools = [
+      { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6", cache_control: { type: "ephemeral" } },
+      { type: "function", name: "fn", model: "strip-me", input_schema: {} },
+    ];
+    const out = cleanAnthropicToolDefinitions(tools, "openai", { preserveClientCache: true });
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual(tools[0]);
+    expect(out[1].model).toBeUndefined();
+  });
+
+  it("keeps cached built-in tools byte-identical on gemini provider", () => {
+    const tools = [
+      { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6", cache_control: { type: "ephemeral" } },
+      { type: "function", name: "fn", model: "strip-me", input_schema: {} },
+    ];
+    const out = cleanAnthropicToolDefinitions(tools, "gemini", { preserveClientCache: true });
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual(tools[0]);
+    expect(out[1].model).toBeUndefined();
+  });
+});
+
+describe("usesAnthropicToolCleaning", () => {
+  it("includes claude and claude-messages API providers", () => {
+    expect(usesAnthropicToolCleaning("claude")).toBe(true);
+    expect(usesAnthropicToolCleaning("anthropic-compatible-x")).toBe(true);
+    expect(usesAnthropicToolCleaning("minimax")).toBe(true);
+    expect(usesAnthropicToolCleaning("glm")).toBe(true);
+  });
+
+  it("includes openai and gemini only when client owns cache breakpoints", () => {
+    expect(usesAnthropicToolCleaning("openai", false)).toBe(false);
+    expect(usesAnthropicToolCleaning("openai", true)).toBe(true);
+    expect(usesAnthropicToolCleaning("gemini", false)).toBe(false);
+    expect(usesAnthropicToolCleaning("gemini", true)).toBe(true);
+    expect(usesAnthropicToolCleaning("gemini-cli", true)).toBe(true);
   });
 });
 

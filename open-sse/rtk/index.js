@@ -83,7 +83,7 @@ export function compressMessages(body, enabled = rtkEnabled, filterConfig = null
   const geminiContents = Array.isArray(body.contents) ? body.contents
     : Array.isArray(body.request?.contents) ? body.request.contents
     : null;
-  if (geminiContents && !clientCache) {
+  if (geminiContents) {
     return compressGeminiContents(geminiContents, filterConfig);
   }
 
