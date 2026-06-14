@@ -104,35 +104,6 @@ export function startLocalServer(onCallback, fixedPort = null) {
   });
 }
 
-/**
- * Wait for callback with timeout
- * @param {number} timeoutMs - Timeout in milliseconds
- * @returns {Promise<Object>} - Callback params
- */
-export function waitForCallback(timeoutMs = 300000) {
-  return new Promise((resolve, reject) => {
-    let resolved = false;
-
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        reject(new Error("Authentication timeout"));
-      }
-    }, timeoutMs);
-
-    const onCallback = (params) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        resolve(params);
-      }
-    };
-
-    // Return the callback function
-    resolve.__onCallback = onCallback;
-  });
-}
-
 // Singleton proxy server for Codex OAuth callback on fixed port
 let codexProxyServer = null;
 let codexProxyTimeout = null;

@@ -182,7 +182,7 @@ function convertContent(content) {
       toolResults.push({
         role: "tool",
         tool_call_id: part.functionResponse.id,
-        content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
+        content: JSON.stringify(part.functionResponse.response?.result ?? part.functionResponse.response ?? {})
       });
     }
   }

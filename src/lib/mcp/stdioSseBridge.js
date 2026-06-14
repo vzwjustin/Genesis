@@ -147,6 +147,14 @@ function getOrSpawn(name) {
   entry = { proc, sessions: new Map(), buffer: "" };
   store.set(name, entry);
 
+  // spawn() emits 'error' (e.g. ENOENT) asynchronously; without a handler it
+  // throws as an unhandled exception and crashes the whole process.
+  proc.on("error", (err) => {
+    console.log(`[mcp:${name}] spawn error`, err.message);
+    notifyAndClearSessions(entry, `bridge spawn failed: ${err.message}`);
+    store.delete(name);
+  });
+
   // Parse newline-delimited JSON-RPC from child stdout, broadcast to all sessions.
   proc.stdout.on("data", (chunk) => {
     entry.buffer += chunk.toString("utf8");
@@ -165,10 +173,22 @@ function getOrSpawn(name) {
   proc.stderr.on("data", (d) => console.log(`[mcp:${name}]`, d.toString().trim()));
   proc.on("exit", (code) => {
     console.log(`[mcp:${name}] exited`, code);
+    notifyAndClearSessions(entry, `bridge process exited (code ${code})`);
     store.delete(name);
   });
 
   return entry;
+}
+
+// Tell every open SSE session the bridge died, then drop them so clients stop
+// waiting on a dead child. Failures to write (broken pipe) are ignored.
+function notifyAndClearSessions(entry, reason) {
+  if (!entry?.sessions) return;
+  const payload = JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: reason } });
+  for (const send of entry.sessions.values()) {
+    try { send(`event: message\ndata: ${payload}\n\n`); } catch { /* ignore broken pipe */ }
+  }
+  entry.sessions.clear();
 }
 
 function registerSession(name, sendFn) {

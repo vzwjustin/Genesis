@@ -63,18 +63,25 @@ export function getDownloadStatus() {
 function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
+    // unlink may run before the partial file exists / after it's gone; never throw.
+    const safeUnlink = () => { try { fs.unlinkSync(dest); } catch { /* ignore */ } };
 
     https.get(url, (response) => {
       if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
         file.close();
-        fs.unlinkSync(dest);
-        downloadFile(response.headers.location, dest).then(resolve).catch(reject);
+        safeUnlink();
+        const location = response.headers.location;
+        if (!location) {
+          reject(new Error(`Redirect (${response.statusCode}) with no Location header`));
+          return;
+        }
+        downloadFile(location, dest).then(resolve).catch(reject);
         return;
       }
 
       if (response.statusCode !== 200) {
         file.close();
-        fs.unlinkSync(dest);
+        safeUnlink();
         reject(new Error(`Download failed with status ${response.statusCode}`));
         return;
       }
@@ -101,14 +108,14 @@ function downloadFile(url, dest) {
         dlState.downloading = false;
         dlState.progress = 0;
         file.close();
-        fs.unlinkSync(dest);
+        safeUnlink();
         reject(err);
       });
     }).on("error", (err) => {
       dlState.downloading = false;
       dlState.progress = 0;
       file.close();
-      if (fs.existsSync(dest)) fs.unlinkSync(dest);
+      safeUnlink();
       reject(err);
     });
   });

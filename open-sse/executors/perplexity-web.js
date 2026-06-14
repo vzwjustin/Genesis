@@ -287,7 +287,19 @@ async function* extractContent(eventStream, signal) {
       if (chunks.length === 0) continue;
 
       if (mb.progress === "DONE") {
-        fullAnswer = chunks.join("");
+        // DONE carries the full answer. If the server streamed incremental
+        // chunks already, seenLen covers them and only the tail is new; if it
+        // sent the full text only in DONE, this emits the whole thing. Either
+        // way, yield the unseen remainder so streaming clients aren't shorted.
+        const done = chunks.join("");
+        if (done.length > seenLen) {
+          const delta = done.slice(seenLen);
+          fullAnswer = done;
+          seenLen = done.length;
+          yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+        } else {
+          fullAnswer = done;
+        }
       } else {
         const chunkText = chunks.join("");
         const cumulative = fullAnswer + chunkText;

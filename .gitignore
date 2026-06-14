@@ -84,3 +84,4 @@ gitbook/README.md
 
 # packaged CLI tarballs (local build artifacts)
 9router-*.tgz
+.serena/
