@@ -2,15 +2,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = {
   swapProviderConnectionPriorities: vi.fn(),
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
 };
 
 vi.mock("@/models", () => ({
   swapProviderConnectionPriorities: mocks.swapProviderConnectionPriorities,
 }));
 
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: mocks.requireSpawnRouteAuth,
+}));
+
 describe("POST /api/providers/swap-priority", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: true });
+  });
+
+  it("returns 401 when unauthenticated and never mutates", async () => {
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: false, error: "Login required", status: 401 });
+    const { POST } = await import("../../src/app/api/providers/swap-priority/route.js");
+    const res = await POST({ json: async () => ({ connectionId1: "conn-a", connectionId2: "conn-b" }) });
+
+    expect(res.status).toBe(401);
+    expect(mocks.swapProviderConnectionPriorities).not.toHaveBeenCalled();
   });
 
   it("returns 400 when connection ids are missing", async () => {

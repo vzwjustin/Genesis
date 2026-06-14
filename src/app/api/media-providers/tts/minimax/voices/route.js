@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
 
 const MINIMAX_VOICE_ENDPOINTS = {
@@ -64,6 +65,8 @@ function normalizeMiniMaxVoices(data) {
  * Returns { languages, byLang } grouped for the shared TTS voice picker.
  */
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider") === "minimax-cn" ? "minimax-cn" : "minimax";

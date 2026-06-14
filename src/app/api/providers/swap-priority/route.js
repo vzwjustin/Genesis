@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { swapProviderConnectionPriorities } from "@/models";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
 /** POST /api/providers/swap-priority — atomically swap two connection priorities */
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await request.json();
     const connectionId1 = body?.connectionId1;
