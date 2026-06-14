@@ -42,6 +42,35 @@ export function shouldStripCredentialHeaderOnRedirect(headerName) {
   return false;
 }
 
+/**
+ * Normalize Fetch API HeadersInit to [name, value] pairs for redirect stripping.
+ * @param {HeadersInit|Record<string, string>|Array<[string, string]>} headers
+ * @returns {Array<[string, string]>}
+ */
+export function getRedirectHeaderEntries(headers) {
+  if (headers instanceof Headers) {
+    return Array.from(headers.entries());
+  }
+  if (Array.isArray(headers)) {
+    return headers;
+  }
+  return Object.entries(headers);
+}
+
+/**
+ * Strip credential-bearing headers before following a cross-origin redirect.
+ * @param {HeadersInit|Record<string, string>|Array<[string, string]>} headers
+ * @returns {Record<string, string>}
+ */
+export function stripCredentialHeadersOnRedirect(headers) {
+  const stripped = {};
+  for (const [k, v] of getRedirectHeaderEntries(headers)) {
+    if (shouldStripCredentialHeaderOnRedirect(k)) continue;
+    stripped[k] = v;
+  }
+  return stripped;
+}
+
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
 // Restore the original block to re-enable per-host JA3 spoofing.
@@ -677,17 +706,10 @@ async function safeRedirectFetch(url, options, fetchImpl) {
     // public host (which passes the private-only SSRF guard) would exfiltrate it.
     const originChanged = new URL(nextUrl).origin !== new URL(currentUrl).origin;
     if (originChanged && currentOptions.headers) {
-      const stripped = {};
-      const headersEntries = currentOptions.headers instanceof Headers
-        ? Array.from(currentOptions.headers.entries())
-        : Object.entries(currentOptions.headers);
-      for (const [k, v] of headersEntries) {
-        if (shouldStripCredentialHeaderOnRedirect(k)) {
-          continue;
-        }
-        stripped[k] = v;
-      }
-      currentOptions = { ...currentOptions, headers: stripped };
+      currentOptions = {
+        ...currentOptions,
+        headers: stripCredentialHeadersOnRedirect(currentOptions.headers),
+      };
     }
 
     // Per fetch spec, 303 (and 301/302 for non-GET/HEAD) downgrade to GET and drop the body.

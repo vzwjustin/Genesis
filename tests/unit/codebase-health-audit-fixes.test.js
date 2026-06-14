@@ -16,10 +16,23 @@ describe("codebase health audit fixes", () => {
       expect(shouldStripCredentialHeaderOnRedirect("anthropic-version")).toBe(false);
     });
 
-    it("uses instanceof Headers for redirect credential stripping", () => {
+    it("uses instanceof Headers and Array.isArray for redirect credential stripping", () => {
       const src = fs.readFileSync(path.join(process.cwd(), "open-sse/utils/proxyFetch.js"), "utf8");
-      expect(src).toContain("currentOptions.headers instanceof Headers");
+      expect(src).toContain("getRedirectHeaderEntries");
+      expect(src).toContain("headers instanceof Headers");
+      expect(src).toContain("Array.isArray(headers)");
       expect(src).not.toMatch(/typeof currentOptions\.headers\.entries === "function"/);
+    });
+
+    it("strips credentials from tuple-array HeadersInit on redirect", async () => {
+      const { stripCredentialHeadersOnRedirect } = await import("../../open-sse/utils/proxyFetch.js");
+      const stripped = stripCredentialHeadersOnRedirect([
+        ["Authorization", "Bearer secret"],
+        ["content-type", "application/json"],
+      ]);
+      expect(stripped).toEqual({ "content-type": "application/json" });
+      expect(stripped.Authorization).toBeUndefined();
+      expect(stripped["0"]).toBeUndefined();
     });
   });
 
