@@ -299,6 +299,24 @@ describe("Claude cache — tool cleaning and ordering invariants", () => {
     expect(out[1].content.some((b) => b.type === "text")).toBe(false);
   });
 
+  it("fixToolUseOrdering preserves string content on cache-protected messages", () => {
+    const messages = [
+      { role: "user", content: "cached string turn", cache_control: { type: "ephemeral" } },
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "Bash", input: {} },
+          { type: "text", text: "strip me" },
+        ],
+      },
+    ];
+    const body = { messages, tools: [{ name: "Bash", type: "function", input_schema: {} }] };
+    const snap = snapshotCacheProtectedBody(body);
+    body.messages = fixToolUseOrdering(structuredClone(messages));
+    expect(verifyCacheProtectedBody(body, snap)).toBe(true);
+    expect(body.messages[0].content).toBe("cached string turn");
+  });
+
   it("RTK compression never touches messages at or before cache floor", () => {
     const body = buildClaudeCodeCachedBody({
       messages: [
@@ -499,5 +517,25 @@ describe("Claude cache — handleChatCore passthrough dispatch", () => {
     const { dispatchedBody } = await runPassthroughChatCore({ body });
     expect(dispatchedBody.messages[0].content).toBe("Hello");
     expect(dispatchedBody.messages[1].content).toBe("Hi there!");
+  });
+
+  it("preserves cached string messages when tool_use exists only in uncached tail", async () => {
+    const body = buildClaudeCodeCachedBody({
+      messages: [
+        { role: "user", content: "cached opener", cache_control: { type: "ephemeral" } },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "tu_tail", name: "Bash", input: { command: "ls" } },
+            { type: "text", text: "after tool" },
+          ],
+        },
+      ],
+    });
+    const snap = snapshotCacheProtectedBody(body);
+    const { result, dispatchedBody } = await runPassthroughChatCore({ body });
+    expect(result.success).toBe(true);
+    expect(verifyCacheProtectedBody(dispatchedBody, snap)).toBe(true);
+    expect(dispatchedBody.messages[0].content).toBe("cached opener");
   });
 });

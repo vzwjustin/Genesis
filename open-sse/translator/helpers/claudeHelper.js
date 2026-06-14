@@ -171,9 +171,15 @@ export function fixToolUseOrdering(messages) {
       last.content = [...lastContent, ...msgContent];
       lastOrigIdx = mi;
     } else {
-      // Ensure content is array
-      const content = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
-      merged.push(cloneMessageShell(msg, [...content]));
+      const isProtected = messageHasCacheMarker(msg) || (cacheFloor >= 0 && mi <= cacheFloor);
+      if (isProtected) {
+        // Cache prefix: preserve string vs array shape byte-for-byte.
+        const content = Array.isArray(msg.content) ? [...msg.content] : msg.content;
+        merged.push(cloneMessageShell(msg, content));
+      } else {
+        const content = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
+        merged.push(cloneMessageShell(msg, [...content]));
+      }
       lastOrigIdx = mi;
     }
   }

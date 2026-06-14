@@ -26,10 +26,10 @@ import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import {
   hasAnthropicCacheBreakpoints,
-  hasClientAnthropicCacheBreakpoints,
   snapshotCacheProtectedBody,
   verifyCacheProtectedBody,
   restoreBodyFromJsonSnapshot,
+  findLastCacheBoundary,
 } from "../rtk/cacheBoundary.js";
 import { compressWithHeadroom } from "../rtk/headroom.js";
 import { saveCompressionStats } from "@/lib/compressionStats.js";
@@ -271,7 +271,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         && m.content.some((b) => b.type === "tool_use" || b.type === "tool_result")
     );
     if (needsToolOrderingFix) {
-      translatedBody.messages = fixToolUseOrdering(translatedBody.messages);
+      // Client-owned cache: only reorder the uncached tail (same as prepareClaudeRequest).
+      if (clientHasCacheBreakpoints) {
+        const cacheFloor = findLastCacheBoundary(translatedBody.messages);
+        if (cacheFloor >= 0 && cacheFloor < translatedBody.messages.length - 1) {
+          const prefix = translatedBody.messages.slice(0, cacheFloor + 1);
+          const tail = fixToolUseOrdering(translatedBody.messages.slice(cacheFloor + 1));
+          translatedBody.messages = [...prefix, ...tail];
+        } else if (cacheFloor < 0) {
+          translatedBody.messages = fixToolUseOrdering(translatedBody.messages);
+        }
+      } else {
+        translatedBody.messages = fixToolUseOrdering(translatedBody.messages);
+      }
     }
   }
 
