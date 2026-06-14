@@ -220,6 +220,7 @@ export class BaseExecutor {
         clearTimeout(connectTimer);
         merged.cleanup?.();
         lastError = error;
+        if (signal?.aborted) throw error;
         const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
         // Connect timeout is internal — convert to retryable network error, don't propagate AbortError

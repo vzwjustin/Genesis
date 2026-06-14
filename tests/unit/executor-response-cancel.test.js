@@ -78,4 +78,22 @@ describe("KiroExecutor network retry", () => {
     expect(src).toContain("cancelResponseBody(response)");
     expect(src).not.toContain("body?.cancel?.().catch");
   });
+
+  it("does not retry when client abort signal is already aborted", async () => {
+    mockProxyAwareFetch.mockRejectedValueOnce(new Error("user cancelled"));
+
+    const executor = new KiroExecutor();
+    const signal = AbortSignal.abort();
+
+    await expect(executor.execute({
+      model: "auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials,
+      signal,
+      log: { debug: vi.fn() },
+    })).rejects.toThrow("user cancelled");
+
+    expect(mockProxyAwareFetch).toHaveBeenCalledTimes(1);
+  });
 });

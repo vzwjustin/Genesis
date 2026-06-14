@@ -79,6 +79,7 @@ export class KiroExecutor extends BaseExecutor {
           signal: merged.signal
         }, proxyOptions);
       } catch (error) {
+        if (signal?.aborted) throw error;
         const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
         if (error.name === "AbortError" && !isConnectTimeout) throw error;
 

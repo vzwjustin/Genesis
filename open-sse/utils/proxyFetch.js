@@ -678,7 +678,7 @@ async function safeRedirectFetch(url, options, fetchImpl) {
     const originChanged = new URL(nextUrl).origin !== new URL(currentUrl).origin;
     if (originChanged && currentOptions.headers) {
       const stripped = {};
-      const headersEntries = typeof currentOptions.headers.entries === "function"
+      const headersEntries = currentOptions.headers instanceof Headers
         ? Array.from(currentOptions.headers.entries())
         : Object.entries(currentOptions.headers);
       for (const [k, v] of headersEntries) {

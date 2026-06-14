@@ -15,6 +15,12 @@ describe("codebase health audit fixes", () => {
       expect(shouldStripCredentialHeaderOnRedirect("x-request-id")).toBe(false);
       expect(shouldStripCredentialHeaderOnRedirect("anthropic-version")).toBe(false);
     });
+
+    it("uses instanceof Headers for redirect credential stripping", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "open-sse/utils/proxyFetch.js"), "utf8");
+      expect(src).toContain("currentOptions.headers instanceof Headers");
+      expect(src).not.toMatch(/typeof currentOptions\.headers\.entries === "function"/);
+    });
   });
 
   describe("circuitBreaker — half-open probe serialization", () => {
