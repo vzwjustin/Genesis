@@ -22,6 +22,65 @@
 
 ---
 
+## 🔧 This Fork — Progress & End Goal
+
+This repository is an active **fork** of [9router](https://github.com/decolua/9router), customized as a local AI CLI proxy/router for daily use with Claude Code, Codex, Cursor, and other OpenAI-compatible agents. Work is concentrated on the `fix/audit-bug-fixes` branch ([compare to upstream](https://github.com/vzwjustin/9router/compare/master...fix/audit-bug-fixes)).
+
+### End goal
+
+Build a **production-trustworthy local gateway** between agent CLIs and upstream providers:
+
+- **Fail closed** for correctness and security (bad translation, SSRF, auth, malformed streams → clear errors, not silent corruption).
+- **Fail open** for optional side effects (compression stats, logs, telemetry must never break a chat request).
+- **Passthrough means passthrough** — provider-native requests stay native unless a documented compatibility or security rule requires a mutation.
+- **Predictable under mess** — combos, retries, OAuth refresh, MITM bypass DNS, outbound proxies, and streaming edge cases behave the same in tests and at 3 a.m.
+
+Success looks like: you point Claude Code / Codex / Cursor at `http://localhost:20128/v1`, route across subscriptions and free tiers, and the proxy **does not drop tokens, leak credentials on redirects, return partial JSON, or lie about usage**.
+
+### What we accomplished (recent development)
+
+Roughly **45 commits** and **2,200+ unit tests** on the audit branch. Highlights by area:
+
+| Area | Done |
+|------|------|
+| **Passthrough & translation** | Native passthrough detection; cache-protected prefix preserved byte-identically across RTK/Headroom; Anthropic built-in tool `model` prefix stripping; OpenAI ↔ Claude ↔ Gemini ↔ Codex Responses paths hardened |
+| **Claude & Codex** | `openai-to-claude` fixes; Responses API SSE → client format; forced SSE→JSON assembly with fail-closed on truncated/malformed streams; thinking-tag carry across chunk boundaries; Cursor MITM intercept routing |
+| **Streaming & SSE** | Terminal-frame semantics (`[DONE]` / `finish_reason`); no fake success on stall/disconnect; passthrough + translated usage accounting when upstream omits terminal frames; 64 MiB block cap on SSE assembly |
+| **Security & proxy** | SSRF guard + connect-time DNS-rebind re-check; cross-origin redirect credential stripping (`Authorization`, `x-api-key`, `x-goog-api-key`, `*-api-key`); per-connection vs env vs relay proxy precedence; MITM bypass DNS integrity (no silent system-DNS fallback) |
+| **Reliability** | Circuit breaker (closed/open/half-open) wired into `chatCore`; provider reachability tracker; combo round-robin locking; zero-connection → no upstream attempt; `Retry-After` minimum on exhaustion |
+| **Usage & billing accuracy** | Usage idempotency keys (history + daily rollup); live dashboard ring dedup on replay; streaming `saveUsageStats` with per-request keys |
+| **Observability** | Structured logger (`LOG_LEVEL`); enriched `/api/health` (uptime, active connections, provider reachability); `/api/metrics/latency` (p50/p95/avg per provider-model); request logging that never blocks the hot path |
+| **RTK & compression** | Content-aware filters with smart-truncate fallback; Headroom probe TTL + cache-floor preservation; Caveman/RTK stats failures never stop requests |
+| **Providers & models** | OpenRouter Fusion (`fusion` / `fusion-budget`) with plugin presets; Kiro connect-timeout + EventStream retry drain; executor connect timeouts; token refresh on 401/403 |
+| **Operator & agent UX** | `AGENTS.md` / `CLAUDE.md` with build gotchas (always clear `.next-cli-build` before CLI rebuild); Karpathy-style behavioral rules in Cursor; global install should symlink to fork, not tarball copy |
+
+### Still in progress / local only
+
+- Merge `fix/audit-bug-fixes` → `master` and cut a release tag.
+- Optional: persist latency metrics to SQLite (today in-process ring buffer; dashboard must share the proxy process).
+- Local-only files not in git: `.data/` (SQLite runtime), `.intent/`, `.kiro/specs/` (planning notes).
+
+### Fork quick commands
+
+```bash
+# Tests (2,200+ unit tests, mocked — no live server required)
+npm test
+
+# CLI/proxy rebuild — ALWAYS clear webpack cache first or you run stale code
+rm -rf .next-cli-build && cd cli && npm run build
+
+# Headless server (preferred for debugging)
+PORT=3456 HOSTNAME=0.0.0.0 node cli/app/server.js
+
+# Global dev install — symlink to fork, not a copied tarball
+rm -rf "$(npm root -g)/9router"
+ln -s "$(pwd)/cli" "$(npm root -g)/9router"
+```
+
+See [AGENTS.md](./AGENTS.md) for full agent/operator rules (passthrough, retry, DNS, streaming validity).
+
+---
+
 ## 🤔 Why 9Router?
 
 **Stop wasting money, tokens and hitting limits:**
@@ -116,15 +175,13 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 Build and reinstall the local CLI package from a fork:
 
 ```bash
-rm -rf .next/cache/webpack
-npm install
-npm --prefix cli install
-npm --prefix cli run build
-npm install -g ./cli
+# Required after any open-sse/ or cli/ edit — stale .next-cli-build is the #1 "fix didn't apply" bug
+rm -rf .next-cli-build && cd cli && npm run build
+ln -sf "$(pwd)/cli" "$(npm root -g)/9router"   # macOS/Linux: symlink global CLI to fork
 9router --version
 ```
 
-The CLI build bundles the Next.js standalone app into `cli/app` and installs the `9router` command from your checkout.
+The CLI build bundles the Next.js standalone app into `cli/app` and installs the `9router` command from your checkout. For headless runs, prefer `node cli/app/server.js` over the interactive CLI wrapper.
 
 Installed CLI builds also expose a **Versions** control in the sidebar. It fetches GitHub release history and can automatically upgrade or downgrade to a selected release, with a manual `npm i -g 9router@<version> --prefer-online` fallback command.
 
@@ -414,6 +471,8 @@ Default URLs:
 | 🔄 **Auto Token Refresh** | OAuth tokens refresh automatically | No manual re-login needed |
 | 🎨 **Custom Combos** | Create unlimited model combinations | Tailor fallback to your needs |
 | 📝 **Request Logging** | Debug mode with full request/response logs | Troubleshoot issues easily |
+| 🩺 **Health & Latency** | `/api/health` reachability + `/api/metrics/latency` p50/p95 (fork) | Monitor proxy without extra tooling |
+| 🔌 **Circuit Breaker** | Per-provider fail-fast when upstream is unhealthy (fork) | Avoid cascading 5xx storms |
 | 💾 **Cloud Sync** | Sync config across devices | Same setup everywhere |
 | 📊 **Usage Analytics** | Track tokens, cost, trends over time | Optimize spending |
 | 🌐 **Deploy Anywhere** | Localhost, VPS, Docker, Cloudflare Workers | Flexible deployment options |
@@ -1126,6 +1185,10 @@ docker pull decolua/9router:latest   # update to latest
 | `ENABLE_REQUEST_LOGS` | `false` | Enables request/response logs under `logs/` |
 | `AUTH_COOKIE_SECURE` | `false` | Force `Secure` auth cookie (set `true` behind HTTPS reverse proxy) |
 | `REQUIRE_API_KEY` | `false` | Enforce Bearer API key on `/v1/*` routes (recommended for internet-exposed deploys) |
+| `LOG_LEVEL` | `info` | Logger verbosity: `debug`, `info`, `warn`, `error` (fork) |
+| `CB_FAILURE_THRESHOLD` | `5` | Circuit breaker consecutive failures before open (fork) |
+| `CB_COOLDOWN_MS` | `30000` | Circuit breaker cooldown before half-open probe (fork) |
+| `LATENCY_BUFFER_SIZE` | `1000` | In-memory latency sample ring per provider-model (fork) |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | empty | Optional outbound proxy for upstream provider calls |
 
 Notes:
