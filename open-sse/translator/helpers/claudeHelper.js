@@ -41,16 +41,26 @@ export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientC
   if (!tools || !Array.isArray(tools)) return tools;
 
   const isAnthropicEndpoint = provider === "claude" || provider?.startsWith("anthropic-compatible");
-  let filtered = tools;
-  if (!isAnthropicEndpoint) {
-    filtered = tools.filter((tool) => !tool.type || tool.type === "function");
-  }
+  const cacheToolFloor = preserveClientCache ? findLastCachedIndexInArray(tools) : -1;
 
-  const toolFloor = preserveClientCache ? findLastCachedIndexInArray(filtered) : -1;
+  const isCacheProtectedToolIndex = (index) => {
+    if (!preserveClientCache) return false;
+    const tool = tools[index];
+    if (!tool) return false;
+    return itemHasCacheControl(tool) || (cacheToolFloor >= 0 && index <= cacheToolFloor);
+  };
 
-  return filtered.map((tool, i) => {
-    const toolProtected = preserveClientCache
-      && (itemHasCacheControl(tool) || (toolFloor >= 0 && i <= toolFloor));
+  const entries = isAnthropicEndpoint
+    ? tools.map((tool, index) => ({ tool, index }))
+    : tools.reduce((acc, tool, index) => {
+        if (isCacheProtectedToolIndex(index) || !tool.type || tool.type === "function") {
+          acc.push({ tool, index });
+        }
+        return acc;
+      }, []);
+
+  return entries.map(({ tool, index }) => {
+    const toolProtected = isCacheProtectedToolIndex(index);
 
     // Cache-protected prefix: byte-identical — never alter, drop, or overwrite.
     if (toolProtected) {
