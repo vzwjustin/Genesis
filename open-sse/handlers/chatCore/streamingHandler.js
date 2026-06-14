@@ -15,11 +15,12 @@ const SSE_HEADERS = {
 /**
  * Determine which SSE transform stream to use based on provider/format.
  */
-function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, passthrough, onPendingRelease }) {
+function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, passthrough, onPendingRelease, streamDetailId, clientEndpoint }) {
+  const streamUsageOpts = { idempotencyKey: streamDetailId, endpoint: clientEndpoint };
   // PASSTHROUGH GUARD: In passthrough mode, always use the passthrough stream.
   // Do NOT translate SSE chunks — preserve upstream streaming shape as-is.
   if (passthrough) {
-    return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, body, onStreamComplete, apiKey, sourceFormat, onPendingRelease);
+    return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, body, onStreamComplete, apiKey, sourceFormat, onPendingRelease, streamUsageOpts.idempotencyKey, streamUsageOpts.endpoint);
   }
 
   const isDroidCLI = userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
@@ -32,14 +33,14 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
     else if (sourceFormat === FORMATS.CLAUDE) codexTarget = FORMATS.CLAUDE;
     else if (sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) codexTarget = FORMATS.ANTIGRAVITY;
     else codexTarget = FORMATS.OPENAI;
-    return createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, onPendingRelease);
+    return createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, onPendingRelease, streamUsageOpts.idempotencyKey, streamUsageOpts.endpoint);
   }
 
   if (needsTranslation(targetFormat, sourceFormat)) {
-    return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, onPendingRelease);
+    return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, onPendingRelease, streamUsageOpts.idempotencyKey, streamUsageOpts.endpoint);
   }
 
-  return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, body, onStreamComplete, apiKey, sourceFormat, onPendingRelease);
+  return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, body, onStreamComplete, apiKey, sourceFormat, onPendingRelease, streamUsageOpts.idempotencyKey, streamUsageOpts.endpoint);
 }
 
 /**
@@ -72,7 +73,7 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
     },
   };
 
-  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete: safeOnStreamComplete, apiKey, passthrough, onPendingRelease });
+  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete: safeOnStreamComplete, apiKey, passthrough, onPendingRelease, streamDetailId, clientEndpoint: clientRawRequest?.endpoint });
   const transformedBody = pipeWithDisconnect(providerResponse, transformStream, wiredStreamController, { onIncomplete: markIncomplete });
 
   saveRequestDetail(buildRequestDetail({
@@ -136,7 +137,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     });
 
     if (clean) {
-      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE" });
+      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE", idempotencyKey: streamDetailId });
       fireRequestSuccess();
     }
   };

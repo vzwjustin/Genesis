@@ -6,7 +6,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { refreshWithRetry, isUnrecoverableRefreshError } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getModelTargetFormat, getModelStrip, getModelUpstreamId, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getModelRequestExtras, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, VALIDATION_ERROR_TYPES, PROXY_INTERNAL_ERROR_CODES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
@@ -34,6 +34,7 @@ import {
 import { compressWithHeadroom } from "../rtk/headroom.js";
 import { saveCompressionStats } from "@/lib/compressionStats.js";
 import { buildProxyOptionsFromCredentials } from "../utils/proxyFetch.js";
+import { checkCircuitBreaker, recordUpstreamTelemetry } from "../utils/upstreamTelemetry.js";
 
 function buildExecCredentials(credentials, clientHasCacheBreakpoints) {
   return clientHasCacheBreakpoints
@@ -231,7 +232,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (provider === "fusion" && !passthrough) {
     const savedFusion = credentials?.providerSpecificData?.fusion;
     const clientSentPlugins = Array.isArray(body.plugins) && body.plugins.length > 0;
-    if (savedFusion && typeof savedFusion === "object" && savedFusion.enabled !== false && !clientSentPlugins) {
+    if (!clientSentPlugins && savedFusion && typeof savedFusion === "object" && savedFusion.enabled !== false) {
       const fusionPlugin = { id: "fusion" };
       if (Array.isArray(savedFusion.analysis_models) && savedFusion.analysis_models.length > 0) {
         fusionPlugin.analysis_models = savedFusion.analysis_models;
@@ -243,6 +244,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         fusionPlugin.max_tool_calls = savedFusion.max_tool_calls;
       }
       translatedBody.plugins = [fusionPlugin];
+    } else if (!clientSentPlugins && !savedFusion) {
+      const extras = getModelRequestExtras(alias, model);
+      if (extras && typeof extras === "object") {
+        Object.assign(translatedBody, extras);
+      }
     }
   }
 
@@ -569,6 +575,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
+
+  const cbCheck = checkCircuitBreaker(provider);
+  if (cbCheck.denied) {
+    releasePending();
+    return createErrorResult(
+      HTTP_STATUS.SERVICE_UNAVAILABLE,
+      `Provider ${provider} temporarily unavailable (circuit open)`,
+      undefined,
+      { errorCode: "circuit_open", retryAfterSec: cbCheck.retryAfter }
+    );
+  }
+
   try {
     const result = await executor.execute({
       model,
@@ -587,7 +605,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
+    recordUpstreamTelemetry(provider, model, requestStartTime, providerResponse);
   } catch (error) {
+    recordUpstreamTelemetry(provider, model, requestStartTime, null, { isNetworkError: true });
     releasePending();
     reqLogger.logError(error, translatedBody);
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
@@ -664,6 +684,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           providerUrl = retryResult.url;
           providerHeaders = retryResult.headers;
           finalBody = retryResult.transformedBody;
+          recordUpstreamTelemetry(provider, model, requestStartTime, providerResponse);
         } catch (retryError) {
           log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
           releasePending();

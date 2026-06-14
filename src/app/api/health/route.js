@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { providerReachability } from "open-sse/utils/circuitBreaker.js";
+import { getPendingRequestTotal } from "@/lib/usageDb.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -15,8 +17,34 @@ export async function GET() {
     dbOk = false;
   }
 
+  const body = { ok: dbOk, db: dbOk };
+
+  try {
+    body.uptime_seconds = Math.floor(process.uptime());
+  } catch {
+    body.ok = false;
+  }
+
+  try {
+    body.active_connections = getPendingRequestTotal();
+  } catch {
+    body.ok = false;
+  }
+
+  try {
+    const reachability = providerReachability.getAll();
+    body.providers = {};
+    body.last_errors = {};
+    for (const [name, entry] of Object.entries(reachability)) {
+      body.providers[name] = { reachable: entry.reachable };
+      body.last_errors[name] = entry.lastErrorAt;
+    }
+  } catch {
+    body.ok = false;
+  }
+
   return NextResponse.json(
-    { ok: dbOk, db: dbOk },
+    body,
     { headers: CORS_HEADERS, status: dbOk ? 200 : 503 }
   );
 }

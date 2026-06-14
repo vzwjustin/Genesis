@@ -81,6 +81,9 @@ export function errorResponse(statusCode, message, options = {}) {
     );
     headers["Retry-After"] = String(retryAfterSec);
   }
+  if (options.retryAfterSec != null) {
+    headers["Retry-After"] = String(Math.max(1, Number(options.retryAfterSec) || 1));
+  }
   return new Response(JSON.stringify(buildErrorBody(statusCode, message, options)), {
     status: statusCode,
     headers,

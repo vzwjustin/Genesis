@@ -117,12 +117,18 @@ export const TABLES = {
       status: "TEXT",
       tokens: "TEXT",
       meta: "TEXT",
+      idempotencyKey: "TEXT",
     },
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_uh_ts ON usageHistory(timestamp DESC)",
       "CREATE INDEX IF NOT EXISTS idx_uh_provider ON usageHistory(provider)",
       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
+      // Idempotency: a per-request key collapses a true double-write (retry /
+      // stream+handler replay) for the SAME request. Genuine distinct requests
+      // carry distinct keys, so this never under-counts. NULL keys are exempt
+      // (SQLite treats NULLs as distinct in a UNIQUE index) → legacy behavior.
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_idem ON usageHistory(idempotencyKey)",
     ],
   },
   usageDaily: {

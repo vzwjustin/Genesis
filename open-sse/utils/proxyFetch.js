@@ -2,7 +2,7 @@ import { Readable } from "stream";
 import { createRequire } from "module";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
-import { assertSafeResolvedHostname } from "./ssrfGuard.js";
+import { assertSafeResolvedHostname, isBlockedHostname } from "./ssrfGuard.js";
 import { mergeAbortSignals } from "./abortSignal.js";
 
 const require = createRequire(import.meta.url);
@@ -12,6 +12,35 @@ const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
 const SUPPORTED_PROXY_PROTOCOLS = new Set(["http:", "https:"]);
 const MAX_UPSTREAM_REDIRECTS = 5;
+
+/** Exact credential header names stripped on cross-origin redirect follows. */
+const CREDENTIAL_HEADER_EXACT = new Set([
+  "authorization",
+  "cookie",
+  "proxy-authorization",
+  "x-api-key",
+  "x-relay-auth",
+  "api-key",
+  "x-goog-api-key",
+]);
+
+/**
+ * Whether a request header must be stripped before following a cross-origin redirect.
+ * Browsers drop Authorization on cross-origin redirects; forwarding provider secrets
+ * to an attacker-chosen host (which can pass the public-only SSRF guard) exfiltrates them.
+ * @param {string} headerName
+ * @returns {boolean}
+ */
+export function shouldStripCredentialHeaderOnRedirect(headerName) {
+  const lower = String(headerName || "").toLowerCase();
+  if (CREDENTIAL_HEADER_EXACT.has(lower)) return true;
+  if (lower.endsWith("-api-key")) return true;
+  if (lower.includes("authorization")) return true;
+  if (lower.startsWith("x-") && (lower.includes("api-key") || lower.includes("auth-token") || lower.endsWith("-token"))) {
+    return true;
+  }
+  return false;
+}
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -642,6 +671,22 @@ async function safeRedirectFetch(url, options, fetchImpl) {
     // Drain the redirect response body to free the socket before re-issuing.
     try { await res.body?.cancel(); } catch { /* noop */ }
 
+    // Cross-origin redirect: strip credential-bearing headers before following.
+    // Per fetch spec browsers drop Authorization on cross-origin redirects;
+    // forwarding the provider bearer/api-key/relay secret to an attacker-chosen
+    // public host (which passes the private-only SSRF guard) would exfiltrate it.
+    const originChanged = new URL(nextUrl).origin !== new URL(currentUrl).origin;
+    if (originChanged && currentOptions.headers) {
+      const stripped = {};
+      for (const [k, v] of Object.entries(currentOptions.headers)) {
+        if (shouldStripCredentialHeaderOnRedirect(k)) {
+          continue;
+        }
+        stripped[k] = v;
+      }
+      currentOptions = { ...currentOptions, headers: stripped };
+    }
+
     // Per fetch spec, 303 (and 301/302 for non-GET/HEAD) downgrade to GET and drop the body.
     const method = (currentOptions.method || "GET").toUpperCase();
     if (res.status === 303 || ((res.status === 301 || res.status === 302) && method !== "GET" && method !== "HEAD")) {
@@ -652,6 +697,41 @@ async function safeRedirectFetch(url, options, fetchImpl) {
   }
 
   throw new Error(`[ProxyFetch] Too many redirects (>${MAX_UPSTREAM_REDIRECTS})`);
+}
+
+// ─── DNS-rebind-safe dispatcher ───────────────────────────────────────────
+// assertSafeResolvedHostname validates the hostname's resolved IPs, but undici
+// then re-resolves independently when it connects. Across the ~60s DNS cache
+// window an attacker can answer the guard with a public IP and the real connect
+// with 169.254.169.254 (metadata) — classic DNS-rebind TOCTOU. This dispatcher
+// re-asserts the address at connect-time via a custom `lookup`, so the IP that
+// actually gets connected is the one that passed the block check. Reused per
+// process (stateless), bounded by undici's own pool.
+let _guardedDispatcher = null;
+async function getGuardedDispatcher() {
+  if (_guardedDispatcher) return _guardedDispatcher;
+  const dns = await import("node:dns");
+  const { Agent } = await import("undici");
+  _guardedDispatcher = new Agent({
+    connect: {
+      lookup(hostname, opts, cb) {
+        dns.lookup(hostname, opts, (err, address, family) => {
+          if (err) return cb(err, address, family);
+          // Re-assert the ACTUAL connect address — not a cached prior resolution.
+          const addrs = Array.isArray(address)
+            ? address.map((a) => a.address)
+            : [address];
+          for (const ip of addrs) {
+            if (isBlockedHostname(String(ip))) {
+              return cb(new Error(`[ProxyFetch] Connect address blocked by SSRF guard: ${ip}`), address, family);
+            }
+          }
+          cb(null, address, family);
+        });
+      },
+    },
+  });
+  return _guardedDispatcher;
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
@@ -666,15 +746,36 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
 async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
 
+  let directIsLoopback = false;
   if (!shouldBypassMitmDns(targetUrl)) {
     try {
       const hostname = new URL(targetUrl).hostname;
       const allowLoopback = ["localhost", "127.0.0.1", "::1"].includes(hostname.toLowerCase());
+      directIsLoopback = allowLoopback;
       await assertSafeResolvedHostname(hostname, { allowLoopback });
     } catch (dnsError) {
       throw new Error(`[ProxyFetch] DNS safety check failed: ${dnsError.message}`);
     }
   }
+
+  // For direct (non-proxy) egress to a non-loopback host, attach the
+  // connect-time guarded dispatcher so the IP actually dialed is re-checked —
+  // closes the DNS-rebind window between the check above and the real connect.
+  // Loopback providers (ollama/searxng) are intentionally allowed, so skip them.
+  const directFetch = async (u, o) => {
+    if (directIsLoopback) return originalFetch(u, o);
+    let dispatcher = null;
+    try {
+      dispatcher = await getGuardedDispatcher();
+    } catch {
+      // undici Agent unavailable — fall back to plain fetch. The DNS pre-check
+      // already ran; this only loses the connect-time re-assert.
+      dispatcher = null;
+    }
+    // A block error raised inside the dispatcher's lookup MUST propagate — do
+    // not wrap this in a try/catch that would retry plain fetch (fail-open).
+    return dispatcher ? originalFetch(u, { ...o, dispatcher }) : originalFetch(u, o);
+  };
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
   const connectionProxyConfigured =
@@ -694,7 +795,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   if (!proxyUrl && vercelRelayUrl) {
     const relayNoProxy = normalizeString(proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy);
     if (relayNoProxy && shouldBypassByNoProxy(targetUrl, relayNoProxy)) {
-      return safeRedirectFetch(url, options, originalFetch);
+      return safeRedirectFetch(url, options, directFetch);
     }
     const parsed = new URL(targetUrl);
     const relayHeaders = {
@@ -747,13 +848,13 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
         throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
       }
       console.warn(`[ProxyFetch] Proxy failed, falling back to direct (strictProxy=false): ${proxyError.message}`);
-      return safeRedirectFetch(url, options, originalFetch);
+      return safeRedirectFetch(url, options, directFetch);
     }
   }
 
   // got-scraping disabled — use native fetch directly
   // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
-  return safeRedirectFetch(url, options, originalFetch);
+  return safeRedirectFetch(url, options, directFetch);
 }
 
 /**
