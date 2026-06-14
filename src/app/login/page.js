@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, Button, Input, InlineAlert, PageLoading } from "@/shared/components";
+import { Card, Button, Input, InlineAlert } from "@/shared/components";
 import { SECURITY_COPY } from "@/shared/constants/securityCopy";
 import { useRouter } from "next/navigation";
 
@@ -98,8 +98,14 @@ export default function LoginPage() {
   // Show loading state while checking password
   if (hasPassword === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center dashboard-main-shell p-4">
-        <PageLoading message="Loading..." />
+      <div className="min-h-screen flex items-center justify-center dashboard-main-shell p-4 relative overflow-hidden">
+        <div className="landing-grid absolute inset-0 pointer-events-none opacity-50 dark:opacity-100" aria-hidden="true" />
+        <div className="glass-panel relative z-10 text-center p-8 max-w-md w-full">
+          <div className="size-16 mx-auto mb-4 rounded-full glass-stat border-0 flex items-center justify-center">
+            <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
+          </div>
+          <p className="text-text-muted">Loading...</p>
+        </div>
       </div>
     );
   }

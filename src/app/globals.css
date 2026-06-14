@@ -1205,6 +1205,192 @@ button {
   border-color: var(--glass-edge-subtle) !important;
 }
 
+/* bg-surface-2 form fields — common on provider/media detail pages */
+.dashboard-main-shell input[class*="bg-surface-2"]:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+.dashboard-main-shell select[class*="bg-surface-2"],
+.dashboard-main-shell textarea[class*="bg-surface-2"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.68) 0%,
+    rgba(255, 255, 255, 0.44) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-input)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-input)) saturate(var(--glass-saturate-input));
+  border-color: var(--glass-edge) !important;
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .dashboard-main-shell input[class*="bg-surface-2"]:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+.dark .dashboard-main-shell select[class*="bg-surface-2"],
+.dark .dashboard-main-shell textarea[class*="bg-surface-2"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle) !important;
+}
+
+.dashboard-main-shell input[class*="bg-surface-2"]:focus-visible,
+.dashboard-main-shell select[class*="bg-surface-2"]:focus-visible,
+.dashboard-main-shell textarea[class*="bg-surface-2"]:focus-visible {
+  border-color: rgba(201, 168, 76, 0.45) !important;
+  box-shadow: var(--glass-highlight-soft), var(--shadow-focus);
+}
+
+/* Compact toolbar / filter controls on dashboard pages */
+.glass-control {
+  border-radius: 0.5rem;
+  border: 1px solid var(--glass-edge);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.38) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dark .glass-control {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+.glass-control:hover:not(:disabled) {
+  border-color: rgba(201, 168, 76, 0.35);
+  box-shadow: var(--glass-highlight-soft), 0 4px 12px -8px rgba(15, 23, 42, 0.12);
+}
+
+.dark .glass-control:hover:not(:disabled) {
+  border-color: rgba(201, 168, 76, 0.28);
+  box-shadow: var(--glass-highlight-soft), 0 4px 14px -10px rgba(0, 0, 0, 0.4);
+}
+
+.glass-control:focus-visible {
+  outline: 2px solid rgba(201, 168, 76, 0.45);
+  outline-offset: 1px;
+}
+
+/* Inline monospace snippets inside glass panels */
+.glass-code {
+  border-radius: 0.375rem;
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.32) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .glass-code {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+/* Auto-glass inline code that still uses bg-surface-2 utility classes */
+.dashboard-main-shell code[class*="bg-surface-2"] {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.32) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .dashboard-main-shell code[class*="bg-surface-2"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle);
+}
+
+/* Read-only value chips in CLI tool cards */
+.dashboard-main-shell [class*="bg-surface/40"] {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.22) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .dashboard-main-shell [class*="bg-surface/40"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle);
+}
+
+/* Table headers inside glass panels */
+.glass-panel table thead tr,
+.glass-stat table thead tr {
+  border-bottom: 1px solid var(--glass-edge-subtle);
+}
+
+.glass-panel table thead th,
+.glass-stat table thead th {
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+}
+
+.dark .glass-panel table thead th,
+.dark .glass-stat table thead th {
+  background: color-mix(in srgb, var(--color-surface-2) 65%, transparent);
+}
+
+/* Dashed action rows (add provider, add model, etc.) */
+.glass-dashed-action {
+  border-radius: 0.5rem;
+  border: 1px dashed var(--glass-edge);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dark .glass-dashed-action {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+.glass-dashed-action:hover {
+  border-color: rgba(201, 168, 76, 0.45);
+  box-shadow: var(--glass-highlight-soft);
+}
+
 .glass-inset-panel {
   border-radius: 10px;
   border: 1px solid var(--glass-edge-subtle);
@@ -1564,6 +1750,9 @@ button {
   .dashboard-segment-group,
   .dashboard-segment-flex,
   .glass-input,
+  .glass-control,
+  .glass-code,
+  .glass-dashed-action,
   .landing-glass-card,
   .landing-glass-terminal,
   .landing-glass-cta,
@@ -1606,6 +1795,26 @@ button {
   .glass-overlay,
   .glass-overlay-heavy {
     background: rgba(11, 13, 20, 0.88) !important;
+  }
+
+  .glass-panel table thead th,
+  .glass-stat table thead th {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--color-surface-2) !important;
+  }
+
+  .glass-control,
+  .glass-code,
+  .glass-dashed-action {
+    background: var(--color-surface-2) !important;
+    border-color: var(--color-border-subtle) !important;
+  }
+
+  .dark .glass-control,
+  .dark .glass-code,
+  .dark .glass-dashed-action {
+    background: var(--color-surface-3) !important;
   }
 
   .landing-glass-btn {

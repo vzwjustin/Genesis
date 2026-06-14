@@ -757,7 +757,7 @@ export default function ProviderLimits() {
             <button
               type="button"
               onClick={() => setProviderMenuOpen((prev) => !prev)}
-              className="flex h-8 items-center justify-between gap-1 rounded-lg border border-border px-2 text-xs text-text-main transition-colors dashboard-row-hover"
+              className="flex h-8 items-center justify-between gap-1 glass-control px-2 text-xs text-text-main transition-colors dashboard-row-hover"
               aria-haspopup="menu"
               aria-expanded={providerMenuOpen}
               title="Filter quota providers"
@@ -865,7 +865,7 @@ export default function ProviderLimits() {
               }
               setAccountFilter(nextValue);
             }}
-            className="h-8 rounded-lg border border-border px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
+            className="h-8 glass-control px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
             aria-label="Filter accounts by status"
           >
             {ACCOUNT_FILTER_OPTIONS.map((option) => (
@@ -879,7 +879,7 @@ export default function ProviderLimits() {
             <select
               value={quotaSortMode}
               onChange={(event) => setQuotaSortMode(event.target.value)}
-              className="h-8 rounded-lg border border-border px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
+              className="h-8 glass-control px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
               aria-label="Sort Codex quotas by remaining"
             >
               {QUOTA_SORT_OPTIONS.map((option) => (
@@ -960,7 +960,7 @@ export default function ProviderLimits() {
             onClick={refreshAll}
             disabled={refreshingAll}
             aria-label="Refresh all quotas"
-            className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs text-text-main transition-colors dashboard-row-hover disabled:opacity-50"
+            className="flex h-8 shrink-0 items-center gap-1 glass-control px-2 text-xs text-text-main transition-colors dashboard-row-hover disabled:opacity-50"
             title="Refresh all"
           >
             <span
@@ -1138,7 +1138,7 @@ export default function ProviderLimits() {
                     setCustomPageSizeInput(String(nextPageSize));
                   }
                 }}
-                className="h-8 rounded-lg border border-border px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
+                className="h-8 glass-control px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
                 aria-label="Accounts per page"
               >
                 {ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => (
@@ -1178,7 +1178,7 @@ export default function ProviderLimits() {
                   setPageSize(nextPageSize);
                   setCustomPageSizeInput(String(nextPageSize));
                 }}
-                className="h-8 w-20 rounded-lg border border-border px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
+                className="h-8 w-20 glass-control px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
                 aria-label="Custom accounts per page"
                 placeholder="Custom"
               />
@@ -1191,7 +1191,7 @@ export default function ProviderLimits() {
                 disabled={
                   pagination.page <= 1 || connectionsLoading || refreshingAll
                 }
-                className="flex h-8 items-center rounded-lg border border-border px-3 text-xs text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-8 items-center glass-control px-3 text-xs text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 First Page
               </button>
@@ -1203,7 +1203,7 @@ export default function ProviderLimits() {
                 disabled={
                   pagination.page <= 1 || connectionsLoading || refreshingAll
                 }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-8 w-8 items-center justify-center glass-control text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Previous accounts page"
               >
                 <span className="material-symbols-outlined text-[16px]">
@@ -1222,7 +1222,7 @@ export default function ProviderLimits() {
                   connectionsLoading ||
                   refreshingAll
                 }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-8 w-8 items-center justify-center glass-control text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Next accounts page"
               >
                 <span className="material-symbols-outlined text-[16px]">
@@ -1237,7 +1237,7 @@ export default function ProviderLimits() {
                   connectionsLoading ||
                   refreshingAll
                 }
-                className="flex h-8 items-center rounded-lg border border-border px-3 text-xs text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-8 items-center glass-control px-3 text-xs text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Last Page
               </button>

@@ -314,7 +314,7 @@ export default function ComboDetailPage() {
           <Button size="sm" icon="add" onClick={() => setShowPicker(true)}>Add Provider</Button>
         </div>
         {providers.length === 0 ? (
-          <div className="glass-panel text-center py-6 border border-dashed border-border rounded-lg text-text-muted text-sm">
+          <div className="glass-panel glass-dashed-action text-center py-6 rounded-lg text-text-muted text-sm">
             No providers yet.
           </div>
         ) : (

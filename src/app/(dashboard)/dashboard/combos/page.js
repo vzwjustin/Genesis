@@ -352,7 +352,7 @@ function ModelItem({ id, index, model, allModels, isFirst, isLast, onEdit, onMov
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={handleKeyDown}
-          className="min-w-0 flex-1 rounded border border-primary/40 bg-surface px-1.5 py-0.5 font-mono text-xs text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+          className="min-w-0 flex-1 rounded glass-input px-1.5 py-0.5 font-mono text-xs text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
         />
       ) : (
         <div
@@ -524,7 +524,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             <label className="text-sm font-medium mb-1.5 block">Models</label>
 
             {models.length === 0 ? (
-              <div className="glass-panel text-center py-4 border border-dashed border-border rounded-brand">
+              <div className="glass-panel glass-dashed-action text-center py-4 rounded-brand">
                 <span className="material-symbols-outlined text-text-muted text-xl mb-1">layers</span>
                 <p className="text-xs text-text-muted">No models added yet</p>
               </div>
@@ -560,7 +560,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             {/* Add Model button */}
             <button
               onClick={() => setShowModelSelect(true)}
-              className="w-full mt-2 py-2 border border-dashed border-border rounded-brand text-xs text-primary font-medium hover:border-primary/50 transition-colors flex items-center justify-center gap-1"
+              className="glass-dashed-action w-full mt-2 py-2 rounded-brand text-xs text-primary font-medium hover:border-primary/50 transition-colors flex items-center justify-center gap-1"
             >
               <span className="material-symbols-outlined text-[16px]">add</span>
               Add Model

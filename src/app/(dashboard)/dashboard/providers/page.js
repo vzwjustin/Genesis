@@ -286,7 +286,7 @@ export default function ProvidersPage() {
         />
       )}
       {!hasAnyResult && (
-        <div className="glass-panel text-center py-8 border border-dashed border-border rounded-xl">
+        <div className="glass-panel glass-dashed-action text-center py-8 rounded-xl">
           <span className="material-symbols-outlined text-[32px] text-text-muted mb-2">
             search_off
           </span>
@@ -322,7 +322,7 @@ export default function ProvidersPage() {
         </div>
         {compatibleProviders.length === 0 &&
         anthropicCompatibleProviders.length === 0 ? (
-          <div className="glass-panel flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
+          <div className="glass-panel glass-dashed-action flex items-center justify-center gap-2 py-2 rounded-xl text-text-muted text-sm">
             <span className="material-symbols-outlined text-[18px]">extension</span>
             <span>No custom endpoints yet. Add an OpenAI- or Anthropic-compatible endpoint above.</span>
           </div>
@@ -467,7 +467,7 @@ export default function ProvidersPage() {
         {!isApikeySearching && !showAllApikey && hiddenApikeyCount > 0 && (
           <button
             onClick={() => setShowAllApikey(true)}
-            className="glass-panel flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border px-3 py-2.5 text-sm font-medium text-text-muted transition-colors dashboard-row-hover hover:text-text-main"
+            className="glass-dashed-action flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium text-text-muted transition-colors hover:text-text-main"
           >
             <span className="material-symbols-outlined text-[16px]">expand_more</span>
             Show all {apikeyEntries.length} providers

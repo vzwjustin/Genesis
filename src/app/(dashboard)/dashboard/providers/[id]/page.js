@@ -1021,7 +1021,7 @@ export default function ProviderDetailPage() {
         {/* Add model button — inline, same style as model chips */}
         <button
           onClick={() => setShowAddCustomModel(true)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-text-muted transition-colors dashboard-row-hover hover:text-brand-500 sm:w-auto"
+          className="glass-dashed-action flex w-full items-center justify-center gap-1.5 px-3 py-2 text-xs text-text-muted transition-colors hover:text-brand-500 sm:w-auto"
         >
           <span className="material-symbols-outlined text-sm">add</span>
           Add Model
@@ -1046,7 +1046,7 @@ export default function ProviderDetailPage() {
                       const alias = m.id.split("/").pop();
                       await handleSetAlias(m.id, alias, providerStorageAlias);
                     }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
+                    className="glass-control flex items-center gap-1 px-2.5 py-1.5 text-xs text-text-muted transition-colors hover:text-brand-500"
                     title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}
                   >
                     <span className="material-symbols-outlined text-[13px]">add</span>
@@ -1067,7 +1067,7 @@ export default function ProviderDetailPage() {
                 <button
                   key={m.id}
                   onClick={() => handleEnableModel(m.id)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-border text-xs text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
+                  className="glass-dashed-action flex items-center gap-1 px-2.5 py-1.5 text-xs text-text-muted transition-colors hover:text-brand-500"
                   title="Restore model"
                 >
                   <span className="material-symbols-outlined text-[13px]">add</span>

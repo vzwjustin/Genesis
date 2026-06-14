@@ -282,7 +282,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </p>
         )}
         {isCloudflareAi && (
-          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+          <div className="glass-stat border-0 p-4 rounded-lg">
             <h3 className="font-semibold mb-3 text-sm">Cloudflare Workers AI</h3>
             <Input
               label="Account ID"
@@ -296,7 +296,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </div>
         )}
         {isAzure && (
-          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+          <div className="glass-stat border-0 p-4 rounded-lg">
             <h3 className="font-semibold mb-3 text-sm">Azure OpenAI Configuration</h3>
             <div className="flex flex-col gap-3">
               <Input
