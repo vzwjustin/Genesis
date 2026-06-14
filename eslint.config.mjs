@@ -34,6 +34,12 @@ const eslintConfig = defineConfig([
     plugins: { "@typescript-eslint": tseslint.plugin },
     rules: {
       "@typescript-eslint/no-floating-promises": "warn",
+      // Flags async fns passed where a void/sync callback is expected (event
+      // handlers, array methods) — their rejections are silently swallowed.
+      "@typescript-eslint/no-misused-promises": [
+        "warn",
+        { checksVoidReturn: { arguments: false, attributes: false } },
+      ],
     },
   },
 ]);
