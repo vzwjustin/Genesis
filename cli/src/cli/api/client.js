@@ -99,8 +99,9 @@ function makeRequest(method, path, body = null) {
     };
 
     // Add Content-Length for POST/PUT requests
+    let bodyString = null;
     if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
-      const bodyString = JSON.stringify(body);
+      bodyString = JSON.stringify(body);
       options.headers["Content-Length"] = Buffer.byteLength(bodyString);
     }
 
@@ -156,9 +157,9 @@ function makeRequest(method, path, body = null) {
     // Set timeout (30 seconds)
     req.setTimeout(30000);
 
-    // Write body if present
-    if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
-      req.write(JSON.stringify(body));
+    // Write body if present (reuse the serialized string from Content-Length)
+    if (bodyString !== null) {
+      req.write(bodyString);
     }
 
     req.end();

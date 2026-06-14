@@ -164,7 +164,9 @@ async function main() {
     
     // Wait for all to complete
     const batchResults = await Promise.allSettled(batchPromises);
-    
+    // Tag each settled result with its language; rejected results carry no
+    // value, so the summary below has no other way to identify which lang failed.
+    batchResults.forEach((r, idx) => { r.lang = batch[idx]; });
     results.push(...batchResults);
     
     // Wait between batches to avoid rate limit
@@ -182,7 +184,7 @@ async function main() {
     if (result.status === 'fulfilled') {
       console.log(`✅ ${result.value.lang}: ${result.value.path}`);
     } else {
-      console.log(`❌ ${result.lang}: ${result.reason.message}`);
+      console.log(`❌ ${result.lang}: ${result.reason?.message || result.reason}`);
     }
   });
   
