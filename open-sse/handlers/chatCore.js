@@ -534,6 +534,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (typeof AbortSignal.any === "function") {
       upstreamSignal = AbortSignal.any([clientSignal, streamController.signal]);
     } else if (clientSignal.aborted) {
+      streamController.abort();
       streamController.handleDisconnect("client_aborted");
     } else {
       clientSignal.addEventListener("abort", () => {

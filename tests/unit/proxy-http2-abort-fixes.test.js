@@ -210,6 +210,32 @@ describe("AbortError propagation in web executors", () => {
       credentials: { apiKey: "session-tok" }, signal: { aborted: true }, log: {},
     })).rejects.toThrow(/abort/i);
   });
+
+  it("cursor rethrows AbortError instead of returning a 502", async () => {
+    vi.resetModules();
+    vi.doMock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => {
+      const actual = await importOriginal();
+      return {
+        ...actual,
+        hasApplicableEnvProxy: vi.fn(() => false),
+        resolveRealIP: vi.fn(async () => "1.2.3.4"),
+        proxyAwareFetch: vi.fn(async () => { throw abortErr(); }),
+      };
+    });
+    const { CursorExecutor } = await import("../../open-sse/executors/cursor.js");
+    const ex = new CursorExecutor();
+    await expect(ex.execute({
+      model: "claude-3.5-sonnet",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials: {
+        accessToken: "test-token",
+        providerSpecificData: { machineId: "test-machine-id", ghostMode: true },
+      },
+      signal: { aborted: true },
+      log: {},
+    })).rejects.toThrow(/abort/i);
+  });
 });
 
 describe("CursorExecutor.execute — relay vs connect-proxy routing", () => {

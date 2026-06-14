@@ -525,6 +525,8 @@ export async function refreshIflowToken(refreshToken, log, proxyOptions = null) 
 
   if (!response.ok) {
     const errorText = await response.text();
+    const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "iflow");
+    if (unrecoverable) return unrecoverable;
     log?.error?.("TOKEN_REFRESH", "Failed to refresh iFlow token", {
       status: response.status,
       error: errorText,

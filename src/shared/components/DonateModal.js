@@ -40,10 +40,10 @@ export default function DonateModal({ isOpen, onClose }) {
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 glass-overlay fade-in" onClick={onClose} />
       <div
         ref={modalRef}
-        className="relative w-full glass-panel border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
+        className="relative w-full glass-panel rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
       >
         <div className="flex items-center justify-between p-3 border-b border-border-subtle">
           <h2 className="text-lg font-semibold text-text-main flex items-center gap-2">

@@ -55,7 +55,7 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={() => router.push("/dashboard")}
-            className="h-12 px-8 rounded-lg border border-white/15 bg-white/5 backdrop-blur-md hover:bg-white/10 text-white text-base font-bold transition-all flex items-center gap-2"
+            className="h-12 px-8 rounded-lg landing-glass-btn text-base"
           >
             <span className="material-symbols-outlined">dashboard</span>
             Open Dashboard
@@ -64,7 +64,7 @@ export default function HeroSection() {
             href="https://github.com/decolua/genesis"
             target="_blank"
             rel="noopener noreferrer"
-            className="h-12 px-8 rounded-lg border border-white/15 bg-white/5 backdrop-blur-md hover:bg-white/10 text-white text-base font-bold transition-all flex items-center gap-2"
+            className="h-12 px-8 rounded-lg landing-glass-btn text-base"
           >
             <span className="material-symbols-outlined">code</span>
             View on GitHub

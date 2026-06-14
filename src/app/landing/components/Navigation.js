@@ -7,7 +7,7 @@ export default function Navigation() {
   const router = useRouter();
 
   return (
-    <nav className="liquid-glass-nav fixed top-0 z-50 w-full bg-[#0B0D14]/80 backdrop-blur-md border-b border-[#2A2548]">
+    <nav className="liquid-glass-nav fixed top-0 z-50 w-full border-b border-[#2A2548]">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <button
@@ -24,10 +24,10 @@ export default function Navigation() {
 
         {/* Desktop menu */}
         <div className="hidden md:flex items-center gap-8">
-          <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#features">Features</a>
-          <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#how-it-works">How it Works</a>
-          <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="https://github.com/decolua/genesis#readme" target="_blank" rel="noopener noreferrer">Docs</a>
-          <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors flex items-center gap-1" href="https://github.com/decolua/genesis" target="_blank" rel="noopener noreferrer">
+          <a className="landing-nav-link" href="#features">Features</a>
+          <a className="landing-nav-link" href="#how-it-works">How it Works</a>
+          <a className="landing-nav-link" href="https://github.com/decolua/genesis#readme" target="_blank" rel="noopener noreferrer">Docs</a>
+          <a className="landing-nav-link flex items-center gap-1" href="https://github.com/decolua/genesis" target="_blank" rel="noopener noreferrer">
             GitHub <span className="material-symbols-outlined text-[14px]">open_in_new</span>
           </a>
         </div>
@@ -51,12 +51,12 @@ export default function Navigation() {
 
       {/* Mobile menu dropdown */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-[#2A2548] bg-[#0B0D14]/55 backdrop-blur-xl backdrop-saturate-150">
+        <div className="md:hidden border-t border-[#2A2548] liquid-glass-nav-dropdown">
           <div className="flex flex-col gap-4 p-6">
-            <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
-            <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it Works</a>
-            <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="https://github.com/decolua/genesis#readme" target="_blank" rel="noopener noreferrer">Docs</a>
-            <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="https://github.com/decolua/genesis" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a className="landing-nav-link" href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+            <a className="landing-nav-link" href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it Works</a>
+            <a className="landing-nav-link" href="https://github.com/decolua/genesis#readme" target="_blank" rel="noopener noreferrer">Docs</a>
+            <a className="landing-nav-link" href="https://github.com/decolua/genesis" target="_blank" rel="noopener noreferrer">GitHub</a>
             <button 
               onClick={() => router.push("/dashboard")}
               className="h-9 rounded-lg bg-[#C9A84C] hover:bg-[#B8943F] text-[#0B0D14] text-sm font-bold"

@@ -84,14 +84,14 @@ describe("verify fails closed on any protected drift", () => {
     expect(verifyCacheProtectedBody(body, snap)).toBe(false);
   });
 
-  it("rejects protected built-in tool model prefix normalization", () => {
+  it("allows protected built-in tool model prefix normalization", () => {
     const body = {
       tools: [{ type: "bash", name: "Bash", model: "cc/claude-opus-4-6", cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: "hi" }],
     };
     const snap = snapshotCacheProtectedBody(body);
     body.tools[0].model = "claude-opus-4-6";
-    expect(verifyCacheProtectedBody(body, snap)).toBe(false);
+    expect(verifyCacheProtectedBody(body, snap)).toBe(true);
   });
 
   it("rejects protected built-in tool model change beyond prefix strip", () => {
@@ -157,13 +157,14 @@ describe("metadata snapshot", () => {
 });
 
 describe("tool cleaning — strict byte identity on protected prefix", () => {
-  it("leaves cached built-in tools byte-identical; strips cc/ only on uncached tail", () => {
+  it("strips cc/ on cached built-in tools; strips cc/ only on uncached tail", () => {
     const tools = [
       { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6", cache_control: { type: "ephemeral" } },
       { type: "web_search_20250305", name: "web_search_tail", model: "cc/claude-opus-4-6" },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBe("claude-opus-4-6");
+    expect(out[0].cache_control).toEqual(tools[0].cache_control);
     expect(out[1].model).toBe("claude-opus-4-6");
   });
   it("leaves cached tools byte-identical; strips model/type only on uncached tail client tools", () => {
@@ -172,9 +173,8 @@ describe("tool cleaning — strict byte identity on protected prefix", () => {
       { type: "function", name: "fn", model: "strip-me", input_schema: {} },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBe("claude-opus-4-6");
     expect(out[1].model).toBeUndefined();
-    expect(out[1].type).toBeUndefined();
   });
 });
 

@@ -26,7 +26,7 @@ export default function Card({
     <div
       className={cn(
         "glass-panel",
-        hover && "hover:shadow-[var(--shadow-soft)] transition-all duration-200 cursor-pointer",
+        hover && "transition-all duration-200 cursor-pointer",
         paddings[padding],
         className
       )}

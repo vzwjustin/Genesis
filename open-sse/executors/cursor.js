@@ -19,6 +19,25 @@ import net from "net";
 const require = createRequire(import.meta.url);
 const { isHttp2Required } = require("../../src/shared/constants/mitmToolHosts.js");
 
+/** Cap Cursor upstream bodies before protobuf transform (memory safety). */
+const CURSOR_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
+
+function assertCursorBodyWithinCap(totalBytes) {
+  if (totalBytes > CURSOR_MAX_RESPONSE_BYTES) {
+    throw new Error(`Cursor response body exceeds ${CURSOR_MAX_RESPONSE_BYTES} byte limit`);
+  }
+}
+
+async function readFetchBodyWithCap(response, maxBytes) {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && Number(contentLength) > maxBytes) {
+    throw new Error(`Cursor response body exceeds ${maxBytes} byte limit`);
+  }
+  const buf = Buffer.from(await response.arrayBuffer());
+  assertCursorBodyWithinCap(buf.length);
+  return buf;
+}
+
 // Detect cloud environment
 const isCloudEnv = () => {
   if (typeof caches !== "undefined" && typeof caches === "object") return true;
@@ -227,7 +246,7 @@ export class CursorExecutor extends BaseExecutor {
     return {
       status: response.status,
       headers: Object.fromEntries(response.headers.entries()),
-      body: Buffer.from(await response.arrayBuffer())
+      body: await readFetchBodyWithCap(response, CURSOR_MAX_RESPONSE_BYTES),
     };
   }
 
@@ -284,7 +303,13 @@ export class CursorExecutor extends BaseExecutor {
       });
 
       req.on("response", (hdrs) => { responseHeaders = hdrs; });
-      req.on("data", (chunk) => { chunks.push(chunk); });
+      req.on("data", (chunk) => {
+        chunks.push(chunk);
+        const total = chunks.reduce((sum, c) => sum + c.length, 0);
+        if (total > CURSOR_MAX_RESPONSE_BYTES) {
+          finish(() => reject(new Error(`Cursor response body exceeds ${CURSOR_MAX_RESPONSE_BYTES} byte limit`)))();
+        }
+      });
       req.on("end", finish(() => {
         resolve({
           status: responseHeaders[":status"],
@@ -496,6 +521,12 @@ export class CursorExecutor extends BaseExecutor {
       transformedBody = this.transformRequest(model, body, stream, credentials);
     }
 
+    if (signal?.aborted) {
+      const err = new Error("Request aborted");
+      err.name = "AbortError";
+      throw err;
+    }
+
     try {
       // DNS bypass alone does NOT force fetch: Cursor's endpoint is HTTP/2-only and
       // returns 464 over HTTP/1.1, so for bypass hosts we resolve the real IP and keep
@@ -582,6 +613,9 @@ export class CursorExecutor extends BaseExecutor {
 
       return { response: transformedResponse, url, headers, transformedBody: body };
     } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError" || error?.message === "Request aborted") {
+        throw error;
+      }
       const errorResponse = new Response(JSON.stringify({
         error: {
           message: error.message,

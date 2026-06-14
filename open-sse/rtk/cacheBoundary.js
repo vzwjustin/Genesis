@@ -4,6 +4,8 @@
  * Violating this silently corrupts Anthropic/OpenAI KV prompt cache.
  */
 
+import { normalizeAnthropicBuiltinToolModel } from "../translator/helpers/anthropicToolModel.js";
+
 export function itemHasCacheControl(item) {
   if (!item || typeof item !== "object") return false;
   if (item.cache_control) return true;
@@ -72,9 +74,25 @@ function verifyProtectedArray(arr, snap, itemMatchesSnapshot) {
   return true;
 }
 
-/** Protected tools must match snapshot exactly — no compatibility mutations in cache prefix. */
+/** Protected tools must match snapshot — built-in tool model upstream normalization is allowed. */
+function isAnthropicBuiltinTool(tool) {
+  return !!(tool?.type && tool.type !== "function");
+}
+
 function toolMatchesCacheSnapshot(tool, snapJson) {
-  return JSON.stringify(tool) === snapJson;
+  if (JSON.stringify(tool) === snapJson) return true;
+  let snapTool;
+  try {
+    snapTool = JSON.parse(snapJson);
+  } catch {
+    return false;
+  }
+  if (!isAnthropicBuiltinTool(tool) || !isAnthropicBuiltinTool(snapTool)) return false;
+  const { model: toolModel, ...toolRest } = tool;
+  const { model: snapModel, ...snapRest } = snapTool;
+  if (JSON.stringify(toolRest) !== JSON.stringify(snapRest)) return false;
+  if (typeof toolModel !== "string" || typeof snapModel !== "string") return false;
+  return normalizeAnthropicBuiltinToolModel(snapModel) === toolModel;
 }
 
 /** Kiro history/currentMessage wraps payload under userInputMessage. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
+import { Card, Button, ModelSelectModal, ManualConfigModal, InlineAlert } from "@/shared/components";
 import ConfigStatusBadge from "@/shared/components/ConfigStatusBadge";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
@@ -85,6 +85,15 @@ useEffect(() => {
   };
 
   const configStatus = getConfigStatus();
+
+  const codexModelRoutingWarning = (() => {
+    if (!codexStatus?.config) return null;
+    const main = codexStatus.config.match(/^model\s*=\s*"([^"]+)"/m)?.[1];
+    const sub = codexStatus.config.match(/\[agents\.subagent\]\s*\n\s*model\s*=\s*"([^"]+)"/m)?.[1];
+    const bad = [main, sub].filter((m) => m && m.includes("/"));
+    if (bad.length === 0) return null;
+    return `Config uses routing ids (${bad.join(", ")}). Re-apply with Codex-only models or Genesis will route those requests to other providers (e.g. OpenRouter).`;
+  })();
 
   const getEffectiveBaseUrl = () => {
     const url = customBaseUrl || `${baseUrl}/v1`;
@@ -299,6 +308,9 @@ model = "${effectiveSubagentModel}"
 
           {!checkingCodex && codexStatus?.installed && (
             <>
+              {codexModelRoutingWarning && (
+                <InlineAlert variant="warning" compact message={codexModelRoutingWarning} />
+              )}
               <div className="flex flex-col gap-2">
                 {/* Endpoint (selector) */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-center sm:gap-2">
@@ -347,6 +359,10 @@ model = "${effectiveSubagentModel}"
                   </div>
                   <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${activeProviders?.length ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}>Select Model</button>
                 </div>
+
+                <p className="text-[11px] text-text-muted sm:col-span-full">
+                  Codex only uses OpenAI Codex models (gpt-5.x). Subagent uses the same provider — OpenRouter or Claude routing ids in config.toml will still hit those providers.
+                </p>
 
                 {/* Subagent Model */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
@@ -410,6 +426,8 @@ model = "${effectiveSubagentModel}"
         selectedModel={toCodexRoutingModel(selectedModel)}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
+        allowedProviderIds={["codex"]}
+        excludeCombos
         title="Select Model for Codex"
       />
 
@@ -420,6 +438,8 @@ model = "${effectiveSubagentModel}"
         selectedModel={toCodexRoutingModel(subagentModel)}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
+        allowedProviderIds={["codex"]}
+        excludeCombos
         title="Select Subagent Model for Codex"
       />
 

@@ -38,7 +38,7 @@ describe("stripProviderModelPrefix — known prefixes only", () => {
 });
 
 describe("cleanAnthropicToolDefinitions — toolProtected byte-identical", () => {
-  it("leaves cached built-in tool byte-identical including cc/ model prefix", () => {
+  it("strips cc/ model prefix on cached built-in tools", () => {
     const tools = [{
       type: "web_search_20250305",
       name: "web_search",
@@ -46,7 +46,8 @@ describe("cleanAnthropicToolDefinitions — toolProtected byte-identical", () =>
       cache_control: { type: "ephemeral", ttl: "1h" },
     }];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBe("claude-opus-4-6");
+    expect(out[0].cache_control).toEqual(tools[0].cache_control);
   });
 
   it("leaves protected client tools byte-identical", () => {

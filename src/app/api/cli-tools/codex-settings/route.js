@@ -9,7 +9,7 @@ import os from "os";
 import { getCliHomeDir } from "@/shared/utils/cliHome";
 import { parseTOML, stringifyTOML } from "confbox";
 import { setModelAlias } from "@/models";
-import { toCodexNativeModel } from "@/shared/utils/codexModel";
+import { isCodexNativeModelId, toCodexNativeModel } from "@/shared/utils/codexModel";
 
 export { toCodexNativeModel };
 
@@ -145,6 +145,16 @@ export async function POST(request) {
 
     const nativeModel = toCodexNativeModel(model);
     const nativeSubagentModel = toCodexNativeModel(subagentModel || model);
+
+    if (!isCodexNativeModelId(nativeModel) || !isCodexNativeModelId(nativeSubagentModel)) {
+      return NextResponse.json(
+        {
+          error:
+            "Codex model must be a bare Codex model id (e.g. gpt-5.5), not a routing id like openrouter/... or cc/.... Pick a model under OpenAI Codex in the selector.",
+        },
+        { status: 400 },
+      );
+    }
 
     // Update only Genesis related fields (api_key goes to auth.json, not config.toml)
     parsed.model = nativeModel;

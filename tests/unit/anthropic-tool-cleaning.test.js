@@ -118,7 +118,8 @@ describe("cleanAnthropicToolDefinitions — MiniMax cache-protected built-ins", 
     ];
     const out = cleanAnthropicToolDefinitions(tools, "minimax", { preserveClientCache: true });
     expect(out).toHaveLength(2);
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBe("claude-opus-4-6");
+    expect(out[0].cache_control).toEqual(tools[0].cache_control);
     expect(out[1].model).toBeUndefined();
   });
 
@@ -138,7 +139,7 @@ describe("cleanAnthropicToolDefinitions — MiniMax cache-protected built-ins", 
       { type: "function", name: "fn", model: "x", input_schema: {} },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBe("claude-opus-4-6");
     expect(out[1].model).toBeUndefined();
   });
 
@@ -149,7 +150,8 @@ describe("cleanAnthropicToolDefinitions — MiniMax cache-protected built-ins", 
     ];
     const out = cleanAnthropicToolDefinitions(tools, "openai", { preserveClientCache: true });
     expect(out).toHaveLength(2);
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBe("claude-opus-4-6");
+    expect(out[0].cache_control).toEqual(tools[0].cache_control);
     expect(out[1].model).toBeUndefined();
   });
 
@@ -160,7 +162,8 @@ describe("cleanAnthropicToolDefinitions — MiniMax cache-protected built-ins", 
     ];
     const out = cleanAnthropicToolDefinitions(tools, "gemini", { preserveClientCache: true });
     expect(out).toHaveLength(2);
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBe("claude-opus-4-6");
+    expect(out[0].cache_control).toEqual(tools[0].cache_control);
     expect(out[1].model).toBeUndefined();
   });
 });
@@ -247,12 +250,13 @@ describe("passthrough compatibility fix (Task 9.3)", () => {
       || Array.isArray(translatedBody.system) && translatedBody.system.some((b) => b?.cache_control)
       || Array.isArray(translatedBody.messages) && translatedBody.messages.some((m) => m?.cache_control);
     if (
-      !hasBreakpoints
-      && (provider === "claude" || provider?.startsWith("anthropic-compatible"))
+      (provider === "claude" || provider?.startsWith("anthropic-compatible"))
       && Array.isArray(translatedBody.tools)
     ) {
-      translatedBody.tools = cleanAnthropicToolDefinitions(translatedBody.tools, provider);
-      if (translatedBody.tools.length === 0) {
+      translatedBody.tools = cleanAnthropicToolDefinitions(translatedBody.tools, provider, {
+        preserveClientCache: hasBreakpoints,
+      });
+      if (translatedBody.tools.length === 0 && !hasBreakpoints) {
         delete translatedBody.tools;
         delete translatedBody.tool_choice;
       }
@@ -284,7 +288,7 @@ describe("passthrough compatibility fix (Task 9.3)", () => {
     expect(result.tools[0].model).toBe("claude-opus-4-6");
   });
 
-  it("preserves tool cache_control and model prefix byte-identical in passthrough", () => {
+  it("normalizes prefixed built-in tool model on cache-protected passthrough tools", () => {
     const body = {
       model: "claude-sonnet-4-5",
       messages: [{ role: "user", content: "Search" }],
@@ -296,7 +300,8 @@ describe("passthrough compatibility fix (Task 9.3)", () => {
       }],
     };
     const result = applyPassthroughToolCleaning(body, "claude");
-    expect(result.tools[0]).toEqual(body.tools[0]);
+    expect(result.tools[0].model).toBe("claude-opus-4-6");
+    expect(result.tools[0].cache_control).toEqual(body.tools[0].cache_control);
   });
 
   it("does not mutate tools for non-anthropic passthrough providers", () => {

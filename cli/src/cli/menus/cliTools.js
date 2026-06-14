@@ -206,7 +206,7 @@ async function codexQuickSetup(port) {
   }
 
   // Get model selection
-  const model = await selectModelFromList("Select Codex Model", "cx/claude-sonnet-4-5-20250929", { excludeCombos: true });
+  const model = await selectModelFromList("Select Codex Model", "cx/gpt-5.5", { excludeCombos: true, allowedProviders: ["codex"] });
   if (!model) return;
 
   const result = await api.applyCliToolSettings("codex", { baseUrl: endpoint, apiKey, model });

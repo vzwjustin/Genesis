@@ -64,7 +64,7 @@ export default function LandingPage() {
               </button>
               <button 
                 onClick={() => window.open("https://github.com/decolua/genesis#readme", "_blank")}
-                className="w-full sm:w-auto h-14 px-10 rounded-lg border border-white/15 bg-white/5 backdrop-blur-md hover:bg-white/10 text-white text-lg font-bold transition-all"
+                className="w-full sm:w-auto h-14 px-10 rounded-lg landing-glass-btn text-lg"
               >
                 Read Documentation
               </button>

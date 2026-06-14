@@ -283,8 +283,9 @@ export default function MitmToolCard({
 
       {/* Password Modal */}
       {showPasswordModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="glass-panel mx-4 flex w-full max-w-sm flex-col gap-4 p-5 shadow-xl sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 glass-overlay" aria-hidden="true" />
+          <div className="relative glass-panel mx-4 flex w-full max-w-sm flex-col gap-4 p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
             <InlineAlert variant="caution" compact message="Required to modify /etc/hosts and flush DNS cache." />
             <Input
