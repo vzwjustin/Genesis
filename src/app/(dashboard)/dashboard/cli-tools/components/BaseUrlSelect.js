@@ -149,7 +149,7 @@ export default function BaseUrlSelect({
         <select
           value={mode}
           onChange={handleSelect}
-          className="flex-1 min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 sm:py-1.5"
+          className="glass-input flex-1 min-w-0 px-2 py-2 rounded text-xs sm:py-1.5"
         >
           {options.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -168,7 +168,7 @@ export default function BaseUrlSelect({
           value={customInput}
           onChange={handleCustomInput}
           placeholder={withV1 ? "https://example.com/v1" : "https://example.com"}
-          className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 sm:py-1.5"
+          className="w-full min-w-0 px-2 py-2 glass-input rounded text-xs sm:py-1.5"
         />
       )}
     </div>

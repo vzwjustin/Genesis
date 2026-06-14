@@ -117,7 +117,7 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
         <button
           onClick={() => setIsOpen(!isOpen)}
           disabled={isPending}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-text-muted hover:text-text-main hover:bg-surface/60 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-text-muted hover:text-text-main glass-control border-0 transition-colors"
           title="Language"
           data-i18n-skip="true"
         >

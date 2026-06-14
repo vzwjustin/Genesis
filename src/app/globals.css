@@ -1432,6 +1432,40 @@ button {
   border-color: rgba(201, 168, 76, 0.32);
 }
 
+/* Compact frosted badges / pills */
+.glass-badge {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.28) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .glass-badge {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+/* Dark frosted tooltips */
+.glass-tooltip {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(11, 13, 20, 0.88);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate-input));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 8px 24px -10px rgba(0, 0, 0, 0.55);
+  color: #f8fafc;
+}
+
 /* Inline monospace snippets inside glass panels */
 .glass-code {
   border-radius: 0.375rem;
@@ -1909,6 +1943,8 @@ button {
   .glass-btn-soft,
   .glass-readout,
   .glass-option-card,
+  .glass-badge,
+  .glass-tooltip,
   .glass-code,
   .glass-dashed-action,
   .landing-glass-card,
@@ -1966,6 +2002,8 @@ button {
   .glass-btn-soft,
   .glass-readout,
   .glass-option-card,
+  .glass-badge,
+  .glass-tooltip,
   .glass-code,
   .glass-dashed-action {
     background: var(--color-surface-2) !important;

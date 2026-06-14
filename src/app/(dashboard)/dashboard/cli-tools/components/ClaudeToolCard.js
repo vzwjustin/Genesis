@@ -279,9 +279,9 @@ useEffect(() => {
                   <div className="space-y-3 text-sm">
                     <div>
                       <p className="text-text-muted mb-1">macOS / Linux / Windows:</p>
-                      <code className="block px-3 py-2 bg-surface-2 rounded font-mono text-xs">npm install -g @anthropic-ai/claude-code</code>
+                      <code className="glass-code block px-3 py-2 font-mono text-xs">npm install -g @anthropic-ai/claude-code</code>
                     </div>
-                    <p className="text-text-muted">After installation, run <code className="px-1 bg-surface-2 rounded">claude</code> to verify.</p>
+                    <p className="text-text-muted">After installation, run <code className="glass-code px-1">claude</code> to verify.</p>
                   </div>
                 </div>
               )}
@@ -330,10 +330,10 @@ useEffect(() => {
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">{model.name}</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <div className="relative w-full min-w-0">
-                      <input type="text" value={modelMappings[model.alias] || ""} onChange={(e) => onModelMappingChange(model.alias, e.target.value)} placeholder="provider/model-id" className="w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 sm:py-1.5" />
+                      <input type="text" value={modelMappings[model.alias] || ""} onChange={(e) => onModelMappingChange(model.alias, e.target.value)} placeholder="provider/model-id" className="w-full min-w-0 pl-2 pr-7 py-2 glass-input rounded text-xs sm:py-1.5" />
                       {modelMappings[model.alias] && <button onClick={() => onModelMappingChange(model.alias, "")} className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-danger rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
                     </div>
-                    <button onClick={() => openModelSelector(model.alias)} disabled={!hasActiveProviders} className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}>Select Model</button>
+                    <button onClick={() => openModelSelector(model.alias)} disabled={!hasActiveProviders} className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed glass-control border-0"}`}>Select Model</button>
                   </div>
                 ))}
 

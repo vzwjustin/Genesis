@@ -67,7 +67,7 @@ export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabl
         value={selectedId}
         onChange={handleSelect}
         disabled={resolving}
-        className="w-full min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 sm:py-1.5 disabled:opacity-60"
+        className="glass-input w-full min-w-0 px-2 py-2 rounded text-xs sm:py-1.5 disabled:opacity-60"
       >
         {apiKeys.map((k) => (
           <option key={k.id} value={k.id}>
@@ -82,7 +82,7 @@ export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabl
           value={customInput}
           onChange={handleCustomInput}
           placeholder="sk-..."
-          className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 sm:py-1.5"
+          className="w-full min-w-0 px-2 py-2 glass-input rounded text-xs sm:py-1.5"
         />
       )}
     </div>

@@ -336,7 +336,7 @@ useEffect(() => {
                         ))
                       )}
                     </div>
-                    <button onClick={() => setComboModalOpen(true)} disabled={!hasActiveProviders} className={`shrink-0 rounded px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "cursor-not-allowed border border-border opacity-50"}`}>+ Combo</button>
+                    <button onClick={() => setComboModalOpen(true)} disabled={!hasActiveProviders} className={`shrink-0 rounded px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "cursor-not-allowed glass-control border-0 opacity-50"}`}>+ Combo</button>
                   </div>
                 </div>
 
@@ -351,10 +351,10 @@ useEffect(() => {
                         {p.oauth && <span className="text-[8px] text-warning shrink-0">OAuth</span>}
                         <div className="flex-1 flex flex-wrap gap-1 overflow-hidden" style={{ maxHeight: "1.5rem" }}>
                           {Array.isArray(p.toolNames) && p.toolNames.slice(0, 6).map((t) => (
-                            <span key={t} className="text-[9px] px-1 py-0.5 rounded bg-surface-2 text-text-muted whitespace-nowrap">{t}</span>
+                            <span key={t} className="text-[9px] glass-code px-1 py-0.5 text-text-muted whitespace-nowrap">{t}</span>
                           ))}
                           {Array.isArray(p.toolNames) && p.toolNames.length > 6 && (
-                            <span className="text-[9px] px-1 py-0.5 rounded bg-surface-2 text-text-muted whitespace-nowrap">+{p.toolNames.length - 6}</span>
+                            <span className="text-[9px] glass-code px-1 py-0.5 text-text-muted whitespace-nowrap">+{p.toolNames.length - 6}</span>
                           )}
                         </div>
                         <button onClick={() => removePlugin(p.name)} className="shrink-0 hover:text-danger ml-auto">
@@ -470,7 +470,7 @@ useEffect(() => {
                         })}
                       </div>
                       <p className="text-[10px] text-text-muted leading-snug">
-                        ⚠️ Local plugins run as subprocess via <code className="px-1 py-0.5 rounded bg-surface-2">npx</code>. Requires Node.js installed.
+                        ⚠️ Local plugins run as subprocess via <code className="glass-code px-1 py-0.5">npx</code>. Requires Node.js installed.
                       </p>
                     </div>
                   </div>
@@ -566,7 +566,7 @@ useEffect(() => {
                   placeholder="my-mcp"
                   value={addMcpForm.name}
                   onChange={(e) => setAddMcpForm((f) => ({ ...f, name: e.target.value.replace(/\s+/g, "-").toLowerCase() }))}
-                  className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+                  className="glass-input px-2 py-1.5 rounded text-xs outline-none"
                 />
               </div>
               {addMcpForm.type === "url" ? (
@@ -577,7 +577,7 @@ useEffect(() => {
                     placeholder="https://your-mcp-server.com/sse"
                     value={addMcpForm.url}
                     onChange={(e) => setAddMcpForm((f) => ({ ...f, url: e.target.value }))}
-                    className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+                    className="glass-input px-2 py-1.5 rounded text-xs outline-none"
                   />
                 </div>
               ) : (
@@ -589,7 +589,7 @@ useEffect(() => {
                       placeholder="npx"
                       value={addMcpForm.command}
                       onChange={(e) => setAddMcpForm((f) => ({ ...f, command: e.target.value }))}
-                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+                      className="glass-input px-2 py-1.5 rounded text-xs outline-none"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -599,7 +599,7 @@ useEffect(() => {
                       placeholder="-y, @some/mcp-package"
                       value={addMcpForm.args}
                       onChange={(e) => setAddMcpForm((f) => ({ ...f, args: e.target.value }))}
-                      className="px-2 py-1.5 rounded border border-border bg-surface text-xs outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+                      className="glass-input px-2 py-1.5 rounded text-xs outline-none"
                     />
                   </div>
                 </>
@@ -607,7 +607,7 @@ useEffect(() => {
             </div>
 
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setAddMcpOpen(false)} className="dashboard-row-hover cursor-pointer rounded border border-border px-3 py-1.5 text-xs text-text-muted transition-colors">Cancel</button>
+              <button onClick={() => setAddMcpOpen(false)} className="glass-control cursor-pointer px-3 py-1.5 text-xs text-text-muted transition-colors">Cancel</button>
               <button
                 onClick={() => {
                   const name = addMcpForm.name.trim();
