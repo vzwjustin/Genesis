@@ -139,14 +139,14 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
           {/* Modal content */}
           <div
             ref={modalRef}
-            className="relative w-full bg-surface border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-2xl flex flex-col max-h-[80vh]"
+            className="relative w-full glass-panel border-0 shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-2xl flex flex-col max-h-[80vh]"
           >
             {/* Modal header */}
             <div className="flex items-center justify-between p-3 border-b border-border-subtle">
               <h2 className="text-lg font-semibold text-text-main">Select Language</h2>
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 rounded-lg text-text-muted hover:bg-surface-2 transition-colors"
+                className="p-1.5 rounded-lg text-text-muted dashboard-row-hover transition-colors"
                 aria-label="Close"
               >
                 <span className="material-symbols-outlined text-[20px]">close</span>
@@ -166,8 +166,8 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
                       disabled={isPending}
                       className={`flex flex-col items-center justify-start gap-1 px-2 py-3 rounded-lg text-xs font-medium transition-colors w-full ${
                         active
-                          ? "bg-primary/15 text-primary ring-2 ring-primary"
-                          : "text-text-main hover:bg-surface-2"
+                          ? "dashboard-filter-active font-medium ring-2 ring-primary/30"
+                          : "text-text-main dashboard-row-hover"
                       } ${isPending ? "opacity-70 cursor-wait" : ""}`}
                       title={info.name}
                     >

@@ -96,7 +96,7 @@ export default function Modal({
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         className={cn(
-          "relative w-full bg-surface",
+          "relative w-full glass-panel",
           "border border-border-subtle",
           "rounded-[14px] shadow-[var(--shadow-elev)]",
           "fade-in",
@@ -133,7 +133,7 @@ export default function Modal({
             <button
               onClick={onClose}
               aria-label="Close"
-              className="md:hidden p-1.5 rounded-[10px] text-text-muted hover:bg-surface-2 hover:text-text-main transition-colors"
+              className="md:hidden p-1.5 rounded-[10px] text-text-muted dashboard-row-hover hover:text-text-main transition-colors"
             >
               <span className="material-symbols-outlined text-[20px]">close</span>
             </button>

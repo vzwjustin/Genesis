@@ -79,7 +79,7 @@ export default function QuotaProgressBar({
   const remaining = percentage;
   
   return (
-    <div className="space-y-2">
+    <div className="glass-stat space-y-2 rounded-lg border-0 p-3">
       {/* Label and percentage */}
       <div className="flex items-center justify-between text-sm">
         <span className="font-semibold text-text-main">

@@ -30,11 +30,12 @@ function ProviderNode({ data }) {
   const [imgError, setImgError] = useState(false);
   return (
     <div
-      className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg border-2 transition-all duration-300 bg-bg"
+      className="flex items-center gap-2.5 rounded-lg px-4 py-2.5 transition-all duration-300 glass-stat border-0"
       style={{
-        borderColor: active ? color : "var(--color-border)",
+        borderColor: active ? color : undefined,
         boxShadow: active ? `0 0 16px ${color}40` : "none",
         minWidth: "150px",
+        ...(active ? { outline: `2px solid ${color}`, outlineOffset: 0 } : {}),
       }}
     >
       <Handle type="target" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
@@ -80,16 +81,16 @@ ProviderNode.propTypes = {
 // Center 9Router node
 function RouterNode({ data }) {
   return (
-    <div className="flex items-center justify-center px-5 py-3 rounded-xl border-2 border-primary bg-primary/5 shadow-md min-w-[130px]">
+    <div className="glass-panel flex min-w-[130px] items-center justify-center rounded-xl px-5 py-3">
       <Handle type="source" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Left} id="left" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Right} id="right" className="!bg-transparent !border-0 !w-0 !h-0" />
 
       <img src="/favicon.svg" alt="9Router" className="w-6 h-6 mr-2" />
-      <span className="text-sm font-bold text-primary">9Router</span>
+      <span className="text-sm font-semibold text-text-main">9Router</span>
       {data.activeCount > 0 && (
-        <span className="ml-2 px-1.5 py-0.5 rounded-full bg-primary text-white text-xs font-bold">
+        <span className="ml-2 rounded-md px-1.5 py-0.5 text-xs font-medium dashboard-chip-active">
           {data.activeCount}
         </span>
       )}
@@ -297,7 +298,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   }, [safeFitView]);
 
   return (
-    <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-bg-alt/30 sm:h-[480px]">
+    <div ref={containerRef} className="glass-panel h-[320px] w-full min-w-0 overflow-hidden sm:h-[480px]">
       {providers.length === 0 ? (
         <div className="h-full flex items-center justify-center text-text-muted text-sm">
           No providers connected

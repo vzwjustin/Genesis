@@ -563,13 +563,13 @@ export default function ProxyPoolsPage() {
             </Button>
 
             {showRelayMenu && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-brand-lg border border-border bg-surface p-1 shadow-[var(--shadow-elevated)] sm:left-auto sm:right-0">
+              <div className="glass-panel absolute left-0 top-full z-50 mt-1 w-48 p-1 sm:left-auto sm:right-0">
                 <button
                   onClick={() => {
                     openCloudflareModal();
                     setShowRelayMenu(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors hover:bg-surface-2"
+                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors dashboard-row-hover"
                 >
                   <span className="material-symbols-outlined text-[20px] text-warning">cloud</span>
                   Cloudflare Relay
@@ -579,7 +579,7 @@ export default function ProxyPoolsPage() {
                     openVercelModal();
                     setShowRelayMenu(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors hover:bg-surface-2"
+                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors dashboard-row-hover"
                 >
                   <span className="material-symbols-outlined text-[20px] text-info">cloud_upload</span>
                   Vercel Relay
@@ -589,7 +589,7 @@ export default function ProxyPoolsPage() {
                     openDenoModal();
                     setShowRelayMenu(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors hover:bg-surface-2"
+                  className="flex w-full items-center gap-2 rounded-brand px-3 py-2 text-sm text-text-main transition-colors dashboard-row-hover"
                 >
                   <span className="material-symbols-outlined text-[20px] text-success">terminal</span>
                   Deno Relay
@@ -623,9 +623,9 @@ export default function ProxyPoolsPage() {
         </div>
 
         {(selectedIds.length > 0 || healthChecking) && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-            <span className="material-symbols-outlined text-[18px] text-primary">checklist</span>
-            <span className="text-xs font-medium text-primary">
+          <div className="mb-4 flex flex-wrap items-center gap-2 glass-panel px-3 py-2">
+            <span className="material-symbols-outlined text-[18px] text-text-muted">checklist</span>
+            <span className="text-xs font-medium text-text-main">
               {selectedIds.length > 0 ? `${selectedIds.length} selected` : "All pools"}
             </span>
             <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -667,7 +667,7 @@ export default function ProxyPoolsPage() {
         ) : (
           <div className="flex flex-col divide-y divide-border-subtle">
             {proxyPools.map((pool) => (
-              <div key={pool.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div key={pool.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between dashboard-row-hover -mx-2 rounded-xl px-2 transition-colors">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <input
                     type="checkbox"
@@ -714,7 +714,7 @@ export default function ProxyPoolsPage() {
                   />
                   <button
                     onClick={() => handleTest(pool.id)}
-                    className="p-2 rounded hover:bg-surface-2 text-text-muted hover:text-primary transition-colors"
+                    className="rounded p-2 text-text-muted transition-colors dashboard-row-hover hover:text-text-main"
                     title="Test proxy"
                     disabled={testingId === pool.id}
                   >
@@ -727,7 +727,7 @@ export default function ProxyPoolsPage() {
                   </button>
                   <button
                     onClick={() => openEditModal(pool)}
-                    className="p-2 rounded hover:bg-surface-2 text-text-muted hover:text-primary transition-colors"
+                    className="rounded p-2 text-text-muted transition-colors dashboard-row-hover hover:text-text-main"
                     title="Edit"
                   >
                     <span className="material-symbols-outlined text-[18px]">edit</span>
@@ -894,7 +894,7 @@ export default function ProxyPoolsPage() {
         onClose={closeDenoModal}
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-brand bg-bg-alt border border-border p-3 flex flex-col gap-1.5">
+          <div className="glass-panel rounded-brand p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Deno Relay?</p>
             <p className="text-xs text-text-muted">
               Deploys a relay worker to Deno Deploy&apos;s global network. Your AI provider requests are forwarded through it, so providers see Deno&apos;s IP instead of your real one.

@@ -631,10 +631,10 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
                   </Button>
                 </div>
               </div>
-              <div className="bg-primary/10 p-4 rounded-lg">
+              <div className="glass-stat border-0 p-4 rounded-lg">
                 <p className="text-xs text-text-muted mb-1">Your Code</p>
                 <div className="flex items-center justify-center gap-2">
-                  <p className="text-2xl font-mono font-bold text-primary">{deviceData.user_code}</p>
+                  <p className="text-2xl font-mono font-bold text-brand-500">{deviceData.user_code}</p>
                   <Button
                     size="sm"
                     variant="ghost"

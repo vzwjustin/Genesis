@@ -55,14 +55,14 @@ export default function ChangelogModal({ isOpen, onClose }) {
       {/* Modal content */}
       <div
         ref={modalRef}
-        className="relative w-full bg-surface border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
+        className="relative w-full glass-panel border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-border-subtle">
           <h2 className="text-lg font-semibold text-text-main">Change Log</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-text-muted hover:bg-surface-2 transition-colors"
+            className="p-1.5 rounded-lg text-text-muted dashboard-row-hover transition-colors"
             aria-label="Close"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>

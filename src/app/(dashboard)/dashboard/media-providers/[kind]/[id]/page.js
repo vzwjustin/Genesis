@@ -268,7 +268,7 @@ function EmbeddingExampleCard({ providerId, customAlias }) {
                 onClick={() => setUseTunnel((v) => !v)}
                 title={useTunnel ? "Using tunnel" : "Using local"}
                 className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
-                  useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
+                  useTunnel ? "dashboard-filter-active border-transparent" : "border-border text-text-muted dashboard-row-hover hover:text-primary"
                 }`}
               >
                 <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
@@ -336,7 +336,7 @@ function EmbeddingExampleCard({ providerId, customAlias }) {
               <button
                 onClick={handleRun}
                 disabled={running || !input.trim() || !modelFull}
-                className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg dashboard-chip-active text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
                   play_arrow
@@ -616,7 +616,7 @@ function TtsExampleCard({ providerId }) {
                   onClick={() => setUseTunnel((v) => !v)}
                   title={useTunnel ? "Using tunnel" : "Using local"}
                   className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
-                    useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
+                    useTunnel ? "dashboard-filter-active border-transparent" : "border-border text-text-muted dashboard-row-hover hover:text-primary"
                   }`}
                 >
                   <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
@@ -701,8 +701,8 @@ function TtsExampleCard({ providerId }) {
                     }}
                     className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
                       selectedVoice === v.id
-                        ? "bg-primary/15 border-primary/40 text-primary font-medium"
-                        : "border-border text-text-muted hover:text-primary hover:border-primary/40"
+                        ? "dashboard-chip-active"
+                        : "border-border text-text-muted dashboard-row-hover hover:text-primary"
                     }`}
                   >
                     {v.name}{v.gender ? ` · ${v.gender[0].toUpperCase()}` : ""}
@@ -812,7 +812,7 @@ function TtsExampleCard({ providerId }) {
                 <button
                   onClick={handleRun}
                   disabled={running || !input.trim() || !modelFull}
-                  className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg dashboard-chip-active text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
                     play_arrow
@@ -872,8 +872,7 @@ function TtsExampleCard({ providerId }) {
           onClick={() => setModalOpen(false)}
         >
           <div
-            className="border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh]"
-            style={{ backgroundColor: "var(--color-bg)", isolation: "isolate" }}
+            className="glass-panel border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -906,8 +905,8 @@ function TtsExampleCard({ providerId }) {
                     <button
                       key={c.code}
                       onClick={() => handlePickLanguage(c)}
-                      className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-left hover:bg-sidebar transition-colors ${
-                        selectedLang === c.code ? "bg-primary/10 text-primary" : ""
+                      className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-left dashboard-row-hover transition-colors ${
+                        selectedLang === c.code ? "dashboard-filter-active" : ""
                       }`}
                     >
                       <span className="text-sm">{c.name}</span>
@@ -1174,7 +1173,7 @@ function GenericExampleCard({ providerId, kind }) {
                 onClick={() => setUseTunnel((v) => !v)}
                 title={useTunnel ? "Using tunnel" : "Using local"}
                 className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
-                  useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
+                  useTunnel ? "dashboard-filter-active border-transparent" : "border-border text-text-muted dashboard-row-hover hover:text-primary"
                 }`}
               >
                 <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
@@ -1366,7 +1365,7 @@ function GenericExampleCard({ providerId, kind }) {
             <button
               onClick={handleRun}
               disabled={running || !input.trim() || !modelFull}
-              className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg dashboard-chip-active text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
                   play_arrow
@@ -1380,7 +1379,7 @@ function GenericExampleCard({ providerId, kind }) {
 
         {/* Streaming progress */}
         {(running || progress) && useStreaming && (
-          <div className="flex flex-col gap-2 px-3 py-2 rounded-lg bg-sidebar border border-border sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex flex-col gap-2 px-3 py-2 rounded-lg glass-stat border-0 sm:flex-row sm:items-center sm:gap-3">
             <span className="material-symbols-outlined text-[16px] text-primary" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
               {running ? "progress_activity" : "check_circle"}
             </span>
@@ -1596,7 +1595,7 @@ function SttExampleCard({ providerId }) {
                 onClick={() => setUseTunnel((v) => !v)}
                 title={useTunnel ? "Using tunnel" : "Using local"}
                 className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
-                  useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
+                  useTunnel ? "dashboard-filter-active border-transparent" : "border-border text-text-muted dashboard-row-hover hover:text-primary"
                 }`}
               >
                 <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
@@ -1702,7 +1701,7 @@ function SttExampleCard({ providerId }) {
               <button
                 onClick={handleRun}
                 disabled={running || !audioFile || !modelFull}
-                className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg dashboard-chip-active text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
                   play_arrow

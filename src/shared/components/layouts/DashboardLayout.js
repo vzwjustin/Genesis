@@ -43,7 +43,7 @@ export default function DashboardLayout({ children }) {
   const clearAll = useNotificationStore((state) => state.clearAll);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-bg">
+    <div className="flex h-screen w-full overflow-hidden">
       <ConfirmDialogHost />
       <CommandPalette />
       <div className="fixed bottom-4 right-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2 sm:top-4 sm:bottom-auto">
@@ -51,7 +51,7 @@ export default function DashboardLayout({ children }) {
           <button
             type="button"
             onClick={clearAll}
-            className="self-end rounded-md border border-border bg-surface/95 px-2 py-1 text-[11px] text-text-muted hover:text-text-main"
+            className="glass-stat self-end rounded-md border-0 px-2 py-1 text-[11px] text-text-muted dashboard-row-hover transition-colors hover:text-text-main"
           >
             Dismiss all
           </button>
@@ -119,11 +119,9 @@ export default function DashboardLayout({ children }) {
       </div>
 
       {/* Main content */}
-      <main className="flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate">
-        {/* Faint grid background */}
-        <div className="landing-grid absolute inset-0 pointer-events-none -z-10" aria-hidden="true" />
+      <main className="dashboard-main-shell flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate dashboard-shell-bg">
         <Header onMenuClick={() => setSidebarOpen(true)} />
-        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname.startsWith("/dashboard/basic-chat") ? "" : "p-6 lg:p-10"} ${pathname.startsWith("/dashboard/basic-chat") ? "flex flex-col overflow-hidden" : ""}`}>
+        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname.startsWith("/dashboard/basic-chat") ? "" : "p-6 lg:px-10 lg:py-8"} ${pathname.startsWith("/dashboard/basic-chat") ? "flex flex-col overflow-hidden" : ""}`}>
           <div className={`${pathname.startsWith("/dashboard/basic-chat") ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>
             {!pathname.startsWith("/dashboard/basic-chat") ? (
               <>

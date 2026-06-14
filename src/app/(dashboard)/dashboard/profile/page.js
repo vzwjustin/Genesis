@@ -608,17 +608,15 @@ export default function ProfilePage() {
                 <p className="text-sm text-text-muted">Running on your machine</p>
               </div>
             </div>
-            <div className="inline-flex p-1 rounded-lg bg-bg-alt w-full sm:w-auto">
+            <div className="dashboard-segment-flex w-full sm:w-auto">
               {["light", "dark", "system"].map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setTheme(option)}
                   className={cn(
-                    "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-all flex-1 sm:flex-initial",
-                    theme === option
-                      ? "bg-surface text-text-main shadow-sm"
-                      : "text-text-muted hover:text-text-main"
+                    "dashboard-segment flex flex-1 items-center justify-center gap-1 px-2 py-1.5 sm:flex-initial sm:gap-1.5 sm:px-3",
+                    theme === option ? "dashboard-segment-active" : ""
                   )}
                 >
                   <span className="material-symbols-outlined text-[18px]">
@@ -630,7 +628,7 @@ export default function ProfilePage() {
             </div>
           </div>
           <div className="flex flex-col gap-3 pt-4 border-t border-border">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
+            <div className="glass-stat flex flex-col gap-2 rounded-lg border-0 p-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-medium text-sm sm:text-base">Database Location</p>
                 <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db/data.sqlite</p>
@@ -674,7 +672,7 @@ export default function ProfilePage() {
         {/* Security */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+            <div className="glass-stat p-2 rounded-lg border-0 text-text-muted shrink-0">
               <span className="material-symbols-outlined text-[20px]">shield</span>
             </div>
             <h3 className="text-base sm:text-lg font-semibold">Security</h3>
@@ -830,10 +828,10 @@ export default function ProfilePage() {
                       type="button"
                       onClick={() => updateOidcForm("authMode", option.value)}
                       className={cn(
-                        "text-left rounded-lg border p-3 transition-colors",
+                        "text-left rounded-lg p-3 transition-colors",
                         active
-                          ? "border-primary bg-primary/5"
-                          : "border-border bg-bg hover:bg-surface-2"
+                          ? "dashboard-filter-active border-transparent ring-1 ring-brand-500/15"
+                          : "glass-stat border-0 dashboard-row-hover transition-colors"
                       )}
                       disabled={loading || oidcLoading}
                     >
@@ -899,7 +897,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-bg p-3 text-xs sm:text-sm text-text-muted">
+            <div className="glass-stat border-0 rounded-lg p-3 text-xs sm:text-sm text-text-muted">
               <p className="font-medium text-text-main mb-1">Redirect URI</p>
               <code className="block break-all font-mono">{oidcRedirectUri}</code>
             </div>

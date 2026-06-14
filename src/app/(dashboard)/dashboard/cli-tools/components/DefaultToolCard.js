@@ -67,10 +67,10 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
         <button
           onClick={() => setShowModelModal(true)}
           disabled={!hasActiveProviders}
-          className={`shrink-0 px-3 py-2 rounded-lg border text-sm transition-colors ${
+          className={`shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
             hasActiveProviders
-              ? "bg-surface-2 border-border text-text-main hover:border-primary cursor-pointer"
-              : "opacity-50 cursor-not-allowed border-border"
+              ? "dashboard-chip-active cursor-pointer"
+              : "opacity-50 cursor-not-allowed border border-border"
           }`}
         >
           Select Model
@@ -79,7 +79,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           <>
             <button
               onClick={() => handleCopy(modelValue, "model")}
-              className="shrink-0 px-3 py-2 bg-surface-2 hover:bg-surface-3 rounded-lg border border-border transition-colors"
+              className="dashboard-row-hover glass-stat shrink-0 border-0 px-3 py-2 rounded-lg transition-colors"
             >
               <span className="material-symbols-outlined text-lg">
                 {copiedField === "model" ? "check" : "content_copy"}
@@ -101,7 +101,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
                 key={model.id}
                 type="button"
                 onClick={() => setModelValue(model.defaultValue || model.id)}
-                className="px-2 py-1 rounded border border-border bg-surface text-xs text-text-muted hover:border-primary hover:text-primary transition-colors"
+                className="dashboard-chip-active px-2 py-1 rounded text-xs font-medium transition-colors"
               >
                 {model.name}
               </button>
@@ -157,13 +157,13 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
               {item.type === "modelSelector" && renderModelSelector()}
               {item.value && (
                 <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
-                  <code className="w-full sm:w-auto flex-1 px-3 py-2 bg-surface-2 rounded-lg text-sm font-mono border border-border truncate">
+                  <code className="glass-stat border-0 w-full sm:w-auto flex-1 truncate px-3 py-2 text-sm font-mono">
                     {replaceVars(item.value)}
                   </code>
                   {item.copyable && (
                     <button
                       onClick={() => handleCopy(item.value, `${item.step}-${item.title}`)}
-                      className="shrink-0 px-3 py-2 bg-surface-2 hover:bg-surface-3 rounded-lg border border-border transition-colors"
+                      className="dashboard-row-hover glass-stat shrink-0 border-0 px-3 py-2 rounded-lg transition-colors"
                     >
                       <span className="material-symbols-outlined text-lg">
                         {copiedField === `${item.step}-${item.title}` ? "check" : "content_copy"}
@@ -182,7 +182,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
               <span className="text-xs text-text-muted uppercase tracking-wide">{tool.codeBlock.language}</span>
               <button
                 onClick={() => handleCopy(tool.codeBlock.code, "codeblock")}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-surface-2 hover:bg-surface-3 rounded border border-border transition-colors"
+                className="dashboard-chip-active flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
               >
                 <span className="material-symbols-outlined text-sm">
                   {copiedField === "codeblock" ? "check" : "content_copy"}
@@ -190,7 +190,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
                 {copiedField === "codeblock" ? "Copied!" : "Copy"}
               </button>
             </div>
-            <pre className="p-4 bg-surface-2 rounded-lg border border-border overflow-x-auto">
+            <pre className="glass-stat overflow-x-auto border-0 p-4">
               <code className="text-sm font-mono whitespace-pre">{replaceVars(tool.codeBlock.code)}</code>
             </pre>
           </div>
@@ -231,7 +231,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
 
   return (
     <Card padding="xs" className="overflow-hidden overflow-x-hidden">
-      <div className="flex items-center justify-between hover:cursor-pointer" onClick={onToggle}>
+      <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-center justify-between rounded-lg px-3 transition-colors" onClick={onToggle}>
         <div className="flex items-center gap-3">
           <div className="size-8 rounded-lg flex items-center justify-center shrink-0">
             {renderIcon()}

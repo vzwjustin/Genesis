@@ -142,7 +142,7 @@ export default function CLIToolsPageClient({ machineId }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:gap-4">
+      <div className="flex flex-col gap-3 sm:gap-4 glass-panel p-4 sm:p-5">
         <div className="flex flex-col gap-0.5 px-1">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px] text-primary">security</span>

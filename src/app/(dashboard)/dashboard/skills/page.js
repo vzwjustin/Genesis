@@ -14,7 +14,7 @@ function CopyButton({ value, label = "Copy link" }) {
   return (
     <button
       onClick={() => copy(value)}
-      className="px-2 py-1 rounded-md bg-primary text-white text-[11px] font-medium hover:bg-primary/90 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
+      className="dashboard-chip-active shrink-0 inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors"
       title={value}
     >
       <span className="material-symbols-outlined text-[12px]">
@@ -29,15 +29,13 @@ function SkillRow({ skill }) {
   const url = getSkillRawUrl(skill.id);
   return (
     <div
-      className={`flex items-start gap-3 p-4 rounded-[14px] border shadow-[var(--shadow-soft)] transition-colors ${
-        skill.isEntry
-          ? "border-brand-500/40 bg-brand-500/5"
-          : "border-border-subtle bg-surface hover:bg-surface-2"
+      className={`glass-panel flex items-start gap-3 p-4 transition-colors dashboard-row-hover ${
+        skill.isEntry ? "ring-1 ring-brand-500/20" : ""
       }`}
     >
       <div
-        className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${
-          skill.isEntry ? "bg-primary text-white" : "bg-primary/10 text-primary"
+        className={`glass-stat flex size-9 shrink-0 items-center justify-center rounded-lg border-0 ${
+          skill.isEntry ? "dashboard-chip-active text-current" : "text-text-muted"
         }`}
       >
         <span className="material-symbols-outlined text-[18px]">{skill.icon}</span>
@@ -77,7 +75,7 @@ export default function SkillsPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <Card padding="md">
         <div className="text-xs text-text-muted mb-2">Send this to your agent:</div>
-        <div className="px-3 py-2 rounded bg-surface-2 font-mono text-[12px] text-text-main">
+        <div className="glass-stat rounded-lg border-0 px-3 py-2 font-mono text-[12px] text-text-main">
           Read this skill and use it: {getSkillRawUrl("9router")}
         </div>
       </Card>

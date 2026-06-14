@@ -19,7 +19,7 @@ export default function EmptyState({
     <div
       className={cn(
         "flex flex-col items-center justify-center px-6 py-10 text-center",
-        !borderless && "rounded-xl border border-dashed border-border bg-surface/50",
+        !borderless && "glass-panel border border-dashed border-border",
         className,
       )}
     >

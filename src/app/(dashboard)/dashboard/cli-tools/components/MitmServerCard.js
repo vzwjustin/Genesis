@@ -135,7 +135,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
 
   return (
     <>
-      <Card padding="sm" className="border-primary/20 bg-primary/5">
+      <Card padding="sm">
         <div className="flex flex-col gap-3">
           {/* Header */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -165,7 +165,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           </div>
 
           {/* Purpose & How it works */}
-          <div className="px-2 py-2 rounded-lg bg-surface/50 border border-border/50 flex flex-col gap-2">
+          <div className="glass-stat border-0 flex flex-col gap-2 px-3 py-2">
             <p className="text-[11px] text-text-muted leading-relaxed">
               <span className="font-medium text-text-main">Purpose:</span> Use Antigravity IDE & GitHub Copilot → with ANY provider/model from 9Router
             </p>
@@ -245,7 +245,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                 onClick={() => handleAction("start")}
                 disabled={loading || !status || (serverIsWindows && !isAdmin)}
                 title={serverIsWindows && !isAdmin ? "Administrator required" : undefined}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 sm:w-auto sm:py-1.5"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg dashboard-chip-active px-4 py-2 text-xs font-medium transition-colors disabled:opacity-50 sm:w-auto sm:py-1.5"
               >
                 <span className="material-symbols-outlined text-[16px]">play_circle</span>
                 Start Server
@@ -277,7 +277,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
       {/* Password Modal */}
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
+          <div className="glass-panel mx-4 flex w-full max-w-sm flex-col gap-4 p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
             <InlineAlert variant="caution" compact message="Required for SSL certificate and server startup." />
             <Input
@@ -308,7 +308,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
       {/* Port 443 Conflict Modal */}
       {port443Conflict && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="mx-4 flex w-full max-w-md flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
+          <div className="glass-panel mx-4 flex w-full max-w-md flex-col gap-4 p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Port 443 Already In Use</h3>
             <InlineAlert variant="caution" compact>
               <div className="flex flex-col gap-1 text-xs">

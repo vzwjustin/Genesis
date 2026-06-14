@@ -25,9 +25,8 @@ export default function Card({
   return (
     <div
       className={cn(
-        "bg-surface border border-border-subtle",
-        elev ? "rounded-[14px] shadow-[var(--shadow-elev)]" : "rounded-[14px] shadow-[var(--shadow-soft)]",
-        hover && "hover:shadow-[var(--shadow-warm)] hover:border-brand-500/30 transition-all cursor-pointer",
+        "glass-panel",
+        hover && "hover:shadow-[var(--shadow-soft)] transition-all duration-200 cursor-pointer",
         paddings[padding],
         className
       )}
@@ -37,7 +36,7 @@ export default function Card({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             {icon && (
-              <div className="p-2 rounded-[10px] bg-bg text-text-muted">
+              <div className="p-2 rounded-xl glass-stat border-0 text-text-muted">
                 <span className="material-symbols-outlined text-[20px]">{icon}</span>
               </div>
             )}
@@ -62,8 +61,7 @@ Card.Section = function CardSection({ children, className, ...props }) {
   return (
     <div
       className={cn(
-        "p-4 rounded-[10px]",
-        "bg-bg border border-border-subtle",
+        "p-4 rounded-xl glass-stat border-0",
         className
       )}
       {...props}
@@ -80,7 +78,7 @@ Card.Row = function CardRow({ children, className, onClick, ...props }) {
       className={cn(
         "p-3 -mx-3 px-3 transition-colors",
         "border-b border-border-subtle last:border-b-0",
-        "hover:bg-surface-2/50",
+        "dashboard-row-hover transition-colors",
         interactive && "cursor-pointer",
         className
       )}
@@ -106,7 +104,7 @@ Card.ListItem = function CardListItem({
       className={cn(
         "group flex items-center justify-between p-3 -mx-3 px-3",
         "border-b border-border-subtle last:border-b-0",
-        "hover:bg-surface-2/50 transition-colors",
+        "dashboard-row-hover transition-colors",
         interactive && "cursor-pointer",
         className
       )}

@@ -23,22 +23,22 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
     if (e.key === "Escape") { setDraft(model); setEditing(false); }
   };
   return (
-    <div className="group flex min-w-0 items-center gap-1.5 rounded-md bg-bg-alt/50 px-2 py-1 transition-colors hover:bg-bg-alt">
+    <div className="group flex min-w-0 items-center gap-1.5 rounded-md glass-stat border-0 px-2 py-1 transition-colors dashboard-row-hover">
       <span className="text-[10px] font-medium text-text-muted w-3 text-center shrink-0">{index + 1}</span>
       {editing ? (
         <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={handleKeyDown}
           className="min-w-0 flex-1 rounded border border-primary/40 bg-surface px-1.5 py-0.5 font-mono text-xs text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40" />
       ) : (
-        <div className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main hover:bg-surface-2"
+        <div className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main dashboard-row-hover transition-colors"
           onClick={() => setEditing(true)} title="Click to edit">{model}</div>
       )}
       <div className="flex shrink-0 items-center gap-0.5">
         <button onClick={onMoveUp} disabled={isFirst}
-          className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-surface-2"}`} title="Move up">
+          className={`p-0.5 rounded transition-colors ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary dashboard-row-hover"}`} title="Move up">
           <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
         </button>
         <button onClick={onMoveDown} disabled={isLast}
-          className={`p-0.5 rounded ${isLast ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-surface-2"}`} title="Move down">
+          className={`p-0.5 rounded transition-colors ${isLast ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary dashboard-row-hover"}`} title="Move down">
           <span className="material-symbols-outlined text-[12px]">arrow_downward</span>
         </button>
       </div>
@@ -117,7 +117,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
               <>
                 <label className="text-sm font-medium mb-1 block">Combo Name</label>
                 <div className="flex items-stretch">
-                  <span className="inline-flex items-center px-2 rounded-l border border-r-0 border-border bg-bg-alt text-text-muted font-mono text-sm">{forcePrefix}</span>
+                  <span className="inline-flex items-center px-2 rounded-l border border-r-0 border-border bg-surface-2 text-text-muted font-mono text-sm">{forcePrefix}</span>
                   <input value={name} onChange={handleNameChange} placeholder="my-combo"
                     className="flex-1 min-w-0 rounded-r border border-border bg-surface-2 px-2 py-1.5 font-mono text-sm outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40" />
                 </div>
@@ -134,7 +134,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
           <div>
             <label className="text-sm font-medium mb-1.5 block">Models</label>
             {models.length === 0 ? (
-              <div className="text-center py-4 border border-dashed border-border rounded-lg bg-bg-alt">
+              <div className="text-center py-4 rounded-lg glass-panel border border-dashed border-border">
                 <span className="material-symbols-outlined text-text-muted text-xl mb-1">layers</span>
                 <p className="text-xs text-text-muted">No models added yet</p>
               </div>

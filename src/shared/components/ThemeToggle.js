@@ -10,13 +10,18 @@ export default function ThemeToggle({ className, variant = "default" }) {
     default: cn(
       "flex items-center justify-center size-10 rounded-full",
       "text-text-muted hover:text-text-main",
-      "hover:bg-surface-2 transition-colors"
+      "dashboard-row-hover transition-colors"
+    ),
+    dashboard: cn(
+      "flex items-center justify-center size-10 rounded-full",
+      "text-current opacity-70 hover:opacity-100",
+      "hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
     ),
     card: cn(
       "flex items-center justify-center size-11 rounded-full",
       "bg-surface/60 hover:bg-surface",
       "border border-border",
-      "backdrop-blur-md shadow-sm hover:shadow-[var(--shadow-warm)]",
+      "backdrop-blur-md shadow-sm hover:shadow-md",
       "text-text-muted hover:text-brand-500",
       "transition-all group"
     ),

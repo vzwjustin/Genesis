@@ -136,7 +136,7 @@ export default function MitmToolCard({
   return (
     <>
       <Card padding="xs" className="overflow-hidden">
-        <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
+        <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle}>
           <div className="flex min-w-0 items-center gap-3">
             <div className="size-8 flex items-center justify-center shrink-0">
               <Image
@@ -172,7 +172,7 @@ export default function MitmToolCard({
           <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
             {/* Hosts */}
             {mitmHosts.length > 0 && (
-              <div className="mt-2 rounded-md border border-border bg-surface/50 px-2 py-1.5">
+              <div className="glass-stat mt-2 border-0 px-3 py-1.5">
                 <p className="text-[10px] font-medium tracking-wide text-text-main/80 mb-1">
                   Edit hosts file manually to add the following entries:
                 </p>
@@ -234,7 +234,7 @@ export default function MitmToolCard({
                     <button
                       onClick={() => openModelSelector(model.alias)}
                       disabled={!hasActiveProviders || !dnsActive}
-                      className={`rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 ${hasActiveProviders && dnsActive ? "bg-surface border-border hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
+                      className={`rounded px-2 py-2 text-xs font-medium transition-colors sm:py-1.5 ${hasActiveProviders && dnsActive ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}
                     >
                       Select
                     </button>
@@ -262,7 +262,7 @@ export default function MitmToolCard({
                 <button
                   onClick={handleDnsToggle}
                   disabled={!serverRunning || loading}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg dashboard-chip-active px-4 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
                 >
                   <span className="material-symbols-outlined text-[16px]">play_circle</span>
                   Start DNS
@@ -284,7 +284,7 @@ export default function MitmToolCard({
       {/* Password Modal */}
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
+          <div className="glass-panel mx-4 flex w-full max-w-sm flex-col gap-4 p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
             <InlineAlert variant="caution" compact message="Required to modify /etc/hosts and flush DNS cache." />
             <Input

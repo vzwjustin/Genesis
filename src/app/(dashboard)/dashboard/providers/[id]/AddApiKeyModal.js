@@ -240,7 +240,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             {website && (
               <>
                 {" "}
-                <a href={website} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                <a href={website} target="_blank" rel="noopener noreferrer" className="text-brand-500 underline">
                   Open {website.replace(/^https?:\/\//, "")}
                 </a>
               </>
@@ -291,7 +291,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               placeholder="abc123def456..."
             />
             <p className="text-xs text-text-muted mt-2">
-              Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>
+              Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-brand-500 underline">dash.cloudflare.com</a>
             </p>
           </div>
         )}

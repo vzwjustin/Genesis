@@ -88,7 +88,7 @@ export default function MitmPageClient() {
   const mitmTools = Object.entries(MITM_TOOLS);
 
   return (
-    <div className="flex w-full flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-1 sm:px-0">
       <InlineAlert
         variant="caution"
         message="MITM (man-in-the-middle) intercepts the HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) using a locally-installed certificate, so their requests can be redirected to your own providers. This may violate a provider's Terms of Service and lead to account bans. Use at your own risk."

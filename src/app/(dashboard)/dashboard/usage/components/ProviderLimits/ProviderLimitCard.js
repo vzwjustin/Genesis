@@ -60,7 +60,7 @@ export default function ProviderLimitCard({
         <div className="flex items-center gap-3">
           {/* Provider Logo */}
           <div
-            className="size-10 rounded-lg flex items-center justify-center p-1.5"
+            className="glass-stat flex size-10 items-center justify-center rounded-lg border-0 p-1.5"
             style={{ backgroundColor: `${providerColor}15` }}
           >
             <ProviderIcon
@@ -92,7 +92,7 @@ export default function ProviderLimitCard({
         <button
           onClick={handleRefresh}
           disabled={refreshing || loading}
-          className="p-2 rounded-lg hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-lg p-2 dashboard-row-hover transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           title="Refresh quota"
         >
           <span

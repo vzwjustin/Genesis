@@ -83,7 +83,7 @@ export default function RequestLogger() {
             <span>Auto Refresh (3s)</span>
             <div
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${autoRefresh ? "bg-primary" : "bg-bg-alt border border-border"
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${autoRefresh ? "bg-success" : "bg-surface-3"
                 }`}
             >
               <span
@@ -95,7 +95,7 @@ export default function RequestLogger() {
         </div>
       </div>
 
-      <Card className="overflow-hidden bg-surface-2">
+      <Card className="overflow-hidden">
         <div className="p-0 overflow-x-auto max-h-[600px] overflow-y-auto font-mono text-xs">
           {loading && logs.length === 0 ? (
             <div className="p-8 text-center text-text-muted">Loading logs...</div>
@@ -105,7 +105,7 @@ export default function RequestLogger() {
             </div>
           ) : (
             <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead className="sticky top-0 bg-bg-alt border-b border-border z-10">
+              <thead className="sticky top-0 glass-stat border-0 border-b border-border z-10">
                 <tr>
                   <th className="px-3 py-2 border-r border-border">DateTime</th>
                   <th className="px-3 py-2 border-r border-border">Model</th>
@@ -127,11 +127,11 @@ export default function RequestLogger() {
                   const isSuccess = status.includes("OK");
 
                   return (
-                    <tr key={i} className={`hover:bg-primary/5 transition-colors ${isPending ? 'bg-primary/5' : ''}`}>
+                    <tr key={i} className={`dashboard-row-hover transition-colors ${isPending ? "dashboard-filter-active" : ""}`}>
                       <td className="px-3 py-1.5 border-r border-border text-text-muted">{parts[0]}</td>
                       <td className="px-3 py-1.5 border-r border-border font-medium">{parts[1]}</td>
                       <td className="px-3 py-1.5 border-r border-border">
-                        <span className="px-1.5 py-0.5 rounded bg-bg-alt border border-border text-[10px] uppercase font-bold">
+                        <span className="px-1.5 py-0.5 rounded glass-stat border-0 text-[10px] uppercase font-medium">
                           {parts[2]}
                         </span>
                       </td>
