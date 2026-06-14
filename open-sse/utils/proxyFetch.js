@@ -682,9 +682,9 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     && Boolean(normalizeString(proxyOptions?.url ?? proxyOptions?.connectionProxyUrl));
   const vercelRelayUrl = !connectionProxyUrl ? normalizeString(proxyOptions?.vercelRelayUrl) : null;
 
-  // Precedence: per-connection proxy → relay/vercel pool → environment proxy → direct
+  // Precedence: per-connection proxy → environment proxy → relay/vercel pool → direct
   let proxyUrl = connectionProxyUrl;
-  if (!proxyUrl && !vercelRelayUrl) {
+  if (!proxyUrl) {
     const envProxyUrl = connectionProxyConfigured
       ? null
       : normalizeRuntimeProxyUrl(getEnvProxyUrl(targetUrl), "environment");

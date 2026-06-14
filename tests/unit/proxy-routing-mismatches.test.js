@@ -11,6 +11,10 @@ describe("proxy routing mismatch regressions", () => {
     delete process.env.HTTPS_PROXY;
     delete process.env.ALL_PROXY;
     delete process.env.NO_PROXY;
+    delete process.env.http_proxy;
+    delete process.env.https_proxy;
+    delete process.env.all_proxy;
+    delete process.env.no_proxy;
     vi.restoreAllMocks();
   });
 
@@ -80,5 +84,25 @@ describe("proxy routing mismatch regressions", () => {
     expect(originalFetch.mock.calls[0][0]).toBe("https://relay.example.net/api/relay");
     expect(originalFetch.mock.calls[0][1].headers["x-relay-target"]).toBe("https://api.example.com");
     expect(originalFetch.mock.calls[0][1].headers["x-relay-path"]).toBe("/v1/chat");
+  });
+
+  it("environment proxy takes precedence over relay proxy routing", async () => {
+    process.env.HTTPS_PROXY = "http://env-proxy.example.com:8080";
+    const originalFetch = vi.fn(async () => new Response("ok", { status: 200 }));
+    globalThis.fetch = originalFetch;
+    vi.resetModules();
+    vi.doMock("../../open-sse/utils/ssrfGuard.js", () => ({
+      assertSafeResolvedHostname: vi.fn(async () => true),
+    }));
+
+    const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js?env-before-relay");
+    await proxyAwareFetch("https://api.example.com/v1/chat", {}, {
+      vercelRelayUrl: "https://relay.example.net/api/relay",
+    });
+
+    expect(originalFetch).toHaveBeenCalledOnce();
+    expect(originalFetch.mock.calls[0][0]).toBe("https://api.example.com/v1/chat");
+    expect(originalFetch.mock.calls[0][1].dispatcher).toBeDefined();
+    expect(originalFetch.mock.calls[0][1].headers?.["x-relay-target"]).toBeUndefined();
   });
 });
