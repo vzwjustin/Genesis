@@ -167,8 +167,8 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
       <div className="flex flex-col gap-4">
         {autoImporting && !selectedMethod && (
           <div className="text-center py-6">
-            <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-primary animate-spin">
+            <div className="size-16 mx-auto mb-4 rounded-full glass-stat border-0 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-brand-500 animate-spin">
                 progress_activity
               </span>
             </div>
@@ -189,10 +189,10 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
             {/* AWS Builder ID */}
             <button
               onClick={() => onMethodSelect("builder-id")}
-              className="w-full p-4 text-left border border-border rounded-lg hover:bg-sidebar transition-colors"
+              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
             >
               <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary mt-0.5">shield</span>
+                <span className="material-symbols-outlined text-brand-500 mt-0.5">shield</span>
                 <div className="flex-1">
                   <h3 className="font-semibold mb-1">AWS Builder ID</h3>
                   <p className="text-sm text-text-muted">
@@ -205,10 +205,10 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
             {/* AWS IAM Identity Center (IDC) */}
             <button
               onClick={() => handleMethodSelect("idc")}
-              className="w-full p-4 text-left border border-border rounded-lg hover:bg-sidebar transition-colors"
+              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
             >
               <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary mt-0.5">business</span>
+                <span className="material-symbols-outlined text-brand-500 mt-0.5">business</span>
                 <div className="flex-1">
                   <h3 className="font-semibold mb-1">AWS IAM Identity Center</h3>
                   <p className="text-sm text-text-muted">
@@ -220,10 +220,10 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
 
             <button
               onClick={() => handleMethodSelect("social-google")}
-              className="w-full p-4 text-left border border-border rounded-lg hover:bg-sidebar transition-colors"
+              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
             >
               <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary mt-0.5">account_circle</span>
+                <span className="material-symbols-outlined text-brand-500 mt-0.5">account_circle</span>
                 <div className="flex-1">
                   <h3 className="font-semibold mb-1">Google Account</h3>
                   <p className="text-sm text-text-muted">
@@ -235,10 +235,10 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
 
             <button
               onClick={() => handleMethodSelect("social-github")}
-              className="w-full p-4 text-left border border-border rounded-lg hover:bg-sidebar transition-colors"
+              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
             >
               <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary mt-0.5">code</span>
+                <span className="material-symbols-outlined text-brand-500 mt-0.5">code</span>
                 <div className="flex-1">
                   <h3 className="font-semibold mb-1">GitHub Account</h3>
                   <p className="text-sm text-text-muted">
@@ -251,10 +251,10 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
             {/* Import Token */}
             <button
               onClick={() => handleMethodSelect("import")}
-              className="w-full p-4 text-left border border-border rounded-lg hover:bg-sidebar transition-colors"
+              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
             >
               <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary mt-0.5">file_upload</span>
+                <span className="material-symbols-outlined text-brand-500 mt-0.5">file_upload</span>
                 <div className="flex-1">
                   <h3 className="font-semibold mb-1">Import Token</h3>
                   <p className="text-sm text-text-muted">
@@ -376,8 +376,8 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
             {/* Auto-detecting state */}
             {autoDetecting && (
               <div className="text-center py-6">
-                <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-3xl text-primary animate-spin">
+                <div className="size-16 mx-auto mb-4 rounded-full glass-stat border-0 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-3xl text-brand-500 animate-spin">
                     progress_activity
                   </span>
                 </div>

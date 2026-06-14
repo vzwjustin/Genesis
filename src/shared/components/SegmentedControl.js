@@ -16,24 +16,16 @@ export default function SegmentedControl({
   };
 
   return (
-    <div
-      className={cn(
-        "inline-flex items-center p-1 rounded-[10px] overflow-x-auto",
-        "bg-surface-2",
-        className
-      )}
-    >
+    <div className={cn("dashboard-segment-flex", className)}>
       {options.map((option) => (
         <button
           key={option.value}
           onClick={() => onChange(option.value)}
           aria-pressed={value === option.value}
           className={cn(
-            "inline-flex items-center gap-1.5 shrink-0 px-4 rounded-[8px] font-medium transition-all",
+            "dashboard-segment inline-flex items-center gap-1.5 shrink-0 px-4 whitespace-nowrap",
             sizes[size],
-            value === option.value
-              ? "bg-surface text-text-main shadow-sm"
-              : "text-text-muted hover:text-text-main"
+            value === option.value && "dashboard-segment-active"
           )}
         >
           {option.icon && (

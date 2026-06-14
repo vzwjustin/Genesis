@@ -757,7 +757,7 @@ export default function ProviderLimits() {
             <button
               type="button"
               onClick={() => setProviderMenuOpen((prev) => !prev)}
-              className="flex h-8 items-center justify-between gap-1 rounded-lg border border-border bg-bg-alt px-2 text-xs text-text-main transition-colors hover:bg-surface-2 border-border bg-bg-alt hover:bg-surface-2"
+              className="flex h-8 items-center justify-between gap-1 rounded-lg border border-border px-2 text-xs text-text-main transition-colors dashboard-row-hover"
               aria-haspopup="menu"
               aria-expanded={providerMenuOpen}
               title="Filter quota providers"
@@ -793,7 +793,7 @@ export default function ProviderLimits() {
                   aria-label="Close provider filter"
                   onClick={() => setProviderMenuOpen(false)}
                 />
-                <div role="menu" className="absolute left-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-border bg-surface/95 p-1.5 shadow-xl shadow-black/10 backdrop-blur sm:w-72">
+                <div role="menu" className="glass-panel absolute left-0 z-40 mt-2 w-64 overflow-hidden p-1.5 sm:w-72">
                   <button
                     type="button"
                     role="menuitemradio"
@@ -805,7 +805,7 @@ export default function ProviderLimits() {
                       setProviderFilter("all");
                       setProviderMenuOpen(false);
                     }}
-                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${providerFilter === "all" ? "bg-primary/10 text-primary" : "text-text-main hover:bg-surface-2 hover:bg-surface-2"}`}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors dashboard-row-hover ${providerFilter === "all" ? "dashboard-filter-active" : "text-text-main"}`}
                   >
                     <span className="material-symbols-outlined text-[22px]">
                       apps
@@ -832,7 +832,7 @@ export default function ProviderLimits() {
                           setProviderFilter(provider);
                           setProviderMenuOpen(false);
                         }}
-                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${providerFilter === provider ? "bg-primary/10 text-primary" : "text-text-main hover:bg-surface-2 hover:bg-surface-2"}`}
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors dashboard-row-hover ${providerFilter === provider ? "dashboard-filter-active" : "text-text-main"}`}
                       >
                         <ProviderIcon
                           src={`/providers/${provider}.png`}
@@ -865,7 +865,7 @@ export default function ProviderLimits() {
               }
               setAccountFilter(nextValue);
             }}
-            className="h-8 rounded-lg border border-border bg-bg-alt px-2 text-xs text-text-main outline-none transition-colors hover:bg-surface-2 border-border bg-bg-alt hover:bg-surface-2"
+            className="h-8 rounded-lg border border-border px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
             aria-label="Filter accounts by status"
           >
             {ACCOUNT_FILTER_OPTIONS.map((option) => (
@@ -879,7 +879,7 @@ export default function ProviderLimits() {
             <select
               value={quotaSortMode}
               onChange={(event) => setQuotaSortMode(event.target.value)}
-              className="h-8 rounded-lg border border-border bg-bg-alt px-2 text-xs text-text-main outline-none transition-colors hover:bg-surface-2 border-border bg-bg-alt hover:bg-surface-2"
+              className="h-8 rounded-lg border border-border px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
               aria-label="Sort Codex quotas by remaining"
             >
               {QUOTA_SORT_OPTIONS.map((option) => (
@@ -894,7 +894,7 @@ export default function ProviderLimits() {
             type="button"
             onClick={() => setExpiringFirst((prev) => !prev)}
             aria-pressed={expiringFirst}
-            className={`flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs transition-colors ${expiringFirst ? "border-warning/40 bg-warning/10 text-warning" : "border-border text-text-main hover:bg-surface-2 border-border hover:bg-surface-2"}`}
+            className={`flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs transition-colors ${expiringFirst ? "border-warning/40 bg-warning/10 text-warning" : "border-border text-text-main dashboard-row-hover"}`}
             title="Sort accounts by earliest quota reset time"
           >
             <span className="material-symbols-outlined text-[14px]">
@@ -934,12 +934,12 @@ export default function ProviderLimits() {
             onClick={() => setAutoRefresh((prev) => !prev)}
             aria-pressed={autoRefresh}
             aria-label={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}
-            className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs transition-colors hover:bg-surface-2 border-border hover:bg-surface-2"
+            className={`flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs transition-colors ${autoRefresh ? "dashboard-filter-active border-transparent" : "border-border text-text-main dashboard-row-hover"}`}
             title={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}
           >
             <span
               className={`material-symbols-outlined text-[14px] ${
-                autoRefresh ? "text-primary" : "text-text-muted"
+                autoRefresh ? "text-brand-500" : "text-text-muted"
               }`}
             >
               {autoRefresh ? "toggle_on" : "toggle_off"}
@@ -960,7 +960,7 @@ export default function ProviderLimits() {
             onClick={refreshAll}
             disabled={refreshingAll}
             aria-label="Refresh all quotas"
-            className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs text-text-main transition-colors hover:bg-surface-2 border-border hover:bg-surface-2 disabled:opacity-50"
+            className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs text-text-main transition-colors dashboard-row-hover disabled:opacity-50"
             title="Refresh all"
           >
             <span
@@ -1029,7 +1029,7 @@ export default function ProviderLimits() {
                       onClick={() => refreshProvider(conn.id, conn.provider)}
                       disabled={isLoading || rowBusy}
                       aria-label="Refresh quota"
-                      className="p-1.5 rounded-lg hover:bg-surface-2 hover:bg-surface-2 transition-colors disabled:opacity-50"
+                      className="p-1.5 rounded-lg dashboard-row-hover transition-colors disabled:opacity-50"
                       title="Refresh quota"
                     >
                       <span
@@ -1046,7 +1046,7 @@ export default function ProviderLimits() {
                       }}
                       disabled={rowBusy}
                       aria-label="Edit connection"
-                      className="p-1.5 rounded-lg hover:bg-surface-2 hover:bg-surface-2 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
+                      className="p-1.5 rounded-lg dashboard-row-hover text-text-muted hover:text-brand-500 transition-colors disabled:opacity-50"
                       title="Edit connection"
                     >
                       <span className="material-symbols-outlined text-[18px]">
@@ -1122,7 +1122,7 @@ export default function ProviderLimits() {
         })}
       </div>
 
-      <div className="rounded-xl border border-border bg-bg-alt px-3 py-2 border-border bg-bg-alt">
+      <div className="glass-stat rounded-xl border-0 px-3 py-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs text-text-muted">{connectionsPageSummary}</span>
             <div className="flex flex-wrap items-center gap-2">
@@ -1138,7 +1138,7 @@ export default function ProviderLimits() {
                     setCustomPageSizeInput(String(nextPageSize));
                   }
                 }}
-                className="h-8 rounded-lg border border-border bg-bg-alt px-2 text-xs text-text-main outline-none transition-colors hover:bg-surface-2 border-border bg-bg-alt hover:bg-surface-2"
+                className="h-8 rounded-lg border border-border px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
                 aria-label="Accounts per page"
               >
                 {ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => (
@@ -1178,7 +1178,7 @@ export default function ProviderLimits() {
                   setPageSize(nextPageSize);
                   setCustomPageSizeInput(String(nextPageSize));
                 }}
-                className="h-8 w-20 rounded-lg border border-border bg-bg-alt px-2 text-xs text-text-main outline-none transition-colors hover:bg-surface-2 border-border bg-bg-alt hover:bg-surface-2"
+                className="h-8 w-20 rounded-lg border border-border px-2 text-xs text-text-main outline-none transition-colors dashboard-row-hover"
                 aria-label="Custom accounts per page"
                 placeholder="Custom"
               />
@@ -1191,7 +1191,7 @@ export default function ProviderLimits() {
                 disabled={
                   pagination.page <= 1 || connectionsLoading || refreshingAll
                 }
-                className="flex h-8 items-center rounded-lg border border-border px-3 text-xs text-text-main transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40 border-border hover:bg-surface-2"
+                className="flex h-8 items-center rounded-lg border border-border px-3 text-xs text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 First Page
               </button>
@@ -1203,7 +1203,7 @@ export default function ProviderLimits() {
                 disabled={
                   pagination.page <= 1 || connectionsLoading || refreshingAll
                 }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-main transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40 border-border hover:bg-surface-2"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Previous accounts page"
               >
                 <span className="material-symbols-outlined text-[16px]">
@@ -1222,7 +1222,7 @@ export default function ProviderLimits() {
                   connectionsLoading ||
                   refreshingAll
                 }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-main transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40 border-border hover:bg-surface-2"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Next accounts page"
               >
                 <span className="material-symbols-outlined text-[16px]">
@@ -1237,7 +1237,7 @@ export default function ProviderLimits() {
                   connectionsLoading ||
                   refreshingAll
                 }
-                className="flex h-8 items-center rounded-lg border border-border px-3 text-xs text-text-main transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40 border-border hover:bg-surface-2"
+                className="flex h-8 items-center rounded-lg border border-border px-3 text-xs text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Last Page
               </button>

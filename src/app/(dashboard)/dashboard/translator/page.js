@@ -241,8 +241,8 @@ export default function TranslatorPage() {
             <div className="p-4 space-y-3">
               {/* Step header */}
               <div className="flex items-center justify-between">
-                <button onClick={() => toggle(step.id)} className="flex items-center gap-2 flex-1 text-left group">
-                  <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-primary transition-colors">
+                <button onClick={() => toggle(step.id)} className="flex items-center gap-2 flex-1 text-left group rounded-lg -mx-1 px-1 dashboard-row-hover transition-colors">
+                  <span className="material-symbols-outlined text-[20px] text-text-muted transition-colors">
                     {isExpanded ? "expand_more" : "chevron_right"}
                   </span>
                   <span className="text-xs font-mono text-text-muted/60 w-4">{step.id}</span>
@@ -261,7 +261,7 @@ export default function TranslatorPage() {
               {/* Expanded content */}
               {isExpanded && (
                 <>
-                  <div className="border border-border rounded-lg overflow-hidden">
+                  <div className="glass-stat overflow-hidden rounded-lg border-0">
                     <Editor
                       height="400px"
                       defaultLanguage={step.lang === "text" ? "plaintext" : "json"}
@@ -292,13 +292,13 @@ export default function TranslatorPage() {
 
 function MetaBadge({ label, value, color }) {
   const colors = {
-    blue: "bg-blue-500/10 text-blue-500",
-    orange: "bg-orange-500/10 text-orange-500",
-    green: "bg-green-500/10 text-green-500",
-    purple: "bg-purple-500/10 text-purple-500",
+    blue: "glass-stat-tint-info text-info",
+    orange: "text-warning",
+    green: "glass-stat-tint-success text-success",
+    purple: "text-text-main",
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono ${colors[color]}`}>
+    <span className={`glass-stat inline-flex items-center gap-1 border-0 px-2 py-0.5 text-xs font-mono ${colors[color]}`}>
       <span className="text-text-muted/70 font-sans text-[10px]">{label}:</span>{value}
     </span>
   );

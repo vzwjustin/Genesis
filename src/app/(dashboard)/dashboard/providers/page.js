@@ -286,7 +286,7 @@ export default function ProvidersPage() {
         />
       )}
       {!hasAnyResult && (
-        <div className="text-center py-8 border border-dashed border-border rounded-xl">
+        <div className="glass-panel text-center py-8 border border-dashed border-border rounded-xl">
           <span className="material-symbols-outlined text-[32px] text-text-muted mb-2">
             search_off
           </span>
@@ -322,7 +322,7 @@ export default function ProvidersPage() {
         </div>
         {compatibleProviders.length === 0 &&
         anthropicCompatibleProviders.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
+          <div className="glass-panel flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
             <span className="material-symbols-outlined text-[18px]">extension</span>
             <span>No custom endpoints yet. Add an OpenAI- or Anthropic-compatible endpoint above.</span>
           </div>
@@ -467,7 +467,7 @@ export default function ProvidersPage() {
         {!isApikeySearching && !showAllApikey && hiddenApikeyCount > 0 && (
           <button
             onClick={() => setShowAllApikey(true)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary hover:bg-primary/5"
+            className="glass-panel flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border px-3 py-2.5 text-sm font-medium text-text-muted transition-colors dashboard-row-hover hover:text-text-main"
           >
             <span className="material-symbols-outlined text-[16px]">expand_more</span>
             Show all {apikeyEntries.length} providers
@@ -522,14 +522,14 @@ export default function ProvidersPage() {
         >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div
-            className="relative bg-surface border border-border rounded-xl w-full max-w-[600px] max-h-[86vh] sm:max-h-[80vh] overflow-y-auto shadow-2xl"
+            className="glass-panel relative w-full max-w-[600px] max-h-[86vh] sm:max-h-[80vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 border-b border-border bg-surface/95 backdrop-blur-sm rounded-t-xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 border-b border-border rounded-t-xl">
               <h3 className="font-semibold">Test Results</h3>
               <button
                 onClick={() => setTestResults(null)}
-                className="p-1 rounded-lg hover:bg-bg text-text-muted hover:text-text-main transition-colors"
+                className="p-1 rounded-lg dashboard-row-hover text-text-muted hover:text-text-main transition-colors"
                 aria-label="Close test results"
               >
                 <span className="material-symbols-outlined text-lg">close</span>
@@ -553,12 +553,12 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
     <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0">
       <Card
         padding="xs"
-        className={`h-full hover:bg-surface-2 transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}
+        className={`h-full dashboard-row-hover transition-all duration-200 cursor-pointer ${allDisabled ? "opacity-50" : ""}`}
       >
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div
-              className="size-8 shrink-0 rounded-lg flex items-center justify-center"
+              className="glass-stat size-8 shrink-0 rounded-lg flex items-center justify-center border-0"
               style={{
                 backgroundColor: provider.color
                   ? (provider.color.length > 7 ? provider.color : `${provider.color}15`)
@@ -670,12 +670,12 @@ function ApiKeyProviderCard({
     <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0">
       <Card
         padding="xs"
-        className={`h-full hover:bg-surface-2 transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}
+        className={`h-full dashboard-row-hover transition-all duration-200 cursor-pointer ${allDisabled ? "opacity-50" : ""}`}
       >
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div
-              className="size-8 shrink-0 rounded-lg flex items-center justify-center"
+              className="glass-stat size-8 shrink-0 rounded-lg flex items-center justify-center border-0"
               style={{
                 backgroundColor: provider.color
                   ? (provider.color.length > 7 ? provider.color : `${provider.color}15`)
@@ -1195,7 +1195,7 @@ function ProviderTestResultsView({ results }) {
       {items.map((r, i) => (
         <div
           key={r.connectionId || i}
-          className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-bg-alt px-3 py-2 text-xs sm:flex-nowrap"
+          className="glass-stat flex min-w-0 flex-wrap items-center gap-2 border-0 px-3 py-2 text-xs sm:flex-nowrap dashboard-row-hover transition-colors"
         >
           <span
             className={`material-symbols-outlined text-[16px] ${r.valid ? "text-success" : "text-danger"}`}
@@ -1216,7 +1216,7 @@ function ProviderTestResultsView({ results }) {
             </span>
           )}
           <span
-            className={`shrink-0 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+            className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${
               r.valid
                 ? "bg-success/15 text-success"
                 : "bg-danger/10 text-danger"

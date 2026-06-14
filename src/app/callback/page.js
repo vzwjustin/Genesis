@@ -85,11 +85,12 @@ function CallbackContent() {
   }, [searchParams]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg">
-      <div className="text-center p-8 max-w-md">
+    <div className="min-h-screen flex items-center justify-center dashboard-main-shell p-4 relative overflow-hidden">
+      <div className="landing-grid absolute inset-0 pointer-events-none opacity-50 dark:opacity-100" aria-hidden="true" />
+      <div className="glass-panel relative z-10 text-center p-8 max-w-md w-full">
         {status === "processing" && (
           <>
-            <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+            <div className="size-16 mx-auto mb-4 rounded-full glass-stat border-0 flex items-center justify-center">
               <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
             </div>
             <h1 className="text-xl font-semibold mb-2">Processing...</h1>
@@ -99,7 +100,7 @@ function CallbackContent() {
 
         {(status === "success" || status === "done") && (
           <>
-            <div className="size-16 mx-auto mb-4 rounded-full bg-success/15 flex items-center justify-center">
+            <div className="size-16 mx-auto mb-4 rounded-full glass-stat glass-stat-tint-success border-0 flex items-center justify-center">
               <span className="material-symbols-outlined text-3xl text-success">check_circle</span>
             </div>
             <h1 className="text-xl font-semibold mb-2">Authorization Successful!</h1>
@@ -117,7 +118,7 @@ function CallbackContent() {
               message="Copy the full URL shown below (or from your browser's address bar) and paste it back into the app you're signing in from."
               className="text-left mb-4"
             />
-            <div className="bg-surface border border-border rounded-lg p-3 text-left">
+            <div className="glass-panel p-3 text-left">
               <code className="text-xs break-all">{typeof window !== "undefined" ? window.location.href : ""}</code>
             </div>
           </>
@@ -134,9 +135,9 @@ function CallbackContent() {
 export default function CallbackPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-bg">
-        <div className="text-center p-8">
-          <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center dashboard-main-shell p-4">
+        <div className="glass-panel text-center p-8 max-w-md w-full">
+          <div className="size-16 mx-auto mb-4 rounded-full glass-stat border-0 flex items-center justify-center">
             <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
           </div>
           <p className="text-text-muted">Loading...</p>

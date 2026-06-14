@@ -218,8 +218,8 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
     <Card padding="sm" className="group">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
-          <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-primary text-[18px]">layers</span>
+          <div className="size-8 glass-stat flex shrink-0 items-center justify-center rounded-lg border-0">
+            <span className="material-symbols-outlined text-text-muted text-[18px]">layers</span>
           </div>
           <div className="min-w-0 flex-1">
             <code className="block truncate font-mono text-sm font-medium">{combo.name}</code>
@@ -228,7 +228,7 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
                 <span className="text-xs text-text-muted italic">No models</span>
               ) : (
                 combo.models.slice(0, 3).map((model, index) => (
-                  <code key={index} className="max-w-full truncate rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-text-muted sm:max-w-[220px]">
+                  <code key={index} className="glass-stat max-w-full truncate rounded border-0 px-1.5 py-0.5 font-mono text-[10px] text-text-muted sm:max-w-[220px]">
                     {model}
                   </code>
                 ))
@@ -244,7 +244,7 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0">
           {/* Round Robin Toggle — always visible */}
           <div
-            className="flex items-center justify-between gap-1.5 rounded-brand bg-bg-alt px-2 py-1.5 sm:justify-start sm:bg-transparent sm:px-0 sm:py-0"
+            className="flex items-center justify-between gap-1.5 rounded-brand glass-stat border-0 px-2 py-1.5 sm:justify-start sm:bg-transparent sm:px-0 sm:py-0"
             title="Spread requests evenly across the models in this combo instead of always starting with the first one."
           >
             <span className="text-xs text-text-muted font-medium">Round Robin</span>
@@ -258,7 +258,7 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
           <div className="grid grid-cols-3 gap-1 sm:flex">
             <button
               onClick={(e) => { e.stopPropagation(); onCopy(combo.name, `combo-${combo.id}`); }}
-              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-surface-2 hover:text-primary"
+              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors dashboard-row-hover hover:text-primary"
               title="Copy combo name"
             >
               <span className="material-symbols-outlined text-[18px]">
@@ -268,7 +268,7 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
             </button>
             <button
               onClick={onEdit}
-              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-surface-2 hover:text-primary"
+              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors dashboard-row-hover hover:text-primary"
               title="Edit"
             >
               <span className="material-symbols-outlined text-[18px]">edit</span>
@@ -324,7 +324,7 @@ function ModelItem({ id, index, model, allModels, isFirst, isLast, onEdit, onMov
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 bg-bg-alt hover:bg-surface-2 transition-colors ${isDragging ? "shadow-md ring-1 ring-primary/30" : ""}`}
+      className={`group glass-stat flex min-w-0 items-center gap-1.5 rounded-md border-0 px-2 py-1 dashboard-row-hover transition-colors ${isDragging ? "shadow-md ring-1 ring-primary/30" : ""}`}
     >
       {/* Drag handle */}
       <button
@@ -356,7 +356,7 @@ function ModelItem({ id, index, model, allModels, isFirst, isLast, onEdit, onMov
         />
       ) : (
         <div
-          className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main hover:bg-surface-2"
+          className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main dashboard-row-hover transition-colors"
           onClick={() => setEditing(true)}
           title="Click to edit"
         >
@@ -369,7 +369,7 @@ function ModelItem({ id, index, model, allModels, isFirst, isLast, onEdit, onMov
         <button
           onClick={onMoveUp}
           disabled={isFirst}
-          className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-surface-2"}`}
+          className={`rounded p-0.5 ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}
           title="Move up"
         >
           <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
@@ -377,7 +377,7 @@ function ModelItem({ id, index, model, allModels, isFirst, isLast, onEdit, onMov
         <button
           onClick={onMoveDown}
           disabled={isLast}
-          className={`p-0.5 rounded ${isLast ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-surface-2"}`}
+          className={`rounded p-0.5 ${isLast ? "text-text-muted/20 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}
           title="Move down"
         >
           <span className="material-symbols-outlined text-[12px]">arrow_downward</span>
@@ -524,7 +524,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             <label className="text-sm font-medium mb-1.5 block">Models</label>
 
             {models.length === 0 ? (
-              <div className="text-center py-4 border border-dashed border-border rounded-brand bg-bg-alt">
+              <div className="glass-panel text-center py-4 border border-dashed border-border rounded-brand">
                 <span className="material-symbols-outlined text-text-muted text-xl mb-1">layers</span>
                 <p className="text-xs text-text-muted">No models added yet</p>
               </div>

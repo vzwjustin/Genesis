@@ -29,7 +29,7 @@ export default function CliNotDetectedPanel({
           </Button>
         </div>
       ) : null}
-      {showInstallGuide && installGuide ? <div className="text-sm text-text-muted">{installGuide}</div> : null}
+      {showInstallGuide && installGuide ? <div className="glass-stat border-0 p-4 text-sm text-text-muted">{installGuide}</div> : null}
     </div>
   );
 }

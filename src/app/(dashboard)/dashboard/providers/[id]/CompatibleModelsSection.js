@@ -18,7 +18,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
     : undefined;
 
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border ${borderColor} hover:bg-sidebar/50`}>
+    <div className={`glass-stat flex items-center gap-3 border p-3 ${borderColor} dashboard-row-hover transition-colors`}>
       <span
         className="material-symbols-outlined text-base text-text-muted"
         style={iconColor ? { color: iconColor } : undefined}
@@ -28,11 +28,11 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{modelId}</p>
         <div className="flex items-center gap-1 mt-1">
-          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
+          <code className="rounded bg-surface-2/80 px-1.5 py-0.5 font-mono text-xs text-text-muted">{fullModel}</code>
           <div className="relative group/btn">
             <button
               onClick={() => onCopy(fullModel, `model-${modelId}`)}
-              className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary"
+              className="rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
             >
               <span className="material-symbols-outlined text-sm">
                 {copied === `model-${modelId}` ? "check" : "content_copy"}
@@ -47,7 +47,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
               <button
                 onClick={onTest}
                 disabled={isTesting}
-                className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary transition-colors"
+                className="rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
               >
                 <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
                   {isTesting ? "progress_activity" : "science"}

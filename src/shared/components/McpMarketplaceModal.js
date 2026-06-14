@@ -151,7 +151,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
               const selectedCount = Object.values(sel).filter(Boolean).length;
               return (
                 <div key={s.url} className="rounded border border-transparent hover:border-border">
-                  <div className="flex items-start gap-2 px-2 py-2 hover:bg-surface-2">
+                  <div className="flex items-start gap-2 px-2 py-2 dashboard-row-hover transition-colors rounded">
                     {s.iconUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={s.iconUrl} alt="" className="size-7 rounded shrink-0 object-contain" onError={(e) => { e.target.style.display = "none"; }} />
@@ -181,8 +181,8 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                         added
                           ? "bg-success/10 text-success cursor-default"
                           : expanded
-                          ? "bg-surface border border-border text-text-muted hover:bg-surface-2"
-                          : "bg-primary/10 border border-primary/40 text-primary hover:bg-primary/20"
+                          ? "bg-surface border border-border text-text-muted dashboard-row-hover transition-colors"
+                          : "dashboard-filter-active border border-transparent font-medium"
                       }`}
                     >
                       {added ? "Added" : expanded ? "Cancel" : "+ Add"}
@@ -219,7 +219,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                           </div>
                           <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto">
                             {toolKeys.map((t) => (
-                              <label key={t} className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:bg-surface-2 px-1 rounded">
+                              <label key={t} className="flex items-center gap-1.5 text-[10px] cursor-pointer dashboard-row-hover px-1 rounded transition-colors">
                                 <input
                                   type="checkbox"
                                   checked={!!sel[t]}
@@ -234,7 +234,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                       )}
                       <button
                         onClick={() => confirmAdd(s)}
-                        className="self-end px-2 py-1 rounded text-[10px] font-medium bg-primary text-white hover:bg-primary/90"
+                        className="self-end px-2 py-1 rounded text-[10px] font-medium dashboard-chip-active transition-colors"
                       >
                         ✓ Confirm Add
                       </button>

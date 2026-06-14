@@ -113,7 +113,7 @@ export default function CommandPalette() {
                   onClick={() => navigate(item.href)}
                   onMouseEnter={() => setActiveIndex(index)}
                   className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
-                    index === activeIndex ? "bg-primary/10 text-primary" : "hover:bg-surface-2"
+                    index === activeIndex ? "dashboard-filter-active font-medium" : "dashboard-row-hover"
                   }`}
                 >
                   <span className="material-symbols-outlined text-[18px]">{item.icon}</span>

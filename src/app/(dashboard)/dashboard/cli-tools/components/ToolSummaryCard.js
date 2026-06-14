@@ -9,7 +9,7 @@ export default function ToolSummaryCard({ toolId, tool, status }) {
   const s = getToolInstallStatus(status, tool);
   return (
     <Link href={`/dashboard/cli-tools/${toolId}`} className="block">
-      <Card padding="sm" className="h-full overflow-hidden hover:border-primary/50 transition-colors cursor-pointer">
+      <Card padding="sm" className="h-full overflow-hidden hover:border-border hover:shadow-md transition-all duration-200 cursor-pointer">
         <div className="flex h-full flex-col gap-2">
           <div className="flex items-center gap-3">
             <div className="size-8 flex items-center justify-center shrink-0">

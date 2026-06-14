@@ -61,7 +61,7 @@ function MenuItem({ icon, label, onClick, trailing, danger }) {
       className={`flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors ${
         danger
           ? "text-danger hover:bg-danger/10"
-          : "text-text-main hover:bg-surface-2"
+          : "text-text-main dashboard-row-hover transition-colors"
       }`}
     >
       <span className={`material-symbols-outlined text-[20px] ${danger ? "" : "text-text-muted"}`}>
@@ -118,14 +118,14 @@ export default function HeaderMenu({ onLogout }) {
           aria-haspopup="menu"
           aria-expanded={isOpen}
           aria-controls="dashboard-header-menu"
-          className="flex items-center justify-center p-2 rounded-lg text-text-muted hover:text-text-main hover:bg-surface-2 transition-all"
+          className="flex items-center justify-center p-2 rounded-lg text-text-muted hover:text-text-main dashboard-row-hover transition-all"
           title="Menu"
         >
           <span className="material-symbols-outlined">grid_view</span>
         </button>
 
         {isOpen && (
-          <div id="dashboard-header-menu" role="menu" className="absolute right-0 top-full mt-2 w-60 bg-surface border border-border rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden py-1">
+          <div id="dashboard-header-menu" role="menu" className="absolute right-0 top-full mt-2 w-60 glass-panel border border-border rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden py-1">
             <MenuItem
               icon="history"
               label="Change Log"

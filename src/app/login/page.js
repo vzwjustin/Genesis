@@ -98,16 +98,15 @@ export default function LoginPage() {
   // Show loading state while checking password
   if (hasPassword === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg p-4">
+      <div className="min-h-screen flex items-center justify-center dashboard-main-shell p-4">
         <PageLoading message="Loading..." />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg p-4 relative overflow-hidden">
-      {/* Faint grid background */}
-      <div className="landing-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
+    <div className="min-h-screen flex items-center justify-center dashboard-main-shell p-4 relative overflow-hidden">
+      <div className="landing-grid absolute inset-0 pointer-events-none opacity-50 dark:opacity-100" aria-hidden="true" />
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-primary mb-2">9Router</h1>

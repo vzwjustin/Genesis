@@ -232,7 +232,7 @@ useEffect(() => {
 
   return (
     <Card padding="xs" className="overflow-hidden">
-      <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
+        <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
             <Image
@@ -305,7 +305,7 @@ useEffect(() => {
               <button
                 onClick={handleStart}
                 disabled={loading || !hasActiveProviders}
-                className="px-4 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary font-medium text-sm flex items-center gap-2 hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 rounded-lg dashboard-chip-active px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-[18px]">play_circle</span>
                 Start MITM
@@ -365,7 +365,7 @@ useEffect(() => {
                   <button
                     onClick={() => openModelSelector(model.alias)}
                     disabled={!hasActiveProviders}
-                    className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
+                    className={`w-full sm:w-auto rounded px-2 py-2 text-xs font-medium transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}
                   >
                     Select
                   </button>

@@ -91,30 +91,30 @@ export default function PricingSettingsPage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-4">
-          <div className="text-text-muted text-sm uppercase font-semibold">
+        <div className="glass-stat flex flex-col gap-1 p-4 transition-shadow">
+          <div className="text-xs font-medium text-text-subtle">
             Total Models
           </div>
-          <div className="text-2xl font-bold mt-1">
+          <div className="text-2xl font-semibold tracking-tight">
             {loading ? <span className="inline-block h-7 w-12 animate-pulse rounded bg-surface-2" /> : getModelCount()}
           </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-text-muted text-sm uppercase font-semibold">
+        </div>
+        <div className="glass-stat flex flex-col gap-1 p-4 transition-shadow">
+          <div className="text-xs font-medium text-text-subtle">
             Providers
           </div>
-          <div className="text-2xl font-bold mt-1">
+          <div className="text-2xl font-semibold tracking-tight">
             {loading ? <span className="inline-block h-7 w-12 animate-pulse rounded bg-surface-2" /> : getProviders().length}
           </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-text-muted text-sm uppercase font-semibold">
+        </div>
+        <div className="glass-stat flex flex-col gap-1 p-4 transition-shadow">
+          <div className="text-xs font-medium text-text-subtle">
             Status
           </div>
-          <div className={`text-2xl font-bold mt-1 ${loadError ? "text-danger" : "text-success"}`}>
+          <div className={`text-2xl font-semibold tracking-tight ${loadError ? "text-danger" : "text-success"}`}>
             {loading ? <span className="inline-block h-7 w-16 animate-pulse rounded bg-surface-2" /> : loadError ? "Error" : "Active"}
           </div>
-        </Card>
+        </div>
       </div>
 
       {/* Info Section */}
@@ -169,7 +169,7 @@ export default function PricingSettingsPage() {
         ) : currentPricing ? (
           <div className="space-y-3">
             {Object.keys(currentPricing).slice(0, 5).map(provider => (
-              <div key={provider} className="text-sm">
+              <div key={provider} className="dashboard-row-hover rounded-lg px-2 py-1.5 text-sm transition-colors">
                 <span className="font-semibold">{formatProviderLabel(provider)}:</span>{" "}
                 <span className="text-text-muted">
                   {Object.keys(currentPricing[provider]).length} models

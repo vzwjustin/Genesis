@@ -131,7 +131,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border-subtle rounded-[14px] shadow-[var(--shadow-elev)] max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="glass-panel border border-border-subtle rounded-[14px] shadow-[var(--shadow-elev)] max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="text-xl font-semibold">Pricing Configuration</h2>
@@ -150,7 +150,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
           ) : (
             <div className="space-y-6">
               {/* Instructions */}
-              <div className="bg-bg-alt border border-border rounded-lg p-3 text-sm">
+              <div className="glass-stat border-0 rounded-lg p-3 text-sm">
                 <p className="font-medium mb-1">Pricing Rates Format</p>
                 <p className="text-text-muted">
                   All rates are in <strong>dollars per million tokens</strong> ($/1M tokens).
@@ -166,7 +166,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                 const models = Object.keys(pricingData[provider]).sort();
                 return (
                   <div key={provider} className="border border-border rounded-lg overflow-hidden">
-                    <div className="bg-bg-alt px-4 py-2 font-semibold text-sm">
+                    <div className="glass-stat border-0 px-4 py-2 font-semibold text-sm">
                       {providerLabel(provider)}
                       <span className="ml-2 text-text-muted font-normal">
                         ({models.length} model{models.length === 1 ? "" : "s"})
@@ -186,7 +186,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                         </thead>
                         <tbody className="divide-y divide-border">
                           {models.map(model => (
-                            <tr key={model} className="hover:bg-bg-alt/50">
+                            <tr key={model} className="dashboard-row-hover transition-colors">
                               <td className="px-3 py-2 font-medium">{model}</td>
                               {pricingFields.map(field => (
                                 <td key={field} className="px-3 py-2">
@@ -237,7 +237,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 text-sm bg-primary text-white rounded hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm dashboard-chip-active rounded transition-colors disabled:opacity-50"
               disabled={saving}
             >
               {saving ? "Saving..." : "Save Changes"}

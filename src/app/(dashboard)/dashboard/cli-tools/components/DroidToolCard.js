@@ -221,7 +221,7 @@ useEffect(() => {
 
   return (
     <Card padding="xs" className="overflow-hidden">
-      <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
+        <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
             <Image src="/providers/droid.png" alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
@@ -255,7 +255,7 @@ useEffect(() => {
                 showInstallGuide={showInstallGuide}
               />
               {showInstallGuide && (
-                <div className="p-4 bg-surface border border-border rounded-lg">
+                <div className="glass-stat border-0 p-4">
                   <h4 className="font-medium mb-3">Installation Guide</h4>
                   <div className="space-y-3 text-sm">
                     <div>
@@ -316,7 +316,7 @@ useEffect(() => {
                     {modelList.length > 0 && (
                       <div className="flex flex-col gap-0.5 mb-1">
                         {modelList.map((id) => (
-                          <div key={id} className="flex items-center gap-1.5 px-2 py-1 bg-surface-2 rounded border border-border">
+                          <div key={id} className="glass-stat flex items-center gap-1.5 border-0 px-2 py-1">
                             <span className="flex-1 text-xs font-mono truncate">{id}</span>
                             <button onClick={() => removeModel(id)} className="text-text-muted hover:text-danger transition-colors shrink-0" title="Remove">
                               <span className="material-symbols-outlined text-[12px]">close</span>
@@ -338,11 +338,11 @@ useEffect(() => {
                       <button
                         onClick={() => setModalOpen(true)}
                         disabled={!hasActiveProviders}
-                        className={`px-2 py-1.5 rounded border text-xs shrink-0 ${hasActiveProviders ? "bg-surface border-border hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
+                        className={`px-2 py-1.5 rounded text-xs font-medium shrink-0 ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}
                       >
                         Select
                       </button>
-                      <button onClick={addModel} disabled={!modelInput.trim()} className="px-2 py-1.5 rounded border bg-surface border-border hover:border-primary text-xs shrink-0 disabled:opacity-50" title="Add model">
+                      <button onClick={addModel} disabled={!modelInput.trim()} className="dashboard-chip-active px-2 py-1.5 rounded text-xs font-medium shrink-0 disabled:opacity-50" title="Add model">
                         <span className="material-symbols-outlined text-[14px]">add</span>
                       </button>
                     </div>

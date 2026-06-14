@@ -936,7 +936,7 @@ export default function APIPageClient({ machineId }) {
       {/* Endpoint Card */}
       <Card>
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">api</span>
+          <span className="material-symbols-outlined text-text-muted">api</span>
           API Endpoint
         </h2>
 
@@ -951,7 +951,7 @@ export default function APIPageClient({ machineId }) {
             onCopy={copy}
           />
           {/* Cloud endpoint — static public URL for remote CLI tools */}
-          <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+          <div className="glass-stat flex flex-col gap-2 rounded-xl p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium">Cloud endpoint</p>
@@ -994,14 +994,14 @@ export default function APIPageClient({ machineId }) {
           {/* Cloudflare Tunnel */}
           <div className="flex items-center gap-2">
             <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-              tunnelEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
+              tunnelEnabled ? "dashboard-filter-active" : "glass-stat border-0 text-text-muted"
             }`}>Tunnel</span>
             {tunnelEnabled && !tunnelLoading && tunnelReachable ? (
               <>
                 <Input value={`${tunnelPublicUrl || tunnelUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
                 <button
                   onClick={() => copy(`${tunnelPublicUrl || tunnelUrl}/v1`, "tunnel_url")}
-                  className="p-2 hover:bg-surface-2 rounded text-text-muted hover:text-primary transition-colors shrink-0"
+                  className="p-2 dashboard-row-hover rounded p-2 text-text-muted transition-colors hover:text-text-main shrink-0"
                 >
                   <span className="material-symbols-outlined text-[18px]">{copied === "tunnel_url" ? "check" : "content_copy"}</span>
                 </button>
@@ -1085,14 +1085,14 @@ export default function APIPageClient({ machineId }) {
           {/* Tailscale */}
           <div className="flex items-center gap-2">
             <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-              tsEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
+              tsEnabled ? "dashboard-filter-active" : "glass-stat border-0 text-text-muted"
             }`}>Tailscale</span>
             {tsEnabled && !tsLoading && tsReachable ? (
               <>
                 <Input value={`${tsUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
                 <button
                   onClick={() => copy(`${tsUrl}/v1`, "ts_url")}
-                  className="p-2 hover:bg-surface-2 rounded text-text-muted hover:text-primary transition-colors shrink-0"
+                  className="p-2 dashboard-row-hover rounded p-2 text-text-muted transition-colors hover:text-text-main shrink-0"
                 >
                   <span className="material-symbols-outlined text-[18px]">{copied === "ts_url" ? "check" : "content_copy"}</span>
                 </button>
@@ -1234,7 +1234,7 @@ export default function APIPageClient({ machineId }) {
       <Card id="require-api-key">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">vpn_key</span>
+            <span className="material-symbols-outlined text-text-muted">vpn_key</span>
             API Keys
           </h2>
           <Button icon="add" onClick={() => setShowAddModal(true)}>
@@ -1256,7 +1256,7 @@ export default function APIPageClient({ machineId }) {
         <p className="text-xs text-text-muted mb-3">{SECURITY_COPY.apiKeysMasked}</p>
         {keys.length === 0 ? (
           <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
+            <div className="glass-stat mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl border-0 text-text-muted">
               <span className="material-symbols-outlined text-[32px]">vpn_key</span>
             </div>
             <p className="text-text-main font-medium mb-1">No API keys yet</p>
@@ -1270,7 +1270,7 @@ export default function APIPageClient({ machineId }) {
             {keys.map((key) => (
               <div
                 key={key.id}
-                className={`group flex items-center justify-between py-3 border-b border-border-subtle last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
+                className={`group flex items-center justify-between py-3 border-b border-border-subtle last:border-b-0 dashboard-row-hover transition-colors ${key.isActive === false ? "opacity-60" : ""}`}
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{key.name}</p>
@@ -1280,7 +1280,7 @@ export default function APIPageClient({ machineId }) {
                     </code>
                     <button
                       onClick={() => toggleKeyVisibility(key.id)}
-                      className="p-1 hover:bg-surface-2 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                      className="rounded p-1 text-text-muted opacity-100 transition-all dashboard-row-hover hover:text-text-main sm:group-hover:opacity-100 sm:opacity-0"
                       title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
                     >
                       <span className="material-symbols-outlined text-[14px]">
@@ -1289,7 +1289,7 @@ export default function APIPageClient({ machineId }) {
                     </button>
                     <button
                       onClick={() => copyKey(key)}
-                      className="p-1 hover:bg-surface-2 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                      className="rounded p-1 text-text-muted opacity-100 transition-all dashboard-row-hover hover:text-text-main sm:group-hover:opacity-100 sm:opacity-0"
                     >
                       <span className="material-symbols-outlined text-[14px]">
                         {copied === key.id ? "check" : "content_copy"}
@@ -1409,9 +1409,9 @@ export default function APIPageClient({ machineId }) {
         onClose={() => setShowEnableTunnelModal(false)}
       >
         <div className="flex flex-col gap-4">
-          <div className="bg-surface-2 border border-border-subtle rounded-lg p-4">
+          <div className="glass-stat border-0 p-4">
             <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-primary">cloud_upload</span>
+              <span className="material-symbols-outlined text-text-muted">cloud_upload</span>
               <div>
                 <p className="text-sm text-text-main font-medium mb-1">
                   Cloudflare Tunnel
@@ -1425,8 +1425,8 @@ export default function APIPageClient({ machineId }) {
 
           <div className="grid grid-cols-2 gap-3">
             {TUNNEL_BENEFITS.map((benefit) => (
-              <div key={benefit.title} className="flex flex-col items-center text-center p-3 rounded-lg bg-sidebar/50">
-                <span className="material-symbols-outlined text-xl text-primary mb-1">{benefit.icon}</span>
+              <div key={benefit.title} className="flex flex-col items-center text-center p-3 rounded-lg glass-stat border-0">
+                <span className="material-symbols-outlined mb-1 text-xl text-text-muted">{benefit.icon}</span>
                 <p className="text-xs font-semibold">{benefit.title}</p>
                 <p className="text-xs text-text-muted">{benefit.desc}</p>
               </div>
@@ -1499,7 +1499,7 @@ export default function APIPageClient({ machineId }) {
                 Installing Tailscale...
               </div>
               {tsInstallLog.length > 0 && (
-                <div ref={tsLogRef} className="bg-bg-alt rounded p-2 max-h-40 overflow-y-auto font-mono text-xs text-text-muted">
+                <div ref={tsLogRef} className="glass-stat border-0 rounded p-2 max-h-40 overflow-y-auto font-mono text-xs text-text-muted">
                   {tsInstallLog.map((line, i) => (
                     <div key={i}>{line}</div>
                   ))}
@@ -1566,12 +1566,12 @@ function EndpointRow({ label, url, copyId, copied, onCopy, badge, actions }) {
   return (
     <div className="flex items-center gap-2">
       <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-          (badge === "CF" || badge === "TS") ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
+          (badge === "CF" || badge === "TS") ? "dashboard-filter-active" : "glass-stat border-0 text-text-muted"
         }`}>{label}</span>
       <Input value={url} readOnly className="flex-1 font-mono text-sm" />
       <button
         onClick={() => onCopy(url, copyId)}
-        className="p-2 hover:bg-surface-2 rounded text-text-muted hover:text-primary transition-colors shrink-0"
+        className="p-2 dashboard-row-hover rounded p-2 text-text-muted transition-colors hover:text-text-main shrink-0"
       >
         <span className="material-symbols-outlined text-[18px]">{copied === copyId ? "check" : "content_copy"}</span>
       </button>

@@ -19,11 +19,9 @@ const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "trave
 
 function sidebarLinkClass(active, nested = false) {
   return cn(
-    "relative flex items-center gap-3 rounded-lg transition-all group",
-    nested ? "px-4 py-1" : "px-3 py-1.5",
-    active
-      ? "bg-primary/10 text-primary before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-[18px] before:w-[3px] before:rounded-full before:bg-primary"
-      : "text-text-muted hover:bg-surface-2 hover:text-text-main",
+    "sidebar-nav-link flex items-center gap-3 rounded-lg transition-colors duration-150",
+    nested ? "px-3 py-1.5" : "px-3 py-2",
+    active && "active",
   );
 }
 
@@ -31,7 +29,7 @@ function sidebarIconClass(active, nested = false) {
   return cn(
     "material-symbols-outlined",
     nested ? "text-[16px]" : "text-[18px]",
-    active ? "fill-1" : "group-hover:text-primary transition-colors",
+    active ? "text-white" : "text-inherit",
   );
 }
 
@@ -182,25 +180,18 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
-        {/* Traffic lights */}
-        <div className="flex items-center gap-2 px-6 pt-5 pb-2" aria-hidden="true">
-          <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
-          <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
-          <div className="w-3 h-3 rounded-full bg-[#27C93F]" />
-        </div>
-
+      <aside className="dashboard-sidebar flex w-64 flex-col min-h-full">
         {/* Logo */}
-        <div className="px-6 py-4 flex flex-col gap-2">
+        <div className="px-5 py-5 flex flex-col gap-2">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
-              <span className="material-symbols-outlined text-white text-[20px]">hub</span>
+            <div className="flex items-center justify-center size-9 rounded-xl bg-brand-500 text-white shrink-0 shadow-[0_4px_14px_-4px_rgba(229,106,74,0.55)]">
+              <span className="material-symbols-outlined text-[20px]">hub</span>
             </div>
-            <div className="flex flex-col">
-              <h1 className="text-lg font-semibold tracking-tight text-text-main">
+            <div className="flex flex-col min-w-0">
+              <h1 className="sidebar-brand-title text-sm font-semibold tracking-tight truncate">
                 {APP_CONFIG.name}
               </h1>
-              <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
+              <span className="sidebar-brand-version text-[11px]">v{APP_CONFIG.version}</span>
             </div>
           </Link>
           {(updateInfo || releases.length > 0) && (
@@ -232,7 +223,7 @@ export default function Sidebar({ onClose }) {
         <SidebarSecurityHint />
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -251,8 +242,8 @@ export default function Sidebar({ onClose }) {
           ))}
 
           {/* System section */}
-          <div className="pt-3 mt-2 space-y-0.5">
-            <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
+          <div className="pt-4 mt-1 space-y-0.5">
+            <p className="sidebar-section-label px-3 text-[11px] font-medium mb-2">
               System
             </p>
 
@@ -346,14 +337,14 @@ export default function Sidebar({ onClose }) {
         </nav>
 
         {/* Footer section */}
-        <div className="p-3 border-t border-border-subtle">
+        <div className="sidebar-footer p-4">
           {/* Shutdown button */}
           <Button
             variant="outline"
             fullWidth
             icon="power_settings_new"
             onClick={() => setShowShutdownModal(true)}
-            className="text-danger border-danger/30 hover:bg-danger/10 hover:border-danger/50"
+            className="border-white/20 bg-transparent text-white/85 hover:bg-white/8 hover:border-white/30 hover:text-white"
           >
             Shutdown
           </Button>

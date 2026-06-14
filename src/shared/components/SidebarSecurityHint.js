@@ -14,7 +14,7 @@ export default function SidebarSecurityHint() {
   return (
     <Link
       href="/dashboard/profile"
-      className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-warning/25 bg-warning/10 px-2.5 py-2 text-xs text-text-main hover:bg-warning/15 transition-colors"
+      className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2.5 py-2 text-xs text-amber-100 hover:bg-amber-400/15 transition-colors"
       title="Review security settings"
     >
       <span className="material-symbols-outlined text-[14px]">shield</span>

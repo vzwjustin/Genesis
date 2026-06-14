@@ -96,7 +96,7 @@ export default function RequestLogSessionModal({ sessionName, onClose }) {
                   type="button"
                   onClick={() => setSelectedFile(f.name)}
                   className={`text-left text-xs font-mono px-2 py-1.5 rounded transition-colors ${
-                    selectedFile === f.name ? "bg-primary/10 text-primary" : "hover:bg-surface-2 text-text-muted"
+                    selectedFile === f.name ? "dashboard-filter-active font-medium" : "dashboard-row-hover text-text-muted"
                   }`}
                 >
                   {f.name}
@@ -117,7 +117,7 @@ export default function RequestLogSessionModal({ sessionName, onClose }) {
                   {copied === `log-${selectedFile}` ? "Copied" : "Copy"}
                 </Button>
               </div>
-              <pre className="flex-1 overflow-auto rounded-lg border border-border bg-bg-alt p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-96">
+              <pre className="flex-1 overflow-auto rounded-lg glass-stat border-0 p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-96">
                 {fileLoading ? "Loading…" : fileContent || "Select a file"}
               </pre>
             </div>

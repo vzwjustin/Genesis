@@ -147,21 +147,21 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
   };
 
   return (
-    <div className={`group flex min-w-0 flex-col gap-3 rounded-lg p-2 transition-colors hover:bg-surface-2 sm:flex-row sm:items-center sm:justify-between ${connection.isActive === false ? "opacity-60" : ""}`}>
+    <div className={`group dashboard-row-hover flex min-w-0 flex-col gap-3 rounded-lg p-2 transition-colors sm:flex-row sm:items-center sm:justify-between ${connection.isActive === false ? "opacity-60" : ""}`}>
       <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
         {/* Priority arrows */}
         <div className="flex shrink-0 flex-col">
           <button
             onClick={onMoveUp}
             disabled={isFirst}
-            className={`p-0.5 rounded ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}
+            className={`rounded p-0.5 ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}
           >
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
           </button>
           <button
             onClick={onMoveDown}
             disabled={isLast}
-            className={`p-0.5 rounded ${isLast ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}
+            className={`rounded p-0.5 ${isLast ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}
           >
             <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
           </button>
@@ -231,7 +231,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             <div className="relative" ref={proxyDropdownRef}>
               <button
                 onClick={() => setShowProxyDropdown((v) => !v)}
-                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-surface-2 ${hasAnyProxy ? "text-primary" : "text-text-muted hover:text-primary"}`}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors dashboard-row-hover ${hasAnyProxy ? "text-brand-500" : "text-text-muted hover:text-brand-500"}`}
                 disabled={updatingProxy}
               >
                 <span className="material-symbols-outlined text-[18px]">
@@ -240,10 +240,10 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 <span className="text-[10px] leading-tight">Proxy</span>
               </button>
               {showProxyDropdown && (
-                <div className="absolute right-0 top-full z-50 mt-1 max-w-[78vw] min-w-[160px] rounded-lg border border-border bg-bg py-1 shadow-lg">
+                <div className="glass-panel absolute right-0 top-full z-50 mt-1 max-w-[78vw] min-w-[160px] py-1 shadow-lg">
                   <button
                     onClick={() => handleSelectProxy("__none__")}
-                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-surface-2 ${!boundProxyPoolId ? "text-primary font-medium" : "text-text-main"}`}
+                    className={`w-full text-left px-3 py-1.5 text-sm dashboard-row-hover transition-colors ${!boundProxyPoolId ? "dashboard-filter-active font-medium" : "text-text-main"}`}
                   >
                     None
                   </button>
@@ -251,7 +251,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                     <button
                       key={pool.id}
                       onClick={() => handleSelectProxy(pool.id)}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-surface-2 ${boundProxyPoolId === pool.id ? "text-primary font-medium" : "text-text-main"}`}
+                      className={`w-full text-left px-3 py-1.5 text-sm dashboard-row-hover transition-colors ${boundProxyPoolId === pool.id ? "dashboard-filter-active font-medium" : "text-text-main"}`}
                     >
                       {pool.name}
                     </button>
@@ -271,7 +271,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               <span className="text-[10px] leading-tight">Reconnect</span>
             </button>
           )}
-          <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-surface-2 hover:text-primary">
+          <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
           </button>

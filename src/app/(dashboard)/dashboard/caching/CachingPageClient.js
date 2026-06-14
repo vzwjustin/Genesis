@@ -52,7 +52,7 @@ function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl, e
   const { headline: primary, subline: secondary } = formatCompressionDisplay(s, kind);
 
   return (
-    <Card padding="md" className="flex flex-col gap-3">
+    <div className="glass-stat flex flex-col gap-3 border-0 p-4 transition-shadow">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`material-symbols-outlined text-[22px] ${color}`}>{icon}</span>
@@ -73,7 +73,7 @@ function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl, e
         dashboardUrl={dashboardUrl}
         emptyHint={emptyHint || "No activity yet — send chat traffic through 9router"}
       />
-    </Card>
+    </div>
   );
 }
 
@@ -98,7 +98,7 @@ function ProviderCompressionTable({ rows, emptyMessage }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.provider} className="border-b border-border/50 hover:bg-surface-2/50">
+            <tr key={row.provider} className="border-b border-border/50 dashboard-row-hover transition-colors">
               <td className="px-3 py-2 font-medium">{row.provider}</td>
               <td className="px-3 py-2 text-right tabular-nums">{row.events}</td>
               <td className="px-3 py-2 text-right font-mono text-xs text-success">
@@ -426,7 +426,7 @@ export default function CachingPageClient() {
 
           <Card>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">tune</span>
+              <span className="material-symbols-outlined text-text-muted">tune</span>
               Controls
             </h2>
             <div className="flex flex-col divide-y divide-border">
@@ -467,8 +467,8 @@ export default function CachingPageClient() {
                         }}
                         className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
                           enabled
-                            ? "bg-primary text-white border-primary"
-                            : "bg-transparent border-border text-text-muted hover:bg-surface-2"
+                            ? "dashboard-chip-active"
+                            : "bg-transparent border-border text-text-muted dashboard-row-hover transition-colors"
                         }`}
                       >
                         {label}
@@ -492,8 +492,8 @@ export default function CachingPageClient() {
                       onClick={() => { setCavemanLevel(lvl.id); patchSetting({ cavemanLevel: lvl.id }); }}
                       className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
                         cavemanLevel === lvl.id
-                          ? "bg-primary text-white border-primary"
-                          : "bg-transparent border-border text-text-muted hover:bg-surface-2"
+                          ? "dashboard-chip-active"
+                          : "bg-transparent border-border text-text-muted dashboard-row-hover transition-colors"
                       }`}
                       title={lvl.desc}
                     >
@@ -605,8 +605,8 @@ export default function CachingPageClient() {
                   onClick={() => setHistoryFilter(s.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                     historyFilter === s.value
-                      ? "bg-primary/10 border-primary/40 text-primary"
-                      : "border-border text-text-muted hover:bg-surface-2"
+                      ? "dashboard-filter-active border-transparent"
+                      : "border-border text-text-muted dashboard-row-hover transition-colors"
                   }`}
                 >
                   {s.label}
@@ -634,7 +634,7 @@ export default function CachingPageClient() {
                 </thead>
                 <tbody>
                   {history.map((row) => (
-                    <tr key={row.id} className="border-b border-border/50 hover:bg-surface-2/50">
+                    <tr key={row.id} className="border-b border-border/50 dashboard-row-hover transition-colors">
                       <td className="px-3 py-2 whitespace-nowrap text-xs">
                         {new Date(row.timestamp).toLocaleString()}
                       </td>
@@ -852,7 +852,7 @@ export default function CachingPageClient() {
                     {visibleFileLogSessions.map((s) => (
                       <tr
                         key={s.name}
-                        className="border-b border-border/50 hover:bg-surface-2 cursor-pointer"
+                        className="border-b border-border/50 dashboard-row-hover transition-colors cursor-pointer"
                         onClick={() => setSelectedLogSession(s.name)}
                       >
                         <td className="px-3 py-2 font-mono text-xs truncate max-w-md">{s.name}</td>

@@ -64,16 +64,21 @@ export default function ConsoleLogClient() {
   }, [logs]);
 
   return (
-    <div className="">
-      <Card>
-        <div className="flex items-center justify-end px-4 pt-3 pb-2">
+    <div className="flex flex-col gap-4">
+      <Card padding="none" className="overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-text-muted">
+            <span className="material-symbols-outlined text-[18px]">terminal</span>
+            <span>Live console output</span>
+            <span className={`size-2 rounded-full ${connected ? "bg-success" : "bg-text-muted/40"}`} title={connected ? "Connected" : "Disconnected"} />
+          </div>
           <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>
             Clear
           </Button>
         </div>
         <div
           ref={logRef}
-          className="bg-black rounded-b-lg p-4 text-xs font-mono h-[calc(100vh-220px)] overflow-y-auto"
+          className="bg-black p-4 text-xs font-mono h-[calc(100vh-220px)] overflow-y-auto"
         >
           {logs.length === 0 ? (
             <span className="text-text-muted">No console logs yet.</span>

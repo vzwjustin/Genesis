@@ -43,7 +43,7 @@ export default function DonateModal({ isOpen, onClose }) {
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div
         ref={modalRef}
-        className="relative w-full bg-surface border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
+        className="relative w-full glass-panel border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
       >
         <div className="flex items-center justify-between p-3 border-b border-border-subtle">
           <h2 className="text-lg font-semibold text-text-main flex items-center gap-2">
@@ -52,7 +52,7 @@ export default function DonateModal({ isOpen, onClose }) {
           </h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-text-muted hover:bg-surface-2 transition-colors"
+            className="p-1.5 rounded-lg text-text-muted dashboard-row-hover transition-colors"
             aria-label="Close"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
@@ -113,7 +113,7 @@ function DonateChannelCard({ channel }) {
   );
 
   return (
-    <div className="flex flex-col items-center p-4 rounded-xl border border-border bg-surface/50 hover:border-pink-500/40 transition-colors">
+    <div className="flex flex-col items-center p-4 rounded-xl glass-stat border-0 hover:border-pink-500/40 transition-colors">
       {content}
       {url && (
         <a

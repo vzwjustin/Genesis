@@ -218,7 +218,7 @@ useEffect(() => {
 
   return (
     <Card padding="xs" className="overflow-hidden">
-      <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
+        <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
             <Image src="/providers/opencode.png" alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
@@ -252,7 +252,7 @@ useEffect(() => {
                 showInstallGuide={showInstallGuide}
               />
               {showInstallGuide && (
-                <div className="p-4 bg-surface border border-border rounded-lg">
+                <div className="glass-stat border-0 p-4">
                   <h4 className="font-medium mb-3">Installation Guide</h4>
                   <div className="space-y-3 text-sm">
                     <div>
@@ -308,7 +308,7 @@ useEffect(() => {
                   <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right pt-1">Models</span>
                   <span className="material-symbols-outlined text-text-muted text-[14px] mt-1.5">arrow_forward</span>
                   <div className="flex-1 flex flex-col gap-2">
-                    <div className="flex flex-wrap gap-1.5 min-h-[28px] px-2 py-1.5 bg-surface rounded border border-border">
+                    <div className="glass-stat flex min-h-[28px] flex-wrap gap-1.5 border-0 px-2 py-1.5">
                       {selectedModels.length === 0 ? (
                         <span className="text-xs text-text-muted">No models selected</span>
                       ) : (
@@ -336,8 +336,8 @@ useEffect(() => {
                             }}
                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs cursor-pointer transition-colors ${
                               model === activeModel
-                                ? "bg-primary/10 text-primary border border-primary"
-                                : "bg-surface-2 text-text-muted border border-transparent hover:border-border"
+                                ? "dashboard-chip-active border border-transparent"
+                                : "glass-stat border-0 text-text-muted dashboard-row-hover"
                             }`}
                             title={model === activeModel ? "Click to clear active model" : "Click to set as active"}
                           >
@@ -369,7 +369,7 @@ useEffect(() => {
                       )}
                     </div>
                     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
-                      <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1 rounded border text-xs transition-colors ${activeProviders?.length ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Add Model</button>
+                      <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1 rounded border text-xs transition-colors ${activeProviders?.length ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}>Add Model</button>
                       <span className="text-xs text-text-muted">
                         {selectedModels.length > 0 && activeModel ? (
                           <>Active: <span className="text-primary">{activeModel}</span></>
@@ -397,7 +397,7 @@ useEffect(() => {
                   <button
                     onClick={() => setSubagentModalOpen(true)}
                     disabled={!activeProviders?.length}
-                    className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${activeProviders?.length ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
+                    className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${activeProviders?.length ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}
                   >
                     Select Model
                   </button>

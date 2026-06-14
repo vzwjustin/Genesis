@@ -245,7 +245,7 @@ useEffect(() => {
 
   return (
     <Card padding="xs" className="overflow-hidden">
-      <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
+        <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
             <Image src={tool.image} alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
@@ -322,12 +322,12 @@ useEffect(() => {
                   <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right">Models</span>
                   <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
                   <div className="flex-1 flex items-center gap-2">
-                    <div className="flex-1 flex flex-wrap gap-1.5 min-h-[28px] px-2 py-1.5 bg-surface rounded border border-border">
+                    <div className="glass-stat flex min-h-[28px] flex-1 flex-wrap gap-1.5 border-0 px-2 py-1.5">
                       {selectedModels.length === 0 ? (
                         <span className="text-xs text-text-muted">No models selected</span>
                       ) : (
                         selectedModels.map((m) => (
-                          <span key={m} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-surface-2 text-text-muted border border-transparent hover:border-border">
+                          <span key={m} className="glass-stat inline-flex items-center gap-1 border-0 px-2 py-0.5 text-xs text-text-muted">
                             {m}
                             <button onClick={() => handleRemoveModel(m)} className="ml-0.5 hover:text-danger">
                               <span className="material-symbols-outlined text-[12px]">close</span>
@@ -336,7 +336,7 @@ useEffect(() => {
                         ))
                       )}
                     </div>
-                    <button onClick={() => setComboModalOpen(true)} disabled={!hasActiveProviders} className={`shrink-0 px-2 py-1.5 rounded border text-xs whitespace-nowrap transition-colors ${hasActiveProviders ? "bg-primary/10 border-primary/40 text-primary hover:bg-primary/20 cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>+ Combo</button>
+                    <button onClick={() => setComboModalOpen(true)} disabled={!hasActiveProviders} className={`shrink-0 rounded px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "cursor-not-allowed border border-border opacity-50"}`}>+ Combo</button>
                   </div>
                 </div>
 
@@ -346,7 +346,7 @@ useEffect(() => {
                   <div className="flex-1 flex flex-col gap-1">
                     {/* Preset plugins */}
                     {plugins.filter((p) => p.name !== "exa").map((p) => (
-                      <div key={p.name} className="flex items-center gap-2 px-2 py-1 bg-surface rounded border border-border">
+                      <div key={p.name} className="glass-stat flex items-center gap-2 border-0 px-2 py-1">
                         <span className="text-xs font-medium min-w-0 truncate flex-shrink-0">{p.title || p.name}</span>
                         {p.oauth && <span className="text-[8px] text-warning shrink-0">OAuth</span>}
                         <div className="flex-1 flex flex-wrap gap-1 overflow-hidden" style={{ maxHeight: "1.5rem" }}>
@@ -364,7 +364,7 @@ useEffect(() => {
                     ))}
                     {/* Custom plugins */}
                     {customPlugins.map((p) => (
-                      <div key={p.name} className="flex items-center gap-2 px-2 py-1 bg-surface rounded border border-border">
+                      <div key={p.name} className="glass-stat flex items-center gap-2 border-0 px-2 py-1">
                         <span className="text-xs font-medium min-w-0 truncate flex-shrink-0">{p.name}</span>
                         <span className="text-[8px] px-1 py-0.5 rounded bg-info/10 text-info shrink-0">custom</span>
                         <span className="flex-1 text-[9px] text-text-muted truncate">{p.url || p.command}</span>
@@ -374,14 +374,14 @@ useEffect(() => {
                       </div>
                     ))}
                     {plugins.filter((p) => p.name !== "exa").length === 0 && customPlugins.length === 0 && (
-                      <div className="px-2 py-1.5 bg-surface rounded border border-border text-xs text-text-muted">No MCPs added</div>
+                      <div className="glass-stat border-0 px-2 py-1.5 text-xs text-text-muted">No MCPs added</div>
                     )}
                     {/* Actions row */}
                     <div className="flex items-center gap-2 mt-0.5">
-                      <button onClick={() => setMarketplaceOpen(true)} className="px-2 py-1 rounded border text-xs bg-primary/10 border-primary/40 text-primary hover:bg-primary/20 cursor-pointer whitespace-nowrap">
+                      <button onClick={() => setMarketplaceOpen(true)} className="dashboard-chip-active cursor-pointer whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors">
                         + Browse
                       </button>
-                      <button onClick={() => { setAddMcpForm({ type: "url", name: "", url: "", command: "", args: "" }); setAddMcpOpen(true); }} className="px-2 py-1 rounded border text-xs bg-surface border-border text-text-muted hover:border-primary hover:text-primary cursor-pointer whitespace-nowrap">
+                      <button onClick={() => { setAddMcpForm({ type: "url", name: "", url: "", command: "", args: "" }); setAddMcpOpen(true); }} className="dashboard-chip-active cursor-pointer whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors">
                         + Custom
                       </button>
                       <a href="https://mcp.so" target="_blank" rel="noopener noreferrer" className="text-[10px] text-text-muted hover:text-primary underline ml-auto">Find MCPs →</a>
@@ -397,7 +397,7 @@ useEffect(() => {
                       const exaEnabled = plugins.some((p) => p.name === "exa");
                       const exaDef = (status?.defaultPlugins || []).find((d) => d.name === "exa");
                       return (
-                        <label className="flex items-start gap-2 cursor-pointer px-2 py-1.5 bg-surface rounded border border-border">
+                        <label className="glass-stat flex cursor-pointer items-start gap-2 border-0 px-2 py-1.5">
                           <input
                             type="checkbox"
                             checked={exaEnabled}
@@ -419,7 +419,7 @@ useEffect(() => {
                       if (!browserDef) return null;
                       const browserEnabled = localPlugins.includes("browsermcp");
                       return (
-                        <label className="flex items-start gap-2 cursor-pointer px-2 py-1.5 bg-surface rounded border border-border">
+                        <label className="glass-stat flex cursor-pointer items-start gap-2 border-0 px-2 py-1.5">
                           <input
                             type="checkbox"
                             checked={browserEnabled}
@@ -444,7 +444,7 @@ useEffect(() => {
                     <span className="w-32 shrink-0 text-sm font-semibold text-text-main text-right pt-1">Local Plugins</span>
                     <span className="material-symbols-outlined text-text-muted text-[14px] mt-1.5">arrow_forward</span>
                     <div className="flex-1 flex flex-col gap-2">
-                      <div className="flex flex-col gap-1.5 px-2 py-1.5 bg-surface rounded border border-border">
+                      <div className="glass-stat flex flex-col gap-1.5 border-0 px-2 py-1.5">
                         {status.localStdioPlugins.filter((p) => p.name !== "browsermcp").map((p) => {
                           const enabled = localPlugins.includes(p.name);
                           return (
@@ -539,7 +539,7 @@ useEffect(() => {
       {/* Add Custom MCP modal */}
       {addMcpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAddMcpOpen(false)}>
-          <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+          <div className="glass-panel mx-4 flex w-full max-w-sm flex-col gap-4 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Add Custom MCP</h3>
               <button onClick={() => setAddMcpOpen(false)} className="text-text-muted hover:text-text-main">
@@ -547,14 +547,14 @@ useEffect(() => {
               </button>
             </div>
 
-            <div className="flex gap-2">
+            <div className="dashboard-segment-flex w-full">
               <button
                 onClick={() => setAddMcpForm((f) => ({ ...f, type: "url" }))}
-                className={`flex-1 py-1.5 rounded border text-xs font-medium transition-colors ${addMcpForm.type === "url" ? "bg-primary/10 border-primary/40 text-primary" : "border-border text-text-muted hover:border-primary/40"}`}
+                className={`dashboard-segment flex-1 justify-center text-xs ${addMcpForm.type === "url" ? "dashboard-segment-active" : ""}`}
               >URL (SSE)</button>
               <button
                 onClick={() => setAddMcpForm((f) => ({ ...f, type: "cmd" }))}
-                className={`flex-1 py-1.5 rounded border text-xs font-medium transition-colors ${addMcpForm.type === "cmd" ? "bg-primary/10 border-primary/40 text-primary" : "border-border text-text-muted hover:border-primary/40"}`}
+                className={`dashboard-segment flex-1 justify-center text-xs ${addMcpForm.type === "cmd" ? "dashboard-segment-active" : ""}`}
               >Command (stdio)</button>
             </div>
 
@@ -607,7 +607,7 @@ useEffect(() => {
             </div>
 
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setAddMcpOpen(false)} className="px-3 py-1.5 rounded border border-border text-xs text-text-muted hover:bg-surface cursor-pointer">Cancel</button>
+              <button onClick={() => setAddMcpOpen(false)} className="dashboard-row-hover cursor-pointer rounded border border-border px-3 py-1.5 text-xs text-text-muted transition-colors">Cancel</button>
               <button
                 onClick={() => {
                   const name = addMcpForm.name.trim();
@@ -622,7 +622,7 @@ useEffect(() => {
                   }
                   setAddMcpOpen(false);
                 }}
-                className="px-3 py-1.5 rounded bg-primary text-white text-xs font-medium hover:opacity-90 cursor-pointer"
+                className="dashboard-chip-active cursor-pointer rounded px-3 py-1.5 text-xs font-medium transition-colors"
               >Add</button>
             </div>
           </div>

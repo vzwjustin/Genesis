@@ -383,8 +383,8 @@ export default function ModelSelectModal({
       footer={null}
     >
       {/* Info bar */}
-      <div className="flex items-center gap-2 mb-3 px-2.5 py-2 bg-primary/8 border border-primary/20 rounded-lg text-xs text-text-muted">
-        <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: "14px" }}>info</span>
+      <div className="flex items-center gap-2 mb-3 px-2.5 py-2 glass-stat border-0 rounded-lg text-xs text-text-muted">
+        <span className="material-symbols-outlined text-brand-500 shrink-0" style={{ fontSize: "14px" }}>info</span>
         <span>Click to add, click again to remove. Changes are saved automatically.</span>
       </div>
 
@@ -424,10 +424,10 @@ export default function ModelSelectModal({
                     className={`
                       px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
                       ${isSelected
-                        ? "bg-primary text-white border-primary"
+                        ? "dashboard-chip-active border border-transparent"
                         : addedModelValues.includes(combo.name)
-                          ? "bg-primary border-primary text-white hover:bg-primary-hover"
-                          : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
+                          ? "dashboard-filter-active border border-transparent"
+                          : "bg-surface border-border text-text-main hover:border-primary/50 dashboard-row-hover transition-colors"
                       }
                     `}
                   >
@@ -476,10 +476,10 @@ export default function ModelSelectModal({
                       ${isPlaceholder
                         ? "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic"
                         : isSelected
-                          ? "bg-primary text-white border-primary"
+                          ? "dashboard-chip-active border border-transparent"
                           : addedModelValues.includes(model.value)
-                            ? "bg-primary border-primary text-white hover:bg-primary-hover"
-                            : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
+                            ? "dashboard-filter-active border border-transparent"
+                            : "bg-surface border-border text-text-main hover:border-primary/50 dashboard-row-hover transition-colors"
                       }
                     `}
                   >

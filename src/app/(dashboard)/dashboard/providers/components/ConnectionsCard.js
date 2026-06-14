@@ -106,13 +106,13 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   };
 
   return (
-    <div className={`group flex flex-col gap-3 p-2 rounded-lg sm:flex-row sm:items-center sm:justify-between hover:bg-surface-2  transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}>
+    <div className={`group dashboard-row-hover flex flex-col gap-3 p-2 rounded-lg sm:flex-row sm:items-center sm:justify-between transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}>
       <div className="flex w-full min-w-0 flex-1 items-start gap-3 sm:items-center">
         <div className="flex flex-col">
-          <button onClick={onMoveUp} disabled={isFirst} className={`p-0.5 rounded ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}>
+          <button onClick={onMoveUp} disabled={isFirst} className={`rounded p-0.5 ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}>
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
           </button>
-          <button onClick={onMoveDown} disabled={isLast} className={`p-0.5 rounded ${isLast ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}>
+          <button onClick={onMoveDown} disabled={isLast} className={`rounded p-0.5 ${isLast ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}>
             <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
           </button>
         </div>
@@ -133,7 +133,7 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
           {hasAnyProxy && (
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <span className="text-[11px] text-text-muted truncate max-w-[420px]" title={proxyDisplayText}>{proxyDisplayText}</span>
-              {maskedProxyUrl && <code className="text-[10px] font-mono bg-bg-alt px-1 py-0.5 rounded text-text-muted">{maskedProxyUrl}</code>}
+              {maskedProxyUrl && <code className="text-[10px] font-mono glass-stat border-0 px-1 py-0.5 rounded text-text-muted">{maskedProxyUrl}</code>}
               {noProxyText && <span className="text-[11px] text-text-muted truncate max-w-[320px]" title={noProxyText}>no_proxy: {noProxyText}</span>}
             </div>
           )}
@@ -145,23 +145,23 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
             <div className="relative" ref={proxyDropdownRef}>
               <button
                 onClick={() => setShowProxyDropdown((v) => !v)}
-                className={`flex flex-col items-center px-2 py-1 rounded hover:bg-surface-2 transition-colors ${hasAnyProxy ? "text-primary" : "text-text-muted hover:text-primary"}`}
+                className={`flex flex-col items-center rounded px-2 py-1 dashboard-row-hover transition-colors ${hasAnyProxy ? "text-brand-500" : "text-text-muted hover:text-brand-500"}`}
                 disabled={updatingProxy}
               >
                 <span className="material-symbols-outlined text-[18px]">{updatingProxy ? "progress_activity" : "lan"}</span>
                 <span className="text-[10px] leading-tight">Proxy</span>
               </button>
               {showProxyDropdown && (
-                <div className="absolute right-0 top-full mt-1 z-50 bg-bg border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
-                  <button onClick={() => handleSelectProxy("__none__")} className={`w-full text-left px-3 py-1.5 text-sm hover:bg-surface-2 ${!boundProxyPoolId ? "text-primary font-medium" : "text-text-main"}`}>None</button>
+                <div className="glass-panel absolute right-0 top-full z-50 mt-1 min-w-[160px] py-1 shadow-lg">
+                  <button onClick={() => handleSelectProxy("__none__")} className={`w-full text-left px-3 py-1.5 text-sm dashboard-row-hover transition-colors ${!boundProxyPoolId ? "dashboard-filter-active font-medium" : "text-text-main"}`}>None</button>
                   {(proxyPools || []).map((pool) => (
-                    <button key={pool.id} onClick={() => handleSelectProxy(pool.id)} className={`w-full text-left px-3 py-1.5 text-sm hover:bg-surface-2 ${boundProxyPoolId === pool.id ? "text-primary font-medium" : "text-text-main"}`}>{pool.name}</button>
+                    <button key={pool.id} onClick={() => handleSelectProxy(pool.id)} className={`w-full text-left px-3 py-1.5 text-sm dashboard-row-hover transition-colors ${boundProxyPoolId === pool.id ? "dashboard-filter-active font-medium" : "text-text-main"}`}>{pool.name}</button>
                   ))}
                 </div>
               )}
             </div>
           )}
-          <button onClick={onEdit} className="flex flex-col items-center px-2 py-1 rounded hover:bg-surface-2 text-text-muted hover:text-primary">
+          <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
           </button>

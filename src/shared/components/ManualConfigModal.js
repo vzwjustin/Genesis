@@ -52,7 +52,7 @@ export default function ManualConfigModal({ isOpen, onClose, title = "Manual Con
                 {copiedIndex === index ? "Copied!" : "Copy"}
               </Button>
             </div>
-            <pre className="px-3 py-2 bg-bg-alt rounded font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all max-h-60 overflow-y-auto border border-border">
+            <pre className="px-3 py-2 glass-stat border-0 rounded font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
               {config.content}
             </pre>
           </div>

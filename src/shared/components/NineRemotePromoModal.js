@@ -32,18 +32,18 @@ export default function NineRemotePromoModal({ isOpen, onClose }) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px] fade-in" onClick={onClose} />
 
-      <div className="relative w-full max-w-sm rounded-[14px] overflow-hidden shadow-[var(--shadow-elev)] fade-in flex flex-col bg-surface border border-border-subtle">
+      <div className="relative w-full max-w-sm rounded-[14px] overflow-hidden shadow-[var(--shadow-elev)] fade-in flex flex-col glass-panel border border-border-subtle">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
           <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-[8px] flex items-center justify-center bg-primary">
-              <span className="material-symbols-outlined text-white text-base">terminal</span>
+            <div className="w-7 h-7 rounded-[8px] flex items-center justify-center glass-stat border-0">
+              <span className="material-symbols-outlined text-brand-500 text-base">terminal</span>
             </div>
-            <span className="text-xs font-bold uppercase tracking-wider text-primary font-mono">9Remote</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-brand-500 font-mono">9Remote</span>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-[10px] text-text-muted hover:bg-surface-2 hover:text-text-main transition-colors"
+            className="p-1.5 rounded-[10px] text-text-muted dashboard-row-hover hover:text-text-main transition-colors"
           >
             <span className="material-symbols-outlined text-base">close</span>
           </button>
@@ -53,8 +53,8 @@ export default function NineRemotePromoModal({ isOpen, onClose }) {
         <div className="px-7 py-7 pb-9 flex flex-col gap-6">
           {/* Hero */}
           <div className="flex flex-col items-center gap-2 text-center mt-2">
-            <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-1 bg-primary shadow-[var(--shadow-warm)]">
-              <span className="material-symbols-outlined text-white text-[30px]">terminal</span>
+            <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-1 glass-stat border-0">
+              <span className="material-symbols-outlined text-brand-500 text-[30px]">terminal</span>
             </div>
             <h1 className="text-lg font-bold text-text-main tracking-tight">9Remote</h1>
             <p className="text-xs text-text-muted leading-5 max-w-[220px]">
@@ -86,7 +86,7 @@ export default function NineRemotePromoModal({ isOpen, onClose }) {
           {/* CTA */}
           <button
             onClick={() => window.open(NINE_REMOTE_URL, "_blank")}
-            className="w-full py-3 flex items-center justify-center gap-2 text-sm font-semibold text-white rounded-[10px] bg-primary hover:bg-primary-hover shadow-[var(--shadow-warm)] active:scale-[0.98] transition-all"
+            className="w-full py-3 flex items-center justify-center gap-2 text-sm font-semibold rounded-[10px] dashboard-chip-active active:scale-[0.98] transition-all"
           >
             <span className="material-symbols-outlined text-base">open_in_new</span>
             Get 9Remote

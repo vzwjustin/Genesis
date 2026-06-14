@@ -225,7 +225,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   };
 
   return (
-    <header className="shrink-0 flex items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-border-subtle bg-surface/60 backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20">
+    <header className="dashboard-header shrink-0 flex items-center justify-between gap-3 px-4 lg:px-10 py-3 lg:py-4 z-20">
       {/* Mobile menu button */}
       <div className="flex items-center gap-3 lg:hidden shrink-0">
         {showMenuButton && (
@@ -270,7 +270,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
                         fallbackText={crumb.label.slice(0, 2).toUpperCase()}
                       />
                     )}
-                    <h1 className="text-base lg:text-2xl font-semibold text-text-main tracking-tight truncate">
+                    <h1 className="text-base lg:text-xl font-medium text-text-main tracking-tight truncate">
                       {translate(crumb.label)}
                     </h1>
                   </div>
@@ -286,12 +286,12 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
                   {icon}
                 </span>
               )}
-              <h1 className="text-base lg:text-2xl font-semibold tracking-tight truncate">
+              <h1 className="text-base lg:text-xl font-medium text-text-main tracking-tight truncate">
                 {translate(title)}
               </h1>
             </div>
             {description && (
-              <p className="hidden lg:block text-sm text-text-muted truncate">
+              <p className="mt-0.5 text-xs sm:text-sm text-text-muted truncate max-w-2xl">
                 {translate(description)}
               </p>
             )}
@@ -302,16 +302,16 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       {/* Right actions */}
       <div className="flex items-center gap-1 shrink-0">
         {displayName && loginMethod === "OIDC" && (
-          <div className="hidden sm:flex items-center max-w-[220px] px-3 py-1.5 rounded-full border border-border bg-surface/70 text-xs text-text-muted truncate">
-            <span className="material-symbols-outlined text-[14px] mr-1.5 text-primary">person</span>
+          <div className="glass-stat hidden sm:flex items-center max-w-[220px] rounded-full border-0 px-3 py-1.5 text-xs text-text-muted truncate">
+            <span className="material-symbols-outlined text-[14px] mr-1.5 text-brand-500">person</span>
             <span className="truncate">{displayName}</span>
-            <span className="ml-2 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            <span className="ml-2 shrink-0 rounded-full dashboard-filter-active px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-500">
               OIDC
             </span>
           </div>
         )}
         <HeaderSearch />
-        <ThemeToggle />
+        <ThemeToggle variant="dashboard" />
         <HeaderMenu onLogout={handleLogout} />
       </div>
     </header>
@@ -343,7 +343,7 @@ function HeaderSearch() {
         <button
           type="button"
           onClick={() => setQuery("")}
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded"
+          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-text-main"
           aria-label="Clear search"
         >
           <span className="material-symbols-outlined text-[16px]">close</span>
