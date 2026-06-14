@@ -74,7 +74,7 @@ describe("stream.js — onPendingRelease error isolation", () => {
 describe("stream.js — translate flush passes targetFormat", () => {
   it("source passes targetFormat to parseSSELine in flush", () => {
     const src = readFileSync(join(root, "open-sse/utils/stream.js"), "utf8");
-    expect(src).toMatch(/parseSSELine\(buffer\.trim\(\),\s*targetFormat\)/);
+    expect(src).toMatch(/parseSSELine\(buffer\.trim\(\),\s*targetFormat\b/);
   });
 });
 
@@ -163,7 +163,9 @@ describe("proxyFetch — wave2 hardening", () => {
   it("createBypassRequest uses URL port and http module for http:", () => {
     const src = readFileSync(join(root, "open-sse/utils/proxyFetch.js"), "utf8");
     expect(src).toContain('parsedUrl.protocol === "https:"');
-    expect(src).toContain('import(isHttps ? "https" : "http")');
+    // Split static imports — a computed import(cond ? "https" : "http") makes webpack
+    // bundle a context module that fails at runtime ("Cannot find module 'https'").
+    expect(src).toMatch(/isHttps \? await import\("https"\) : await import\("http"\)/);
     expect(src).toMatch(/socket\.connect\(port,\s*realIP/);
   });
 });

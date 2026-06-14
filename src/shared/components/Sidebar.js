@@ -233,6 +233,7 @@ export default function Sidebar({ onClose }) {
               className={sidebarLinkClass(isActive(item.href))}
             >
               <span
+                aria-hidden="true"
                 className={sidebarIconClass(isActive(item.href))}
               >
                 {item.icon}

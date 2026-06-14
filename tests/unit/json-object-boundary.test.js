@@ -96,7 +96,9 @@ describe("request boundary JSON object validation", () => {
   });
 
   it.each([null, "text", 42, true, []])("handleChat rejects %j before auth", async (payload) => {
-    const { handleChat } = await import("../../src/sse/handlers/chat.js");
+    // The file-level mock stubs handleChat for the compact-route tests below;
+    // here we exercise the REAL early-body-validation path, so import the actual.
+    const { handleChat } = await vi.importActual("../../src/sse/handlers/chat.js");
     const response = await handleChat(jsonRequest(payload, "http://localhost/v1/chat/completions"));
     await expectInvalidJsonBody(response);
     expect(authMocks.authenticateRequest).not.toHaveBeenCalled();

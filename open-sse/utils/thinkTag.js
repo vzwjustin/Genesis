@@ -23,6 +23,9 @@ export function trailingPartialTagLen(s) {
   const max = Math.min(s.length, THINK_CLOSE.length - 1);
   for (let len = max; len > 0; len--) {
     const suffix = s.slice(s.length - len);
+    // Only a *proper* (non-full) prefix is a partial tag worth holding back;
+    // a complete "<think>" / "</think>" is handled by includes(), not here.
+    if (suffix === THINK_OPEN || suffix === THINK_CLOSE) continue;
     if (THINK_OPEN.startsWith(suffix) || THINK_CLOSE.startsWith(suffix)) {
       return len;
     }

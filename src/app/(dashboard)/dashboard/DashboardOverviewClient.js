@@ -198,6 +198,7 @@ export default function DashboardOverviewClient() {
     { done: activeConns.length > 0, label: "Connect a provider", href: "/dashboard/providers" },
     { done: requireApiKey, label: "Enable API key requirement (recommended)", href: "/dashboard/endpoint#require-api-key" },
     { done: cliStats.configured > 0, label: "Configure a CLI tool", href: "/dashboard/cli-tools" },
+    { done: requestsToday > 0, label: "Review caching & token savings", href: "/dashboard/caching" },
     { done: remoteOn, label: "Optional: enable tunnel for remote access", href: "/dashboard/endpoint" },
   ];
   const setupComplete = setupSteps.filter((s) => s.done).length;

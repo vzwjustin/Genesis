@@ -160,7 +160,9 @@ describe("wave4 — proxy routing", () => {
   it("createBypassRequest destroys socket on abort after headers", () => {
     const src = read("../../open-sse/utils/proxyFetch.js");
     expect(src).toContain("destroyOnAbort");
-    expect(src).toMatch(/bodyChunks\.shift\(\)/);
+    // Streaming body getter frees each chunk after enqueue (index-advance + null-out),
+    // replacing the earlier bodyChunks.shift() so backlog memory stays bounded.
+    expect(src).toMatch(/bodyChunks\[offset\]\s*=\s*null/);
   });
 });
 

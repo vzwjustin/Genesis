@@ -15,10 +15,12 @@ describe("build verification (Task 20)", () => {
     expect(agents).toContain("open-sse/");
   });
 
-  it("Anthropic built-in tool model-prefix fix exists in claudeHelper source", () => {
-    const src = readFileSync(join(root, "open-sse/translator/helpers/claudeHelper.js"), "utf8");
-    expect(src).toContain("stripProviderModelPrefix");
-    expect(src).toMatch(/KNOWN_TOOL_MODEL_PREFIXES/);
+  it("Anthropic built-in tool model-prefix fix exists in helper source", () => {
+    // claudeHelper re-exports the strip; the prefix table lives in anthropicToolModel.js.
+    const helper = readFileSync(join(root, "open-sse/translator/helpers/claudeHelper.js"), "utf8");
+    expect(helper).toContain("stripProviderModelPrefix");
+    const toolModel = readFileSync(join(root, "open-sse/translator/helpers/anthropicToolModel.js"), "utf8");
+    expect(toolModel).toMatch(/KNOWN_TOOL_MODEL_PREFIXES/);
   });
 
   it("headless server entrypoint exists (built server.js or cli wrapper)", () => {
@@ -43,9 +45,13 @@ describe("build verification (Task 20)", () => {
     const chunksDir = join(root, "cli/app/.next-cli-build/server/chunks");
     if (!existsSync(chunksDir)) return;
 
+    // Stable marker from anthropicToolModel.js prefix table / fallback (survives minification).
     const hit = readdirSync(chunksDir)
       .filter((name) => name.endsWith(".js"))
-      .some((name) => readFileSync(join(chunksDir, name), "utf8").includes('indexOf("/")+1'));
+      .some((name) => {
+        const src = readFileSync(join(chunksDir, name), "utf8");
+        return src.includes("claude-opus-4-8") && src.includes("cc/");
+      });
 
     expect(hit).toBe(true);
   });

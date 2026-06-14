@@ -115,15 +115,31 @@ describe("verify fails closed on any protected drift", () => {
   });
 });
 
-describe("cross-format translation — fail closed", () => {
-  it("rejects Claude→OpenAI when client owns cache breakpoints", async () => {
+describe("cross-format translation — cache_control handling", () => {
+  it("strips cache_control on Claude→OpenAI (OpenAI cannot honor it) and translates", async () => {
+    const { translateRequest } = await import("../../open-sse/translator/index.js");
+    const { FORMATS } = await import("../../open-sse/translator/formats.js");
+    // Under vitest the translator's require()-based registry differs from the ESM
+    // graph; importing the request module side-effect-registers claude→openai.
+    await import("../../open-sse/translator/request/claude-to-openai.js");
+    const body = {
+      model: "claude-sonnet-4-5",
+      messages: [{ role: "user", content: "hi", cache_control: { type: "ephemeral" } }],
+    };
+    const result = translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, "claude-sonnet-4-5", body, false, null, "openai");
+    // Markers dropped (lossless — OpenAI endpoints ignore them) and request still translates.
+    expect(JSON.stringify(result)).not.toContain("cache_control");
+    expect(result.messages?.[0]?.content).toBe("hi");
+  });
+
+  it("still refuses Claude→Gemini when client owns cache breakpoints (markers must survive)", async () => {
     const { translateRequest } = await import("../../open-sse/translator/index.js");
     const { FORMATS } = await import("../../open-sse/translator/formats.js");
     const body = {
       model: "claude-sonnet-4-5",
       messages: [{ role: "user", content: "hi", cache_control: { type: "ephemeral" } }],
     };
-    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, "claude-sonnet-4-5", body, false, null, "openai"))
+    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.GEMINI, "claude-sonnet-4-5", body, false, null, "gemini"))
       .toThrow(/cache_control breakpoints/);
   });
 });
