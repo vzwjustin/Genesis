@@ -940,7 +940,6 @@ button {
 
 /* Light glass cards on dashboard main */
 .glass-panel {
-  border-radius: 18px;
   border: 1px solid var(--glass-edge);
   background: linear-gradient(
     165deg,
@@ -971,7 +970,6 @@ button {
 }
 
 .glass-stat {
-  border-radius: 16px;
   border: 1px solid var(--glass-edge);
   background: linear-gradient(
     165deg,
@@ -1240,7 +1238,6 @@ button {
 
 /* Compact toolbar / filter controls on dashboard pages */
 .glass-control {
-  border-radius: 0.5rem;
   border: 1px solid var(--glass-edge);
   background: linear-gradient(
     165deg,
@@ -1311,7 +1308,6 @@ button {
 
 /* Read-only value wells (endpoint tunnel status, etc.) */
 .glass-readout {
-  border-radius: 0.375rem;
   border: 1px solid var(--glass-edge-subtle);
   background: linear-gradient(
     165deg,
@@ -1401,7 +1397,6 @@ button {
 
 /* Selectable option cards in auth modals */
 .glass-option-card {
-  border-radius: 0.5rem;
   border: 1px solid var(--glass-edge);
   background: linear-gradient(
     165deg,
@@ -1468,7 +1463,6 @@ button {
 
 /* Inline monospace snippets inside glass panels */
 .glass-code {
-  border-radius: 0.375rem;
   border: 1px solid var(--glass-edge-subtle);
   background: linear-gradient(
     165deg,
@@ -1554,7 +1548,6 @@ button {
 
 /* Dashed action rows (add provider, add model, etc.) */
 .glass-dashed-action {
-  border-radius: 0.5rem;
   border: 1px dashed var(--glass-edge);
   background: linear-gradient(
     165deg,
@@ -1578,6 +1571,37 @@ button {
 .glass-dashed-action:hover {
   border-color: rgba(201, 168, 76, 0.45);
   box-shadow: var(--glass-highlight-soft);
+}
+
+/* Defaults live in components layer so Tailwind rounded-* utilities can override */
+@layer components {
+  .glass-panel {
+    border-radius: 18px;
+  }
+
+  .glass-stat {
+    border-radius: 16px;
+  }
+
+  .glass-control {
+    border-radius: 0.5rem;
+  }
+
+  .glass-dashed-action {
+    border-radius: 0.5rem;
+  }
+
+  .glass-readout {
+    border-radius: 0.375rem;
+  }
+
+  .glass-option-card {
+    border-radius: 0.5rem;
+  }
+
+  .glass-code {
+    border-radius: 0.375rem;
+  }
 }
 
 .glass-inset-panel {

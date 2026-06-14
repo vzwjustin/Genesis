@@ -465,7 +465,7 @@ export default function CachingPageClient() {
                           setRtkFilterConfig(next);
                           patchSetting({ rtkFilterConfig: next });
                         }}
-                        className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                           enabled
                             ? "dashboard-chip-active"
                             : "glass-control text-text-muted"
@@ -490,7 +490,7 @@ export default function CachingPageClient() {
                       key={lvl.id}
                       type="button"
                       onClick={() => { setCavemanLevel(lvl.id); patchSetting({ cavemanLevel: lvl.id }); }}
-                      className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                         cavemanLevel === lvl.id
                           ? "dashboard-chip-active"
                           : "glass-control text-text-muted"
