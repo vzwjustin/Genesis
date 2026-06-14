@@ -4,8 +4,9 @@ import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { buildKiroChatUrl, buildKiroFingerprintHeaders } from "../services/kiroHeaders.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
+import { mergeAbortSignals } from "../utils/abortSignal.js";
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -60,19 +61,35 @@ export class KiroExecutor extends BaseExecutor {
 
     while (true) {
       const headers = this.buildHeaders(credentials, stream);
-      
-      const response = await proxyAwareFetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(transformedBody),
-        signal
-      }, proxyOptions);
+
+      // Abort if upstream doesn't return response headers within the connect
+      // timeout — mirror base.js so a hung Kiro upstream can't hang forever.
+      const connectCtrl = new AbortController();
+      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), FETCH_CONNECT_TIMEOUT_MS);
+      const merged = signal
+        ? mergeAbortSignals([signal, connectCtrl.signal])
+        : { signal: connectCtrl.signal, cleanup: () => {} };
+
+      let response;
+      try {
+        response = await proxyAwareFetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(transformedBody),
+          signal: merged.signal
+        }, proxyOptions);
+      } finally {
+        clearTimeout(connectTimer);
+        merged.cleanup?.();
+      }
 
       // Check if should retry based on status code
       const { attempts: maxRetries, delayMs } = resolveRetryEntry(retryConfig[response.status]);
       if (!response.ok && maxRetries > 0 && retryAttempts < maxRetries) {
         retryAttempts++;
         log?.debug?.("RETRY", `${response.status} retry ${retryAttempts}/${maxRetries} after ${delayMs / 1000}s`);
+        // Drain abandoned EventStream body so the socket is freed before retry.
+        await response.body?.cancel?.().catch(() => {});
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
       }

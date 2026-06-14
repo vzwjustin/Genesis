@@ -698,7 +698,10 @@ export class CursorExecutor extends BaseExecutor {
           // Mark finalized once isLast=true is received for this tool call.
           if (tc.isLast) finalizedIds.add(tc.id);
 
-          // Stream the delta arguments
+          // Stream the delta arguments. Per OpenAI streaming spec the tool name
+          // (and id) belong only to the FIRST delta of a tool call; repeating
+          // them on continuation arg-deltas makes strict clients concatenate the
+          // name (e.g. "ReadRead") or reject the stream. Emit arguments only.
           if (tc.function.arguments) {
             emittedToolCallIds.add(tc.id);
             chunks.push(
@@ -714,10 +717,7 @@ export class CursorExecutor extends BaseExecutor {
                       tool_calls: [
                         {
                           index: existing.index,
-                          id: tc.id,
-                          type: "function",
                           function: {
-                            name: tc.function.name,
                             arguments: tc.function.arguments
                           }
                         }

@@ -1,5 +1,22 @@
 # AGENTS.md
 
+## HARD INSTRUCTIONS — ALWAYS, NON-NEGOTIABLE
+On every task, before answering or acting (even "simple" tasks, no skip):
+1. **5 Whys** — ask "why" 5x to reach root cause/intent, not surface symptom.
+2. **What-ifs** — surface edge cases, failure modes, alternative interpretations.
+3. **Self-reflect** — audit own reasoning for gaps, hidden assumptions, errors before committing. Revise if weak.
+
+## Behavioral Guidelines — reduce common LLM coding mistakes
+Bias toward caution over speed. For trivial tasks, use judgment. These apply on top of the repo rules below ("fail closed for correctness/security", TDD/testing requirements).
+1. **Think before coding** — state assumptions explicitly; multiple interpretations → present them, don't pick silently; simpler approach exists → say so, push back; unclear → stop, name the confusion, ask.
+2. **Simplicity first** — minimum code, nothing speculative. No unrequested features/abstractions/configurability. No error handling for impossible scenarios. 200 lines that could be 50 → rewrite. "Would a senior engineer call this overcomplicated?" yes → simplify.
+3. **Surgical changes** — touch only what you must. Don't "improve" adjacent code/comments/formatting. Don't refactor what isn't broken. Match existing style. Unrelated dead code → mention it, don't delete. Remove only the imports/vars/functions YOUR changes orphaned. Every changed line traces directly to the request.
+4. **Goal-driven execution** — define success criteria, loop until verified. "Add validation" → tests for invalid inputs then pass. "Fix the bug" → repro test then pass. "Refactor X" → tests green before and after. Multi-step → brief plan, each step with a verify check.
+
+Working if: fewer unnecessary diff lines, fewer overcomplication rewrites, clarifying questions come *before* implementation.
+
+---
+
 # 9router Fork — Agent Instructions
 
 This repository is a fork/customization of `9router`, used as a local AI CLI proxy/router.

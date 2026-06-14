@@ -158,6 +158,14 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
           const toolCallIds = [];
           for (const tc of msg.tool_calls) {
             if (tc.type !== "function") continue;
+            // Track the id even for malformed calls so a dangling tool response
+            // below is still detected and warned about (don't silently drop it).
+            if (tc.id) toolCallIds.push(tc.id);
+            // A malformed/partial tool_call (type set but no function object/name)
+            // would throw on tc.function.name and abort the whole translation (500).
+            // Skip building the functionCall part — the missing name mapping is
+            // handled (warned) at the functionResponse site below.
+            if (!tc.function?.name) continue;
 
             const args = tryParseJSON(tc.function?.arguments || "{}");
             const functionCallPart = {
@@ -172,7 +180,6 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             } else {
               parts.push(functionCallPart);
             }
-            toolCallIds.push(tc.id);
           }
 
           if (parts.length > 0) {

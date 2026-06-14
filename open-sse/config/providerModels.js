@@ -6,6 +6,27 @@ import { buildTtsProviderModels } from "./ttsModels.js";
 // Field "provider" for special cases (e.g. AntiGravity models that call different backends)
 
 const CODEX_REVIEW_SUFFIX = "-review";
+const FUSION_QUALITY_PLUGIN = {
+  id: "fusion",
+  analysis_models: [
+    "~anthropic/claude-opus-latest",
+    "~openai/gpt-latest",
+    "~google/gemini-pro-latest",
+  ],
+  model: "~anthropic/claude-opus-latest",
+};
+const FUSION_BUDGET_PLUGIN = {
+  id: "fusion",
+  analysis_models: [
+    "~google/gemini-flash-latest",
+    "deepseek/deepseek-v3.2",
+    "~moonshotai/kimi-latest",
+  ],
+  model: "~google/gemini-flash-latest",
+};
+const PROVIDER_MODEL_ALIASES = {
+  "openrouter-fusion": "fusion",
+};
 
 function withCodexReviewModels(models) {
   return models.flatMap((model) => {
@@ -442,7 +463,8 @@ export const PROVIDER_MODELS = {
     // panel+judge deliberation (Quality preset by default). Switch presets or
     // override the panel/judge by passing a `plugins: [{ id: "fusion", ... }]`
     // field in the request body — passthrough forwards it untouched.
-    { id: "fusion", name: "OpenRouter Fusion", upstreamModelId: "openrouter/fusion" },
+    { id: "fusion", name: "OpenRouter Fusion", upstreamModelId: "openrouter/fusion", requestExtras: { plugins: [FUSION_QUALITY_PLUGIN] } },
+    { id: "fusion-budget", name: "OpenRouter Fusion Budget", upstreamModelId: "openrouter/fusion", requestExtras: { plugins: [FUSION_BUDGET_PLUGIN] } },
   ],
   glm: [
     { id: "glm-5.1", name: "GLM 5.1" },
@@ -947,38 +969,47 @@ export const PROVIDER_MODELS = {
 };
 
 // Helper functions
+function normalizeProviderModelAlias(aliasOrId) {
+  return PROVIDER_MODEL_ALIASES[aliasOrId] || aliasOrId;
+}
+
+function cloneRequestExtras(extras) {
+  if (!extras) return null;
+  return JSON.parse(JSON.stringify(extras));
+}
+
 export function getProviderModels(aliasOrId) {
-  return PROVIDER_MODELS[aliasOrId] || [];
+  return PROVIDER_MODELS[normalizeProviderModelAlias(aliasOrId)] || [];
 }
 
 export function getDefaultModel(aliasOrId) {
-  const models = PROVIDER_MODELS[aliasOrId];
+  const models = PROVIDER_MODELS[normalizeProviderModelAlias(aliasOrId)];
   return models?.[0]?.id || null;
 }
 
 export function isValidModel(aliasOrId, modelId, passthroughProviders = new Set()) {
   if (passthroughProviders.has(aliasOrId)) return true;
-  const models = PROVIDER_MODELS[aliasOrId];
+  const models = PROVIDER_MODELS[normalizeProviderModelAlias(aliasOrId)];
   if (!models) return false;
   return models.some(m => m.id === modelId);
 }
 
 export function findModelName(aliasOrId, modelId) {
-  const models = PROVIDER_MODELS[aliasOrId];
+  const models = PROVIDER_MODELS[normalizeProviderModelAlias(aliasOrId)];
   if (!models) return modelId;
   const found = models.find(m => m.id === modelId);
   return found?.name || modelId;
 }
 
 export function getModelTargetFormat(aliasOrId, modelId) {
-  const models = PROVIDER_MODELS[aliasOrId];
+  const models = PROVIDER_MODELS[normalizeProviderModelAlias(aliasOrId)];
   if (!models) return null;
   const found = models.find(m => m.id === modelId);
   return found?.targetFormat || null;
 }
 
 export function getModelUpstreamId(aliasOrId, modelId) {
-  const models = PROVIDER_MODELS[aliasOrId];
+  const models = PROVIDER_MODELS[normalizeProviderModelAlias(aliasOrId)];
   const found = models?.find(m => m.id === modelId);
   if (found?.upstreamModelId) return found.upstreamModelId;
   if (aliasOrId === "cx" && typeof modelId === "string" && modelId.endsWith(CODEX_REVIEW_SUFFIX)) {
@@ -987,8 +1018,14 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   return modelId;
 }
 
+export function getModelRequestExtras(aliasOrId, modelId) {
+  const models = PROVIDER_MODELS[normalizeProviderModelAlias(aliasOrId)];
+  const found = models?.find(m => m.id === modelId);
+  return cloneRequestExtras(found?.requestExtras);
+}
+
 export function getModelQuotaFamily(aliasOrId, modelId) {
-  const models = PROVIDER_MODELS[aliasOrId];
+  const models = PROVIDER_MODELS[normalizeProviderModelAlias(aliasOrId)];
   const found = models?.find(m => m.id === modelId);
   return found?.quotaFamily || "normal";
 }
@@ -1026,6 +1063,6 @@ export function getModelsByProviderId(providerId) {
 // Get strip list for a model entry (explicit opt-in only)
 // Returns array of content types to strip, e.g. ["image", "audio"]
 export function getModelStrip(alias, modelId) {
-  const entry = PROVIDER_MODELS[alias]?.find(m => m.id === modelId);
+  const entry = PROVIDER_MODELS[normalizeProviderModelAlias(alias)]?.find(m => m.id === modelId);
   return entry?.strip || [];
 }

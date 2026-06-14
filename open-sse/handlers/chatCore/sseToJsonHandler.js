@@ -79,6 +79,43 @@ function pickAssistantMessageForChatCompletion(output) {
   return { msgItem: last, textContent: textFromResponsesMessageItem(last) };
 }
 
+// Split raw SSE text into payload strings, one per event. Per the SSE spec an
+// event is delimited by a blank line and may carry multiple `data:` lines that
+// are concatenated with "\n". Splitting on bare "\n" and parsing each data line
+// independently feeds JSON fragments to JSON.parse and falsely discards valid,
+// spec-legal multi-line events.
+function extractSSEDataPayloads(rawSSE) {
+  const payloads = [];
+  const events = String(rawSSE || "").split(/\r?\n\r?\n/);
+  const isCompleteJsonPayload = (line) => {
+    if (line === "[DONE]") return true;
+    try {
+      JSON.parse(line);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  for (const evt of events) {
+    const dataLines = [];
+    for (const line of evt.split(/\r?\n/)) {
+      const m = line.match(/^data:\s?(.*)$/);
+      if (m) dataLines.push(m[1]);
+    }
+    if (dataLines.length === 0) continue;
+    const trimmedLines = dataLines.map((line) => line.trim()).filter(Boolean);
+    const linePerPayload =
+      trimmedLines.length > 1 &&
+      trimmedLines.every(isCompleteJsonPayload);
+    if (linePerPayload) {
+      payloads.push(...trimmedLines);
+    } else {
+      payloads.push(dataLines.join("\n").trim());
+    }
+  }
+  return payloads;
+}
+
 function sseTextToStream(rawSSE) {
   const bytes = new TextEncoder().encode(String(rawSSE || ""));
   return new ReadableStream({
@@ -94,10 +131,7 @@ function sseTextToStream(rawSSE) {
  */
 export function parseSSEToClaudeResponse(rawSSE) {
   const events = [];
-  for (const line of String(rawSSE || "").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const payload = trimmed.slice(5).trim();
+  for (const payload of extractSSEDataPayloads(rawSSE)) {
     if (!payload || payload === "[DONE]") continue;
     try {
       events.push(JSON.parse(payload));
@@ -253,10 +287,7 @@ export function parseSSEToGeminiResponse(rawSSE, wrapInResponse = false) {
   const chunks = [];
   let sawTerminal = false;
 
-  for (const line of String(rawSSE || "").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const payload = trimmed.slice(5).trim();
+  for (const payload of extractSSEDataPayloads(rawSSE)) {
     if (!payload) continue;
     if (payload === "[DONE]") {
       sawTerminal = true;
@@ -357,10 +388,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   const chunks = [];
   let sawTerminal = false; // [DONE] sentinel OR a finish_reason marks a complete stream
 
-  for (const line of String(rawSSE || "").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const payload = trimmed.slice(5).trim();
+  for (const payload of extractSSEDataPayloads(rawSSE)) {
     if (!payload) continue;
     if (payload === "[DONE]") { sawTerminal = true; continue; }
     try {

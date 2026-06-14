@@ -16,6 +16,7 @@ vi.mock("@/sse/handlers/chat.js", () => ({
 vi.mock("open-sse/utils/clientDetector.js", () => ({
   detectClientTool: () => null,
   isNativePassthrough: () => false,
+  shouldUseNativePassthrough: () => false,
 }));
 
 function geminiRequest(pathSegments, body, { invalidJson = false } = {}) {

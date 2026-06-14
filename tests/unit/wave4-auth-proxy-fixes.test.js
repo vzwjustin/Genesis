@@ -128,10 +128,10 @@ describe("wave4 — auth.js account state", () => {
 });
 
 describe("wave4 — proxy routing", () => {
-  it("relay/vercel pool takes precedence over env proxy", () => {
+  it("environment proxy takes precedence over relay/vercel pool", () => {
     const src = read("../../open-sse/utils/proxyFetch.js");
-    expect(src).toMatch(/per-connection proxy → relay\/vercel pool → environment proxy/);
-    expect(src).toMatch(/if \(!proxyUrl && !vercelRelayUrl\)/);
+    expect(src).toMatch(/per-connection proxy → environment proxy → relay\/vercel pool → direct/);
+    expect(src).toMatch(/const envProxyUrl = connectionProxyConfigured[\s\S]*normalizeRuntimeProxyUrl\(getEnvProxyUrl\(targetUrl\), "environment"\)/);
     expect(src).toMatch(/if \(!proxyUrl && vercelRelayUrl\)/);
   });
 

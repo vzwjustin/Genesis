@@ -395,6 +395,8 @@ describe("Claude cache — handleChatCore passthrough dispatch", () => {
     vi.doMock("open-sse/config/providerModels.js", () => ({
       getModelTargetFormat: () => null,
       getModelStrip: () => [],
+      getModelUpstreamId: (_alias, modelId) => modelId,
+      getModelRequestExtras: () => null,
       PROVIDER_ID_TO_ALIAS: {},
     }));
     vi.doMock("open-sse/utils/error.js", () => ({
@@ -440,6 +442,7 @@ describe("Claude cache — handleChatCore passthrough dispatch", () => {
     vi.doMock("open-sse/utils/clientDetector.js", () => ({
       detectClientTool: () => "claude",
       isNativePassthrough: () => true,
+      shouldUseNativePassthrough: () => true,
     }));
     vi.doMock("open-sse/executors/index.js", () => ({
       getExecutor: () => ({

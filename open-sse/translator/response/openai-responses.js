@@ -130,11 +130,21 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   return events;
 }
 
+// Responses API output_index is the slot in the output[] array — a monotonic
+// per-item counter, NOT the chat-completions choice.index. Reasoning, message,
+// and each tool call are distinct output items and must get distinct indices.
+// Reusing `idx`/`tcIdx` (all starting at 0) collides them, and strict Responses
+// clients (Codex/Cursor) reject duplicate output_index → dropped tool call.
+function allocOutputIndex(state) {
+  state.nextOutputIndex = state.nextOutputIndex ?? 0;
+  return state.nextOutputIndex++;
+}
+
 // Helper functions
 function startReasoning(state, emit, idx) {
   if (!state.reasoningId) {
     state.reasoningId = `rs_${state.responseId}_${idx}`;
-    state.reasoningIndex = idx;
+    state.reasoningIndex = allocOutputIndex(state);
     
     emit("response.output_item.added", {
       type: "response.output_item.added",
@@ -198,6 +208,7 @@ function closeReasoning(state, emit) {
 }
 
 function emitTextContent(state, emit, idx, content) {
+  if (!state.msgOutputIndex) state.msgOutputIndex = {};
   if (!state.msgItemAdded[idx]) {
     // Close any still-open reasoning item before opening the message item —
     // strict streaming Responses clients reject a message item that opens
@@ -205,22 +216,24 @@ function emitTextContent(state, emit, idx, content) {
     closeReasoning(state, emit);
 
     state.msgItemAdded[idx] = true;
+    state.msgOutputIndex[idx] = allocOutputIndex(state);
     const msgId = `msg_${state.responseId}_${idx}`;
 
     emit("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: idx,
+      output_index: state.msgOutputIndex[idx],
       item: { id: msgId, type: "message", content: [], role: "assistant" }
     });
   }
+  const outIdx = state.msgOutputIndex[idx];
 
   if (!state.msgContentAdded[idx]) {
     state.msgContentAdded[idx] = true;
-    
+
     emit("response.content_part.added", {
       type: "response.content_part.added",
       item_id: `msg_${state.responseId}_${idx}`,
-      output_index: idx,
+      output_index: outIdx,
       content_index: 0,
       part: { type: "output_text", annotations: [], logprobs: [], text: "" }
     });
@@ -229,7 +242,7 @@ function emitTextContent(state, emit, idx, content) {
   emit("response.output_text.delta", {
     type: "response.output_text.delta",
     item_id: `msg_${state.responseId}_${idx}`,
-    output_index: idx,
+    output_index: outIdx,
     content_index: 0,
     delta: content,
     logprobs: []
@@ -244,11 +257,14 @@ function closeMessage(state, emit, idx) {
     state.msgItemDone[idx] = true;
     const fullText = state.msgTextBuf[idx] || "";
     const msgId = `msg_${state.responseId}_${idx}`;
+    // Use the output_index allocated when the item was opened — not parseInt(idx),
+    // which is the chat choice index and collides with reasoning/tool items.
+    const outIdx = state.msgOutputIndex?.[idx] ?? parseInt(idx);
 
     emit("response.output_text.done", {
       type: "response.output_text.done",
       item_id: msgId,
-      output_index: parseInt(idx),
+      output_index: outIdx,
       content_index: 0,
       text: fullText,
       logprobs: []
@@ -257,14 +273,14 @@ function closeMessage(state, emit, idx) {
     emit("response.content_part.done", {
       type: "response.content_part.done",
       item_id: msgId,
-      output_index: parseInt(idx),
+      output_index: outIdx,
       content_index: 0,
       part: { type: "output_text", annotations: [], logprobs: [], text: fullText }
     });
 
     emit("response.output_item.done", {
       type: "response.output_item.done",
-      output_index: parseInt(idx),
+      output_index: outIdx,
       item: {
         id: msgId,
         type: "message",
@@ -282,12 +298,14 @@ function emitToolCall(state, emit, tc) {
 
   if (funcName) state.funcNames[tcIdx] = funcName;
 
+  if (!state.funcOutputIndex) state.funcOutputIndex = {};
   if (!state.funcCallIds[tcIdx] && newCallId) {
     state.funcCallIds[tcIdx] = newCallId;
-    
+    state.funcOutputIndex[tcIdx] = allocOutputIndex(state);
+
     emit("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: tcIdx,
+      output_index: state.funcOutputIndex[tcIdx],
       item: {
         id: `fc_${newCallId}`,
         type: "function_call",
@@ -306,7 +324,7 @@ function emitToolCall(state, emit, tc) {
       emit("response.function_call_arguments.delta", {
         type: "response.function_call_arguments.delta",
         item_id: `fc_${refCallId}`,
-        output_index: tcIdx,
+        output_index: state.funcOutputIndex[tcIdx] ?? tcIdx,
         delta: tc.function.arguments
       });
     }
@@ -318,17 +336,18 @@ function closeToolCall(state, emit, idx) {
   const callId = state.funcCallIds[idx];
   if (callId && !state.funcItemDone[idx]) {
     const args = state.funcArgsBuf[idx] || "{}";
-    
+    const outIdx = state.funcOutputIndex?.[idx] ?? parseInt(idx);
+
     emit("response.function_call_arguments.done", {
       type: "response.function_call_arguments.done",
       item_id: `fc_${callId}`,
-      output_index: parseInt(idx),
+      output_index: outIdx,
       arguments: args
     });
 
     emit("response.output_item.done", {
       type: "response.output_item.done",
-      output_index: parseInt(idx),
+      output_index: outIdx,
       item: {
         id: `fc_${callId}`,
         type: "function_call",

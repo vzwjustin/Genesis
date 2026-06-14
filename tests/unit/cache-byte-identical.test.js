@@ -224,6 +224,8 @@ describe("handleChatCore — end-to-end protected region survival", () => {
     vi.doMock("open-sse/config/providerModels.js", () => ({
       getModelTargetFormat: () => null,
       getModelStrip: () => [],
+      getModelUpstreamId: (_alias, modelId) => modelId,
+      getModelRequestExtras: () => null,
       PROVIDER_ID_TO_ALIAS: {},
     }));
     vi.doMock("open-sse/utils/error.js", () => ({
@@ -272,6 +274,7 @@ describe("handleChatCore — end-to-end protected region survival", () => {
     vi.doMock("open-sse/utils/clientDetector.js", () => ({
       detectClientTool: () => "claude",
       isNativePassthrough: () => true,
+      shouldUseNativePassthrough: () => true,
     }));
 
     let dispatchedBody = null;
@@ -367,6 +370,8 @@ describe("handleChatCore — end-to-end protected region survival", () => {
     vi.doMock("open-sse/config/providerModels.js", () => ({
       getModelTargetFormat: () => null,
       getModelStrip: () => [],
+      getModelUpstreamId: (_alias, modelId) => modelId,
+      getModelRequestExtras: () => null,
       PROVIDER_ID_TO_ALIAS: {},
     }));
     vi.doMock("open-sse/utils/error.js", () => ({
@@ -409,6 +414,7 @@ describe("handleChatCore — end-to-end protected region survival", () => {
     vi.doMock("open-sse/utils/clientDetector.js", () => ({
       detectClientTool: () => "claude",
       isNativePassthrough: () => true,
+      shouldUseNativePassthrough: () => true,
     }));
 
     let dispatchedBody = null;
