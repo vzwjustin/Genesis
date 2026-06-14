@@ -49,6 +49,9 @@ data/
 logs/*
 source/*
 .cursor/*
+!.cursor/rules/
+.cursor/rules/*
+!.cursor/rules/*.mdc
 docs/*
 !docs/ARCHITECTURE.md
 test/*

@@ -22,26 +22,26 @@ This file contains hard operational notes and behavioral decisions. Agents worki
 
 These are not optional. Most confusing bugs in this fork come from editing the correct source but running stale compiled output or a globally installed standalone copy.
 
-### 1. Clear stale webpack cache before rebuilding
+### 1. ALWAYS clear webpack cache before rebuilding the CLI
 
-When editing source in `open-sse/` or anywhere outside `src/`, the Next.js webpack cache can retain old compiled code even after a rebuild.
+The Next.js webpack cache can retain old compiled code even after a rebuild. This
+is the #1 source of "I fixed it but behavior didn't change" bugs in this fork.
 
-Before rebuilding the CLI, clear the cache:
+**Non-negotiable: always clear the cache before every CLI rebuild.** Do not treat
+this as optional or as a "only when editing open-sse/" step — always do it.
 
-    rm -rf .next-cli-build/cache/webpack
+Canonical rebuild (use this exact form):
 
-Safer option:
+    rm -rf .next-cli-build && cd cli && npm run build
 
-    rm -rf .next-cli-build
+Minimal cache-only clear (if you must keep the rest of the build dir):
 
-Then rebuild:
-
-    cd cli && npm run build
+    rm -rf .next-cli-build/cache/webpack && cd cli && npm run build
 
 Important:
 
-- Do not trust a rebuild unless the cache was cleared.
-- Especially clear cache after editing files under `open-sse/`.
+- Do not trust a rebuild unless the cache was cleared first.
+- Always clear — especially after editing files under `open-sse/`.
 - If behavior does not match source, assume stale compiled output first.
 
 ---
@@ -52,16 +52,22 @@ Do not rely on `npm install -g` from the built tarball during active development
 
 A global install from tarball creates a standalone copy. After that, edits in the fork are invisible to the running server.
 
-The global install should point directly to the fork:
+The global install should point directly to the fork. Run from the repo root so
+the paths resolve correctly regardless of machine (Linux PC / macOS) or where the
+fork is checked out:
 
-    rm -rf /opt/homebrew/lib/node_modules/9router
-    ln -s /Users/justinadams/9router-fork/cli /opt/homebrew/lib/node_modules/9router
+    rm -rf "$(npm root -g)/9router"
+    ln -s "$(pwd)/cli" "$(npm root -g)/9router"
+
+`$(npm root -g)` resolves the global module dir per machine (e.g.
+`/opt/homebrew/lib/node_modules` on macOS Homebrew, `/usr/lib/node_modules` or an
+nvm path on Linux). `$(pwd)/cli` picks up the actual checkout location.
 
 Before debugging runtime behavior, verify the global package is a symlink to the fork.
 
-Expected path:
+Expected path (macOS Homebrew shown; the prefix differs on Linux):
 
-    /opt/homebrew/lib/node_modules/9router -> /Users/justinadams/9router-fork/cli
+    /opt/homebrew/lib/node_modules/9router -> <your-fork>/cli
 
 ---
 
@@ -779,8 +785,8 @@ Run in tmux for long-lived sessions. Do not use the `9router` CLI wrapper in hea
 
 ### Tests and lint
 
-- Unit/integration tests (no live server): `cd tests && npm test` — 1300+ tests, mostly mocked
-- ESLint (no npm script): `npx eslint .` from repo root — repo has pre-existing warnings/errors
+- Unit/integration tests (no live server): `npm test` from repo root (`vitest run --config tests/vitest.config.js`) — 1300+ tests, mostly mocked. `cd tests && npm test` also works but skips the shared config.
+- Lint backend: `npm run lint:backend` from repo root (eslint over `src/lib`, `cli`, `open-sse`). Full repo: `npx eslint .` — repo has pre-existing warnings/errors.
 - Opt-in live E2E: `RUN_E2E=1` with server on port 20128 (see `tests/README.md`)
 
 ### Hello-world verification
