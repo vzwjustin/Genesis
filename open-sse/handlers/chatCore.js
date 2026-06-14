@@ -18,7 +18,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { cleanAnthropicToolDefinitions, fixToolUseOrdering } from "../translator/helpers/claudeHelper.js";
+import { cleanAnthropicToolDefinitions, fixToolUseOrdering, usesAnthropicToolCleaning } from "../translator/helpers/claudeHelper.js";
 import { applyCloaking } from "../utils/claudeCloaking.js";
 import { deriveSessionId } from "../utils/sessionManager.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -251,10 +251,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  const isClaudeFormatProvider = provider === "claude" || provider?.startsWith("anthropic-compatible");
+  const usesAnthropicTools = usesAnthropicToolCleaning(provider, clientHasCacheBreakpoints);
 
   // Tool cleaning: protected prefix stays byte-identical; uncached tail still gets compatibility fixes.
-  if (isClaudeFormatProvider && Array.isArray(translatedBody.tools)) {
+  if (usesAnthropicTools && Array.isArray(translatedBody.tools)) {
     translatedBody.tools = cleanAnthropicToolDefinitions(translatedBody.tools, provider, {
       preserveClientCache: clientHasCacheBreakpoints,
     });
@@ -265,7 +265,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   // Passthrough: fix tool_use/tool_result ordering only when tools are present (compatibility fix).
-  if (passthrough && isClaudeFormatProvider && Array.isArray(translatedBody.messages)) {
+  if (passthrough && usesAnthropicTools && Array.isArray(translatedBody.messages)) {
     const needsToolOrderingFix = translatedBody.messages.some(
       (m) => Array.isArray(m.content)
         && m.content.some((b) => b.type === "tool_use" || b.type === "tool_result")

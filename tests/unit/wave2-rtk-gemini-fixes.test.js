@@ -39,25 +39,40 @@ describe("compressGeminiContents cache boundary integrity", () => {
     expect(resultText.length).toBeLessThan(compressible.length);
   });
 
-  it("skips gemini compression entirely when client cache_control markers are present", () => {
+  it("skips compressing cache-protected gemini contents but compresses uncached tail", () => {
     const payload = makeLongDiff();
     const body = {
-      contents: [{
-        role: "user",
-        cache_control: { type: "ephemeral" },
-        parts: [{
-          functionResponse: {
-            id: "call_protected",
-            name: "read_file",
-            response: { result: payload },
-          },
-        }],
-      }],
+      contents: [
+        {
+          role: "user",
+          cache_control: { type: "ephemeral" },
+          parts: [{
+            functionResponse: {
+              id: "call_protected",
+              name: "read_file",
+              response: { result: "cached payload" },
+            },
+          }],
+        },
+        {
+          role: "user",
+          parts: [{
+            functionResponse: {
+              id: "call_tail",
+              name: "read_file",
+              response: { result: payload },
+            },
+          }],
+        },
+      ],
     };
 
     const stats = compressMessages(body, true);
-    expect(stats).toBeNull();
-    expect(body.contents[0].parts[0].functionResponse.response.result).toBe(payload);
+    expect(stats).not.toBeNull();
+    expect(body.contents[0].parts[0].functionResponse.response.result).toBe("cached payload");
+    const tail = body.contents[1].parts[0].functionResponse.response.result;
+    const tailText = typeof tail === "string" ? tail : JSON.stringify(tail);
+    expect(tailText.length).toBeLessThan(payload.length);
   });
 });
 

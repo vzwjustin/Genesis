@@ -18,6 +18,21 @@ import {
 export { stripProviderModelPrefix, normalizeAnthropicBuiltinToolModel } from "./anthropicToolModel.js";
 export { hasAnthropicCacheBreakpoints };
 
+/** First-party Anthropic endpoints keep all built-in tools (uncached tail still normalized). */
+export function isAnthropicBuiltinToolPassthroughProvider(provider) {
+  return provider === "claude" || provider?.startsWith("anthropic-compatible");
+}
+
+/** Claude /v1/messages API providers plus OpenAI/Gemini when body carries cache_control. */
+export function usesAnthropicToolCleaning(provider, clientHasCacheBreakpoints = false) {
+  if (isAnthropicBuiltinToolPassthroughProvider(provider)) return true;
+  if (new Set(["minimax", "minimax-cn", "glm", "kimi", "kimi-coding"]).has(provider)) return true;
+  if (clientHasCacheBreakpoints && ["openai", "gemini", "gemini-cli", "antigravity"].includes(provider)) {
+    return true;
+  }
+  return false;
+}
+
 export function hasValidContent(msg) {
   if (typeof msg.content === "string" && msg.content.trim()) return true;
   if (Array.isArray(msg.content)) {
@@ -40,7 +55,7 @@ export function hasValidContent(msg) {
 export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientCache = false } = {}) {
   if (!tools || !Array.isArray(tools)) return tools;
 
-  const isAnthropicEndpoint = provider === "claude" || provider?.startsWith("anthropic-compatible");
+  const isAnthropicEndpoint = isAnthropicBuiltinToolPassthroughProvider(provider);
   const cacheToolFloor = preserveClientCache ? findLastCachedIndexInArray(tools) : -1;
 
   const isCacheProtectedToolIndex = (index) => {
