@@ -156,7 +156,12 @@ export async function getRequestDetails(filter = {}) {
     const d = new Date(filter.endDate);
     if (Number.isNaN(d.getTime())) throw new Error("Invalid endDate");
     conds.push("timestamp <= ?");
-    params.push(d.toISOString());
+    const ev = filter.endDate;
+    params.push(
+      typeof ev === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ev.trim())
+        ? new Date(`${ev.trim()}T23:59:59.999Z`).toISOString()
+        : d.toISOString()
+    );
   }
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";

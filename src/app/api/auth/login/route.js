@@ -30,7 +30,12 @@ export async function POST(request) {
       );
     }
 
-    const { password } = await request.json();
+    let password;
+    try {
+      ({ password } = await request.json());
+    } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
     const settings = await getSettingsSafe();
 
     // Block login via tunnel/tailscale if dashboard access is disabled

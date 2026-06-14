@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
@@ -14,17 +14,21 @@ export default function PricingSettingsPage() {
   const [currentPricing, setCurrentPricing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const isMountedRef = useRef(true);
 
   const loadPricing = async () => {
     setLoading(true);
     setLoadError(null);
     try {
       const response = await fetch("/api/pricing");
+      if (!isMountedRef.current) return;
       if (response.ok) {
         const data = await response.json();
+        if (!isMountedRef.current) return;
         setCurrentPricing(data);
       } else {
         const error = await response.json().catch(() => ({}));
+        if (!isMountedRef.current) return;
         const message = error.error || "Failed to load pricing";
         setLoadError(message);
         setCurrentPricing(null);
@@ -32,18 +36,22 @@ export default function PricingSettingsPage() {
       }
     } catch (error) {
       console.error("Failed to load pricing:", error);
+      if (!isMountedRef.current) return;
       const message = error?.message || "Failed to load pricing";
       setLoadError(message);
       setCurrentPricing(null);
       notify.error(message);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPricing();
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePricingUpdated = () => {

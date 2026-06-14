@@ -293,7 +293,8 @@ export async function saveRequestUsage(entry) {
 
       // Atomic counter increment in same transaction
       const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
-      const next = (cur ? parseInt(cur.value, 10) : 0) + 1;
+      const prev = cur ? parseInt(cur.value, 10) : 0;
+      const next = (Number.isFinite(prev) ? prev : 0) + 1;
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
     });
 
@@ -308,6 +309,13 @@ function isValidDateInput(value) {
   if (value == null || value === "") return false;
   const d = new Date(value);
   return !Number.isNaN(d.getTime());
+}
+
+function toEndOfDayIso(value) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return new Date(`${value.trim()}T23:59:59.999Z`).toISOString();
+  }
+  return new Date(value).toISOString();
 }
 
 export async function getUsageHistory(filter = {}) {
@@ -329,7 +337,7 @@ export async function getUsageHistory(filter = {}) {
       throw new Error("Invalid endDate");
     }
     conds.push("timestamp <= ?");
-    params.push(new Date(filter.endDate).toISOString());
+    params.push(toEndOfDayIso(filter.endDate));
   }
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";

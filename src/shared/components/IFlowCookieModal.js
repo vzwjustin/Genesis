@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 
@@ -13,6 +13,13 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const successTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   const handleSubmit = async () => {
     if (!cookie.trim()) {
@@ -37,7 +44,7 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
       }
 
       setSuccess(true);
-      setTimeout(() => {
+      successTimerRef.current = setTimeout(() => {
         onSuccess?.();
         handleClose();
       }, 1500);

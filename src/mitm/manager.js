@@ -480,7 +480,10 @@ async function scheduleMitmRestart(fallbackApiKey, isChainedRetry = false) {
   const delay = MITM_RESTART_DELAYS_MS[Math.min(attempt, MITM_RESTART_DELAYS_MS.length - 1)];
 
   log(`Restarting in ${delay / 1000}s... (${mitmRestartCount}/${MITM_MAX_RESTARTS})`);
-  await new Promise((r) => setTimeout(r, delay));
+  await new Promise((r) => {
+    const t = setTimeout(r, delay);
+    if (typeof t.unref === "function") t.unref();
+  });
 
   try {
     const settings = _getSettings ? await _getSettings() : null;

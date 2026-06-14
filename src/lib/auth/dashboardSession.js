@@ -10,9 +10,13 @@ function loadJwtSecret() {
   try {
     return fs.readFileSync(file, "utf8").trim();
   } catch {}
-  fs.mkdirSync(DATA_DIR, { recursive: true });
   const generated = crypto.randomBytes(32).toString("hex");
-  fs.writeFileSync(file, generated, { mode: 0o600 });
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(file, generated, { mode: 0o600 });
+  } catch (e) {
+    console.error("Failed to persist jwt-secret, using in-memory secret:", e && e.message ? e.message : e);
+  }
   return generated;
 }
 

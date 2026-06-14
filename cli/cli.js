@@ -153,8 +153,8 @@ function getAppDataDir() {
 function killByPidFile(pidFile) {
   try {
     if (!fs.existsSync(pidFile)) return;
-    const pid = parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
-    if (!pid) return;
+    const pid = Number.parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
+    if (!Number.isInteger(pid) || pid <= 0) return;
     try {
       if (process.platform === "win32") {
         execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 3000 });
@@ -321,8 +321,8 @@ function killProxyByPidFile() {
   try {
     const pidFile = path.join(getAppDataDir(), "mitm", ".mitm.pid");
     if (!fs.existsSync(pidFile)) return;
-    const pid = parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
-    if (!pid) return;
+    const pid = Number.parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
+    if (!Number.isInteger(pid) || pid <= 0) return;
 
     if (process.platform === "win32") {
       // Graceful first (lets server cleanup hosts), then force
@@ -522,13 +522,16 @@ if (!fs.existsSync(serverPath)) {
 }
 
 // Check for updates FIRST, then start server
-checkForUpdate().then((latestVersion) => {
-  killAllAppProcesses(port).then(() => {
-    return killProcessOnPort(port);
-  }).then(() => {
-    startServer(latestVersion);
+checkForUpdate()
+  .then((latestVersion) =>
+    killAllAppProcesses(port)
+      .then(() => killProcessOnPort(port))
+      .then(() => startServer(latestVersion))
+  )
+  .catch((err) => {
+    console.error("Startup failed:", err && err.message ? err.message : err);
+    process.exit(1);
   });
-});
 
 // Show interface selection menu
 async function showInterfaceMenu(latestVersion) {

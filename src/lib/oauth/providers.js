@@ -810,14 +810,14 @@ const PROVIDERS = {
         }),
       });
 
-      // Handle response properly - if not ok, try to get error as text first
+      // Handle response properly - read body once, then try to parse as JSON
       let data;
+      const rawBody = await response.text();
       try {
-        data = await response.json();
+        data = JSON.parse(rawBody);
       } catch (e) {
-        // If response is not JSON, get as text
-        const text = await response.text();
-        data = { error: "invalid_response", error_description: text };
+        // If response is not JSON, use raw text
+        data = { error: "invalid_response", error_description: rawBody };
       }
 
       return {
@@ -956,11 +956,11 @@ const PROVIDERS = {
       });
 
       let data;
+      const rawBody = await response.text();
       try {
-        data = await response.json();
+        data = JSON.parse(rawBody);
       } catch (e) {
-        const text = await response.text();
-        data = { error: "invalid_response", error_description: text };
+        data = { error: "invalid_response", error_description: rawBody };
       }
 
       // AWS SSO OIDC returns camelCase
