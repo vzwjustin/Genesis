@@ -71,7 +71,7 @@ function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl, e
         proxyStats={proxyStats}
         kind={kind}
         dashboardUrl={dashboardUrl}
-        emptyHint={emptyHint || "No activity yet — send chat traffic through 9router"}
+        emptyHint={emptyHint || "No activity yet — send chat traffic through genesis"}
       />
     </div>
   );
@@ -384,7 +384,7 @@ export default function CachingPageClient() {
               dashboardUrl={headroomDashboardUrl}
               emptyHint={
                 headroomStatus?.installed && headroomStatus?.reachable
-                  ? "No activity yet — send chat traffic through 9router"
+                  ? "No activity yet — send chat traffic through genesis"
                   : formatHeadroomSetupHint(headroomStatus)
               }
             />

@@ -2,12 +2,12 @@ import fs from "node:fs";
 import path from "path";
 import os from "os";
 
-const APP_NAME = "9router";
+const APP_NAME = "genesis";
 
 function defaultDir() {
   // During `next build` (static generation) never touch the real user runtime
   // DB — route to a throwaway temp dir so packaging/CI cannot migrate or
-  // corrupt ~/.9router. An explicit DATA_DIR env still overrides this.
+  // corrupt ~/.genesis. An explicit DATA_DIR env still overrides this.
   if (process.env.NEXT_PHASE === "phase-production-build") {
     return path.join(os.tmpdir(), `${APP_NAME}-build`);
   }

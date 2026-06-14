@@ -13,7 +13,7 @@ export function formatHeadroomSetupHint(status) {
   }
 
   if (!status.reachable) {
-    return 'Local proxy not reachable — install: pipx install "headroom-ai[proxy]" (9router can auto-start it)';
+    return 'Local proxy not reachable — install: pipx install "headroom-ai[proxy]" (genesis can auto-start it)';
   }
 
   return `Proxy ready at ${status.proxyUrl} — compresses post-cache chat tails (skips tool-heavy agent loops)`;

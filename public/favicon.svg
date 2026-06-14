@@ -1,11 +1,16 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="32" height="32" rx="6" fill="url(#gradient)"/>
-  <text x="16" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" fill="white" text-anchor="middle">9</text>
+  <rect width="32" height="32" rx="8" fill="url(#genesis-bg)"/>
+  <path d="M10 8.5C10 8.5 14.5 8 17 12.5C19 16 16.5 19.5 13 20.5C16 21 19.5 23 21 26.5" stroke="url(#genesis-stroke)" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  <circle cx="22.5" cy="9.5" r="1.4" fill="#E8D5A3"/>
   <defs>
-    <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#f97815"/>
-      <stop offset="1" stop-color="#c2590a"/>
+    <linearGradient id="genesis-bg" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E1838"/>
+      <stop offset="1" stop-color="#0B0916"/>
+    </linearGradient>
+    <linearGradient id="genesis-stroke" x1="10" y1="8" x2="22" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8D5A3"/>
+      <stop offset="0.55" stop-color="#C9A84C"/>
+      <stop offset="1" stop-color="#7C6BF0"/>
     </linearGradient>
   </defs>
 </svg>
-

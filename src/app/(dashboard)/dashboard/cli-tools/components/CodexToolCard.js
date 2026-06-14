@@ -99,10 +99,10 @@ useEffect(() => {
     setApplying(true);
     setMessage(null);
     try {
-      // Use sk_9router for localhost if no key, otherwise use selected key
+      // Use sk_genesis for localhost if no key, otherwise use selected key
       const keyToUse = (selectedApiKey && selectedApiKey.trim())
         ? selectedApiKey
-        : (!cloudEnabled ? "sk_9router" : selectedApiKey);
+        : (!cloudEnabled ? "sk_genesis" : selectedApiKey);
 
       const res = await fetch("/api/cli-tools/codex-settings", {
         method: "POST",
@@ -190,16 +190,16 @@ useEffect(() => {
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_genesis" : "<API_KEY_FROM_DASHBOARD>");
 
     const effectiveSubagentModel = subagentModel || selectedModel;
 
-    const configContent = `# 9Router Configuration for Codex CLI
+    const configContent = `# Genesis Configuration for Codex CLI
 model = "${selectedModel}"
-model_provider = "9router"
+model_provider = "genesis"
 
-[model_providers.9router]
-name = "9Router"
+[model_providers.genesis]
+name = "Genesis"
 base_url = "${getEffectiveBaseUrl()}"
 wire_api = "responses"
 

@@ -8,7 +8,7 @@ import { isOidcConfigured } from "@/lib/auth/oidc";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
 
-const RESET_HINT = "Forgot password? Reset to default via 9Router CLI → Settings → Reset Password to Default.";
+const RESET_HINT = "Forgot password? Reset to default via Genesis CLI → Settings → Reset Password to Default.";
 
 // Constant-time string compare. timingSafeEqual requires equal-length buffers
 // and throws otherwise, which itself leaks length — hash both sides to a fixed

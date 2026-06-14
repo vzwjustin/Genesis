@@ -42,7 +42,7 @@ export default function OpenClawToolCard({
 
   const getConfigStatus = () => {
     if (!openclawStatus?.installed) return null;
-    const currentProvider = openclawStatus.settings?.models?.providers?.["9router"];
+    const currentProvider = openclawStatus.settings?.models?.providers?.["genesis"];
     if (!currentProvider) return "not_configured";
     return matchKnownEndpoint(currentProvider.baseUrl, { tunnelPublicUrl, tailscaleUrl }) ? "configured" : "other";
   };
@@ -88,11 +88,11 @@ useEffect(() => {
   useEffect(() => {
     if (openclawStatus?.installed && !hasInitializedModel.current) {
       hasInitializedModel.current = true;
-      const provider = openclawStatus.settings?.models?.providers?.["9router"];
+      const provider = openclawStatus.settings?.models?.providers?.["genesis"];
       if (provider) {
         const primaryModel = openclawStatus.settings?.agents?.defaults?.model?.primary;
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (primaryModel) setSelectedModel(primaryModel.replace("9router/", ""));
+        if (primaryModel) setSelectedModel(primaryModel.replace("genesis/", ""));
         if (provider.apiKey && apiKeys?.some(k => k.key === provider.apiKey)) {
           queueMicrotask(() => setSelectedApiKey(provider.apiKey));
         }
@@ -133,7 +133,7 @@ useEffect(() => {
     try {
       const keyToUse = selectedApiKey?.trim()
         || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_genesis" : null);
 
       const res = await fetch("/api/cli-tools/openclaw-settings", {
         method: "POST",
@@ -193,19 +193,19 @@ useEffect(() => {
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_genesis" : "<API_KEY_FROM_DASHBOARD>");
 
     const settingsContent = {
       agents: {
         defaults: {
           model: {
-            primary: `9router/${selectedModel || "provider/model-id"}`,
+            primary: `genesis/${selectedModel || "provider/model-id"}`,
           },
         },
       },
       models: {
         providers: {
-          "9router": {
+          "genesis": {
             baseUrl: getEffectiveBaseUrl(),
             apiKey: keyToUse,
             api: "openai-completions",
@@ -283,12 +283,12 @@ useEffect(() => {
                 </div>
 
                 {/* Current configured */}
-                {openclawStatus?.settings?.models?.providers?.["9router"]?.baseUrl && (
+                {openclawStatus?.settings?.models?.providers?.["genesis"]?.baseUrl && (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
-                      {openclawStatus.settings.models.providers["9router"].baseUrl}
+                      {openclawStatus.settings.models.providers["genesis"].baseUrl}
                     </span>
                   </div>
                 )}
@@ -342,7 +342,7 @@ useEffect(() => {
                 <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!openclawStatus?.has9Router} loading={restoring}>
+                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!openclawStatus?.hasGenesis} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>

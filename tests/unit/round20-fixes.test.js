@@ -26,7 +26,7 @@ describe("fetchGitHubReleases caching", () => {
   it("githubReleases.js implements TTL cache and stale fallback", () => {
     const src = readFileSync(join(root, "../../src/lib/githubReleases.js"), "utf8");
     expect(src).toContain("CACHE_TTL_MS");
-    expect(src).toContain("__9routerGitHubReleasesCache");
+    expect(src).toContain("__genesisGitHubReleasesCache");
     expect(src).toContain("cached: true");
     expect(src).toContain("stale: true");
     expect(src).toContain("forceRefresh");

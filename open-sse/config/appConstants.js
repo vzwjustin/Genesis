@@ -68,8 +68,8 @@ export const CLIENT_METADATA = {
 // Internal anti-loop header
 export const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
 
-// MITM proxy translated Cursor proto → OpenAI JSON before 9router (not native passthrough)
-export const MITM_PROXY_HEADER = { name: "x-9router-mitm-proxy", value: "1" };
+// MITM proxy translated Cursor proto → OpenAI JSON before genesis (not native passthrough)
+export const MITM_PROXY_HEADER = { name: "x-genesis-mitm-proxy", value: "1" };
 
 // Suffix added to client tools when forwarding to Antigravity provider (anti-ban cloaking)
 export const AG_TOOL_SUFFIX = "_ide";
@@ -197,7 +197,7 @@ export const OAUTH_ENDPOINTS = {
 // Generate Kimi OAuth custom headers
 export function buildKimiHeaders() {
   return {
-    "X-Msh-Platform": "9router",
+    "X-Msh-Platform": "genesis",
     "X-Msh-Version": "2.1.2",
     "X-Msh-Device-Model": typeof process !== "undefined" ? `${process.platform} ${process.arch}` : "unknown",
     "X-Msh-Device-Id": `kimi-${Date.now()}`

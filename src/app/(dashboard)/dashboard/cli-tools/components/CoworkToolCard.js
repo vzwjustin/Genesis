@@ -113,7 +113,7 @@ useEffect(() => {
     if (!status?.installed) return null;
     const url = status?.cowork?.baseUrl;
     if (!url) return "not_configured";
-    return status.has9Router ? "configured" : "other";
+    return status.hasGenesis ? "configured" : "other";
   };
 
   const configStatus = getConfigStatus();
@@ -131,7 +131,7 @@ useEffect(() => {
     try {
       const keyToUse = selectedApiKey?.trim()
         || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_genesis" : null);
 
       const res = await fetch(ENDPOINT, {
         method: "POST",
@@ -227,7 +227,7 @@ useEffect(() => {
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_genesis" : "<API_KEY_FROM_DASHBOARD>");
 
     const modelsToShow = selectedModels.length > 0 ? selectedModels : ["provider/model-id"];
     const cfg = {
@@ -488,7 +488,7 @@ useEffect(() => {
                 <Button variant="primary" size="sm" onClick={handleApply} disabled={selectedModels.length === 0} loading={applying} className="w-full sm:w-auto">
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleReset} disabled={!status.has9Router} loading={restoring} className="w-full sm:w-auto">
+                <Button variant="outline" size="sm" onClick={handleReset} disabled={!status.hasGenesis} loading={restoring} className="w-full sm:w-auto">
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)} className="w-full sm:w-auto">

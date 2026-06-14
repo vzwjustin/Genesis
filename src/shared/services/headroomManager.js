@@ -12,7 +12,7 @@ let headroomProcess = null;
 let headroomBinary = null;
 let startInProgress = false;
 
-/** stderr is visible when 9router runs without --log (stdout is discarded). */
+/** stderr is visible when genesis runs without --log (stdout is discarded). */
 function logHeadroom(message) {
   console.warn(message);
 }

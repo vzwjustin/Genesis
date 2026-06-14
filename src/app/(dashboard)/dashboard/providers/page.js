@@ -281,7 +281,7 @@ export default function ProvidersPage() {
         <EmptyState
           icon="dns"
           title="No providers connected yet"
-          description="Sign in with an OAuth account or paste an API key to start sending AI requests through 9router."
+          description="Sign in with an OAuth account or paste an API key to start sending AI requests through genesis."
           action={{ label: "Browse providers below", href: "#oauth-providers" }}
         />
       )}
@@ -1097,7 +1097,7 @@ function AddAnthropicCompatibleModal({ isOpen, onClose, onCreated }) {
             setFormData({ ...formData, baseUrl: e.target.value })
           }
           placeholder="https://api.anthropic.com/v1"
-          hint="Enter the base URL of your Anthropic-compatible API (usually ends in /v1). 9router adds /messages automatically, so don't include it here."
+          hint="Enter the base URL of your Anthropic-compatible API (usually ends in /v1). genesis adds /messages automatically, so don't include it here."
         />
         <Input
           label="API Key (for Check)"

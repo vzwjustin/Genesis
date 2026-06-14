@@ -67,12 +67,12 @@ export async function GET(request) {
     }
 
     const settings = await readSettings();
-    const has9Router = !!(settings?.env?.ANTHROPIC_BASE_URL);
+    const hasGenesis = !!(settings?.env?.ANTHROPIC_BASE_URL);
 
     return NextResponse.json({
       installed: true,
       settings: settings,
-      has9Router: has9Router,
+      hasGenesis: hasGenesis,
       settingsPath: getClaudeSettingsPath(),
     });
   } catch (error) {

@@ -149,7 +149,7 @@ export default function CLIToolsPageClient({ machineId }) {
             <h2 className="text-sm font-semibold text-text-main">MITM Tools</h2>
           </div>
           <p className="text-xs text-text-muted">
-            IDE tools that need traffic interception (MITM) to route their requests through 9router.
+            IDE tools that need traffic interception (MITM) to route their requests through genesis.
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">

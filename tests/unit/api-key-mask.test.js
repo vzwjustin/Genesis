@@ -14,7 +14,7 @@ describe("maskApiKeyForDisplay", () => {
   });
 
   it("masks localhost sentinel without revealing full value", () => {
-    expect(maskApiKeyForDisplay("sk_9router")).toBe("sk_9…");
-    expect(maskApiKeyForDisplay("sk_9router")).not.toBe("sk_9router");
+    expect(maskApiKeyForDisplay("sk_genesis")).toBe("sk_9…");
+    expect(maskApiKeyForDisplay("sk_genesis")).not.toBe("sk_genesis");
   });
 });

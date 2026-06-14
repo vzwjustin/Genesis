@@ -10,10 +10,10 @@ describe("redactSensitiveText", () => {
     expect(out).toContain("sk-[redacted]");
   });
 
-  it("redacts sk_9router localhost sentinel", () => {
-    const input = "Bearer sk_9router failed with sk_9router in body";
+  it("redacts sk_genesis localhost sentinel", () => {
+    const input = "Bearer sk_genesis failed with sk_genesis in body";
     const out = redactSensitiveText(input);
-    expect(out).not.toContain("sk_9router");
+    expect(out).not.toContain("sk_genesis");
     expect(out).toContain("sk_[redacted]");
   });
 

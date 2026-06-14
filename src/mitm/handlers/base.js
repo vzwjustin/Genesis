@@ -6,7 +6,7 @@ const ROUTER_BASE = String(process.env.MITM_ROUTER_BASE || DEFAULT_LOCAL_ROUTER)
   .replace(/\/+$/, "") || DEFAULT_LOCAL_ROUTER;
 const API_KEY = process.env.ROUTER_API_KEY;
 
-// Headers that must not be forwarded to 9Router
+// Headers that must not be forwarded to Genesis
 const STRIP_HEADERS = new Set([
   "host", "content-length", "connection", "transfer-encoding",
   "content-type", "authorization",
@@ -14,10 +14,10 @@ const STRIP_HEADERS = new Set([
   "connect-protocol-version", "x-cursor-client-version",
 ]);
 
-const MITM_PROXY_HEADER = { name: "x-9router-mitm-proxy", value: "1" };
+const MITM_PROXY_HEADER = { name: "x-genesis-mitm-proxy", value: "1" };
 
 /**
- * Send body to 9Router at the given path and return the fetch Response object.
+ * Send body to Genesis at the given path and return the fetch Response object.
  * Optionally forwards client headers (stripped of hop-by-hop / overridden keys).
  */
 async function fetchRouter(openaiBody, path = "/v1/chat/completions", clientHeaders = {}) {

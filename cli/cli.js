@@ -50,7 +50,7 @@ const args = process.argv.slice(2);
 // Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
 try { ensureTrayRuntime({ silent: true }); } catch {}
 
-// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
+// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.genesis/runtime
 // so the server can resolve them via NODE_PATH. Run after tray install so
 // systray2's npm install does not prune better-sqlite3 from the runtime dir.
 try { ensureSqliteRuntime({ silent: true }); } catch {}
@@ -61,9 +61,9 @@ const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
 const DEFAULT_PORT = 20128;
 const DEFAULT_HOST = "0.0.0.0";
-// Identifiers for killAllAppProcesses - only kill 9router specifically
+// Identifiers for killAllAppProcesses - only kill genesis specifically
 const PROCESS_IDENTIFIERS = [
-  '9router'  // Only package name - avoid killing other apps
+  'genesis'  // Only package name - avoid killing other apps
 ];
 
 // Parse arguments
@@ -123,7 +123,7 @@ Options:
 }
 
 // Dev/linked checkout guard: when running from a source tree (npm link / git
-// clone), the auto-update path would run `npm i -g 9router@latest` and replace
+// clone), the auto-update path would run `npm i -g genesis@latest` and replace
 // the symlinked fork with the published package — wiping local changes. The
 // published npm tarball ships no `.git`, so its presence one level up marks a
 // dev install. Force-skip updates there.
@@ -154,8 +154,8 @@ function compareVersions(a, b) {
 // Get app data dir (matches app/src/lib/dataDir.js convention)
 function getAppDataDir() {
   return process.platform === "win32"
-    ? path.join(process.env.APPDATA || "", "9router")
-    : path.join(os.homedir(), ".9router");
+    ? path.join(process.env.APPDATA || "", "genesis")
+    : path.join(os.homedir(), ".genesis");
 }
 
 // Kill PID from file (best-effort, removes file after)
@@ -212,7 +212,7 @@ function killCloudflaredByAppPort(appPort) {
   return pids;
 }
 
-// Kill all 9router processes
+// Kill all genesis processes
 function killAllAppProcesses(appPort) {
   return new Promise((resolve) => {
     try {
@@ -238,11 +238,11 @@ function killAllAppProcesses(appPort) {
           });
           const lines = output.split("\n").slice(1).filter(l => l.trim());
           lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing editors/grep/strace/cursor that just have "9router" in cmdline.
+            // Whitelist: real node process running genesis/cli.js, or next-server.
+            // Avoids killing editors/grep/strace/cursor that just have "genesis" in cmdline.
             const cmd = line.toLowerCase();
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router")))
+              (cmd.includes("node") && cmd.includes("genesis") && (cmd.includes("cli.js") || cmd.includes("\\genesis") || cmd.includes("/genesis")))
               || cmd.includes("next-server");
             if (isAppProcess) {
               const match = line.match(/^"(\d+)"/);
@@ -264,11 +264,11 @@ function killAllAppProcesses(appPort) {
           const lines = output.split('\n');
 
           lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing grep/strace/editors/cursor that incidentally match "9router".
+            // Whitelist: real node process running genesis/cli.js, or next-server.
+            // Avoids killing grep/strace/editors/cursor that incidentally match "genesis".
             const cmd = line.toLowerCase();
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router")))
+              (cmd.includes("node") && cmd.includes("genesis") && (cmd.includes("cli.js") || cmd.includes("/genesis")))
               || cmd.includes("next-server");
             if (isAppProcess) {
               const parts = line.trim().split(/\s+/);
@@ -356,12 +356,12 @@ function killProxyByPidFile() {
   } catch { }
 }
 
-// True when cmdline looks like our Node server (9router CLI or Next standalone)
+// True when cmdline looks like our Node server (genesis CLI or Next standalone)
 function isAppProcessCmdline(cmdline) {
   if (!cmdline) return false;
   const cmd = cmdline.toLowerCase();
   return (
-    (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router") || cmd.includes("\\9router")))
+    (cmd.includes("node") && cmd.includes("genesis") && (cmd.includes("cli.js") || cmd.includes("/genesis") || cmd.includes("\\genesis")))
     || cmd.includes("next-server")
   );
 }
@@ -380,7 +380,7 @@ function getProcessCommandline(pid) {
   }
 }
 
-// Kill any process on specific port (only if it looks like 9router/next-server)
+// Kill any process on specific port (only if it looks like genesis/next-server)
 function killProcessOnPort(port) {
   return new Promise((resolve) => {
     try {
@@ -597,8 +597,8 @@ const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 function disableMitmInStore() {
   const dataDir = process.env.DATA_DIR
     || (process.platform === "win32"
-      ? path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router")
-      : path.join(os.homedir(), ".9router"));
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "genesis")
+      : path.join(os.homedir(), ".genesis"));
   const sqlitePath = path.join(dataDir, "db", "data.sqlite");
 
   // Primary: SQLite settings table (current backend)
@@ -854,7 +854,7 @@ function startServer(latestVersion) {
             process.on("SIGHUP", () => {});
 
             console.log(`\n⏳ Switching to tray mode... (icon already visible in menu bar)`);
-            console.log(`🔔 9Router is running in tray (PID: ${process.pid})`);
+            console.log(`🔔 Genesis is running in tray (PID: ${process.pid})`);
             console.log(`   Server: http://${displayHost}:${port}`);
             console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
 
@@ -877,7 +877,7 @@ function startServer(latestVersion) {
           });
           bgProcess.unref();
 
-          console.log(`🔔 9Router is now running in background (PID: ${bgProcess.pid})`);
+          console.log(`🔔 Genesis is now running in background (PID: ${bgProcess.pid})`);
           console.log(`   Server: http://${displayHost}:${port}`);
           console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
 

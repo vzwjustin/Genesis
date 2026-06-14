@@ -369,20 +369,20 @@ describe("authenticateRequest (Task 18)", () => {
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
-  it("accepts sk_9router sentinel on loopback without DB lookup", async () => {
+  it("accepts sk_genesis sentinel on loopback without DB lookup", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeLoopbackRequest({ Authorization: "Bearer sk_9router" }),
+      makeLoopbackRequest({ Authorization: "Bearer sk_genesis" }),
       log
     );
     expect(result.ok).toBe(true);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("accepts sk_9router sentinel with extra Bearer whitespace on loopback", async () => {
+  it("accepts sk_genesis sentinel with extra Bearer whitespace on loopback", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
-      makeLoopbackRequest({ Authorization: "Bearer  sk_9router" }),
+      makeLoopbackRequest({ Authorization: "Bearer  sk_genesis" }),
       log
     );
     expect(result.ok).toBe(true);
@@ -532,12 +532,12 @@ describe("authenticateRequest (Task 18)", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("rejects sk_9router sentinel from remote host", async () => {
+  it("rejects sk_genesis sentinel from remote host", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
       makeRequest({
         host: "router.example.com",
-        Authorization: "Bearer sk_9router",
+        Authorization: "Bearer sk_genesis",
       }),
       log
     );

@@ -113,14 +113,14 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/mitm"))
     return {
       title: "MITM Proxy",
-      description: "Intercept CLI tool traffic and route through 9Router",
+      description: "Intercept CLI tool traffic and route through Genesis",
       icon: "security",
       breadcrumbs: [],
     };
   if (pathname.includes("/cli-tools"))
     return {
       title: "CLI Tools",
-      description: "Install and point local AI tools at 9Router",
+      description: "Install and point local AI tools at Genesis",
       icon: "terminal",
       breadcrumbs: [],
     };

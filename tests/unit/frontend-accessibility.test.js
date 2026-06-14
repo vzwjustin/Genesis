@@ -184,9 +184,9 @@ describe("frontend accessibility regressions", () => {
     expect(header).toContain("Connect, test, and route AI providers");
     expect(header).toContain("Build ordered model failover chains");
     expect(header).toContain("Review spend, tokens, quota, and request history");
-    expect(header).toContain("Install and point local AI tools at 9Router");
+    expect(header).toContain("Install and point local AI tools at Genesis");
     expect(header).toContain("Share ready-to-use capability links with AI agents");
-    expect(tools).toContain("Route Antigravity IDE traffic through 9Router");
+    expect(tools).toContain("Route Antigravity IDE traffic through Genesis");
     expect(skills).toContain("Start here: base URL, auth, model discovery, and every capability link.");
     expect(skillsPage).toContain("Send this to your agent:");
     expect(skillsPage).toContain("Primary skill");
@@ -216,12 +216,12 @@ describe("frontend accessibility regressions", () => {
       "JcodeToolCard",
     ].map((name) => read(`src/app/(dashboard)/dashboard/cli-tools/components/${name}.js`)).join("\n");
 
-    expect(tools).toContain("Connect Factory Droid to 9Router models");
+    expect(tools).toContain("Connect Factory Droid to Genesis models");
     expect(tools).toContain("Connect Cline coding sessions");
-    expect(tools).toContain("Connect Continue configs to 9Router");
+    expect(tools).toContain("Connect Continue configs to Genesis");
     expect(tools).not.toContain("AI Assistant");
     expect(toolCards).toContain("CliNotDetectedPanel");
-    expect(toolCards).not.toContain("Manual configuration is still available if 9router is deployed on a remote server.");
+    expect(toolCards).not.toContain("Manual configuration is still available if genesis is deployed on a remote server.");
   });
 
   it("keeps endpoint and provider setup copy plain", () => {

@@ -1,12 +1,12 @@
 export default function manifest() {
   return {
-    name: '9Router - AI Infrastructure Management',
-    short_name: '9Router',
+    name: 'Genesis - AI Infrastructure Management',
+    short_name: 'Genesis',
     description: 'One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.',
     start_url: '/',
     display: 'standalone',
-    background_color: '#0a0a0a',
-    theme_color: '#0a0a0a',
+    background_color: '#0B0D14',
+    theme_color: '#0B0D14',
     orientation: 'portrait-primary',
     icons: [
       {

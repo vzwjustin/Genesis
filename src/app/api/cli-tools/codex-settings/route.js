@@ -15,7 +15,7 @@ export { toCodexNativeModel };
 
 const execAsync = promisify(exec);
 
-/** Register alias so bare Codex model names resolve through 9router (gpt-5.5 → cx/gpt-5.5). */
+/** Register alias so bare Codex model names resolve through genesis (gpt-5.5 → cx/gpt-5.5). */
 async function ensureCodexModelAlias(nativeModel) {
   if (!nativeModel || typeof nativeModel !== "string" || nativeModel.includes("/")) return;
   await setModelAlias(nativeModel, `cx/${nativeModel}`);
@@ -84,10 +84,10 @@ const readConfig = async () => {
   }
 };
 
-// Check if config has 9Router settings
-const has9RouterConfig = (config) => {
+// Check if config has Genesis settings
+const hasGenesisConfig = (config) => {
   if (!config) return false;
-  return config.includes("model_provider = \"9router\"") || config.includes("[model_providers.9router]");
+  return config.includes("model_provider = \"genesis\"") || config.includes("[model_providers.genesis]");
 };
 
 // GET - Check codex CLI and read current settings
@@ -110,7 +110,7 @@ export async function GET(request) {
     return NextResponse.json({
       installed: true,
       config,
-      has9Router: has9RouterConfig(config),
+      hasGenesis: hasGenesisConfig(config),
       configPath: getCodexConfigPath(),
     });
   } catch (error) {
@@ -119,7 +119,7 @@ export async function GET(request) {
   }
 }
 
-// POST - Update 9Router settings (merge with existing config)
+// POST - Update Genesis settings (merge with existing config)
 export async function POST(request) {
   const auth = await requireSpawnRouteAuth(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -146,15 +146,15 @@ export async function POST(request) {
     const nativeModel = toCodexNativeModel(model);
     const nativeSubagentModel = toCodexNativeModel(subagentModel || model);
 
-    // Update only 9Router related fields (api_key goes to auth.json, not config.toml)
+    // Update only Genesis related fields (api_key goes to auth.json, not config.toml)
     parsed.model = nativeModel;
-    parsed.model_provider = "9router";
+    parsed.model_provider = "genesis";
 
-    // Update or create 9router provider section (no api_key - Codex reads from auth.json)
+    // Update or create genesis provider section (no api_key - Codex reads from auth.json)
     // Ensure /v1 suffix is added only once
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-    setNestedSection(parsed, "model_providers.9router", {
-      name: "9Router",
+    setNestedSection(parsed, "model_providers.genesis", {
+      name: "Genesis",
       base_url: normalizedBaseUrl,
       wire_api: "responses",
     });
@@ -197,7 +197,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove 9Router settings only (keep other settings)
+// DELETE - Remove Genesis settings only (keep other settings)
 export async function DELETE(request) {
   const auth = await requireSpawnRouteAuth(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -219,14 +219,14 @@ export async function DELETE(request) {
       throw error;
     }
 
-    // Remove 9Router related root fields only if they point to 9router
-    if (parsed.model_provider === "9router") {
+    // Remove Genesis related root fields only if they point to genesis
+    if (parsed.model_provider === "genesis") {
       delete parsed.model;
       delete parsed.model_provider;
     }
 
-    // Remove 9router provider section
-    deleteNestedSection(parsed, "model_providers.9router");
+    // Remove genesis provider section
+    deleteNestedSection(parsed, "model_providers.genesis");
 
     // Remove subagent configuration
     deleteNestedSection(parsed, "agents.subagent");
@@ -253,7 +253,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: "9Router settings removed successfully",
+      message: "Genesis settings removed successfully",
     });
   } catch (error) {
     console.log("Error resetting codex settings:", error);

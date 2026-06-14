@@ -16,7 +16,7 @@ import { canAutoApplyOnServer } from "./cliInstallMode";
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
 // Claude Code aborts a request after its built-in default timeout. Routing through
-// 9router to a slow-first-token model (Opus/extended thinking) can exceed it, surfacing
+// genesis to a slow-first-token model (Opus/extended thinking) can exceed it, surfacing
 // as "API timeout" in the CC terminal. Write a generous value so CC waits for the stream.
 const CC_API_TIMEOUT_MS = 600000; // 10 min
 
@@ -147,14 +147,14 @@ useEffect(() => {
     try {
       const env = {
         ANTHROPIC_BASE_URL: getEffectiveBaseUrl(),
-        // Prevent CC aborting slow-first-token streams routed through 9router
+        // Prevent CC aborting slow-first-token streams routed through genesis
         API_TIMEOUT_MS: String(CC_API_TIMEOUT_MS),
       };
 
-      // Get key from dropdown, fallback to first key or sk_9router for localhost
+      // Get key from dropdown, fallback to first key or sk_genesis for localhost
       const keyToUse = selectedApiKey?.trim()
         || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_genesis" : null);
 
       if (keyToUse) {
         env.ANTHROPIC_AUTH_TOKEN = keyToUse;
@@ -216,7 +216,7 @@ useEffect(() => {
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_genesis" : "<API_KEY_FROM_DASHBOARD>");
     const env = { ANTHROPIC_BASE_URL: getEffectiveBaseUrl(), ANTHROPIC_AUTH_TOKEN: keyToUse, API_TIMEOUT_MS: String(CC_API_TIMEOUT_MS) };
     tool.defaultModels.forEach((model) => {
       const targetModel = modelMappings[model.alias];
@@ -362,7 +362,7 @@ useEffect(() => {
                 <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!hasActiveProviders || !canAutoApplyOnServer(claudeStatus)} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!claudeStatus?.has9Router || !canAutoApplyOnServer(claudeStatus)} loading={restoring}>
+                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!claudeStatus?.hasGenesis || !canAutoApplyOnServer(claudeStatus)} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button

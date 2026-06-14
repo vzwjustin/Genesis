@@ -12,8 +12,8 @@ const { runElevatedPowerShell, isAdmin } = require("../winElevated.js");
  * If anything fails mid-way, restore from `.bak`. Same-volume renames are atomic on NTFS.
  */
 function atomicWriteHostsWin(target, originalContent, newContent) {
-  const tmpNew = `${target}.9router.new`;
-  const tmpBak = `${target}.9router.bak`;
+  const tmpNew = `${target}.genesis.new`;
+  const tmpBak = `${target}.genesis.bak`;
   try {
     fs.writeFileSync(tmpNew, newContent, "utf8");
     try { fs.unlinkSync(tmpBak); } catch { /* none */ }
@@ -171,7 +171,7 @@ async function addDNSEntry(tool, sudoPassword) {
       const escaped = next.replace(/'/g, "'\\''");
       // Write to a temp file then atomically rename — a `tee` straight onto
       // HOSTS_FILE truncates first, so an interrupt mid-write leaves it empty/partial.
-      await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE}.9router.tmp > /dev/null && chmod 644 ${HOSTS_FILE}.9router.tmp && mv -f ${HOSTS_FILE}.9router.tmp ${HOSTS_FILE}`, sudoPassword);
+      await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE}.genesis.tmp > /dev/null && chmod 644 ${HOSTS_FILE}.genesis.tmp && mv -f ${HOSTS_FILE}.genesis.tmp ${HOSTS_FILE}`, sudoPassword);
       await flushDNS(sudoPassword);
     }
     log(`🌐 DNS ${tool}: ✅ added ${entriesToAdd.join(", ")}`);
@@ -208,7 +208,7 @@ async function removeDNSEntry(tool, sudoPassword) {
       const escaped = next.replace(/'/g, "'\\''");
       // Write to a temp file then atomically rename — a `tee` straight onto
       // HOSTS_FILE truncates first, so an interrupt mid-write leaves it empty/partial.
-      await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE}.9router.tmp > /dev/null && chmod 644 ${HOSTS_FILE}.9router.tmp && mv -f ${HOSTS_FILE}.9router.tmp ${HOSTS_FILE}`, sudoPassword);
+      await execWithPassword(`printf '%s' '${escaped}' | tee ${HOSTS_FILE}.genesis.tmp > /dev/null && chmod 644 ${HOSTS_FILE}.genesis.tmp && mv -f ${HOSTS_FILE}.genesis.tmp ${HOSTS_FILE}`, sudoPassword);
       await flushDNS(sudoPassword);
     }
     log(`🌐 DNS ${tool}: ✅ removed ${entriesToRemove.join(", ")}`);

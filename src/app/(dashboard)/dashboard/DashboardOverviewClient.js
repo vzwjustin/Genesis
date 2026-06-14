@@ -78,12 +78,16 @@ function SetupStepper({ steps }) {
           {doneCount}/{steps.length} complete · Security provider and recommended
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-2">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 sm:gap-2">
         {steps.map((step, index) => {
           const prevDone = index === 0 || steps[index - 1].done;
           const lineDone = step.done && prevDone;
+          const isLastOdd = index === steps.length - 1 && steps.length % 2 === 1;
           return (
-            <div key={step.label} className="relative flex flex-col items-center text-center px-1">
+            <div
+              key={step.label}
+              className={`relative flex flex-col items-center text-center px-1 ${isLastOdd ? "col-span-2 sm:col-span-1" : ""}`}
+            >
               {index > 0 && (
                 <div
                   className={`hidden sm:block absolute top-4 right-[calc(50%+16px)] h-0.5 w-[calc(100%-32px)] -translate-y-1/2 ${lineDone ? "bg-success" : "bg-border"}`}
@@ -94,7 +98,7 @@ function SetupStepper({ steps }) {
                 className={`relative z-10 flex size-8 items-center justify-center rounded-full border ${
                   step.done
                     ? "step-done"
-                    : "border-slate-200 bg-white text-slate-400"
+                    : "step-pending"
                 }`}
               >
                 {step.done ? (

@@ -5,7 +5,7 @@ import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import {
   getGatewayApiKeyCandidates,
   isLocalhostSentinelKey,
-  looksLike9routerApiKey,
+  looksLikegenesisApiKey,
   PROVIDER_API_KEY_HEADER_NAMES,
   verifyApiKeyCrc,
 } from "@/shared/utils/apiKey.js";
@@ -42,7 +42,7 @@ function stripStaleGatewayHeaders(headers, preserveToken = null) {
   const staleXApiKey = headers.get("x-api-key")?.trim();
   if (
     staleXApiKey
-    && looksLike9routerApiKey(staleXApiKey)
+    && looksLikegenesisApiKey(staleXApiKey)
     && !isLocalhostSentinelKey(staleXApiKey)
     && staleXApiKey !== preserveToken
   ) {
@@ -59,7 +59,7 @@ function stripStaleGatewayHeaders(headers, preserveToken = null) {
       ?? (/^sk[-_]/i.test(auth) ? auth : null);
     if (
       token
-      && looksLike9routerApiKey(token)
+      && looksLikegenesisApiKey(token)
       && !isLocalhostSentinelKey(token)
       && token !== preserveToken
     ) {
@@ -70,7 +70,7 @@ function stripStaleGatewayHeaders(headers, preserveToken = null) {
     const value = headers.get(name)?.trim();
     if (
       value
-      && looksLike9routerApiKey(value)
+      && looksLikegenesisApiKey(value)
       && !isLocalhostSentinelKey(value)
       && value !== preserveToken
     ) {

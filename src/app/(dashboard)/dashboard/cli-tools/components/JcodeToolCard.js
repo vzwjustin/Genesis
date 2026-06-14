@@ -41,8 +41,8 @@ export default function JcodeToolCard({
 
   const getConfigStatus = () => {
     if (!jcodeStatus?.installed) return null;
-    if (!jcodeStatus?.has9Router) return "not_configured";
-    const currentProvider = jcodeStatus.config?.providers?.["9router"];
+    if (!jcodeStatus?.hasGenesis) return "not_configured";
+    const currentProvider = jcodeStatus.config?.providers?.["genesis"];
     if (!currentProvider) return "not_configured";
     return matchKnownEndpoint(currentProvider.base_url, { tunnelPublicUrl, tailscaleUrl }) ? "configured" : "other";
   };
@@ -88,7 +88,7 @@ useEffect(() => {
   useEffect(() => {
     if (jcodeStatus?.installed && !hasInitializedModel.current) {
       hasInitializedModel.current = true;
-      const provider = jcodeStatus.config?.providers?.["9router"];
+      const provider = jcodeStatus.config?.providers?.["genesis"];
       if (provider) {
         if (provider.default_model) {
           queueMicrotask(() => setSelectedModel(provider.default_model));
@@ -128,7 +128,7 @@ useEffect(() => {
     try {
       const keyToUse = selectedApiKey?.trim()
         || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_genesis" : null);
 
       const res = await fetch("/api/cli-tools/jcode-settings", {
         method: "POST",
@@ -182,21 +182,21 @@ useEffect(() => {
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_genesis" : "<API_KEY_FROM_DASHBOARD>");
 
-    const configToml = `[providers.9router]
+    const configToml = `[providers.genesis]
 type = "openai-compatible"
 base_url = "${getEffectiveBaseUrl()}"
 auth = "bearer"
-api_key_env = "JCODE_9ROUTER_API_KEY"
-env_file = "provider-9router.env"
+api_key_env = "JCODE_GENESIS_API_KEY"
+env_file = "provider-genesis.env"
 default_model = "${selectedModel || "cc/claude-opus-4-7"}"
 requires_api_key = true
 
-[[providers.9router.models]]
+[[providers.genesis.models]]
 id = "${selectedModel || "cc/claude-opus-4-7"}"`;
 
-    const envContent = `JCODE_9ROUTER_API_KEY="${keyToUse}"`;
+    const envContent = `JCODE_GENESIS_API_KEY="${keyToUse}"`;
 
     return [
       {
@@ -204,7 +204,7 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
         content: configToml,
       },
       {
-        filename: "~/.config/jcode/provider-9router.env",
+        filename: "~/.config/jcode/provider-genesis.env",
         content: envContent,
       },
     ];
@@ -279,12 +279,12 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 </div>
 
                 {/* Current configured */}
-                {jcodeStatus?.config?.providers?.["9router"]?.base_url && (
+                {jcodeStatus?.config?.providers?.["genesis"]?.base_url && (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
-                      {jcodeStatus.config.providers["9router"].base_url}
+                      {jcodeStatus.config.providers["genesis"].base_url}
                     </span>
                   </div>
                 )}
@@ -310,8 +310,8 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 {/* Usage hint */}
                 <div className="flex flex-col gap-1 p-3 bg-info/5 border border-info/20 rounded-lg">
                   <p className="text-xs font-medium text-info">Usage:</p>
-                  <code className="text-xs font-mono text-text-muted">jcode --provider-profile 9router</code>
-                  <code className="text-xs font-mono text-text-muted">jcode --provider-profile 9router --model {selectedModel || "cc/claude-opus-4-7"}</code>
+                  <code className="text-xs font-mono text-text-muted">jcode --provider-profile genesis</code>
+                  <code className="text-xs font-mono text-text-muted">jcode --provider-profile genesis --model {selectedModel || "cc/claude-opus-4-7"}</code>
                 </div>
               </div>
 
@@ -326,7 +326,7 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!jcodeStatus?.has9Router} loading={restoring}>
+                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!jcodeStatus?.hasGenesis} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>

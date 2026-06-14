@@ -46,11 +46,11 @@ export function getToolInstallStatus(status, toolConfig) {
   }
   if (status.fetchFailed) return { status: "unknown" };
   if (!status.installed) return { status: "remote_setup" };
-  if (status.has9Router) return { status: "connected" };
+  if (status.hasGenesis) return { status: "connected" };
   return { status: "not_configured" };
 }
 
-/** True when the tool is installed and points at 9router (badge: "Connected"). */
+/** True when the tool is installed and points at genesis (badge: "Connected"). */
 export function isCliToolConfigured(status) {
   return getToolInstallStatus(status).status === "connected";
 }

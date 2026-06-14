@@ -155,7 +155,7 @@ export default function CombosPage() {
         <EmptyState
           icon="layers"
           title="No combos yet"
-          description="A combo is an ordered list of models. If the first model fails, 9router automatically tries the next one."
+          description="A combo is an ordered list of models. If the first model fails, genesis automatically tries the next one."
           action={{ label: "Create Combo", onClick: () => setShowCreateModal(true) }}
         />
       ) : (

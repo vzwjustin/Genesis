@@ -240,13 +240,13 @@ describe("dashboard chat completions route", () => {
     expect(internalRequest.headers.get("x-api-key")).toBeNull();
   });
 
-  it("strips stale bearer when sk_9router sentinel is already usable", async () => {
+  it("strips stale bearer when sk_genesis sentinel is already usable", async () => {
     const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
       method: "POST",
       headers: {
         Host: "localhost:3456",
         "Content-Type": "application/json",
-        "x-api-key": "sk_9router",
+        "x-api-key": "sk_genesis",
         Authorization: "Bearer sk-badkeyyy",
       },
       body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
@@ -254,7 +254,7 @@ describe("dashboard chat completions route", () => {
 
     await POST(request);
     const internalRequest = mockHandleChat.mock.calls[0][0];
-    expect(internalRequest.headers.get("x-api-key")).toBe("sk_9router");
+    expect(internalRequest.headers.get("x-api-key")).toBe("sk_genesis");
     expect(internalRequest.headers.get("Authorization")).toBeNull();
     expect(mockGetApiKeys).not.toHaveBeenCalled();
   });
@@ -280,20 +280,20 @@ describe("dashboard chat completions route", () => {
     expect(mockGetApiKeys).not.toHaveBeenCalled();
   });
 
-  it("preserves sk_9router sentinel without injecting internal key", async () => {
+  it("preserves sk_genesis sentinel without injecting internal key", async () => {
     const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
       method: "POST",
       headers: {
         Host: "localhost:3456",
         "Content-Type": "application/json",
-        Authorization: "Bearer sk_9router",
+        Authorization: "Bearer sk_genesis",
       },
       body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
     });
 
     await POST(request);
     const internalRequest = mockHandleChat.mock.calls[0][0];
-    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk_9router");
+    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk_genesis");
     expect(mockGetApiKeys).not.toHaveBeenCalled();
   });
 
@@ -314,14 +314,14 @@ describe("dashboard chat completions route", () => {
     expect(mockGetApiKeys).not.toHaveBeenCalled();
   });
 
-  it("injects internal key on remote host when sk_9router sentinel is present", async () => {
+  it("injects internal key on remote host when sk_genesis sentinel is present", async () => {
     mockGetSettings.mockResolvedValue({ requireApiKey: false });
     const request = new Request("https://router.example.com/api/dashboard/chat/completions", {
       method: "POST",
       headers: {
         Host: "router.example.com",
         "Content-Type": "application/json",
-        Authorization: "Bearer sk_9router",
+        Authorization: "Bearer sk_genesis",
       },
       body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
     });

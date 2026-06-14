@@ -85,7 +85,7 @@ async function mergeMitmAliases(tool, importedProvider) {
 async function resolveApiKey() {
   const keys = await getApiKeys();
   const active = keys.find((k) => k.isActive !== false);
-  return active?.key || "sk_9router";
+  return active?.key || "sk_genesis";
 }
 
 /**

@@ -185,7 +185,7 @@ export default function MitmToolCard({
             )}
             {/* Info */}
             <div className="flex flex-col gap-0.5 text-[11px] text-text-muted px-1">
-              <p>Toggle DNS to redirect {tool.name} traffic through 9Router via MITM.</p>
+              <p>Toggle DNS to redirect {tool.name} traffic through Genesis via MITM.</p>
               {!dnsActive && (
                 <p className="text-warning text-[10px] mt-1">
                   ⚠️ Enable DNS to edit model mappings
@@ -194,7 +194,7 @@ export default function MitmToolCard({
               {tool.id === "kiro" && dnsActive && isLinux && (
                 <p className="text-warning text-[10px] mt-1">
                   Linux/Kiro: restart Kiro from a shell that trusts the MITM CA —{" "}
-                  <code className="font-mono">source ~/.9router/mitm/electron-ca.env</code> then launch Kiro,
+                  <code className="font-mono">source ~/.genesis/mitm/electron-ca.env</code> then launch Kiro,
                   or install the root CA via MITM server trust (sudo). curl tests with{" "}
                   <code className="font-mono">-k</code> skip TLS and do not prove Kiro works.
                 </p>

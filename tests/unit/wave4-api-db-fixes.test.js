@@ -189,7 +189,7 @@ describe("wave4 — usageRepo totals and bounds", () => {
   let tempDir;
 
   beforeEach(async () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-wave4-usage-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-wave4-usage-"));
     process.env.DATA_DIR = tempDir;
     vi.resetModules();
     const sqliteDb = await import("@/lib/db/index.js");

@@ -1,10 +1,10 @@
-# 9Router Architecture
+# Genesis Architecture
 
 _Last updated: 2026-06-10_
 
 ## Executive Summary
 
-9Router is a local AI routing gateway and dashboard built on Next.js.
+Genesis is a local AI routing gateway and dashboard built on Next.js.
 It provides a single OpenAI-compatible endpoint (`/v1/*`) and routes traffic across multiple upstream providers with translation, fallback, token refresh, and usage tracking.
 
 Core capabilities:
@@ -52,7 +52,7 @@ flowchart LR
         BROWSER[Browser Dashboard]
     end
 
-    subgraph Router[9Router Local Process]
+    subgraph Router[Genesis Local Process]
         API[V1 Compatibility API\n/v1/*]
         DASH[Dashboard + Management API\n/api/*]
         CORE[SSE + Translation Core\nopen-sse + src/sse]
@@ -133,7 +133,7 @@ Main flow modules:
 
 ## 3) Persistence Layer
 
-All runtime state lives in SQLite under `DATA_DIR` (default `~/.9router`):
+All runtime state lives in SQLite under `DATA_DIR` (default `~/.genesis`):
 
 - **Database file:** `${DATA_DIR}/db/data.sqlite`
 - **Backups:** `${DATA_DIR}/db/backups/`
@@ -389,7 +389,7 @@ flowchart LR
         Browser[Dashboard Browser]
     end
 
-    subgraph ContainerOrProcess[9Router Runtime]
+    subgraph ContainerOrProcess[Genesis Runtime]
         Next[Next.js Server\nPORT=20128]
         Core[SSE Core + Executors]
         MainDB[(data.sqlite)]
@@ -557,8 +557,8 @@ Search both spellings in comments: `passthrough` and `passthru`.
 
 ## Operational Verification Checklist
 
-- Build from source: `cd /root/dev/9router && npm run build`
-- Build Docker image: `cd /root/dev/9router && docker build -t 9router .`
+- Build from source: `cd /root/dev/genesis && npm run build`
+- Build Docker image: `cd /root/dev/genesis && docker build -t genesis .`
 - Start service and verify:
 - `GET /api/settings`
 - `GET /api/v1/models`

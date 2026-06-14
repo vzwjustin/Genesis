@@ -16,7 +16,7 @@ function normalizeKiroModelId(model) {
 
 const CURSOR_PROVIDER_PREFIX_RE = /^(?:cu|cursor)\//i;
 
-/** Strip 9router provider prefixes from Cursor protobuf model ids (cu/gpt-5.5-high → gpt-5.5-high). */
+/** Strip genesis provider prefixes from Cursor protobuf model ids (cu/gpt-5.5-high → gpt-5.5-high). */
 function normalizeCursorModelId(model) {
   if (model == null) return null;
   let s = String(model).trim();

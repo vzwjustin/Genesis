@@ -255,7 +255,7 @@ export async function GET(request) {
       if (platform === "darwin") {
         return NextResponse.json({
           found: false,
-          error: "Cursor database exists but 9Router could not open it. Please use manual import.",
+          error: "Cursor database exists but Genesis could not open it. Please use manual import.",
         });
       }
       // Native bindings unavailable — try CLI fallback

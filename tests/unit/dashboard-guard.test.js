@@ -266,10 +266,10 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("rejects remote public LLM API with sk_9router sentinel", async () => {
+  it("rejects remote public LLM API with sk_genesis sentinel", async () => {
     const response = await proxy(request("/v1/models", {
       host: "router.example.com",
-      authorization: "Bearer sk_9router",
+      authorization: "Bearer sk_genesis",
     }));
 
     expect(response.status).toBe(401);
@@ -290,10 +290,10 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("allows loopback public LLM API with sk_9router sentinel without DB lookup", async () => {
+  it("allows loopback public LLM API with sk_genesis sentinel without DB lookup", async () => {
     const response = await proxy(request("/v1/models", {
       host: "localhost:20128",
-      authorization: "Bearer sk_9router",
+      authorization: "Bearer sk_genesis",
     }));
 
     expect(response).toBe(mocks.nextResponse);

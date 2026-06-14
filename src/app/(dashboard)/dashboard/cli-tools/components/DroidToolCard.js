@@ -44,8 +44,8 @@ export default function DroidToolCard({
 
   const getConfigStatus = () => {
     if (!droidStatus?.installed) return null;
-    // Check for any 9Router model entry (support multi-model: custom:9Router-0, custom:9Router-1, ...)
-    const currentConfig = droidStatus.settings?.customModels?.find(m => m.id?.startsWith("custom:9Router"));
+    // Check for any Genesis model entry (support multi-model: custom:Genesis-0, custom:Genesis-1, ...)
+    const currentConfig = droidStatus.settings?.customModels?.find(m => m.id?.startsWith("custom:Genesis"));
     if (!currentConfig) return "not_configured";
     return matchKnownEndpoint(currentConfig.baseUrl, { tunnelPublicUrl, tailscaleUrl, cloudUrl: cloudEnabled ? CLOUD_URL : null }) ? "configured" : "other";
   };
@@ -93,14 +93,14 @@ useEffect(() => {
     if (droidStatus?.installed && !hasInitializedModel.current) {
       hasInitializedModel.current = true;
       const existingModels = (droidStatus.settings?.customModels || [])
-        .filter(m => m.id?.startsWith("custom:9Router"))
+        .filter(m => m.id?.startsWith("custom:Genesis"))
         .sort((a, b) => (a.index || 0) - (b.index || 0))
         .map(m => m.model);
       if (existingModels.length > 0) {
         queueMicrotask(() => setModelList(existingModels));
       } else {
-        // Legacy: single model stored as custom:9Router-0
-        const legacy = droidStatus.settings?.customModels?.find(m => m.id === "custom:9Router-0");
+        // Legacy: single model stored as custom:Genesis-0
+        const legacy = droidStatus.settings?.customModels?.find(m => m.id === "custom:Genesis-0");
         if (legacy?.model) {
           queueMicrotask(() => setModelList([legacy.model]));
         }
@@ -140,7 +140,7 @@ useEffect(() => {
     try {
       const keyToUse = selectedApiKey?.trim()
         || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_genesis" : null);
 
       const res = await fetch("/api/cli-tools/droid-settings", {
         method: "POST",
@@ -189,12 +189,12 @@ useEffect(() => {
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_genesis" : "<API_KEY_FROM_DASHBOARD>");
 
     const settingsContent = {
       customModels: modelList.map((m, i) => ({
         model: m,
-        id: `custom:9Router-${i}`,
+        id: `custom:Genesis-${i}`,
         index: i,
         baseUrl: getEffectiveBaseUrl(),
         apiKey: keyToUse,
@@ -288,12 +288,12 @@ useEffect(() => {
                 </div>
 
                 {/* Current configured */}
-                {droidStatus?.settings?.customModels?.find(m => m.id?.startsWith("custom:9Router"))?.baseUrl && (
+                {droidStatus?.settings?.customModels?.find(m => m.id?.startsWith("custom:Genesis"))?.baseUrl && (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
-                      {droidStatus.settings.customModels.find(m => m.id?.startsWith("custom:9Router")).baseUrl}
+                      {droidStatus.settings.customModels.find(m => m.id?.startsWith("custom:Genesis")).baseUrl}
                     </span>
                   </div>
                 )}
@@ -361,7 +361,7 @@ useEffect(() => {
                 <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={modelList.length === 0} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!droidStatus?.has9Router} loading={restoring}>
+                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!droidStatus?.hasGenesis} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>

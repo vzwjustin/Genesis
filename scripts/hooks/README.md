@@ -1,6 +1,6 @@
 # Agent harness hooks (RTK / Caveman)
 
-Optional **PreToolUse** hooks that compress large shell tool output before it reaches the model. They are **not** part of the 9router request path; install only if you use RTK/Caveman in Cursor, Devin, or Windsurf.
+Optional **PreToolUse** hooks that compress large shell tool output before it reaches the model. They are **not** part of the genesis request path; install only if you use RTK/Caveman in Cursor, Devin, or Windsurf.
 
 ## Layout
 

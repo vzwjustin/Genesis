@@ -1,4 +1,4 @@
-export const SECURITY_WIZARD_SNOOZE_KEY = "9router-security-wizard-snooze-until";
+export const SECURITY_WIZARD_SNOOZE_KEY = "genesis-security-wizard-snooze-until";
 export const SECURITY_WIZARD_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
 export function isSecurityWizardSnoozed() {

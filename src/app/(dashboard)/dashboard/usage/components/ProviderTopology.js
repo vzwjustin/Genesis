@@ -78,7 +78,7 @@ ProviderNode.propTypes = {
   data: PropTypes.object.isRequired,
 };
 
-// Center 9Router node
+// Center Genesis node
 function RouterNode({ data }) {
   return (
     <div className="glass-panel flex min-w-[130px] items-center justify-center rounded-xl px-5 py-3">
@@ -87,8 +87,8 @@ function RouterNode({ data }) {
       <Handle type="source" position={Position.Left} id="left" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Right} id="right" className="!bg-transparent !border-0 !w-0 !h-0" />
 
-      <img src="/favicon.svg" alt="9Router" className="w-6 h-6 mr-2" />
-      <span className="text-sm font-semibold text-text-main">9Router</span>
+      <img src="/favicon.svg" alt="Genesis" className="w-6 h-6 mr-2" />
+      <span className="text-sm font-semibold text-text-main">Genesis</span>
       {data.activeCount > 0 && (
         <span className="ml-2 rounded-md px-1.5 py-0.5 text-xs font-medium dashboard-chip-active">
           {data.activeCount}

@@ -65,7 +65,7 @@ export default function KiloToolCard({ tool, isExpanded, onToggle, baseUrl, apiK
 
   const getConfigStatus = () => {
     if (!status?.installed) return null;
-    return status.has9Router ? "configured" : "not_configured";
+    return status.hasGenesis ? "configured" : "not_configured";
   };
 
   const configStatus = getConfigStatus();
@@ -84,7 +84,7 @@ export default function KiloToolCard({ tool, isExpanded, onToggle, baseUrl, apiK
     try {
       const keyToUse = (selectedApiKey && selectedApiKey.trim())
         ? selectedApiKey
-        : (!cloudEnabled ? "sk_9router" : selectedApiKey);
+        : (!cloudEnabled ? "sk_genesis" : selectedApiKey);
 
       const res = await fetch("/api/cli-tools/kilo-settings", {
         method: "POST",
@@ -128,7 +128,7 @@ export default function KiloToolCard({ tool, isExpanded, onToggle, baseUrl, apiK
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_genesis" : "<API_KEY_FROM_DASHBOARD>");
 
     return [{
       filename: "~/.local/share/kilo/auth.json",

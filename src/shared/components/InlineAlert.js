@@ -44,7 +44,7 @@ export default function InlineAlert({
   return (
     <div
       className={cn(
-        "flex items-start gap-2 border rounded-brand",
+        "flex items-start gap-2 border rounded-brand glass-alert",
         compact ? "px-3 py-2" : "px-3 py-2.5",
         styles.wrapper,
         className

@@ -23,7 +23,7 @@ afterEach(() => {
 
 describe("legacy request logger redaction", () => {
   it("creates distinct log sessions for same-millisecond requests", async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "9router-request-logs-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-request-logs-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmp);
     vi.stubEnv("ENABLE_REQUEST_LOGS", "true");
     vi.useFakeTimers();
@@ -41,7 +41,7 @@ describe("legacy request logger redaction", () => {
   });
 
   it("redacts sensitive nested values before writing request log files", async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "9router-request-logs-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-request-logs-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmp);
     vi.stubEnv("ENABLE_REQUEST_LOGS", "true");
     vi.resetModules();
@@ -76,7 +76,7 @@ describe("legacy request logger redaction", () => {
       { refresh_token: "provider-refresh-token", safe: "response-safe" }
     );
     logger.logError(
-      new Error("failed with access_token=error-token Bearer sk-error-secret sk_9router"),
+      new Error("failed with access_token=error-token Bearer sk-error-secret sk_genesis"),
       { password: "request-password", safe: "error-safe" }
     );
     logger.appendProviderChunk('data: {"token":"provider-stream-token","safe":"stream-safe"}\n\n');
@@ -98,7 +98,7 @@ describe("legacy request logger redaction", () => {
       "provider-refresh-token",
       "error-token",
       "sk-error-secret",
-      "sk_9router",
+      "sk_genesis",
       "request-password",
       "provider-stream-token",
       "openai-stream-secret",
@@ -120,7 +120,7 @@ describe("legacy request logger redaction", () => {
   });
 
   it("buffers streaming chunks without synchronous per-chunk appends", async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "9router-request-logs-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-request-logs-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmp);
     vi.stubEnv("ENABLE_REQUEST_LOGS", "true");
     vi.resetModules();
