@@ -133,9 +133,11 @@ function createNonStreamingResponse(sourceFormat, model, text) {
     return {
       success: true,
       response: new Response(JSON.stringify(openaiResponse), {
+        // No Access-Control-Allow-Origin: these synthesized responses are only
+        // served to the claude-cli UA (CLI clients don't enforce CORS). A
+        // wildcard would let any web page the user visits read them cross-origin.
         headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*"
+          "Content-Type": "application/json"
         }
       })
     };
@@ -167,9 +169,9 @@ function createNonStreamingResponse(sourceFormat, model, text) {
   return {
     success: true,
     response: new Response(JSON.stringify(finalResponse), {
+      // CORS wildcard intentionally omitted — see createOpenAIResponse path.
       headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
+        "Content-Type": "application/json"
       }
     })
   };
@@ -213,11 +215,11 @@ function createStreamingResponse(sourceFormat, model, text) {
   return {
     success: true,
     response: new Response(translatedChunks.join(""), {
+      // CORS wildcard intentionally omitted — see createOpenAIResponse path.
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "Access-Control-Allow-Origin": "*"
+        "Connection": "keep-alive"
       }
     })
   };

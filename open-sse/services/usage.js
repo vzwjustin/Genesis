@@ -210,12 +210,20 @@ async function getGitHubUsage(accessToken, providerSpecificData, proxyOptions = 
 function formatGitHubQuotaSnapshot(quota) {
   if (!quota) return { used: 0, total: 0, unlimited: true };
 
-  const entitlement = Number(quota.entitlement) || 0;
-  const remaining = Number(quota.remaining) || 0;
+  // Distinguish a genuine zero allotment / exhausted quota from a missing field:
+  // `Number(x) || 0` collapses both to 0, making an exhausted quota look like
+  // "no data". Treat a value as known only when it is present and numeric.
+  const toNum = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+  const entitlement = toNum(quota.entitlement);
+  const remaining = toNum(quota.remaining);
+  if (entitlement == null) {
+    return { used: 0, total: 0, remaining: remaining ?? 0, unlimited: quota.unlimited || false, unknown: true };
+  }
+  const rem = remaining ?? 0;
   return {
-    used: Math.max(0, entitlement - remaining),
+    used: Math.max(0, entitlement - rem),
     total: entitlement,
-    remaining,
+    remaining: rem,
     unlimited: quota.unlimited || false,
   };
 }

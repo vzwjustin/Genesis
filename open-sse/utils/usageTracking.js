@@ -24,12 +24,19 @@ function getTimeString() {
 }
 
 /**
- * Add buffer tokens to usage to prevent context errors
+ * Add buffer tokens to ESTIMATED usage to prevent client context-limit errors.
+ *
+ * The buffer is padding for counts we GUESSED (provider returned no usage). It
+ * must never be applied to real provider counts — doing so over-reports input
+ * tokens by BUFFER_TOKENS on every response, corrupting billing/usage logs.
+ * formatUsage/estimateUsage set `estimated: true`; real-usage call sites do not,
+ * so they pass through untouched.
  * @param {object} usage - Usage object (any format)
- * @returns {object} Usage with buffer added
+ * @returns {object} Usage with buffer added when estimated, else unchanged
  */
 export function addBufferToUsage(usage) {
   if (!usage || typeof usage !== "object") return usage;
+  if (!usage.estimated) return usage; // real provider counts: never pad
 
   const result = { ...usage };
 

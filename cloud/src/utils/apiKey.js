@@ -47,6 +47,22 @@ async function crcForSecret(machineId, keyId, secret) {
   return (await hmacHex(secret, machineId + keyId)).slice(0, 8);
 }
 
+/**
+ * Constant-time string equality. Comparing a MAC with `===` short-circuits on
+ * the first mismatched char, leaking a timing oracle that narrows the value
+ * char-by-char. Length is compared into the accumulator (not early-returned) so
+ * unequal-length inputs still take data-independent time.
+ */
+function timingSafeStrEqual(a, b) {
+  const sa = String(a);
+  const sb = String(b);
+  let diff = sa.length ^ sb.length;
+  for (let i = 0; i < sa.length; i++) {
+    diff |= sa.charCodeAt(i) ^ sb.charCodeAt(i % sb.length);
+  }
+  return diff === 0;
+}
+
 /** Accept keys signed with the configured install secret or the legacy default. */
 async function verifyCrc(machineId, keyId, crc) {
   const secrets = [];
@@ -54,10 +70,12 @@ async function verifyCrc(machineId, keyId, crc) {
   if (configured) secrets.push(configured);
   if (!secrets.includes(LEGACY_API_KEY_SECRET)) secrets.push(LEGACY_API_KEY_SECRET);
 
+  let ok = false;
+  // Check every secret (no early break) so timing does not reveal which secret matched.
   for (const secret of secrets) {
-    if ((await crcForSecret(machineId, keyId, secret)) === crc) return true;
+    if (timingSafeStrEqual(await crcForSecret(machineId, keyId, secret), crc)) ok = true;
   }
-  return false;
+  return ok;
 }
 
 /**

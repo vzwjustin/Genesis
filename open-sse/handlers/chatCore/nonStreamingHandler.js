@@ -400,7 +400,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     });
   }
 
-  if (onRequestSuccess) await onRequestSuccess();
+  // Accounting/usage bookkeeping must never fail an already-successful (200,
+  // body-validated) provider response. Isolate it.
+  if (onRequestSuccess) {
+    try {
+      await onRequestSuccess();
+    } catch (err) {
+      console.error("[ChatCore] onRequestSuccess threw after a successful response (ignored):", err?.message || err);
+    }
+  }
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
   // In passthrough mode, toolNameMap is null (no cloaking happened), so this is a no-op.

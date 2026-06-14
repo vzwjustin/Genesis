@@ -27,9 +27,11 @@ export function parseSSELine(line, format = null, options = {}) {
   }
 
   // Standard SSE format: "data: {...}"
-  if (line.charCodeAt(0) !== 100) return null; // 'd' = 100
+  // Test the trimmed line — upstream may indent frames or a buffer split may
+  // leave leading whitespace; checking raw `line[0]` would drop valid frames.
+  if (!trimmed.startsWith("data:")) return null;
 
-  const data = line.slice(5).trim();
+  const data = trimmed.slice(5).trim();
   if (!data) return null;
   if (data === "[DONE]") return { done: true };
 
