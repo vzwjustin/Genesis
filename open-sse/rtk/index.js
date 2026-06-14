@@ -8,6 +8,7 @@ import {
   findLastCacheBoundary,
   shouldSkipMessageForCache,
   hasAnthropicCacheBreakpoints,
+  itemHasCacheControl,
 } from "./cacheBoundary.js";
 
 export { findLastCacheBoundary } from "./cacheBoundary.js";
@@ -281,7 +282,13 @@ function compressKiroFormat(body, enabled, filterConfig) {
     : null;
   try {
     // Skip history entirely — it is cache-protected upstream.
-    const messagesToCompress = state?.currentMessage ? [state.currentMessage] : [];
+    const current = state?.currentMessage;
+    // If the client marked currentMessage (or its userInputMessage wrapper) with
+    // cache_control, those bytes are part of the cached prefix — mutating them
+    // invalidates the upstream KV cache (and trips throwOnCacheViolation in the
+    // executor). Skip compression entirely in that case, mirroring the other shapes.
+    const currentIsCached = itemHasCacheControl(current) || itemHasCacheControl(current?.userInputMessage);
+    const messagesToCompress = current && !currentIsCached ? [current] : [];
 
     for (const msg of messagesToCompress) {
       const toolResults = msg?.userInputMessage?.userInputMessageContext?.toolResults;

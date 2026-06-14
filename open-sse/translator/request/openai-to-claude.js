@@ -299,6 +299,9 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
       for (const tc of msg.tool_calls) {
         if (tc.type === "function") {
+          // Skip malformed tool_calls missing the function object/name — deref
+          // of tc.function.name would otherwise throw and abort translation.
+          if (!tc.function?.name) continue;
           // Apply prefix to tool name
           const toolName = CLAUDE_OAUTH_TOOL_PREFIX + tc.function.name;
           blocks.push({

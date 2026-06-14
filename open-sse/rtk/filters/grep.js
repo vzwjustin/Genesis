@@ -2,8 +2,13 @@
 // Input format: "file:lineno:content" — splitn(3, ':') in Rust
 import { GREP_PER_FILE_MAX } from "../constants.js";
 
-// Greedy .+ anchors on the last :digits: segment so Windows paths (C:\...) work.
-const GREP_LINE_RE = /^(.+):(\d+):(.*)$/;
+// Lazy .+? anchors on the FIRST :digits: segment — that is the real
+// file:line:content separator. Greedy .+ would instead latch onto the LAST
+// :digits: inside the content (e.g. "a.ts:42:foo:99:bar" → file "a.ts:42:foo",
+// line "99"), misattributing matches. Windows "C:\path:42:txt" still parses
+// correctly: the first ":" (after the drive letter) is followed by "\", not a
+// digit, so the lazy match skips past it to ":42:".
+const GREP_LINE_RE = /^(.+?):(\d+):(.*)$/;
 
 export function parseGrepLine(line) {
   const m = line.match(GREP_LINE_RE);

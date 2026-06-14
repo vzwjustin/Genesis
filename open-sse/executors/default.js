@@ -93,7 +93,14 @@ export class DefaultExecutor extends BaseExecutor {
 
     switch (this.provider) {
       case "gemini":
-        credentials.apiKey ? headers["x-goog-api-key"] = credentials.apiKey : headers["Authorization"] = `Bearer ${credentials.accessToken}`;
+        // Guard against `Authorization: Bearer undefined` when neither an API
+        // key nor an access token is present — that produces an opaque 401
+        // instead of surfacing the missing-credential condition.
+        if (credentials.apiKey) {
+          headers["x-goog-api-key"] = credentials.apiKey;
+        } else if (credentials.accessToken) {
+          headers["Authorization"] = `Bearer ${credentials.accessToken}`;
+        }
         break;
       case "claude": {
         // Overlay live cached headers from real Claude Code client over static defaults.

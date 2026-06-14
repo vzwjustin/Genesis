@@ -11,11 +11,14 @@ if [ ! -d "$CHUNKS_DIR" ]; then
   exit 0
 fi
 
-if grep -R -q 'indexOf("/")+1' "$CHUNKS_DIR"/*.js 2>/dev/null; then
-  echo "OK: Anthropic tool model-prefix strip found in compiled chunks"
-  exit 0
-fi
+for chunk in "$CHUNKS_DIR"/*.js; do
+  [ -e "$chunk" ] || continue
+  if grep -q 'claude-opus-4-8' "$chunk" && grep -q 'cc/' "$chunk"; then
+    echo "OK: Anthropic tool model-prefix strip found in compiled chunks"
+    exit 0
+  fi
+done
 
-echo "FAIL: expected indexOf(\"/\")+1 model-prefix strip in $CHUNKS_DIR"
+echo "FAIL: expected Anthropic tool model-prefix strip markers in $CHUNKS_DIR"
 echo "Clear cache and rebuild: rm -rf .next-cli-build && cd cli && npm run build"
 exit 1

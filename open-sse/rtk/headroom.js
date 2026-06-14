@@ -111,7 +111,24 @@ function compressedMessageText(msg) {
   return "";
 }
 
+// True only when the content is safe to represent as one collapsed text string:
+// a plain string, or an array with at most ONE text-bearing part. Collapsing a
+// multi-text-part array into a single part writes the joined text to one part
+// and leaves the siblings intact → duplicated/garbled content. Such items must
+// be left uncompressed rather than corrupted.
+function isSingleTextContent(content) {
+  if (typeof content === "string") return true;
+  if (!Array.isArray(content)) return false;
+  const textParts = content.filter(
+    (p) => p && (p.text !== undefined || p.input_text !== undefined || p.output_text !== undefined)
+  );
+  return textParts.length <= 1;
+}
+
 function applyCompressedTextToInputItem(item, compressedMsg) {
+  // Never collapse a multi-text-part array — doing so writes the joined text to
+  // one part and leaves the others, duplicating content. Return the item as-is.
+  if (!isSingleTextContent(item?.content)) return cloneForCompress(item);
   const text = compressedMessageText(compressedMsg);
   const updated = cloneForCompress(item);
   if (typeof updated.content === "string") {

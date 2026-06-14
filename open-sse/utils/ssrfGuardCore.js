@@ -68,6 +68,15 @@ function isPrivateOrReservedIpv6(host) {
   const hx = expandIpv6(lower);
   if (!hx) return false;
   if (hx.every((x) => x === 0)) return true; // :: unspecified — connects to loopback/0.0.0.0 on most stacks
+  // Link-local fe80::/10 spans fe80–febf (the bare `fe80:` prefix check above
+  // misses fe81:..febf:). Site-local fec0::/10 (deprecated) and multicast
+  // ff00::/8 are also non-routable/SSRF-relevant — block by first hextet.
+  if ((hx[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  if ((hx[0] & 0xffc0) === 0xfec0) return true; // fec0::/10 site-local
+  if ((hx[0] & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+  // Unique-local fc00::/7 (fc00–fdff) — the fc/fd string check above only
+  // catches the literal form; an expanded/embedded form is caught here.
+  if ((hx[0] & 0xfe00) === 0xfc00) return true;
   // NAT64 (RFC 6052 well-known 64:ff9b::/96 and RFC 8215 local-use 64:ff9b:1::/48)
   if (hx[0] === 0x64 && hx[1] === 0xff9b) return embeddedV4Private(hx, 6, 7);
   // 6to4 (RFC 3056 2002::/16) — embeds the v4 address in hextets 1-2

@@ -313,6 +313,10 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
 
       if (result.ok) {
         log.info("COMBO", `Model ${modelStr} succeeded — returning response, combo position unchanged`);
+        // Selection reserves a slot before the request leaves the process so
+        // concurrent round-robin calls do not all hit the same model. A 2xx
+        // response must still leave the committed combo position on the model
+        // that actually served the response.
         if (comboStrategy === "round-robin") {
           const rotationKey = comboName || "__default__";
           await withComboRotationLock(comboName, async () => {

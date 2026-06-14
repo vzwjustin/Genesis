@@ -6,10 +6,14 @@ export function tree(input) {
   const lines = input.split("\n");
   if (lines.length === 0) return input;
 
+  // Match only the actual "N directories, M files" summary line — a substring
+  // test on "director"+"file" also deletes legitimate entries like
+  // "my_directory_files.md" from the tree (data loss).
+  const SUMMARY_RE = /^\s*\d+\s+director(?:y|ies),\s*\d+\s+files?\s*$/;
   const filtered = [];
   for (const line of lines) {
     // Drop "X directories, Y files" summary
-    if (line.includes("director") && line.includes("file")) continue;
+    if (SUMMARY_RE.test(line)) continue;
     // Drop leading blanks
     if (line.trim() === "" && filtered.length === 0) continue;
     filtered.push(line);

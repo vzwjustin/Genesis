@@ -46,11 +46,13 @@ vi.mock("../../open-sse/utils/bypassHandler.js", () => ({
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
   detectClientTool: () => null,
   isNativePassthrough: () => false,
+  shouldUseNativePassthrough: () => false,
 }));
 vi.mock("../../open-sse/config/providerModels.js", () => ({
   getModelTargetFormat: () => null,
   getModelStrip: () => [],
   getModelUpstreamId: (_alias, modelId) => modelId,
+  getModelRequestExtras: () => null,
   PROVIDER_ID_TO_ALIAS: {},
 }));
 vi.mock("../../open-sse/utils/toolDeduper.js", () => ({

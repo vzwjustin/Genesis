@@ -21,10 +21,17 @@ function processSSEMessage(msg, state) {
   if (!msg.trim()) return;
 
   const eventMatch = msg.match(/^event:\s*(.+)$/m);
-  const dataMatch = msg.match(/^data:\s*(.+)$/m);
-  if (!dataMatch) return;
+  // SSE spec: an event may carry multiple `data:` lines that are concatenated
+  // with "\n" to form the payload. Matching only the first line would feed a
+  // JSON fragment to JSON.parse and falsely fail the whole response.
+  const dataLines = [];
+  for (const line of msg.split(/\r?\n/)) {
+    const m = line.match(/^data:\s?(.*)$/);
+    if (m) dataLines.push(m[1]);
+  }
+  if (dataLines.length === 0) return;
 
-  const dataStr = dataMatch[1].trim();
+  const dataStr = dataLines.join("\n").trim();
   if (dataStr === "[DONE]") return;
 
   let parsed;

@@ -37,6 +37,7 @@ vi.mock("open-sse/config/providerModels.js", () => ({
   getModelTargetFormat: () => null,
   getModelStrip: () => [],
   getModelUpstreamId: (_alias, modelId) => modelId,
+  getModelRequestExtras: () => null,
   PROVIDER_ID_TO_ALIAS: {},
 }));
 vi.mock("open-sse/utils/error.js", () => ({
@@ -117,6 +118,7 @@ const mockIsNativePassthrough = vi.fn(() => true);
 vi.mock("open-sse/utils/clientDetector.js", () => ({
   detectClientTool: (...args) => mockDetectClientTool(...args),
   isNativePassthrough: (...args) => mockIsNativePassthrough(...args),
+  shouldUseNativePassthrough: (...args) => mockIsNativePassthrough(...args),
 }));
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");

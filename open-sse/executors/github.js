@@ -62,7 +62,15 @@ export class GithubExecutor extends BaseExecutor {
         // Add to system message
         const systemIdx = body.messages.findIndex(m => m.role === 'system');
         if (systemIdx >= 0) {
-          body.messages[systemIdx].content = systemInstruction + '\n\n' + body.messages[systemIdx].content;
+          const existing = body.messages[systemIdx].content;
+          // System content may be a multimodal array — string-concat would
+          // stringify it to "[object Object]" and corrupt the prompt. Prepend a
+          // text block for arrays; only concat when it's already a string.
+          if (Array.isArray(existing)) {
+            body.messages[systemIdx].content = [{ type: 'text', text: systemInstruction }, ...existing];
+          } else {
+            body.messages[systemIdx].content = systemInstruction + '\n\n' + (typeof existing === 'string' ? existing : '');
+          }
         } else {
           body.messages.unshift({ role: 'system', content: systemInstruction });
         }
