@@ -84,7 +84,9 @@ server.on("error", (e) => {
 
 server.listen(port, "127.0.0.1", () => {
   persistStatus();
-  waitForAppExit().then(runInstall);
+  waitForAppExit().then(runInstall).catch((e) => {
+    pushLog(`[updater] fatal: ${e && e.message ? e.message : e}`);
+  });
 });
 
 // Check if app port is still being listened on (= app server still alive)
@@ -213,7 +215,9 @@ function relaunchApp() {
     child.unref();
     pushLog(`[updater] relaunched: ${cmd} ${args.join(" ")} (pid=${child.pid})`);
     // Wait for new app to come up, then auto-open browser so user sees the result
-    waitForAppAndOpenBrowser();
+    waitForAppAndOpenBrowser().catch((e) => {
+      pushLog(`[updater] open-browser failed: ${e && e.message ? e.message : e}`);
+    });
   } catch (e) {
     pushLog(`[updater] relaunch failed: ${e.message}`);
   }

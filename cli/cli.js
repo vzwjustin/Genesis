@@ -670,7 +670,7 @@ function startServer(latestVersion) {
       // Kill tray if running
       try {
         const { killTray } = require("./src/cli/tray/tray");
-        killTray();
+        void killTray();
       } catch (e) { }
       // Kill MIT server (privileged process) via PID file
       killProxyByPidFile();

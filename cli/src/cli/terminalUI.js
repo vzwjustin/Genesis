@@ -48,6 +48,8 @@ async function refreshHeaderBg(port) {
     const keys = keysResult.success ? (keysResult.data.keys || []) : [];
     const tunnel = tunnelResult.success ? (tunnelResult.data || {}) : {};
     cachedHeader = renderHeader(port, keys, tunnel);
+  } catch {
+    // Background refresh failed (e.g. API not up yet) — keep stale/placeholder cache.
   } finally {
     fetchingHeader = false;
   }
@@ -55,7 +57,7 @@ async function refreshHeaderBg(port) {
 
 function getHeader(port) {
   // Kick off background refresh; return cache (or placeholder on first call).
-  refreshHeaderBg(port);
+  void refreshHeaderBg(port);
   return cachedHeader || `Endpoint: http://localhost:${port}/v1\nTunnel:   ${COLORS.dim}...${COLORS.reset}\nKey:      ${COLORS.dim}...${COLORS.reset}`;
 }
 

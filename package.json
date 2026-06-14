@@ -12,6 +12,7 @@
     "build:bun": "bun --bun next build --webpack && node scripts/copy-standalone-assets.js",
     "start:bun": "bun ./.next/standalone/server.js",
     "verify:cli-build": "bash scripts/verify-compiled-anthropic-fix.sh",
+    "lint:backend": "eslint \"src/lib/**/*.js\" \"cli/**/*.js\" \"open-sse/**/*.js\"",
     "test": "vitest run --config tests/vitest.config.js",
     "test:watch": "vitest --config tests/vitest.config.js"
   },
@@ -64,6 +65,7 @@
     "eslint-config-next": "16.1.6",
     "postcss": "^8.5.15",
     "tailwindcss": "^4",
+    "typescript-eslint": "^8.60.1",
     "vitest": "^4.1.8"
   }
 }
