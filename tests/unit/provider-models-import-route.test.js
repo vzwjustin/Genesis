@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = {
   getProviderConnectionById: vi.fn(),
   autoImportProviderModels: vi.fn(),
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
 };
 
 vi.mock("@/models", () => ({
@@ -13,9 +14,23 @@ vi.mock("../../src/lib/models/autoImportProviderModels.js", () => ({
   autoImportProviderModels: mocks.autoImportProviderModels,
 }));
 
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: mocks.requireSpawnRouteAuth,
+}));
+
 describe("POST /api/providers/[id]/models/import", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: true });
+  });
+
+  it("returns 401 when unauthenticated and never imports", async () => {
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: false, error: "Login required", status: 401 });
+    const { POST } = await import("../../src/app/api/providers/[id]/models/import/route.js");
+    const res = await POST(null, { params: Promise.resolve({ id: "conn-1" }) });
+
+    expect(res.status).toBe(401);
+    expect(mocks.autoImportProviderModels).not.toHaveBeenCalled();
   });
 
   it("returns 404 when connection is missing", async () => {

@@ -743,6 +743,10 @@ export function decodeVarint(buffer, offset) {
     pos++;
     if (!(b & 0x80)) break;
     shift += 7;
+    // Protobuf varints are at most 10 bytes (64-bit). Stop scanning a malformed
+    // run of continuation bytes rather than walking the whole buffer and
+    // accumulating past 2**53 where the JS number loses integer precision.
+    if (pos - offset >= 10) break;
   }
 
   return [result, pos];

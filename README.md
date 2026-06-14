@@ -24,7 +24,7 @@
 
 ## 🔧 This Fork — Progress & End Goal
 
-This repository is an active **fork** of [genesis](https://github.com/decolua/genesis), customized as a local AI CLI proxy/router for daily use with Claude Code, Codex, Cursor, and other OpenAI-compatible agents. Work is concentrated on the `fix/audit-bug-fixes` branch ([compare to upstream](https://github.com/vzwjustin/genesis/compare/master...fix/audit-bug-fixes)).
+This repository is an active **fork** of [9router](https://github.com/decolua/9router), customized and rebranded as **Genesis** — a local AI CLI proxy/router for daily use with Claude Code, Codex, Cursor, and other OpenAI-compatible agents. Active development happens on this fork ([compare to upstream](https://github.com/decolua/9router/compare/master...vzwjustin:master)).
 
 ### End goal
 
@@ -56,9 +56,8 @@ Roughly **45 commits** and **2,200+ unit tests** on the audit branch. Highlights
 
 ### Still in progress / local only
 
-- Merge `fix/audit-bug-fixes` → `master` and cut a release tag.
 - Optional: persist latency metrics to SQLite (today in-process ring buffer; dashboard must share the proxy process).
-- Local-only files not in git: `.data/` (SQLite runtime), `.intent/`, `.kiro/specs/` (planning notes).
+- Local-only files not in git: `.data/` (SQLite runtime) and `.intent/`.
 
 ### Fork quick commands
 

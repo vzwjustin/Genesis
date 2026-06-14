@@ -148,14 +148,14 @@ function startReasoning(state, emit, idx) {
     
     emit("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: idx,
+      output_index: state.reasoningIndex,
       item: { id: state.reasoningId, type: "reasoning", summary: [] }
     });
 
     emit("response.reasoning_summary_part.added", {
       type: "response.reasoning_summary_part.added",
       item_id: state.reasoningId,
-      output_index: idx,
+      output_index: state.reasoningIndex,
       summary_index: 0,
       part: { type: "summary_text", text: "" }
     });

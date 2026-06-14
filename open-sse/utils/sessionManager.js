@@ -52,11 +52,21 @@ export function deriveSessionId(connectionId) {
         return existing.sessionId;
     }
 
-    // Evict oldest entry if store exceeds max size (safety cap between cleanup cycles)
+    // Evict least-recently-used entry if store exceeds max size (safety cap
+    // between cleanup cycles). Map insertion order (keys().next()) is FIFO, not
+    // LRU — it can evict a hot early session before a stale later one. Pick the
+    // entry with the smallest lastUsed instead.
     const MAX_SESSIONS = 1000;
     if (runtimeSessionStore.size >= MAX_SESSIONS) {
-      const oldest = runtimeSessionStore.keys().next().value;
-      runtimeSessionStore.delete(oldest);
+      let lruKey = null;
+      let lruTime = Infinity;
+      for (const [key, entry] of runtimeSessionStore) {
+        if (entry.lastUsed < lruTime) {
+          lruTime = entry.lastUsed;
+          lruKey = key;
+        }
+      }
+      if (lruKey !== null) runtimeSessionStore.delete(lruKey);
     }
 
     const sessionId = generateBinaryStyleId();

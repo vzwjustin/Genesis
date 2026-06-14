@@ -346,7 +346,6 @@ export function parseSSEToGeminiResponse(rawSSE, wrapInResponse = false) {
   }
 
   if (!mergedCandidate) return null;
-  if (!sawTerminal && !mergedCandidate.finishReason) return null;
   if (!mergedCandidate.finishReason) return null;
 
   const result = {

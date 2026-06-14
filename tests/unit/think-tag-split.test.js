@@ -134,4 +134,38 @@ describe("openai-responses translator think-tag split", () => {
     expect(textJoined).not.toContain("thinking");
     expect(textJoined).toContain("hello");
   });
+
+  it("uses allocated reasoning output_index on added events after a tool call", () => {
+    const state = responsesState();
+    const all = [];
+    all.push(...openaiToOpenAIResponsesResponse({
+      id: "cmpl-1",
+      choices: [{
+        index: 0,
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: "call_1",
+            type: "function",
+            function: { name: "lookup", arguments: "" },
+          }],
+        },
+      }],
+    }, state));
+    all.push(...openaiToOpenAIResponsesResponse({
+      id: "cmpl-1",
+      choices: [{ index: 0, delta: { reasoning_content: "reasoning bit" } }],
+    }, state));
+
+    const toolAdded = all.find((e) =>
+      e.event === "response.output_item.added" && e.data.item?.type === "function_call");
+    const reasoningAdded = all.find((e) =>
+      e.event === "response.output_item.added" && e.data.item?.type === "reasoning");
+    const reasoningDelta = all.find((e) => e.event === "response.reasoning_summary_text.delta");
+
+    expect(toolAdded?.data.output_index).toBe(0);
+    expect(reasoningAdded?.data.output_index).toBe(1);
+    expect(reasoningDelta?.data.output_index).toBe(1);
+    expect(reasoningAdded?.data.output_index).not.toBe(0);
+  });
 });
