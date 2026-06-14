@@ -27,6 +27,19 @@ const PROVIDER_ALIAS_NAMES = {
   gemini: "Gemini"
 };
 
+/** Map provider id (codex) to model-list group keys (cx, codex). */
+const PROVIDER_GROUP_KEYS = {
+  codex: new Set(["codex", "cx"]),
+};
+
+function isProviderGroupAllowed(groupKey, allowedProviders) {
+  if (!allowedProviders?.length) return true;
+  return allowedProviders.some((id) => {
+    const keys = PROVIDER_GROUP_KEYS[id];
+    return keys ? keys.has(groupKey) : id === groupKey;
+  });
+}
+
 /**
  * Get all available models grouped by provider + combos
  * @returns {Promise<{combos: Array, groups: Object}>}
@@ -58,13 +71,18 @@ async function getAvailableModelsGrouped() {
  * Display model list and prompt for selection
  * @param {string} title - Title to display
  * @param {string} currentValue - Current selected value (optional)
- * @param {Object} options - { excludeCombos?: boolean }
+ * @param {Object} options - { excludeCombos?: boolean, allowedProviders?: string[] }
  * @returns {Promise<string|null>} Selected model ID or null if cancelled
  */
 async function selectModelFromList(title, currentValue = "", options = {}) {
-  const { excludeCombos = false } = options;
-  const { combos: rawCombos, groups } = await getAvailableModelsGrouped();
+  const { excludeCombos = false, allowedProviders = null } = options;
+  const { combos: rawCombos, groups: allGroups } = await getAvailableModelsGrouped();
   const combos = excludeCombos ? [] : rawCombos;
+  const groups = allowedProviders?.length
+    ? Object.fromEntries(
+        Object.entries(allGroups).filter(([groupKey]) => isProviderGroupAllowed(groupKey, allowedProviders)),
+      )
+    : allGroups;
 
   const totalModels = combos.length + Object.values(groups).flat().length;
   if (totalModels === 0) {

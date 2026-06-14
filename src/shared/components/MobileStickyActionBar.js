@@ -10,7 +10,7 @@ export default function MobileStickyActionBar({ children, className }) {
   return (
     <div
       className={cn(
-        "fixed inset-x-0 bottom-0 z-30 border-t border-border-subtle bg-surface/95 backdrop-blur-xl p-3 lg:hidden",
+        "fixed inset-x-0 bottom-0 z-30 glass-mobile-bar p-3 lg:hidden",
         "pb-[max(0.75rem,env(safe-area-inset-bottom))]",
         className,
       )}

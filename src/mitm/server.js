@@ -91,7 +91,12 @@ async function resolveTargetIP(hostname) {
   if (!addresses || addresses.length === 0) {
     throw new Error(`DNS resolve4 returned no addresses for ${hostname}`);
   }
-  cachedTargetIPs[hostname] = { ip: addresses[0], ts: Date.now() };
+  const { isBlockedHostname } = await import("../../open-sse/utils/ssrfGuardCore.js");
+  const ip = addresses[0];
+  if (isBlockedHostname(String(ip))) {
+    throw new Error(`DNS resolve4 for ${hostname} returned blocked IP ${ip}`);
+  }
+  cachedTargetIPs[hostname] = { ip, ts: Date.now() };
   return cachedTargetIPs[hostname].ip;
 }
 

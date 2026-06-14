@@ -125,7 +125,7 @@ export default function HeaderMenu({ onLogout }) {
         </button>
 
         {isOpen && (
-          <div id="dashboard-header-menu" role="menu" className="absolute right-0 top-full mt-2 w-60 glass-panel border border-border rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden py-1">
+          <div id="dashboard-header-menu" role="menu" className="absolute right-0 top-full mt-2 w-60 glass-panel rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden py-1">
             <MenuItem
               icon="history"
               label="Change Log"

@@ -145,21 +145,21 @@ describe("Claude cache — snapshot contract", () => {
     expect(verifyCacheProtectedBody(body, snap)).toBe(true);
   });
 
-  it("rejects protected built-in tool model prefix normalization", () => {
+  it("allows protected built-in tool model prefix normalization for upstream", () => {
     const body = buildClaudeCodeCachedBody();
     const snap = snapshotCacheProtectedBody(body);
     body.tools[0].model = "claude-opus-4-6";
-    expect(verifyCacheProtectedBody(body, snap)).toBe(false);
+    expect(verifyCacheProtectedBody(body, snap)).toBe(true);
   });
 
-  it("rejects protected built-in Fable model remapping", () => {
+  it("allows protected built-in Fable model remapping for upstream", () => {
     const body = {
       tools: [{ type: "web_search_20250305", name: "web_search", model: "Claude Fable 5", cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: "hi" }],
     };
     const snap = snapshotCacheProtectedBody(body);
     body.tools[0].model = "claude-opus-4-8";
-    expect(verifyCacheProtectedBody(body, snap)).toBe(false);
+    expect(verifyCacheProtectedBody(body, snap)).toBe(true);
   });
 
   it("rejects protected system block text drift", () => {
@@ -201,11 +201,12 @@ describe("Claude cache — prepareClaudeRequest preserveClientCache", () => {
     expect(out.messages[1].content[0].cache_control).toEqual({ type: "ephemeral" });
   });
 
-  it("leaves cached tools byte-identical through prepareClaudeRequest", () => {
+  it("normalizes cached built-in tool model through prepareClaudeRequest", () => {
     const body = buildClaudeCodeCachedBody();
     const snap = snapshotCacheProtectedBody(body);
     const out = prepareClaudeRequest(structuredClone(body), "claude");
-    expect(out.tools[0]).toEqual(body.tools[0]);
+    expect(out.tools[0].model).toBe("claude-opus-4-6");
+    expect(out.tools[0].cache_control).toEqual(body.tools[0].cache_control);
     expect(out.tools[1].model).toBeUndefined();
     expect(out.tools[1].type).toBeUndefined();
     expect(verifyCacheProtectedBody(out, snap)).toBe(true);

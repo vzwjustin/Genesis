@@ -18,6 +18,15 @@ const PROVIDER_ORDER = [
 // Providers that need no auth — always show in model selector
 const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth);
 
+function modelChipClass({ isSelected, isAdded, isPlaceholder }) {
+  const base =
+    "px-2.5 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1";
+  if (isPlaceholder) return `${base} glass-model-chip glass-model-chip--placeholder`;
+  if (isSelected) return `${base} dashboard-chip-active border-transparent`;
+  if (isAdded) return `${base} dashboard-filter-active border-transparent`;
+  return `${base} glass-model-chip`;
+}
+
 export default function ModelSelectModal({
   isOpen,
   onClose,
@@ -30,6 +39,8 @@ export default function ModelSelectModal({
   kindFilter = null,
   addedModelValues = [],
   closeOnSelect = true,
+  allowedProviderIds = null,
+  excludeCombos = false,
 }) {
   // Filter activeProviders by serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
   const filteredActiveProviders = useMemo(() => {
@@ -144,10 +155,15 @@ export default function ModelSelectModal({
       : NO_AUTH_PROVIDER_IDS;
 
     // Only show connected providers (including both standard and custom)
-    const providerIdsToShow = new Set([
+    let providerIdsToShow = new Set([
       ...activeConnectionIds,  // Only connected providers
       ...noAuthIds,            // No-auth providers (kind-filtered)
     ]);
+
+    if (allowedProviderIds?.length) {
+      const allowed = new Set(allowedProviderIds);
+      providerIdsToShow = new Set([...providerIdsToShow].filter((id) => allowed.has(id)));
+    }
 
     // Sort by PROVIDER_ORDER
     const sortedProviderIds = [...providerIdsToShow].sort((a, b) => {
@@ -312,15 +328,15 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, allowedProviderIds]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
-    if (kindFilter) return [];
+    if (kindFilter || excludeCombos || allowedProviderIds?.length) return [];
     if (!searchQuery.trim()) return combos;
     const query = searchQuery.toLowerCase();
     return combos.filter(c => c.name.toLowerCase().includes(query));
-  }, [combos, searchQuery, kindFilter]);
+  }, [combos, searchQuery, kindFilter, excludeCombos, allowedProviderIds]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
@@ -378,8 +394,8 @@ export default function ModelSelectModal({
         setSearchQuery("");
       }}
       title={title}
-      size="md"
-      className="p-4!"
+      size="lg"
+      className="max-w-2xl!"
       footer={null}
     >
       {/* Info bar */}
@@ -388,48 +404,41 @@ export default function ModelSelectModal({
         <span>Click to add, click again to remove. Changes are saved automatically.</span>
       </div>
 
-      {/* Search - compact */}
-      <div className="mb-3">
+      {/* Search */}
+      <div className="mb-4">
         <div className="relative">
-          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
+          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px] pointer-events-none">
             search
           </span>
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search models…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-surface border border-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+            className="glass-input w-full pl-8 pr-3 py-2 rounded-lg text-sm focus:outline-none"
           />
         </div>
       </div>
 
-      {/* Models grouped by provider - compact */}
-      <div className="max-h-[400px] overflow-y-auto space-y-3">
+      {/* Models grouped by provider */}
+      <div className="max-h-[min(52vh,480px)] overflow-y-auto custom-scrollbar space-y-4 pr-0.5">
         {/* Combos section - always first */}
         {filteredCombos.length > 0 && (
           <div>
-            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
+            <div className="glass-scroll-sticky">
               <span className="material-symbols-outlined text-primary text-[14px]">layers</span>
               <span className="text-xs font-medium text-primary">Combos</span>
               <span className="text-[10px] text-text-muted">({filteredCombos.length})</span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {filteredCombos.map((combo) => {
                 const isSelected = selectedModel === combo.name;
+                const isAdded = addedModelValues.includes(combo.name);
                 return (
                   <button
                     key={combo.id}
                     onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}
-                    className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
-                      ${isSelected
-                        ? "dashboard-chip-active border border-transparent"
-                        : addedModelValues.includes(combo.name)
-                          ? "dashboard-filter-active border border-transparent"
-                          : "bg-surface border-border text-text-main hover:border-primary/50 dashboard-row-hover transition-colors"
-                      }
-                    `}
+                    className={modelChipClass({ isSelected, isAdded, isPlaceholder: false })}
                   >
                     {addedModelValues.includes(combo.name) && (
                       <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
@@ -446,7 +455,7 @@ export default function ModelSelectModal({
         {Object.entries(filteredGroups).map(([providerId, group]) => (
           <div key={providerId}>
             {/* Provider header */}
-            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
+            <div className="glass-scroll-sticky">
               <ProviderIcon
                 src={`/providers/${providerId}.png`}
                 alt={group.name}
@@ -462,26 +471,17 @@ export default function ModelSelectModal({
               </span>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {group.models.map((model) => {
                 const isSelected = selectedModel === model.value;
                 const isPlaceholder = model.isPlaceholder;
+                const isAdded = addedModelValues.includes(model.value);
                 return (
                   <button
                     key={model.value}
                     onClick={() => handleSelect(model)}
                     title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined}
-                    className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer
-                      ${isPlaceholder
-                        ? "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic"
-                        : isSelected
-                          ? "dashboard-chip-active border border-transparent"
-                          : addedModelValues.includes(model.value)
-                            ? "dashboard-filter-active border border-transparent"
-                            : "bg-surface border-border text-text-main hover:border-primary/50 dashboard-row-hover transition-colors"
-                      }
-                    `}
+                    className={modelChipClass({ isSelected, isAdded, isPlaceholder })}
                   >
                     <span className="flex items-center gap-1">
                       {addedModelValues.includes(model.value) && !isPlaceholder && (
@@ -537,5 +537,7 @@ ModelSelectModal.propTypes = {
   kindFilter: PropTypes.string,
   addedModelValues: PropTypes.arrayOf(PropTypes.string),
   closeOnSelect: PropTypes.bool,
+  allowedProviderIds: PropTypes.arrayOf(PropTypes.string),
+  excludeCombos: PropTypes.bool,
 };
 

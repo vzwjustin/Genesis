@@ -36,14 +36,14 @@ export async function GET(request) {
   const entries = await Promise.all(
     Object.entries(STATUS_GETTERS).map(async ([toolId, getter]) => {
       try {
-        const res = await getter();
+        const res = await getter(request);
         const data = await res.json();
         if (!res.ok) {
-          return [toolId, { installed: false, error: data?.error || `HTTP ${res.status}` }];
+          return [toolId, { installed: false, fetchFailed: true, error: data?.error || `HTTP ${res.status}` }];
         }
         return [toolId, data];
       } catch (error) {
-        return [toolId, { installed: false, error: error?.message || "status_check_failed" }];
+        return [toolId, { installed: false, fetchFailed: true, error: error?.message || "status_check_failed" }];
       }
     })
   );

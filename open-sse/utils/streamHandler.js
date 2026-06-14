@@ -19,8 +19,6 @@ export function createStreamController({ onDisconnect, onError, log, provider, m
   const abortController = new AbortController();
   const startTime = Date.now();
   let disconnected = false;
-  let abortTimeout = null;
-
   const logStream = (status) => {
     const duration = Date.now() - startTime;
     const p = provider?.toUpperCase() || "UNKNOWN";
@@ -41,10 +39,7 @@ export function createStreamController({ onDisconnect, onError, log, provider, m
       logStream(`disconnect: ${reason}`);
       dbg("CTRL", `${provider}/${model} | disconnect=${reason} | dur=${Date.now() - startTime}ms`);
 
-      // Delay abort to allow cleanup
-      abortTimeout = setTimeout(() => {
-        abortController.abort();
-      }, 500);
+      abortController.abort();
 
       onDisconnect?.({ reason, duration: Date.now() - startTime });
     },
@@ -55,22 +50,12 @@ export function createStreamController({ onDisconnect, onError, log, provider, m
       disconnected = true;
 
       logStream("complete");
-
-      if (abortTimeout) {
-        clearTimeout(abortTimeout);
-        abortTimeout = null;
-      }
     },
 
     // Call on error
     handleError: (error) => {
       if (disconnected) return;
       disconnected = true;
-
-      if (abortTimeout) {
-        clearTimeout(abortTimeout);
-        abortTimeout = null;
-      }
 
       if (error.name === "AbortError") {
         logStream("aborted");

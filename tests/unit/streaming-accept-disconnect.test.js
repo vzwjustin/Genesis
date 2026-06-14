@@ -73,15 +73,13 @@ describe("client disconnect → abort upstream (Requirement 6.5)", () => {
     vi.useRealTimers();
   });
 
-  it("createStreamController aborts signal after client disconnect", () => {
+  it("createStreamController aborts signal immediately on client disconnect", () => {
     const onDisconnect = vi.fn();
     const controller = createStreamController({ onDisconnect, provider: "claude", model: "test" });
 
     expect(controller.signal.aborted).toBe(false);
     controller.handleDisconnect("client_closed");
     expect(onDisconnect).toHaveBeenCalledWith(expect.objectContaining({ reason: "client_closed" }));
-
-    vi.advanceTimersByTime(500);
     expect(controller.signal.aborted).toBe(true);
   });
 
@@ -104,7 +102,6 @@ describe("client disconnect → abort upstream (Requirement 6.5)", () => {
     await reader.read();
     await reader.cancel("client_gone");
 
-    vi.advanceTimersByTime(500);
     expect(controller.signal.aborted).toBe(true);
   });
 

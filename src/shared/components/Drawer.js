@@ -42,17 +42,16 @@ export default function Drawer({
     <div className="fixed inset-0 z-50">
       {/* Overlay */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px] fade-in cursor-pointer"
+        className="absolute inset-0 glass-overlay fade-in cursor-pointer"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Drawer panel */}
       <div className={cn(
-        "absolute right-0 top-0 h-full bg-surface flex flex-col",
+        "absolute right-0 top-0 h-full glass-drawer-panel flex flex-col",
         "shadow-[var(--shadow-elev)]",
         "slide-in-right",
-        "border-l border-border-subtle",
         widths[width] || widths.md,
         className
       )}>

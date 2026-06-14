@@ -730,17 +730,40 @@ async function createHttp2BypassRequest(parsedUrl, realIP, options) {
 
     const req = client.request(reqHeaders);
 
-    const chunks = [];
     let responseHeaders = {};
+    const bodyChunks = [];
+    let bodyEnded = false;
+    let bodyError = null;
+    let streamConsumed = false;
 
-    req.on("response", (hdrs) => { responseHeaders = hdrs; });
-    req.on("data", (chunk) => { chunks.push(Buffer.from(chunk)); });
-    req.on("end", finish(() => {
-      options.signal?.removeEventListener("abort", onAbort);
+    const destroyOnAbort = () => {
+      try { req.close(); } catch { /* noop */ }
+      try { client.close(); } catch { /* noop */ }
+    };
+
+    const materializeBody = async () => {
+      if (streamConsumed) {
+        throw new Error("Body already consumed by the streaming reader");
+      }
+      if (bodyError) throw bodyError;
+      if (bodyEnded) return Buffer.concat(bodyChunks);
+      await new Promise((resolvePromise, rejectPromise) => {
+        const onEnd = () => { cleanup(); resolvePromise(); };
+        const onErr = (err) => { cleanup(); rejectPromise(err); };
+        const cleanup = () => {
+          req.off("end", onEnd);
+          req.off("error", onErr);
+        };
+        if (bodyEnded) { cleanup(); resolvePromise(); return; }
+        if (bodyError) { cleanup(); rejectPromise(bodyError); return; }
+        req.on("end", onEnd);
+        req.on("error", onErr);
+      });
+      return Buffer.concat(bodyChunks);
+    };
+
+    const buildFetchResponse = () => {
       const status = responseHeaders[":status"] || 0;
-      const bodyBuf = Buffer.concat(chunks);
-
-      // Build Headers object from h2 response headers (skip pseudo-headers)
       const headers = new Headers();
       for (const [key, value] of Object.entries(responseHeaders)) {
         if (key.startsWith(":")) continue;
@@ -757,26 +780,103 @@ async function createHttp2BypassRequest(parsedUrl, realIP, options) {
         statusText: "",
         headers,
         get body() {
+          let offset = 0;
+          streamConsumed = true;
+          const drain = (controller) => {
+            const chunk = bodyChunks[offset];
+            bodyChunks[offset] = null;
+            offset++;
+            controller.enqueue(new Uint8Array(chunk));
+          };
           return new ReadableStream({
-            start(controller) {
-              controller.enqueue(new Uint8Array(bodyBuf));
-              controller.close();
+            pull(controller) {
+              if (bodyError) {
+                controller.error(bodyError);
+                return;
+              }
+              if (offset < bodyChunks.length) {
+                drain(controller);
+                return;
+              }
+              if (bodyEnded) {
+                controller.close();
+                return;
+              }
+              const onData = () => {
+                req.off("data", onData);
+                req.off("end", onEnd);
+                req.off("error", onErr);
+                if (offset < bodyChunks.length) {
+                  drain(controller);
+                } else if (bodyEnded) {
+                  controller.close();
+                }
+              };
+              const onEnd = () => {
+                req.off("data", onData);
+                req.off("end", onEnd);
+                req.off("error", onErr);
+                if (offset < bodyChunks.length) {
+                  drain(controller);
+                } else {
+                  controller.close();
+                }
+              };
+              const onErr = (err) => {
+                req.off("data", onData);
+                req.off("end", onEnd);
+                req.off("error", onErr);
+                controller.error(err);
+              };
+              req.on("data", onData);
+              req.on("end", onEnd);
+              req.on("error", onErr);
             },
           });
         },
-        text: async () => bodyBuf.toString(),
-        arrayBuffer: async () => bodyBuf.buffer.slice(bodyBuf.byteOffset, bodyBuf.byteOffset + bodyBuf.byteLength),
+        text: async () => (await materializeBody()).toString(),
+        arrayBuffer: async () => {
+          const buf = await materializeBody();
+          return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+        },
         json: async () => {
-          const text = bodyBuf.toString();
+          const text = (await materializeBody()).toString();
           try { return JSON.parse(text); } catch (e) {
             throw new Error(`Failed to parse JSON response (${status}): ${text.slice(0, 200)}`);
           }
         },
-        clone: () => response,
+        clone: () => buildFetchResponse(),
       };
-      resolve(response);
-    }));
-    req.on("error", fail);
+      return response;
+    };
+
+    req.on("response", (hdrs) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hangTimeout);
+      options.signal?.removeEventListener("abort", onAbort);
+      responseHeaders = hdrs;
+
+      if (options.signal) {
+        if (options.signal.aborted) {
+          destroyOnAbort();
+        } else {
+          options.signal.addEventListener("abort", destroyOnAbort, { once: true });
+        }
+      }
+
+      resolve(buildFetchResponse());
+    });
+
+    req.on("data", (chunk) => { bodyChunks.push(Buffer.from(chunk)); });
+    req.on("end", () => {
+      bodyEnded = true;
+      try { client.close(); } catch { /* noop */ }
+    });
+    req.on("error", (err) => {
+      bodyError = err;
+      if (!settled) fail(err);
+    });
 
     if (body != null) req.write(body);
     req.end();
@@ -974,17 +1074,15 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // Loopback providers (ollama/searxng) are intentionally allowed, so skip them.
   const directFetch = async (u, o) => {
     if (directIsLoopback) return originalFetch(u, o);
-    let dispatcher = null;
+    let dispatcher;
     try {
       dispatcher = await getGuardedDispatcher();
-    } catch {
-      // undici Agent unavailable — fall back to plain fetch. The DNS pre-check
-      // already ran; this only loses the connect-time re-assert.
-      dispatcher = null;
+    } catch (dispatcherError) {
+      throw new Error(`[ProxyFetch] SSRF guard unavailable: ${dispatcherError.message}`);
     }
     // A block error raised inside the dispatcher's lookup MUST propagate — do
     // not wrap this in a try/catch that would retry plain fetch (fail-open).
-    return dispatcher ? originalFetch(u, { ...o, dispatcher }) : originalFetch(u, o);
+    return originalFetch(u, { ...o, dispatcher });
   };
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);

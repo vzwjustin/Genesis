@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/shared/utils/cn";
 import Button from "./Button";
 import Tooltip from "./Tooltip";
@@ -80,24 +81,25 @@ export default function Modal({
   }, [isOpen]);
 
   if (!isOpen) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Overlay */}
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
+      {/* Overlay — heavy scrim so dashboard content does not bleed through */}
       <div
-        className="absolute inset-0 bg-black/45 backdrop-blur-md fade-in"
+        className="absolute inset-0 glass-overlay-heavy fade-in"
         onClick={closeOnOverlay ? onClose : undefined}
+        aria-hidden="true"
       />
 
-      {/* Modal content */}
+      {/* Modal content — opaque glass surface (not the same as page cards) */}
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         className={cn(
-          "relative w-full glass-panel",
-          "border border-border-subtle",
+          "relative z-[1] w-full max-h-[min(92vh,900px)] flex flex-col glass-modal-panel",
           "rounded-[14px] shadow-[var(--shadow-elev)]",
           "fade-in",
           sizes[size],
@@ -106,7 +108,7 @@ export default function Modal({
       >
         {/* Header */}
         {(title || showTrafficLights) && (
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-border-subtle">
+          <div className="relative z-[1] flex items-center justify-between px-5 py-3.5 border-b border-border-subtle shrink-0">
             <div className="flex items-center">
               {/* Traffic lights — desktop only */}
               {showTrafficLights && (
@@ -141,16 +143,17 @@ export default function Modal({
         )}
 
         {/* Body */}
-        <div className="p-6 max-h-[calc(85vh-100px)] overflow-y-auto custom-scrollbar">{children}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 custom-scrollbar">{children}</div>
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-border-subtle">
+          <div className="flex items-center justify-end gap-3 p-6 border-t border-border-subtle shrink-0">
             {footer}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
