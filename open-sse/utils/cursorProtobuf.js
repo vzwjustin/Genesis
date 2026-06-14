@@ -12,6 +12,13 @@ const textDecoder = new TextDecoder();
 
 const PROTOBUF_SCHEMA_VERSION = "1.1.3";
 
+// Upper bound on a single ConnectRPC frame payload and its gunzip output. The
+// frame length and gzip stream both come from a remote network peer (the Cursor
+// upstream, reachable via MITM/compromise), so they are untrusted: a 48KB gzip
+// bomb expands to 50MB+ without a cap. 64 MiB is far above any legitimate SSE
+// token frame.
+const MAX_CONNECTRPC_PAYLOAD = 64 * 1024 * 1024;
+
 const CURSOR_UPSTREAM_PREFIX_RE = /^(?:cu|cursor)\//i;
 
 /** Bare tier-less Cursor slugs → canonical upstream ids accepted by api2.cursor.sh */
@@ -689,9 +696,12 @@ export function wrapConnectRPCFrame(payload, compress = false) {
     flags = 0x01;
   }
 
+  if (finalPayload.length > 0xFFFFFFFF) {
+    throw new RangeError(`ConnectRPC payload ${finalPayload.length} exceeds 32-bit frame length`);
+  }
   const frame = new Uint8Array(5 + finalPayload.length);
   frame[0] = flags;
-  frame[1] = (finalPayload.length >> 24) & 0xFF;
+  frame[1] = (finalPayload.length >>> 24) & 0xFF;
   frame[2] = (finalPayload.length >> 16) & 0xFF;
   frame[3] = (finalPayload.length >> 8) & 0xFF;
   frame[4] = finalPayload.length & 0xFF;
@@ -794,8 +804,15 @@ export function parseConnectRPCFrame(buffer) {
   if (buffer.length < 5) return null;
 
   const flags = buffer[0];
-  const length = (buffer[1] << 24) | (buffer[2] << 16) | (buffer[3] << 8) | buffer[4];
+  // `>>> 0` forces unsigned: with `<<24`, a length byte >= 0x80 would otherwise
+  // produce a negative number, defeating the `buffer.length < 5 + length` guard
+  // and yielding a bad slice.
+  const length = ((buffer[1] << 24) | (buffer[2] << 16) | (buffer[3] << 8) | buffer[4]) >>> 0;
 
+  if (length > MAX_CONNECTRPC_PAYLOAD) {
+    log("PARSE", `Frame length ${length} exceeds cap ${MAX_CONNECTRPC_PAYLOAD}; rejecting`);
+    return null;
+  }
   if (buffer.length < 5 + length) return null;
 
   let payload = buffer.slice(5, 5 + length);
@@ -803,9 +820,13 @@ export function parseConnectRPCFrame(buffer) {
   // Decompress if gzip
   if (flags === 0x01) {
     try {
-      payload = new Uint8Array(zlib.gunzipSync(Buffer.from(payload)));
+      payload = new Uint8Array(zlib.gunzipSync(Buffer.from(payload), { maxOutputLength: MAX_CONNECTRPC_PAYLOAD }));
     } catch (err) {
+      // Fail closed: an oversized/corrupt gzip stream (e.g. a decompression bomb
+      // hitting maxOutputLength) must not fall through with a still-compressed
+      // payload that downstream decoders would misread.
       log("PARSE", `Decompression failed: ${err.message}`);
+      return null;
     }
   }
 
@@ -1055,7 +1076,7 @@ export function encodeEndStreamFrame() {
 
 // ==================== EXPORTS ====================
 
-export default {
+const cursorProtobuf = {
   encodeVarint,
   encodeField,
   encodeMessage,
@@ -1073,3 +1094,5 @@ export default {
   encodeToolCallResponseFrame,
   encodeEndStreamFrame,
 };
+
+export default cursorProtobuf;

@@ -26,11 +26,24 @@ function generateCrc(machineId, keyId) {
   return crcForSecret(machineId, keyId, getApiKeySecret());
 }
 
+/** Constant-time equality for the CRC MAC — avoids a char-by-char timing oracle. */
+function timingSafeCrcEqual(expected, actual) {
+  const a = Buffer.from(String(expected));
+  const b = Buffer.from(String(actual));
+  if (a.length !== b.length) return false; // crc is fixed-length hex; length mismatch can't match
+  return crypto.timingSafeEqual(a, b);
+}
+
 /** Accept keys signed with the current or legacy default secret. */
 function verifyCrc(machineId, keyId, crc) {
   const secrets = [getApiKeySecret()];
   if (!secrets.includes(LEGACY_API_KEY_SECRET)) secrets.push(LEGACY_API_KEY_SECRET);
-  return secrets.some((secret) => crcForSecret(machineId, keyId, secret) === crc);
+  let ok = false;
+  // No early return — check all secrets so timing doesn't reveal which matched.
+  for (const secret of secrets) {
+    if (timingSafeCrcEqual(crcForSecret(machineId, keyId, secret), crc)) ok = true;
+  }
+  return ok;
 }
 
 /**

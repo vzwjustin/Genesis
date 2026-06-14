@@ -705,7 +705,10 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
     if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
     await assertSafeResolvedHostname(new URL(vercelRelayUrl).hostname, { allowLoopback: false });
-    return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
+    // Route through safeRedirectFetch like every other egress path: a compromised
+    // or misbehaving relay that responds 3xx to a metadata address (169.254.169.254)
+    // would otherwise be auto-followed by originalFetch, defeating the SSRF guard.
+    return safeRedirectFetch(vercelRelayUrl, { ...options, headers: relayHeaders }, originalFetch);
   }
 
   // MITM DNS bypass: for known MITM-intercepted hosts, resolve real IP to avoid DNS spoof
