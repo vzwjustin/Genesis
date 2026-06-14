@@ -130,30 +130,36 @@ describe("Claude cache — snapshot contract", () => {
     });
   });
 
-  it("allows protected client tool model/type strip while preserving cache_control", () => {
-    const body = buildClaudeCodeCachedBody();
+  it("preserves protected client tools byte-identical (no model/type strip)", () => {
+    const tool = {
+      name: "Read",
+      type: "function",
+      model: "cc/gpt-4o",
+      cache_control: { type: "ephemeral" },
+      input_schema: { type: "object", properties: { path: { type: "string" } } },
+    };
+    const body = { tools: [tool], messages: [{ role: "user", content: "hi", cache_control: { type: "ephemeral" } }] };
     const snap = snapshotCacheProtectedBody(body);
-    body.tools[1] = cleanAnthropicToolDefinitions([body.tools[1]], "claude", { preserveClientCache: true })[0];
-    expect(body.tools[1].model).toBeUndefined();
-    expect(body.tools[1].type).toBeUndefined();
+    body.tools[0] = cleanAnthropicToolDefinitions([tool], "claude", { preserveClientCache: true })[0];
+    expect(body.tools[0]).toEqual(tool);
     expect(verifyCacheProtectedBody(body, snap)).toBe(true);
   });
 
-  it("allows protected built-in tool model prefix normalization", () => {
+  it("rejects protected built-in tool model prefix normalization", () => {
     const body = buildClaudeCodeCachedBody();
     const snap = snapshotCacheProtectedBody(body);
     body.tools[0].model = "claude-opus-4-6";
-    expect(verifyCacheProtectedBody(body, snap)).toBe(true);
+    expect(verifyCacheProtectedBody(body, snap)).toBe(false);
   });
 
-  it("allows protected built-in Fable model remapping", () => {
+  it("rejects protected built-in Fable model remapping", () => {
     const body = {
       tools: [{ type: "web_search_20250305", name: "web_search", model: "Claude Fable 5", cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: "hi" }],
     };
     const snap = snapshotCacheProtectedBody(body);
     body.tools[0].model = "claude-opus-4-8";
-    expect(verifyCacheProtectedBody(body, snap)).toBe(true);
+    expect(verifyCacheProtectedBody(body, snap)).toBe(false);
   });
 
   it("rejects protected system block text drift", () => {
@@ -195,11 +201,11 @@ describe("Claude cache — prepareClaudeRequest preserveClientCache", () => {
     expect(out.messages[1].content[0].cache_control).toEqual({ type: "ephemeral" });
   });
 
-  it("strips client tool model/type on cached tools without failing verify", () => {
+  it("leaves cached tools byte-identical through prepareClaudeRequest", () => {
     const body = buildClaudeCodeCachedBody();
     const snap = snapshotCacheProtectedBody(body);
     const out = prepareClaudeRequest(structuredClone(body), "claude");
-    expect(out.tools[0].model).toBe("claude-opus-4-6");
+    expect(out.tools[0]).toEqual(body.tools[0]);
     expect(out.tools[1].model).toBeUndefined();
     expect(out.tools[1].type).toBeUndefined();
     expect(verifyCacheProtectedBody(out, snap)).toBe(true);
@@ -263,6 +269,8 @@ describe("Claude cache — tool cleaning and ordering invariants", () => {
     const snap = snapshotCacheProtectedBody(body);
     body.tools = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
     expect(verifyCacheProtectedBody(body, snap)).toBe(true);
+    expect(body.tools[0]).toEqual(tools[0]);
+    expect(body.tools[1]).toEqual(tools[1]);
     expect(body.tools[2].model).toBeUndefined();
   });
 

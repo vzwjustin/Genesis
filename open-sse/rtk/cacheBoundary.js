@@ -4,8 +4,6 @@
  * Violating this silently corrupts Anthropic/OpenAI KV prompt cache.
  */
 
-import { normalizeAnthropicBuiltinToolModel } from "../translator/helpers/anthropicToolModel.js";
-
 export function itemHasCacheControl(item) {
   if (!item || typeof item !== "object") return false;
   if (item.cache_control) return true;
@@ -74,30 +72,9 @@ function verifyProtectedArray(arr, snap, itemMatchesSnapshot) {
   return true;
 }
 
-/** Built-in tool model prefix strip is allowed in cache-protected tools (Anthropic rejects cc/ etc.). */
+/** Protected tools must match snapshot exactly — no compatibility mutations in cache prefix. */
 function toolMatchesCacheSnapshot(tool, snapJson) {
-  if (JSON.stringify(tool) === snapJson) return true;
-  let expected;
-  try {
-    expected = JSON.parse(snapJson);
-  } catch {
-    return false;
-  }
-  if (!expected?.type || expected.type === "function") {
-    // Client tools: strip model/type for upstream compatibility (Anthropic 400 if present).
-    const { model, type, ...expectedRest } = expected;
-    const { model: _m, type: _t, ...actualRest } = tool;
-    return JSON.stringify(actualRest) === JSON.stringify(expectedRest);
-  }
-  const normalized = { ...expected };
-  if (typeof normalized.model === "string") {
-    normalized.model = normalizeAnthropicBuiltinToolModel(normalized.model);
-  }
-  const actual = { ...tool };
-  if (typeof actual.model === "string") {
-    actual.model = normalizeAnthropicBuiltinToolModel(actual.model);
-  }
-  return JSON.stringify(actual) === JSON.stringify(normalized);
+  return JSON.stringify(tool) === snapJson;
 }
 
 /** Kiro history/currentMessage wraps payload under userInputMessage. */

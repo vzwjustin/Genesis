@@ -14,18 +14,17 @@ import {
 import { compressMessages } from "../../open-sse/rtk/index.js";
 
 describe("cache audit — tool cleaning", () => {
-  it("preserves all tools at or before the last cached tool index", () => {
+  it("leaves tools at or before the last cached tool index byte-identical", () => {
     const tools = [
       { name: "a", type: "function", model: "keep", input_schema: { type: "object", properties: {} } },
       { name: "b", type: "function", model: "strip-me", cache_control: { type: "ephemeral" }, input_schema: { type: "object", properties: {} } },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0].model).toBeUndefined();
-    expect(out[1].model).toBeUndefined();
-    expect(out[1].cache_control).toEqual(tools[1].cache_control);
+    expect(out[0]).toEqual(tools[0]);
+    expect(out[1]).toEqual(tools[1]);
   });
 
-  it("strips model and type from cached client tools (Anthropic compatibility)", () => {
+  it("preserves cached client tools byte-identical (no model/type strip)", () => {
     const tools = [
       {
         name: "my_tool",
@@ -36,13 +35,10 @@ describe("cache audit — tool cleaning", () => {
       },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0].model).toBeUndefined();
-    expect(out[0].type).toBeUndefined();
-    expect(out[0].cache_control).toEqual(tools[0].cache_control);
-    expect(out[0].name).toBe("my_tool");
+    expect(out[0]).toEqual(tools[0]);
   });
 
-  it("keeps cached built-in tools identical except allowed model prefix strip", () => {
+  it("keeps cached built-in tools byte-identical", () => {
     const tools = [
       {
         type: "bash",
@@ -52,10 +48,7 @@ describe("cache audit — tool cleaning", () => {
       },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0].model).toBe("claude-opus-4-6");
-    expect(out[0].type).toBe("bash");
-    expect(out[0].name).toBe("Bash");
-    expect(out[0].cache_control).toEqual(tools[0].cache_control);
+    expect(out[0]).toEqual(tools[0]);
   });
 });
 
@@ -106,8 +99,7 @@ describe("cache audit — prepareClaudeRequest early exit", () => {
     const clone = structuredClone(body);
     prepareClaudeRequest(clone, "claude", "sk-ant-oat-test");
     expect(verifyCacheProtectedBody(clone, snap)).toBe(true);
-    expect(clone.tools[0].model).toBeUndefined();
-    expect(clone.tools[0].type).toBeUndefined();
+    expect(clone.tools[0]).toEqual(body.tools[0]);
     expect(clone.messages[1].content).toHaveLength(2);
   });
 });

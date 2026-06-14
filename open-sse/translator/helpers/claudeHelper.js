@@ -34,7 +34,8 @@ export function hasValidContent(msg) {
 
 /**
  * Clean Anthropic tool definitions for upstream compatibility.
- * Client tools: strip model and type. Built-in tools: preserve properties but strip provider prefix from model.
+ * When preserveClientCache is true, tools at or before the last cache breakpoint are byte-identical.
+ * Uncached tail only: client tools strip model/type; built-in tools strip provider prefix from model.
  */
 export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientCache = false } = {}) {
   if (!tools || !Array.isArray(tools)) return tools;
@@ -51,17 +52,8 @@ export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientC
     const toolProtected = preserveClientCache
       && (itemHasCacheControl(tool) || (toolFloor >= 0 && i <= toolFloor));
 
-    // Cached prefix: strip client tool model/type (Anthropic rejects them); built-in tool.model gets prefix strip.
+    // Cache-protected prefix: byte-identical — never alter, drop, or overwrite.
     if (toolProtected) {
-      if (!tool.type || tool.type === "function") {
-        const { model, type, ...clientRest } = tool;
-        return { ...clientRest };
-      }
-      if (typeof tool.model === "string") {
-        const cleanedTool = { ...tool };
-        cleanedTool.model = normalizeAnthropicBuiltinToolModel(cleanedTool.model);
-        return cleanedTool;
-      }
       return { ...tool };
     }
 

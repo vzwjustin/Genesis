@@ -37,8 +37,8 @@ describe("stripProviderModelPrefix — known prefixes only", () => {
   });
 });
 
-describe("cleanAnthropicToolDefinitions — toolProtected built-in model strip", () => {
-  it("strips cc/ from cached built-in tool model while preserving cache_control", () => {
+describe("cleanAnthropicToolDefinitions — toolProtected byte-identical", () => {
+  it("leaves cached built-in tool byte-identical including cc/ model prefix", () => {
     const tools = [{
       type: "web_search_20250305",
       name: "web_search",
@@ -46,12 +46,10 @@ describe("cleanAnthropicToolDefinitions — toolProtected built-in model strip",
       cache_control: { type: "ephemeral", ttl: "1h" },
     }];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0].model).toBe("claude-opus-4-6");
-    expect(out[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
-    expect(out[0].type).toBe("web_search_20250305");
+    expect(out[0]).toEqual(tools[0]);
   });
 
-  it("strips model and type from protected client tools", () => {
+  it("leaves protected client tools byte-identical", () => {
     const tools = [{
       name: "fn",
       type: "function",
@@ -60,10 +58,7 @@ describe("cleanAnthropicToolDefinitions — toolProtected built-in model strip",
       input_schema: {},
     }];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0].model).toBeUndefined();
-    expect(out[0].type).toBeUndefined();
-    expect(out[0].cache_control).toEqual({ type: "ephemeral" });
-    expect(out[0].name).toBe("fn");
+    expect(out[0]).toEqual(tools[0]);
   });
 });
 
