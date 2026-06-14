@@ -59,7 +59,7 @@ npm run build                    # next build (web dashboard)
 
 # CLI/proxy (the running server) — ALWAYS clear webpack cache first,
 # else stale compiled output runs instead of your edits (esp. open-sse/):
-rm -rf .next-cli-build && cd cli && npm run build
+rm -rf .next-cli-build && (cd cli && npm run build)
 ```
 
 ---

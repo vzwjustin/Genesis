@@ -56,9 +56,12 @@ async function crcForSecret(machineId, keyId, secret) {
 function timingSafeStrEqual(a, b) {
   const sa = String(a);
   const sb = String(b);
-  let diff = sa.length ^ sb.length;
+  if (sa.length !== sb.length) {
+    return false;
+  }
+  let diff = 0;
   for (let i = 0; i < sa.length; i++) {
-    diff |= sa.charCodeAt(i) ^ sb.charCodeAt(i % sb.length);
+    diff |= sa.charCodeAt(i) ^ sb.charCodeAt(i);
   }
   return diff === 0;
 }

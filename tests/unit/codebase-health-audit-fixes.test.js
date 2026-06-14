@@ -49,6 +49,23 @@ describe("codebase health audit fixes", () => {
       expect(latencyStore.getStats()[provider]?.[model]?.count).toBeGreaterThanOrEqual(1);
       expect(providerReachability.getAll()[provider]?.reachable).toBe(true);
     });
+
+    it("treats 3xx as success so half-open probe does not stick", async () => {
+      vi.useFakeTimers();
+      const { recordUpstreamTelemetry } = await import("../../open-sse/utils/upstreamTelemetry.js");
+      const { circuitBreaker } = await import("../../open-sse/utils/circuitBreaker.js");
+
+      const provider = `telemetry-3xx-${Date.now()}`;
+      for (let i = 0; i < 5; i++) circuitBreaker.recordFailure(provider);
+      expect(circuitBreaker.canRequest(provider).allowed).toBe(false);
+
+      vi.advanceTimersByTime(30000);
+      expect(circuitBreaker.canRequest(provider).allowed).toBe(true);
+
+      recordUpstreamTelemetry(provider, "m", Date.now() - 50, { ok: false, status: 304 });
+      expect(circuitBreaker.canRequest(provider).allowed).toBe(true);
+      vi.useRealTimers();
+    });
   });
 
   describe("usageRepo — idempotency skips live ring", () => {
@@ -108,6 +125,14 @@ describe("codebase health audit fixes", () => {
       expect(src).toContain("checkCircuitBreaker(provider)");
       expect(src).toContain("recordUpstreamTelemetry(provider, model, requestStartTime");
       expect(src).toContain('errorCode: "circuit_open"');
+    });
+  });
+
+  describe("requestDetail — no circular import with stream.js", () => {
+    it("imports COLORS from usageTracking, not stream.js", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "open-sse/handlers/chatCore/requestDetail.js"), "utf8");
+      expect(src).toContain('from "../../utils/usageTracking.js"');
+      expect(src).not.toContain('from "../../utils/stream.js"');
     });
   });
 });

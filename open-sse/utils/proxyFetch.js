@@ -678,7 +678,10 @@ async function safeRedirectFetch(url, options, fetchImpl) {
     const originChanged = new URL(nextUrl).origin !== new URL(currentUrl).origin;
     if (originChanged && currentOptions.headers) {
       const stripped = {};
-      for (const [k, v] of Object.entries(currentOptions.headers)) {
+      const headersEntries = typeof currentOptions.headers.entries === "function"
+        ? Array.from(currentOptions.headers.entries())
+        : Object.entries(currentOptions.headers);
+      for (const [k, v] of headersEntries) {
         if (shouldStripCredentialHeaderOnRedirect(k)) {
           continue;
         }
@@ -732,6 +735,17 @@ async function getGuardedDispatcher() {
     },
   });
   return _guardedDispatcher;
+}
+
+/** Drain an abandoned fetch body without throwing when body/cancel is missing. */
+export async function cancelResponseBody(response) {
+  try {
+    if (typeof response?.body?.cancel === "function") {
+      await response.body.cancel();
+    }
+  } catch {
+    // Best-effort socket release — never fail the retry path.
+  }
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
@@ -792,11 +806,36 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     proxyUrl = envProxyUrl;
   }
 
-  if (!proxyUrl && vercelRelayUrl) {
-    const relayNoProxy = normalizeString(proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy);
-    if (relayNoProxy && shouldBypassByNoProxy(targetUrl, relayNoProxy)) {
-      return safeRedirectFetch(url, options, directFetch);
+  // MITM DNS bypass before relay no_proxy/direct shortcuts — bypass hosts must
+  // use external DNS (or proxy-side DNS), never system resolver via directFetch.
+  if (shouldBypassMitmDns(targetUrl)) {
+    const parsedUrl = new URL(targetUrl);
+    if (proxyUrl) {
+      try {
+        const dispatcher = await getDispatcher(proxyUrl);
+        return await safeRedirectFetch(url, options, (u, o) => originalFetch(u, { ...o, dispatcher }));
+      } catch (proxyError) {
+        if (proxyOptions?.strictProxy !== false) {
+          throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
+        }
+        console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);
+      }
     }
+    const realIP = await resolveRealIP(parsedUrl.hostname);
+    if (!realIP) {
+      throw new Error(`[ProxyFetch] External DNS resolution failed for MITM bypass host: ${parsedUrl.hostname}`);
+    }
+    return await createBypassRequest(parsedUrl, realIP, options);
+  }
+
+  // Per-connection no_proxy applies even when HTTPS_PROXY is set — honor direct
+  // routing before relay/env proxy selection (relay no_proxy regression fix).
+  const connectionNoProxy = normalizeString(proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy);
+  if (connectionNoProxy && shouldBypassByNoProxy(targetUrl, connectionNoProxy)) {
+    return safeRedirectFetch(url, options, directFetch);
+  }
+
+  if (!proxyUrl && vercelRelayUrl) {
     const parsed = new URL(targetUrl);
     const relayHeaders = {
       ...options.headers,
@@ -806,36 +845,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
     if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
     await assertSafeResolvedHostname(new URL(vercelRelayUrl).hostname, { allowLoopback: false });
-    // Route through safeRedirectFetch like every other egress path: a compromised
-    // or misbehaving relay that responds 3xx to a metadata address (169.254.169.254)
-    // would otherwise be auto-followed by originalFetch, defeating the SSRF guard.
     return safeRedirectFetch(vercelRelayUrl, { ...options, headers: relayHeaders }, originalFetch);
-  }
-
-  // MITM DNS bypass: for known MITM-intercepted hosts, resolve real IP to avoid DNS spoof
-  if (shouldBypassMitmDns(targetUrl)) {
-    const parsedUrl = new URL(targetUrl);
-    if (proxyUrl) {
-      // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
-      try {
-        const dispatcher = await getDispatcher(proxyUrl);
-        return await safeRedirectFetch(url, options, (u, o) => originalFetch(u, { ...o, dispatcher }));
-      } catch (proxyError) {
-        // Use the same default-strict rule as the regular host path: throw unless
-        // strictProxy is explicitly opt-out (false). This keeps proxy routing
-        // unambiguous across all host types (AGENTS.md § outbound proxy routing).
-        if (proxyOptions?.strictProxy !== false) {
-          throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
-        }
-        console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);
-      }
-    }
-    // No proxy (or proxy failed) — external DNS + direct socket; never fall back to system DNS
-    const realIP = await resolveRealIP(parsedUrl.hostname);
-    if (!realIP) {
-      throw new Error(`[ProxyFetch] External DNS resolution failed for MITM bypass host: ${parsedUrl.hostname}`);
-    }
-    return await createBypassRequest(parsedUrl, realIP, options);
   }
 
   if (proxyUrl) {
@@ -843,7 +853,6 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
       const dispatcher = await getDispatcher(proxyUrl);
       return await safeRedirectFetch(url, options, (u, o) => originalFetch(u, { ...o, dispatcher }));
     } catch (proxyError) {
-      // Configured proxy (per-connection or environment) must not silently fall back to direct
       if (proxyOptions?.strictProxy !== false) {
         throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
       }
@@ -852,8 +861,6 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     }
   }
 
-  // got-scraping disabled — use native fetch directly
-  // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
   return safeRedirectFetch(url, options, directFetch);
 }
 

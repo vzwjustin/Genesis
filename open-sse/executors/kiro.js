@@ -3,7 +3,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { buildKiroChatUrl, buildKiroFingerprintHeaders } from "../services/kiroHeaders.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, cancelResponseBody } from "../utils/proxyFetch.js";
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 import { mergeAbortSignals } from "../utils/abortSignal.js";
@@ -78,6 +78,19 @@ export class KiroExecutor extends BaseExecutor {
           body: JSON.stringify(transformedBody),
           signal: merged.signal
         }, proxyOptions);
+      } catch (error) {
+        const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
+        if (error.name === "AbortError" && !isConnectTimeout) throw error;
+
+        const { attempts: maxNetworkRetries, delayMs: networkDelayMs } =
+          resolveRetryEntry(retryConfig[HTTP_STATUS.BAD_GATEWAY]);
+        if (retryAttempts < maxNetworkRetries) {
+          retryAttempts++;
+          log?.debug?.("RETRY", `network error retry ${retryAttempts}/${maxNetworkRetries} after ${networkDelayMs / 1000}s`);
+          await new Promise(resolve => setTimeout(resolve, networkDelayMs));
+          continue;
+        }
+        throw error;
       } finally {
         clearTimeout(connectTimer);
         merged.cleanup?.();
@@ -89,7 +102,7 @@ export class KiroExecutor extends BaseExecutor {
         retryAttempts++;
         log?.debug?.("RETRY", `${response.status} retry ${retryAttempts}/${maxRetries} after ${delayMs / 1000}s`);
         // Drain abandoned EventStream body so the socket is freed before retry.
-        await response.body?.cancel?.().catch(() => {});
+        await cancelResponseBody(response);
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
       }
