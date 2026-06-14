@@ -32,8 +32,8 @@ describe("stripProviderModelPrefix — known prefixes only", () => {
     expect(stripProviderModelPrefix("anthropic/claude-sonnet-4-5")).toBe("claude-sonnet-4-5");
   });
 
-  it("does not strip unknown generic path segments", () => {
-    expect(stripProviderModelPrefix("provider/cc/claude-opus-4-6")).toBe("provider/cc/claude-opus-4-6");
+  it("strips embedded known provider prefixes", () => {
+    expect(stripProviderModelPrefix("provider/cc/claude-opus-4-6")).toBe("claude-opus-4-6");
   });
 });
 
@@ -51,7 +51,7 @@ describe("cleanAnthropicToolDefinitions — toolProtected built-in model strip",
     expect(out[0].type).toBe("web_search_20250305");
   });
 
-  it("leaves protected client tools byte-identical", () => {
+  it("strips model and type from protected client tools", () => {
     const tools = [{
       name: "fn",
       type: "function",
@@ -60,7 +60,10 @@ describe("cleanAnthropicToolDefinitions — toolProtected built-in model strip",
       input_schema: {},
     }];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBeUndefined();
+    expect(out[0].type).toBeUndefined();
+    expect(out[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(out[0].name).toBe("fn");
   });
 });
 

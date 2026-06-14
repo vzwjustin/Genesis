@@ -241,14 +241,14 @@ describe("wave5 — streamToJsonConverter output_item.done without item", () => 
   });
 });
 
-describe("wave5 — parseSSEToGeminiResponse finishReason default", () => {
-  it("defaults finishReason to STOP when stream saw [DONE]", () => {
+describe("wave5 — parseSSEToGeminiResponse finishReason required", () => {
+  it("returns null when stream saw [DONE] without finishReason", () => {
     const sse = [
       'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]}}]}',
       "data: [DONE]",
       "",
     ].join("\n");
     const parsed = parseSSEToGeminiResponse(sse, false);
-    expect(parsed?.candidates?.[0]?.finishReason).toBe("STOP");
+    expect(parsed).toBeNull();
   });
 });

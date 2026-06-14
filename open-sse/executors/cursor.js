@@ -305,12 +305,13 @@ export class CursorExecutor extends BaseExecutor {
     if (!Buffer.isBuffer(body)) {
       throwOnCacheViolation(body, cacheProtectedSnapshot, "cursor pre-protobuf");
     }
-    // Passthrough (passthru) mode: body should already be provider-native (protobuf Buffer).
-    // If it's not a Buffer (e.g. a plain JSON object was forwarded), encode it as protobuf so
-    // the upstream never receives an invalid request shape.
+    // Passthrough (passthru) mode: body must already be provider-native (protobuf Buffer).
     let transformedBody;
     if (passthrough) {
-      transformedBody = Buffer.isBuffer(body) ? body : this.transformRequest(model, body, stream, credentials);
+      if (!Buffer.isBuffer(body)) {
+        throw new Error("Cursor passthrough requires a provider-native Buffer body");
+      }
+      transformedBody = body;
     } else {
       transformedBody = this.transformRequest(model, body, stream, credentials);
     }

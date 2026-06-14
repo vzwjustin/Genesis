@@ -83,7 +83,12 @@ function toolMatchesCacheSnapshot(tool, snapJson) {
   } catch {
     return false;
   }
-  if (!expected?.type || expected.type === "function") return false;
+  if (!expected?.type || expected.type === "function") {
+    // Client tools: strip model/type for upstream compatibility (Anthropic 400 if present).
+    const { model, type, ...expectedRest } = expected;
+    const { model: _m, type: _t, ...actualRest } = tool;
+    return JSON.stringify(actualRest) === JSON.stringify(expectedRest);
+  }
   const normalized = { ...expected };
   if (typeof normalized.model === "string") {
     normalized.model = normalizeAnthropicBuiltinToolModel(normalized.model);

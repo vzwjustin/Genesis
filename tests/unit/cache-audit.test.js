@@ -20,11 +20,12 @@ describe("cache audit — tool cleaning", () => {
       { name: "b", type: "function", model: "strip-me", cache_control: { type: "ephemeral" }, input_schema: { type: "object", properties: {} } },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0].model).toBe("keep");
-    expect(out[1].model).toBe("strip-me");
+    expect(out[0].model).toBeUndefined();
+    expect(out[1].model).toBeUndefined();
+    expect(out[1].cache_control).toEqual(tools[1].cache_control);
   });
 
-  it("preserves client tools with cache_control byte-for-byte on passthrough clean", () => {
+  it("strips model and type from cached client tools (Anthropic compatibility)", () => {
     const tools = [
       {
         name: "my_tool",
@@ -35,7 +36,10 @@ describe("cache audit — tool cleaning", () => {
       },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBeUndefined();
+    expect(out[0].type).toBeUndefined();
+    expect(out[0].cache_control).toEqual(tools[0].cache_control);
+    expect(out[0].name).toBe("my_tool");
   });
 
   it("keeps cached built-in tools identical except allowed model prefix strip", () => {
@@ -102,7 +106,8 @@ describe("cache audit — prepareClaudeRequest early exit", () => {
     const clone = structuredClone(body);
     prepareClaudeRequest(clone, "claude", "sk-ant-oat-test");
     expect(verifyCacheProtectedBody(clone, snap)).toBe(true);
-    expect(clone.tools[0].model).toBe("strip-me");
+    expect(clone.tools[0].model).toBeUndefined();
+    expect(clone.tools[0].type).toBeUndefined();
     expect(clone.messages[1].content).toHaveLength(2);
   });
 });

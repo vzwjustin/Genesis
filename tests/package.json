@@ -6,7 +6,8 @@
   "description": "Unit tests for 9router embeddings endpoint",
   "scripts": {
     "test": "vitest run --reporter=verbose",
-    "test:watch": "vitest --reporter=verbose"
+    "test:watch": "vitest --reporter=verbose",
+    "pretest": "node -e \"try{require.resolve('next/server')}catch{console.error('\\nRun npm install from the repo root first (tests import src/ and open-sse/).\\n');process.exit(1)}\""
   },
   "devDependencies": {
     "open": "^11.0.0",

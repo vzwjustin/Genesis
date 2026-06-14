@@ -51,9 +51,13 @@ export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientC
     const toolProtected = preserveClientCache
       && (itemHasCacheControl(tool) || (toolFloor >= 0 && i <= toolFloor));
 
-    // Cached prefix: compatibility fixes on built-in tool.model only (prefix strip + fable→opus)
+    // Cached prefix: strip client tool model/type (Anthropic rejects them); built-in tool.model gets prefix strip.
     if (toolProtected) {
-      if (tool.type && tool.type !== "function" && typeof tool.model === "string") {
+      if (!tool.type || tool.type === "function") {
+        const { model, type, ...clientRest } = tool;
+        return { ...clientRest };
+      }
+      if (typeof tool.model === "string") {
         const cleanedTool = { ...tool };
         cleanedTool.model = normalizeAnthropicBuiltinToolModel(cleanedTool.model);
         return cleanedTool;

@@ -29,15 +29,10 @@ export async function resolveModelAlias(alias) {
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr) {
-  // Combo names may contain "/" — check the full string before provider/model parsing.
-  const comboByFullName = await getComboByName(modelStr);
-  if (comboByFullName) {
-    return { provider: null, model: modelStr };
-  }
-
   const parsed = parseModel(modelStr);
 
   if (!parsed.isAlias) {
+    // provider/model format wins over combo names — avoids hijacking e.g. cc/opus by a combo
     // Always check provider-node prefix matching using original input first
     const openaiNodes = await getProviderNodes({ type: "openai-compatible" });
     const matchedOpenAI = openaiNodes.find((node) => node.prefix === parsed.providerAlias);
@@ -98,6 +93,9 @@ export async function getModelInfo(modelStr) {
  * @returns {Promise<string[]|null>} Array of valid models or null if not a combo / combo has no valid targets
  */
 export async function getComboModels(modelStr) {
+  // Slash strings are provider/model format — never treat as combo names (aligns with open-sse).
+  if (modelStr.includes("/")) return null;
+
   const combo = await getComboByName(modelStr);
   if (!combo || !combo.models || !Array.isArray(combo.models)) return null;
 
@@ -117,6 +115,8 @@ export async function getComboModels(modelStr) {
  * @returns {Promise<string|null>}
  */
 export async function getBrokenComboError(modelStr) {
+  if (modelStr.includes("/")) return null;
+
   const combo = await getComboByName(modelStr);
   if (!combo) return null;
   const models = await getComboModels(modelStr);

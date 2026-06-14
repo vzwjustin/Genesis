@@ -68,12 +68,22 @@ export function buildErrorBody(statusCode, message, options = {}) {
  * @returns {Response} HTTP Response object
  */
 export function errorResponse(statusCode, message, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  };
+  const resetsAtMs = options.resetsAtMs;
+  if (resetsAtMs && statusCode === 429) {
+    const minRetryDelaySec = Math.ceil(MIN_RETRY_DELAY_MS / 1000);
+    const retryAfterSec = Math.max(
+      minRetryDelaySec,
+      Math.ceil((resetsAtMs - Date.now()) / 1000)
+    );
+    headers["Retry-After"] = String(retryAfterSec);
+  }
   return new Response(JSON.stringify(buildErrorBody(statusCode, message, options)), {
     status: statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
-    }
+    headers,
   });
 }
 
@@ -175,7 +185,7 @@ export function createErrorResult(statusCode, message, resetsAtMs, options = {})
     resetsAtMs,
     errorCode: options.errorCode,
     proxyInternal,
-    response: errorResponse(statusCode, message, options)
+    response: errorResponse(statusCode, message, { ...options, resetsAtMs }),
   };
 }
 
