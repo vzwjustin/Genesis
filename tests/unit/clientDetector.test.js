@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { detectClientTool, isNativePassthrough } from "../../open-sse/utils/clientDetector.js";
+import { detectClientTool, isNativePassthrough, shouldUseNativePassthrough } from "../../open-sse/utils/clientDetector.js";
+import { MITM_PROXY_HEADER } from "../../open-sse/config/appConstants.js";
 
 // ============================================================================
 // detectClientTool — identifies the CLI/SDK tool from request headers and body
@@ -181,5 +182,27 @@ describe("isNativePassthrough", () => {
 
   it("deepseek-tui is NOT natively paired with any provider", () => {
     expect(isNativePassthrough("deepseek-tui", "deepseek")).toBe(false);
+  });
+});
+
+describe("detectClientTool — MITM proxy", () => {
+  it("returns null when x-9router-mitm-proxy is set", () => {
+    expect(detectClientTool({ [MITM_PROXY_HEADER.name]: MITM_PROXY_HEADER.value, "user-agent": "cursor/3.1" }, {})).toBeNull();
+  });
+});
+
+describe("shouldUseNativePassthrough", () => {
+  it("disables cursor passthrough for OpenAI JSON from MITM", () => {
+    expect(shouldUseNativePassthrough("cursor", "cursor", {
+      body: { messages: [{ role: "user", content: "hi" }] },
+      headers: { "content-type": "application/json", "user-agent": "cursor/3.1" },
+    })).toBe(false);
+  });
+
+  it("allows cursor passthrough for connect+proto Buffer bodies", () => {
+    expect(shouldUseNativePassthrough("cursor", "cursor", {
+      body: Buffer.from([1, 2, 3]),
+      headers: { "content-type": "application/connect+proto" },
+    })).toBe(true);
   });
 });

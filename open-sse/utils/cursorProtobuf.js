@@ -12,6 +12,26 @@ const textDecoder = new TextDecoder();
 
 const PROTOBUF_SCHEMA_VERSION = "1.1.3";
 
+const CURSOR_UPSTREAM_PREFIX_RE = /^(?:cu|cursor)\//i;
+
+/** Bare tier-less Cursor slugs → canonical upstream ids accepted by api2.cursor.sh */
+const CURSOR_BARE_MODEL_ALIASES = {
+  "gpt-5.5": "gpt-5.5-medium",
+  "gpt-5.4": "gpt-5.4-medium",
+};
+
+/** Cursor API rejects 9router routing prefixes (cu/gpt-5.5-high) — strip before protobuf encode. */
+export function normalizeCursorUpstreamModel(modelName) {
+  if (modelName == null) return modelName;
+  let s = String(modelName).trim();
+  if (!s) return s;
+  for (let i = 0; i < 4 && CURSOR_UPSTREAM_PREFIX_RE.test(s); i++) {
+    s = s.replace(CURSOR_UPSTREAM_PREFIX_RE, "");
+  }
+  if (CURSOR_BARE_MODEL_ALIASES[s]) s = CURSOR_BARE_MODEL_ALIASES[s];
+  return s;
+}
+
 // ==================== SCHEMAS ====================
 
 const WIRE_TYPE = { VARINT: 0, FIXED64: 1, LEN: 2, FIXED32: 5 };
@@ -681,9 +701,10 @@ export function wrapConnectRPCFrame(payload, compress = false) {
 }
 
 export function generateCursorBody(messages, modelName, tools = [], reasoningEffort = null, forceAgentMode = false, instruction = "") {
-  log("BODY", `Generating: ${messages.length} msgs, model=${modelName}, tools=${tools.length}, reasoning=${reasoningEffort || "none"}, forceAgentMode=${forceAgentMode}`);
+  const upstreamModel = normalizeCursorUpstreamModel(modelName);
+  log("BODY", `Generating: ${messages.length} msgs, model=${upstreamModel}, tools=${tools.length}, reasoning=${reasoningEffort || "none"}, forceAgentMode=${forceAgentMode}`);
 
-  const protobuf = buildChatRequest(messages, modelName, tools, reasoningEffort, forceAgentMode, instruction);
+  const protobuf = buildChatRequest(messages, upstreamModel, tools, reasoningEffort, forceAgentMode, instruction);
   const framed = wrapConnectRPCFrame(protobuf, false); // Cursor doesn't support compressed requests
   
   log("BODY", `Protobuf=${protobuf.length}B, Framed=${framed.length}B`);
@@ -993,6 +1014,14 @@ export function encodeTextResponseFrame(text) {
   return wrapConnectRPCFrame(response, false);
 }
 
+/** Encode a thinking/reasoning delta as a ConnectRPC response frame. */
+export function encodeThinkingResponseFrame(thinking) {
+  const thinkingInner = encodeField(FIELD.THINKING_TEXT, WIRE_TYPE.LEN, thinking);
+  const thinkingOuter = encodeField(FIELD.THINKING, WIRE_TYPE.LEN, thinkingInner);
+  const response = encodeField(FIELD.RESPONSE, WIRE_TYPE.LEN, thinkingOuter);
+  return wrapConnectRPCFrame(response, false);
+}
+
 /** Encode a tool-call delta as a ConnectRPC response frame. */
 export function encodeToolCallResponseFrame({ id, name, args = "{}", isLast = false }) {
   const toolCallPayload = concatArrays(
@@ -1040,6 +1069,7 @@ export default {
   extractTextFromResponse,
   decodeCursorRequest,
   encodeTextResponseFrame,
+  encodeThinkingResponseFrame,
   encodeToolCallResponseFrame,
   encodeEndStreamFrame,
 };

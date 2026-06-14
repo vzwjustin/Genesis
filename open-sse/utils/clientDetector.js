@@ -1,3 +1,5 @@
+import { MITM_PROXY_HEADER } from "../config/appConstants.js";
+
 /**
  * Detect CLI tool identity from request headers/body.
  * Used to determine if a request can be passed through (passthru) losslessly.
@@ -24,6 +26,9 @@ const NATIVE_PAIRS = {
  * @param {object} body    - Parsed request body
  */
 export function detectClientTool(headers = {}, body = {}) {
+  // MITM already decoded Cursor ConnectRPC → OpenAI JSON; do not treat as native cursor client.
+  if (headers[MITM_PROXY_HEADER.name] === MITM_PROXY_HEADER.value) return null;
+
   const ua = (headers["user-agent"] || "").toLowerCase();
   const xApp = (headers["x-app"] || "").toLowerCase();
   const openaiIntent = (headers["openai-intent"] || "").toLowerCase();
@@ -89,4 +94,18 @@ export function isNativePassthrough(clientTool, provider) {
     ? "anthropic"
     : provider;
   return nativeProviders.includes(normalizedProvider);
+}
+
+/**
+ * Native passthrough only when the request body matches the provider wire format.
+ * Cursor MITM and /v1/chat/completions submit OpenAI JSON — must use transformRequest.
+ */
+export function shouldUseNativePassthrough(clientTool, provider, { body, headers = {} } = {}) {
+  if (!isNativePassthrough(clientTool, provider)) return false;
+  if (provider === "cursor") {
+    const contentType = String(headers["content-type"] || headers["Content-Type"] || "").toLowerCase();
+    const isConnectProto = contentType.includes("application/connect");
+    if (!isConnectProto && !Buffer.isBuffer(body)) return false;
+  }
+  return true;
 }

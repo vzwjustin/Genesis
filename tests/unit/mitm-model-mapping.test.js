@@ -12,6 +12,14 @@ const ALIASES = {
     "claude-sonnet-4.5": "cu/composer-2.5",
     "claude-haiku-4.5": "cu/composer-2.5",
   },
+  cursor: {
+    "composer-2.5-fast": "cu/composer-2.5-fast",
+    "gpt-5.5-high": "cu/gpt-5.5-high",
+    "gpt-5.5-extra-high": "cu/gpt-5.5-extra-high",
+    "gpt-5.5-medium": "cu/gpt-5.5-medium",
+    "gpt-5.5-low": "cu/gpt-5.5-low",
+    auto: "cu/auto",
+  },
 };
 
 function kiroBody(conversationState) {
@@ -142,5 +150,38 @@ describe("mitm model mapping — Kiro follow-up turns", () => {
   it("kiro fallback prefers claude-sonnet-4.6 when model is unknown", () => {
     const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
     expect(map("kiro", "totally-unknown-model-xyz")).toBe("cc/claude-sonnet-4-6");
+  });
+
+  it("cursor maps gpt-5.5-high to cu/gpt-5.5-high (tier preserved)", () => {
+    const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
+    expect(map("cursor", "gpt-5.5-high")).toBe("cu/gpt-5.5-high");
+    expect(map("cursor", "gpt-5.5-extra-high")).toBe("cu/gpt-5.5-extra-high");
+    expect(map("cursor", "gpt-5.5-medium")).toBe("cu/gpt-5.5-medium");
+  });
+
+  it("cursor maps bare gpt-5.5 to cu/gpt-5.5-medium", () => {
+    const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
+    expect(map("cursor", "gpt-5.5")).toBe("cu/gpt-5.5-medium");
+  });
+
+  it("cursor strips cu/ prefix before alias lookup", () => {
+    const { getMappedModel: map, normalizeCursorModelId } = require("../../src/mitm/modelMapping.js");
+    expect(normalizeCursorModelId("cu/gpt-5.5-high")).toBe("gpt-5.5-high");
+    expect(map("cursor", "cu/gpt-5.5-high")).toBe("cu/gpt-5.5-high");
+  });
+
+  it("cursor routes native ids even when alias key missing from aliases.json", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "mitm", "aliases.json"),
+      JSON.stringify({
+        cursor: {
+          auto: "cu/auto",
+          "composer-2.5-fast": "cu/composer-2.5-fast",
+        },
+      }),
+    );
+    delete require.cache[require.resolve("../../src/mitm/modelMapping.js")];
+    const { getMappedModel: map } = require("../../src/mitm/modelMapping.js");
+    expect(map("cursor", "gpt-5.5-high")).toBe("cu/gpt-5.5-high");
   });
 });

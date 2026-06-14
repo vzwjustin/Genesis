@@ -68,6 +68,9 @@ export const CLIENT_METADATA = {
 // Internal anti-loop header
 export const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
 
+// MITM proxy translated Cursor proto → OpenAI JSON before 9router (not native passthrough)
+export const MITM_PROXY_HEADER = { name: "x-9router-mitm-proxy", value: "1" };
+
 // Suffix added to client tools when forwarding to Antigravity provider (anti-ban cloaking)
 export const AG_TOOL_SUFFIX = "_ide";
 

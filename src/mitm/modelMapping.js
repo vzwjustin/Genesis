@@ -14,6 +14,34 @@ function normalizeKiroModelId(model) {
   return s;
 }
 
+const CURSOR_PROVIDER_PREFIX_RE = /^(?:cu|cursor)\//i;
+
+/** Strip 9router provider prefixes from Cursor protobuf model ids (cu/gpt-5.5-high → gpt-5.5-high). */
+function normalizeCursorModelId(model) {
+  if (model == null) return null;
+  let s = String(model).trim();
+  if (!s) return null;
+  for (let i = 0; i < 4 && CURSOR_PROVIDER_PREFIX_RE.test(s); i++) {
+    s = s.replace(CURSOR_PROVIDER_PREFIX_RE, "");
+  }
+  return s || null;
+}
+
+/** True when id looks like a native Cursor upstream slug (not garbage / prefixed routes). */
+function isLikelyCursorNativeModelId(modelId) {
+  if (!modelId || typeof modelId !== "string") return false;
+  const s = modelId.trim();
+  if (!s || s.includes("/")) return false;
+  return /^(auto|default|composer|claude|gpt|grok|kimi)/i.test(s);
+}
+
+function cursorRouteForAliasKey(aliasKey, aliases) {
+  if (!aliasKey) return null;
+  if (aliases?.[aliasKey]) return aliases[aliasKey];
+  if (isLikelyCursorNativeModelId(aliasKey)) return `cu/${aliasKey}`;
+  return null;
+}
+
 // Extract model from URL path (Gemini), body (OpenAI/Anthropic), or Kiro conversationState
 function extractModel(url, body) {
   const urlMatch = url.match(/\/models\/([^/:]+)/);
@@ -66,7 +94,7 @@ function getMappedModel(tool, model) {
   if (tool === "kiro") {
     lookup = normalizeKiroModelId(model) || (model ? String(model).trim() : null) || "auto";
   } else if (tool === "cursor") {
-    lookup = (model != null && String(model).trim()) || "auto";
+    lookup = normalizeCursorModelId(model) || "auto";
   } else if (!lookup) {
     return null;
   }
@@ -85,7 +113,18 @@ function getMappedModel(tool, model) {
 
   const patterns = MODEL_PATTERNS?.[tool] || [];
   for (const { match, alias } of patterns) {
-    if (match.test(lookup) && aliases[alias]) return aliases[alias];
+    if (!match.test(lookup)) continue;
+    if (tool === "cursor") {
+      const routed = cursorRouteForAliasKey(alias, aliases);
+      if (routed) return routed;
+    } else if (aliases[alias]) {
+      return aliases[alias];
+    }
+  }
+
+  if (tool === "cursor") {
+    const direct = cursorRouteForAliasKey(lookup, aliases);
+    if (direct) return direct;
   }
 
   if (tool === "kiro") return getKiroFallbackAlias(aliases);
@@ -97,6 +136,8 @@ module.exports = {
   extractModel,
   getMappedModel,
   normalizeKiroModelId,
+  normalizeCursorModelId,
+  isLikelyCursorNativeModelId,
   getKiroFallbackAlias,
   getCursorFallbackAlias,
 };

@@ -9,8 +9,12 @@ const API_KEY = process.env.ROUTER_API_KEY;
 // Headers that must not be forwarded to 9Router
 const STRIP_HEADERS = new Set([
   "host", "content-length", "connection", "transfer-encoding",
-  "content-type", "authorization"
+  "content-type", "authorization",
+  // Cursor ConnectRPC headers — body is already OpenAI JSON; forwarding these enables false passthrough.
+  "connect-protocol-version", "x-cursor-client-version",
 ]);
+
+const MITM_PROXY_HEADER = { name: "x-9router-mitm-proxy", value: "1" };
 
 /**
  * Send body to 9Router at the given path and return the fetch Response object.
@@ -27,6 +31,7 @@ async function fetchRouter(openaiBody, path = "/v1/chat/completions", clientHead
     headers: {
       ...forwarded,
       "Content-Type": "application/json",
+      [MITM_PROXY_HEADER.name]: MITM_PROXY_HEADER.value,
       ...(API_KEY && { "Authorization": `Bearer ${API_KEY}` })
     },
     body: JSON.stringify(openaiBody)

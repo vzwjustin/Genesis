@@ -800,13 +800,34 @@ export class CursorExecutor extends BaseExecutor {
         }
       }
 
-      if (isComposerModel(model) && result.thinking) {
+      if (result.thinking) {
         totalThinking += result.thinking;
-        const visibleContent = visibleComposerContentFromThinking(totalThinking);
-        if (visibleContent.length > emittedComposerThinkingContentLength) {
-          const deltaContent = visibleContent.slice(emittedComposerThinkingContentLength);
-          emittedComposerThinkingContentLength = visibleContent.length;
-          totalContent += deltaContent;
+        if (isComposerModel(model)) {
+          const visibleContent = visibleComposerContentFromThinking(totalThinking);
+          if (visibleContent.length > emittedComposerThinkingContentLength) {
+            const deltaContent = visibleContent.slice(emittedComposerThinkingContentLength);
+            emittedComposerThinkingContentLength = visibleContent.length;
+            totalContent += deltaContent;
+            chunks.push(
+              `data: ${JSON.stringify({
+                id: responseId,
+                object: "chat.completion.chunk",
+                created,
+                model,
+                choices: [
+                  {
+                    index: 0,
+                    delta:
+                      !roleEmitted
+                        ? ((roleEmitted = true), { role: "assistant", content: deltaContent })
+                        : { content: deltaContent },
+                    finish_reason: null
+                  }
+                ]
+              })}\n\n`
+            );
+          }
+        } else {
           chunks.push(
             `data: ${JSON.stringify({
               id: responseId,
@@ -818,8 +839,8 @@ export class CursorExecutor extends BaseExecutor {
                   index: 0,
                   delta:
                     !roleEmitted
-                      ? ((roleEmitted = true), { role: "assistant", content: deltaContent })
-                      : { content: deltaContent },
+                      ? ((roleEmitted = true), { role: "assistant", reasoning_content: result.thinking })
+                      : { reasoning_content: result.thinking },
                   finish_reason: null
                 }
               ]

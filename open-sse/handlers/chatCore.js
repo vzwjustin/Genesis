@@ -16,7 +16,7 @@ import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDeta
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
-import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
+import { detectClientTool, shouldUseNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { cleanAnthropicToolDefinitions, fixToolUseOrdering, usesAnthropicToolCleaning } from "../translator/helpers/claudeHelper.js";
 import { applyCloaking } from "../utils/claudeCloaking.js";
@@ -88,8 +88,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Early passthrough detection: needed before any body mutations to enforce
   // "passthrough means passthrough — only model + auth are swapped" (Requirement 1.2)
-  const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
-  const passthrough = isNativePassthrough(clientTool, provider);
+  const clientHeaders = clientRawRequest?.headers || {};
+  const clientTool = detectClientTool(clientHeaders, body);
+  const passthrough = shouldUseNativePassthrough(clientTool, provider, {
+    body,
+    headers: Object.fromEntries(
+      Object.entries(clientHeaders).map(([k, v]) => [k.toLowerCase(), String(v)])
+    ),
+  });
 
   let originalClientBody;
   try {

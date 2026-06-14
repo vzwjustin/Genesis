@@ -1,6 +1,11 @@
-const { err } = require("../logger");
+const { log, err } = require("../logger");
 const { fetchRouter } = require("./base");
 const { getMappedModel } = require("../modelMapping");
+const {
+  RedactedToolContentProcessor,
+  extractRedactedToolCalls,
+  stripRedactedToolCalls,
+} = require("./composerRedactedTools");
 
 let protobufMod = null;
 async function loadProtobuf() {
@@ -14,32 +19,132 @@ function cursorRequiresPassthrough(decoded) {
   return decoded?.kind === "tool_result" || decoded?.kind === "tool_round";
 }
 
+function emitConnectRpcFrames(res, protobuf, { text, thinking, toolCalls }) {
+  const { encodeTextResponseFrame, encodeThinkingResponseFrame, encodeToolCallResponseFrame, encodeEndStreamFrame } = protobuf;
+  let frames = 0;
+
+  if (text) {
+    res.write(Buffer.from(encodeTextResponseFrame(text)));
+    frames++;
+  }
+  if (thinking) {
+    res.write(Buffer.from(encodeThinkingResponseFrame(thinking)));
+    frames++;
+  }
+  for (const tc of toolCalls || []) {
+    if (!tc?.name) continue;
+    res.write(Buffer.from(encodeToolCallResponseFrame({
+      id: tc.id || `call_${frames}`,
+      name: tc.name,
+      args: tc.args || "{}",
+      isLast: tc.isLast !== false,
+    })));
+    frames++;
+  }
+  if (typeof encodeEndStreamFrame === "function") {
+    res.write(Buffer.from(encodeEndStreamFrame()));
+    frames++;
+  }
+  res.end();
+  return frames;
+}
+
+async function pipeJsonAsConnectRPC(routerRes, res, protobuf) {
+  const text = await routerRes.text().catch(() => "");
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    res.end(text);
+    return 0;
+  }
+
+  const choice = parsed?.choices?.[0];
+  const message = choice?.message || {};
+  const rawContent = typeof message.content === "string" ? message.content : "";
+  const reasoning = typeof message.reasoning_content === "string" ? message.reasoning_content : "";
+  // Composer/DeepSeek may embed tool calls as text tokens in content — strip and convert.
+  const content = stripRedactedToolCalls(rawContent);
+  const textToolCalls = extractRedactedToolCalls(rawContent).map((tc, idx) => ({
+    id: `call_text_${idx}`,
+    name: tc.name,
+    args: tc.input || "{}",
+    isLast: true,
+  }));
+  const nativeToolCalls = (message.tool_calls || []).map((tc, idx) => ({
+    id: tc.id || `call_${idx}`,
+    name: tc.function?.name || "",
+    args: tc.function?.arguments || "{}",
+    isLast: true,
+  }));
+
+  return emitConnectRpcFrames(res, protobuf, {
+    text: content,
+    thinking: reasoning,
+    toolCalls: [...nativeToolCalls, ...textToolCalls],
+  });
+}
+
 async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
-  const { encodeTextResponseFrame, encodeToolCallResponseFrame, encodeEndStreamFrame } = protobuf;
+  const contentType = String(routerRes.headers?.get?.("content-type") || "").toLowerCase();
+  if (!contentType.includes("text/event-stream")) {
+    return pipeJsonAsConnectRPC(routerRes, res, protobuf);
+  }
+
+  const { encodeTextResponseFrame, encodeThinkingResponseFrame, encodeToolCallResponseFrame, encodeEndStreamFrame } = protobuf;
   const reader = routerRes.body?.getReader?.();
   if (!reader) {
-    const text = await routerRes.text().catch(() => "");
-    res.end(text);
-    return;
+    return pipeJsonAsConnectRPC(routerRes, res, protobuf);
   }
 
   const decoder = new TextDecoder();
   let buffer = "";
   const toolCalls = new Map();
+  let framesWritten = 0;
+  // Composer/DeepSeek may stream tool calls as text tokens (Unicode ｜tool▁call｜
+  // markers) inside delta.content instead of native delta.tool_calls. Strip and
+  // convert them so they don't leak into the rendered text.
+  const contentProcessor = new RedactedToolContentProcessor();
+  let toolCallSeq = 0;
 
-  // Emit all accumulated tool calls and clear them. Guarded so a flush on
-  // finish_reason and the end-of-stream flush can't double-emit.
-  const flushToolCalls = () => {
+  const writeText = (text) => {
+    if (!text) return;
+    res.write(Buffer.from(encodeTextResponseFrame(text)));
+    framesWritten++;
+  };
+
+  const writeThinking = (thinking) => {
+    if (!thinking) return;
+    res.write(Buffer.from(encodeThinkingResponseFrame(thinking)));
+    framesWritten++;
+  };
+
+  const writeToolCall = (entry, isLast) => {
+    if (!entry?.name) return;
+    res.write(Buffer.from(encodeToolCallResponseFrame({
+      id: entry.id,
+      name: entry.name,
+      args: entry.args || "{}",
+      isLast,
+    })));
+    framesWritten++;
+  };
+
+  const flushToolCalls = (isLast = true) => {
     if (toolCalls.size === 0) return;
     for (const entry of toolCalls.values()) {
-      res.write(Buffer.from(encodeToolCallResponseFrame({
-        id: entry.id,
-        name: entry.name || "tool",
-        args: entry.args || "{}",
-        isLast: true,
-      })));
+      writeToolCall(entry, isLast);
     }
     toolCalls.clear();
+  };
+
+  // Emit tool calls the content processor extracted from text tokens. The
+  // processor returns { name, input } where input is a JSON args string.
+  const writeTextToolCalls = (extracted) => {
+    for (const tc of extracted || []) {
+      if (!tc?.name) continue;
+      writeToolCall({ id: `call_text_${toolCallSeq++}`, name: tc.name, args: tc.input || "{}" }, true);
+    }
   };
 
   while (true) {
@@ -66,8 +171,11 @@ async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
       if (!delta) continue;
 
       if (delta.content) {
-        res.write(Buffer.from(encodeTextResponseFrame(delta.content)));
+        const { text, toolCalls: textToolCalls } = contentProcessor.processChunk(delta.content);
+        writeText(text);
+        writeTextToolCalls(textToolCalls);
       }
+      if (delta.reasoning_content) writeThinking(delta.reasoning_content);
 
       for (const tc of delta.tool_calls || []) {
         const idx = tc.index ?? 0;
@@ -80,24 +188,23 @@ async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
         if (tc.function?.arguments) entry.args += tc.function.arguments;
       }
 
-      // Flush on ANY finish_reason, not just "tool_calls" — some providers end
-      // an agentic turn with finish_reason "stop" while tool calls are pending.
       const finish = chunk?.choices?.[0]?.finish_reason;
-      if (finish) {
-        flushToolCalls();
-      }
+      if (finish) flushToolCalls(true);
     }
   }
 
-  // Safety net: stream closed without a terminal finish_reason.
-  flushToolCalls();
-  // Connect-RPC requires a terminal EndStreamResponse (flag 0x02) frame. Without it
-  // the connect-es client in Cursor IDE treats the stream as incomplete and raises
-  // "Unparsable stream error chunk", leaking the raw frames to the user.
+  // Flush any buffered partial tool-call text the processor held back.
+  const tail = contentProcessor.flush();
+  writeText(tail.text);
+  writeTextToolCalls(tail.toolCalls);
+
+  flushToolCalls(true);
   if (typeof encodeEndStreamFrame === "function") {
     res.write(Buffer.from(encodeEndStreamFrame()));
+    framesWritten++;
   }
   res.end();
+  return framesWritten;
 }
 
 /**
@@ -121,6 +228,8 @@ async function intercept(req, res, bodyBuffer, _mappedModel, passthrough) {
     if (!mappedModel) {
       return passthrough(req, res, bodyBuffer);
     }
+
+    log(`[Cursor] intercept ${decoded.model} → ${mappedModel} (${decoded.messages.length} msgs)`);
 
     const messages = [...decoded.messages];
     if (decoded.instruction) {
@@ -148,6 +257,7 @@ async function intercept(req, res, bodyBuffer, _mappedModel, passthrough) {
     });
 
     await pipeOpenAIasConnectRPC(routerRes, res, protobuf);
+    log(`[Cursor] response streamed for ${mappedModel}`);
   } catch (error) {
     err(`[Cursor] ${error.message}`);
     if (!res.headersSent) {
@@ -164,4 +274,5 @@ async function intercept(req, res, bodyBuffer, _mappedModel, passthrough) {
 module.exports = {
   intercept,
   cursorRequiresPassthrough,
+  pipeOpenAIasConnectRPC,
 };

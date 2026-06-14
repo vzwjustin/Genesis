@@ -2,10 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   decodeCursorRequest,
   encodeTextResponseFrame,
+  encodeThinkingResponseFrame,
   encodeEndStreamFrame,
   generateCursorBody,
   generateToolResultBody,
   wrapConnectRPCFrame,
+  normalizeCursorUpstreamModel,
+  extractTextFromResponse,
 } from "../../open-sse/utils/cursorProtobuf.js";
 
 function buildChatRequestFrame(model, messages) {
@@ -88,6 +91,16 @@ describe("encodeTextResponseFrame", () => {
   });
 });
 
+describe("encodeThinkingResponseFrame", () => {
+  it("round-trips thinking text through extractTextFromResponse", () => {
+    const frame = encodeThinkingResponseFrame("reasoning step");
+    const payload = frame.slice(5);
+    const extracted = extractTextFromResponse(payload);
+    expect(extracted.thinking).toBe("reasoning step");
+    expect(extracted.text).toBeNull();
+  });
+});
+
 describe("encodeEndStreamFrame", () => {
   // Cursor terminates every stream with a flag-0x02 EndStreamResponse frame carrying
   // JSON `{}`. A re-encoded MITM stream that omits it makes connect-es raise
@@ -137,6 +150,22 @@ describe("cursor MITM model mapping", () => {
 
     process.env.DATA_DIR = originalDataDir;
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+});
+
+describe("normalizeCursorUpstreamModel", () => {
+  it("strips cu/ prefix before protobuf encode", () => {
+    expect(normalizeCursorUpstreamModel("cu/gpt-5.5-high")).toBe("gpt-5.5-high");
+    const frame = buildChatRequestFrame("cu/gpt-5.5-high", [{ role: "user", content: "hi" }]);
+    const decoded = decodeCursorRequest(frame);
+    expect(decoded.model).toBe("gpt-5.5-high");
+  });
+
+  it("maps bare gpt-5.5 to gpt-5.5-medium", () => {
+    expect(normalizeCursorUpstreamModel("cu/gpt-5.5")).toBe("gpt-5.5-medium");
+    const frame = buildChatRequestFrame("cu/gpt-5.5", [{ role: "user", content: "hi" }]);
+    const decoded = decodeCursorRequest(frame);
+    expect(decoded.model).toBe("gpt-5.5-medium");
   });
 });
 

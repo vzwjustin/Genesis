@@ -39,7 +39,10 @@ const CROSS_MODEL_DEFAULTS = {
     "composer-2.5": "cu/composer-2.5",
     "claude-opus-4-8-high": "cu/claude-opus-4-8-high",
     "claude-4.6-sonnet-medium": "cu/claude-4.6-sonnet-medium",
+    "gpt-5.5-extra-high": "cu/gpt-5.5-extra-high",
+    "gpt-5.5-high": "cu/gpt-5.5-high",
     "gpt-5.5-medium": "cu/gpt-5.5-medium",
+    "gpt-5.5-low": "cu/gpt-5.5-low",
     "auto": "cu/auto",
   },
 };
