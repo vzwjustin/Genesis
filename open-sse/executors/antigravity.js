@@ -4,7 +4,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, INTERNAL_REQUEST_HEADER, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { deriveSessionId } from "../utils/sessionManager.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, cancelResponseBody } from "../utils/proxyFetch.js";
 import { cleanJSONSchemaForAntigravity } from "../translator/helpers/geminiHelper.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
 
@@ -257,6 +257,9 @@ export class AntigravityExecutor extends BaseExecutor {
           if (retryMs && retryMs <= MAX_RETRY_AFTER_MS && retryAfterAttemptsByUrl[urlIndex] < MAX_RETRY_AFTER_RETRIES) {
             retryAfterAttemptsByUrl[urlIndex]++;
             log?.debug?.("RETRY", `${response.status} with Retry-After: ${Math.ceil(retryMs / 1000)}s, waiting... (${retryAfterAttemptsByUrl[urlIndex]}/${MAX_RETRY_AFTER_RETRIES})`);
+            // Drain the abandoned body so undici frees the socket instead of
+            // leaking it until stall-timeout/GC across retries.
+            await cancelResponseBody(response);
             await new Promise(resolve => setTimeout(resolve, retryMs));
             urlIndex--;
             continue;
@@ -268,6 +271,7 @@ export class AntigravityExecutor extends BaseExecutor {
             // Exponential backoff: 2s, 4s, 8s...
             const backoffMs = Math.min(1000 * (2 ** retryAttemptsByUrl[urlIndex]), MAX_RETRY_AFTER_MS);
             log?.debug?.("RETRY", `429 auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`);
+            await cancelResponseBody(response);
             await new Promise(resolve => setTimeout(resolve, backoffMs));
             urlIndex--;
             continue;
@@ -277,6 +281,7 @@ export class AntigravityExecutor extends BaseExecutor {
           lastStatus = response.status;
 
           if (urlIndex + 1 < fallbackCount) {
+            await cancelResponseBody(response);
             continue;
           }
         }
@@ -284,12 +289,15 @@ export class AntigravityExecutor extends BaseExecutor {
         if (this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
+          await cancelResponseBody(response);
           continue;
         }
 
         return { response, url, headers, transformedBody };
       } catch (error) {
         lastError = error;
+        // Client cancellation must propagate, not be retried against fallbacks.
+        if (signal?.aborted || error?.name === "AbortError") throw error;
         if (urlIndex + 1 < fallbackCount) {
           log?.debug?.("RETRY", `Error on ${url}, trying fallback ${urlIndex + 1}`);
           continue;

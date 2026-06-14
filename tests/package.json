@@ -10,6 +10,7 @@
     "pretest": "node -e \"try{require.resolve('next/server')}catch{console.error('\\nRun npm install from the repo root first (tests import src/ and open-sse/).\\n');process.exit(1)}\""
   },
   "devDependencies": {
+    "fast-check": "^4.8.0",
     "open": "^11.0.0",
     "uuid": "^13.0.0",
     "vitest": "^4.0.0"

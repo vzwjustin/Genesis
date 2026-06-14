@@ -69,6 +69,16 @@ const TOOL_HOSTS = {
   cursor: ["api2.cursor.sh"],
 };
 
+/** Hosts that require HTTP/2 and reject HTTP/1.1 connections. */
+const HTTP2_REQUIRED_HOSTS = ["api2.cursor.sh"];
+
+const _http2RequiredSet = new Set(HTTP2_REQUIRED_HOSTS);
+
+/** Returns true if the given hostname requires HTTP/2 transport. */
+function isHttp2Required(hostname) {
+  return _http2RequiredSet.has(hostname);
+}
+
 module.exports = {
   TOOL_HOSTS,
   KIRO_MITM_HOSTS,
@@ -76,4 +86,6 @@ module.exports = {
   KIRO_AWS_Q_HOSTS,
   KIRO_CODEWHISPERER_HOSTS,
   isKiroMitmHost,
+  HTTP2_REQUIRED_HOSTS,
+  isHttp2Required,
 };

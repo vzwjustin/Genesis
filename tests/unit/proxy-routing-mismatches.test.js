@@ -25,12 +25,13 @@ describe("proxy routing mismatch regressions", () => {
     vi.restoreAllMocks();
   });
 
-  it("CursorExecutor uses proxy-aware fetch instead of direct HTTP/2 when an env proxy applies", async () => {
+  it("CursorExecutor uses HTTP/2-over-CONNECT instead of HTTP/1.1 fetch when an env proxy applies", async () => {
     process.env.HTTPS_PROXY = "http://env-proxy.example.com:8080";
     const executor = new CursorExecutor();
     const upstream = { status: 200, headers: {}, body: Buffer.from("ok") };
     const http2Spy = vi.spyOn(executor, "makeHttp2Request").mockResolvedValue(upstream);
     const fetchSpy = vi.spyOn(executor, "makeFetchRequest").mockResolvedValue(upstream);
+    const http2ProxySpy = vi.spyOn(executor, "makeHttp2ProxyRequest").mockResolvedValue(upstream);
 
     const result = await executor.execute({
       model: "cursor-small",
@@ -44,8 +45,10 @@ describe("proxy routing mismatch regressions", () => {
     });
 
     expect(result.response.status).toBe(200);
+    // Cursor requires HTTP/2 — with a proxy, it should use HTTP/2-over-CONNECT, not HTTP/1.1 fetch
+    expect(http2ProxySpy).toHaveBeenCalledOnce();
     expect(http2Spy).not.toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("relay proxy routing honors connectionNoProxy before using the relay", async () => {

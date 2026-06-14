@@ -9,10 +9,15 @@ import {
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { FORMATS } from "../translator/formats.js";
-import { proxyAwareFetch, shouldBypassMitmDns, resolveRealIP, hasApplicableEnvProxy } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, shouldBypassMitmDns, resolveRealIP, hasApplicableEnvProxy, getEnvProxyUrl } from "../utils/proxyFetch.js";
 import { stripRedactedToolCalls, extractRedactedToolCalls } from "../utils/composerRedactedTools.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
+import { createRequire } from "module";
 import zlib from "zlib";
+import net from "net";
+
+const require = createRequire(import.meta.url);
+const { isHttp2Required } = require("../../src/shared/constants/mitmToolHosts.js");
 
 // Detect cloud environment
 const isCloudEnv = () => {
@@ -299,6 +304,181 @@ export class CursorExecutor extends BaseExecutor {
     });
   }
 
+  makeHttp2ProxyRequest(url, headers, body, signal, proxyOptions) {
+    if (!http2 || !tls) {
+      throw new Error("http2/tls modules not available for CONNECT tunnel");
+    }
+
+    const HTTP2_PROXY_TIMEOUT_MS = 30000; // 30s connect + TLS handshake timeout
+    const HTTP2_REQUEST_TIMEOUT_MS = 60000; // 60s request timeout
+    const MAX_CONNECT_RESPONSE_BYTES = 64 * 1024; // cap proxy CONNECT response header size
+
+    return new Promise((resolve, reject) => {
+      const urlObj = new URL(url);
+      const targetHost = urlObj.hostname;
+      const targetPort = Number(urlObj.port) || 443;
+
+      // Resolve proxy URL from proxyOptions, falling back to env proxy.
+      const proxyUrlRaw = proxyOptions?.url || proxyOptions?.connectionProxyUrl;
+      let proxyUrl;
+      try {
+        const raw = proxyUrlRaw || "";
+        if (!raw) throw new Error("empty proxy url");
+        proxyUrl = new URL(/^[a-z][a-z\d+\-.]*:\/\//i.test(raw) ? raw : `http://${raw}`);
+      } catch {
+        const envProxy = getEnvProxyUrl(url);
+        if (!envProxy) {
+          return reject(new Error("No proxy URL available for HTTP/2-over-CONNECT tunnel"));
+        }
+        proxyUrl = new URL(envProxy);
+      }
+
+      const proxyHost = proxyUrl.hostname;
+      const proxyIsTls = proxyUrl.protocol === "https:";
+      const proxyPort = Number(proxyUrl.port) || (proxyIsTls ? 443 : 80);
+
+      let settled = false;
+      let socket = null;
+      let tlsSocket = null;
+      let client = null;
+      let requestTimeout = null;
+
+      // Always tear down every socket/session on settle so a timeout/abort/error
+      // never leaks the proxy TCP socket, the tunnel TLS socket, or the h2 session.
+      const cleanup = () => {
+        clearTimeout(connectTimeout);
+        if (requestTimeout) clearTimeout(requestTimeout);
+        try { client?.close(); } catch { /* noop */ }
+        try { tlsSocket?.destroy(); } catch { /* noop */ }
+        try { socket?.destroy(); } catch { /* noop */ }
+      };
+
+      const finish = (fn) => (...args) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn(...args);
+      };
+
+      const connectTimeout = setTimeout(finish(() => {
+        reject(new Error("HTTP/2-over-CONNECT: CONNECT tunnel timed out"));
+      }), HTTP2_PROXY_TIMEOUT_MS);
+
+      if (signal) {
+        if (signal.aborted) {
+          return finish(reject)(new Error("Request aborted"));
+        }
+        signal.addEventListener("abort", finish(() => reject(new Error("Request aborted"))), { once: true });
+      }
+
+      // Build the CONNECT request. Include Proxy-Authorization when the proxy URL
+      // carries credentials — RFC 7235 proxies reject an unauthenticated CONNECT
+      // with 407, which would make every authenticated proxy unusable.
+      let connectRequest =
+        `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n` +
+        `Host: ${targetHost}:${targetPort}\r\n`;
+      if (proxyUrl.username) {
+        const user = decodeURIComponent(proxyUrl.username);
+        const pass = decodeURIComponent(proxyUrl.password || "");
+        const cred = Buffer.from(`${user}:${pass}`).toString("base64");
+        connectRequest += `Proxy-Authorization: Basic ${cred}\r\n`;
+      }
+      connectRequest += "\r\n";
+
+      const onProxyConnected = () => socket.write(connectRequest);
+
+      // Open the connection to the proxy. HTTPS proxies (TLS-terminating /
+      // ssl_bump / corporate forward proxies) require a TLS handshake to the
+      // proxy itself before the plaintext CONNECT line — a bare TCP socket to
+      // such a proxy gets a TLS alert and the tunnel can never be established.
+      if (proxyIsTls) {
+        socket = tls.connect({ host: proxyHost, port: proxyPort, servername: proxyHost }, onProxyConnected);
+      } else {
+        socket = net.connect(proxyPort, proxyHost, onProxyConnected);
+      }
+
+      socket.on("error", finish(reject));
+
+      // Wait for the proxy CONNECT response, terminated by CRLFCRLF. Cap the
+      // buffer so a misbehaving proxy can't grow it without bound (OOM).
+      let connectResponse = "";
+      const onData = (chunk) => {
+        connectResponse += chunk.toString("latin1");
+        if (connectResponse.length > MAX_CONNECT_RESPONSE_BYTES) {
+          finish(reject)(new Error("HTTP/2-over-CONNECT: proxy CONNECT response too large"));
+          return;
+        }
+        if (connectResponse.indexOf("\r\n\r\n") === -1) return;
+        socket.removeListener("data", onData);
+
+        const statusLine = connectResponse.split("\r\n")[0];
+        const statusCode = Number.parseInt(statusLine.split(" ")[1] || "", 10);
+        if (!Number.isInteger(statusCode)) {
+          finish(reject)(new Error(`HTTP/2-over-CONNECT: malformed proxy response "${statusLine}"`));
+          return;
+        }
+        if (statusCode !== 200) {
+          finish(reject)(new Error(`HTTP/2-over-CONNECT: proxy returned ${statusCode}`));
+          return;
+        }
+
+        // Wrap the tunnel with TLS to the target and negotiate ALPN h2. The
+        // connect timeout stays armed through the TLS handshake; it is swapped
+        // for the request timeout only once the h2 request actually starts.
+        tlsSocket = tls.connect({
+          socket,
+          servername: targetHost,
+          ALPNProtocols: ["h2"],
+        }, () => {
+          if (tlsSocket.alpnProtocol !== "h2") {
+            finish(reject)(new Error(`HTTP/2-over-CONNECT: ALPN negotiated '${tlsSocket.alpnProtocol}' instead of 'h2'`));
+            return;
+          }
+
+          clearTimeout(connectTimeout);
+          requestTimeout = setTimeout(finish(() => {
+            reject(new Error("HTTP/2-over-CONNECT: request timed out"));
+          }), HTTP2_REQUEST_TIMEOUT_MS);
+
+          client = http2.connect(`https://${targetHost}`, {
+            createConnection: () => tlsSocket,
+          });
+          client.on("error", finish(reject));
+
+          const chunks = [];
+          let responseHeaders = {};
+
+          const req = client.request({
+            ":method": "POST",
+            ":path": urlObj.pathname,
+            ":authority": urlObj.host,
+            ":scheme": "https",
+            ...headers,
+          });
+
+          req.on("response", (hdrs) => { responseHeaders = hdrs; });
+          req.on("data", (chunk) => { chunks.push(chunk); });
+          req.on("end", finish(() => {
+            resolve({
+              status: responseHeaders[":status"],
+              headers: responseHeaders,
+              body: Buffer.concat(chunks),
+            });
+          }));
+          req.on("error", finish(reject));
+
+          req.write(body);
+          req.end();
+        });
+
+        tlsSocket.on("error", finish((err) => {
+          reject(new Error(`HTTP/2-over-CONNECT: TLS error: ${err.message}`));
+        }));
+      };
+      socket.on("data", onData);
+    });
+  }
+
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, passthrough = false, cacheProtectedSnapshot = null }) {
     const url = this.buildUrl();
     const headers = this.buildHeaders(credentials);
@@ -317,26 +497,46 @@ export class CursorExecutor extends BaseExecutor {
     }
 
     try {
-      // A real proxy / relay must use the fetch path (dispatcher-based). DNS bypass alone
-      // does NOT force fetch: Cursor's endpoint is HTTP/2-only and returns 464 over HTTP/1.1,
-      // so for bypass hosts we resolve the real IP and keep HTTP/2, pinning the socket to it.
-      const usingProxy = proxyOptions?.enabled === true
+      // DNS bypass alone does NOT force fetch: Cursor's endpoint is HTTP/2-only and
+      // returns 464 over HTTP/1.1, so for bypass hosts we resolve the real IP and keep
+      // HTTP/2, pinning the socket to it.
+      // A CONNECT-capable proxy (per-connection or environment HTTP/HTTPS proxy)
+      // can carry the HTTP/2 tunnel. A vercel-style relay cannot: it forwards via
+      // x-relay-target headers over an ordinary fetch and must take the fetch path,
+      // otherwise a relay-only config would h2-connect directly to the MITM-poisoned
+      // system-DNS address instead of going through the relay.
+      const usingConnectProxy = proxyOptions?.enabled === true
         || proxyOptions?.connectionProxyEnabled === true
-        || !!proxyOptions?.vercelRelayUrl
         || hasApplicableEnvProxy(url);
+      const usingRelay = !!proxyOptions?.vercelRelayUrl;
+      const usingProxy = usingConnectProxy || usingRelay;
       const needsDnsBypass = shouldBypassMitmDns(url);
       let bypassIP = null;
       if (needsDnsBypass && !usingProxy && http2) {
         try {
           bypassIP = await resolveRealIP(new URL(url).hostname);
-        } catch {
-          bypassIP = null;
+        } catch (dnsErr) {
+          // DNS failed — fail closed with clear error (don't silently fall to HTTP/1.1)
+          throw new Error("External DNS resolution failed for api2.cursor.sh — cannot establish HTTP/2 bypass connection");
+        }
+        if (!bypassIP) {
+          throw new Error("External DNS resolution failed for api2.cursor.sh — cannot establish HTTP/2 bypass connection");
         }
       }
-      const shouldForceFetch = usingProxy || (needsDnsBypass && !bypassIP);
-      const response = (http2 && !shouldForceFetch)
-        ? await this.makeHttp2Request(url, headers, transformedBody, signal, bypassIP)
-        : await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
+      const hostname = new URL(url).hostname;
+      const shouldForceFetch = (usingConnectProxy && !isHttp2Required(hostname))
+        || usingRelay
+        || (!usingProxy && needsDnsBypass && !bypassIP);
+
+      let response;
+      if (usingConnectProxy && http2 && isHttp2Required(hostname)) {
+        // HTTP/2-over-CONNECT for Cursor through a CONNECT-capable proxy
+        response = await this.makeHttp2ProxyRequest(url, headers, transformedBody, signal, proxyOptions);
+      } else if (http2 && !shouldForceFetch) {
+        response = await this.makeHttp2Request(url, headers, transformedBody, signal, bypassIP);
+      } else {
+        response = await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
+      }
       const status = Number(response.status);
 
       if (status !== 200) {

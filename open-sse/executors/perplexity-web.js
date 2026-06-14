@@ -493,6 +493,8 @@ export class PerplexityWebExecutor extends BaseExecutor {
     try {
       response = await proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions);
     } catch (err) {
+      // Client cancellation must propagate as an abort, not be masked as a 502.
+      if (err?.name === "AbortError" || signal?.aborted) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Perplexity connection failed: ${err.message || String(err)}`, type: "upstream_error" },

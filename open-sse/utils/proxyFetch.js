@@ -6,7 +6,7 @@ import { assertSafeResolvedHostname, isBlockedHostname } from "./ssrfGuard.js";
 import { mergeAbortSignals } from "./abortSignal.js";
 
 const require = createRequire(import.meta.url);
-const { isKiroMitmHost } = require("../../src/shared/constants/mitmToolHosts.js");
+const { isKiroMitmHost, isHttp2Required } = require("../../src/shared/constants/mitmToolHosts.js");
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
@@ -229,6 +229,14 @@ async function resolveRealIP(hostname) {
       console.warn(`[ProxyFetch] DNS returned no A records for ${hostname}`);
       return null;
     }
+    // The bypass path connects to this IP directly, skipping the dispatcher's
+    // connect-time SSRF guard — so re-assert the resolved address here. External
+    // DNS returning a private/loopback/link-local IP (rebind or poisoning) must
+    // not yield a server-side connection to an internal address.
+    if (isBlockedHostname(String(addresses[0]))) {
+      console.warn(`[ProxyFetch] External DNS for ${hostname} resolved to blocked IP ${addresses[0]} — refusing bypass`);
+      return null;
+    }
     if (DNS_CACHE.size >= DNS_CACHE_MAX_SIZE) {
       DNS_CACHE.delete(DNS_CACHE.keys().next().value);
     }
@@ -244,9 +252,11 @@ async function resolveRealIP(hostname) {
  * Check if request should bypass MITM DNS redirect
  */
 function hostnameMatchesMitmBypass(hostname, bypassHost) {
-  const host = hostname.toLowerCase();
-  const pattern = bypassHost.toLowerCase();
-  return host === pattern || host.endsWith(`.${pattern}`);
+  // Exact host only. MITM_BYPASS_HOSTS is an enumerated list of production API
+  // hostnames; a subdomain wildcard would let an attacker-controlled subdomain
+  // (e.g. evil.api2.cursor.sh) skip the SSRF DNS guard and reach the raw-IP
+  // bypass path, where its externally-resolved address is dialed directly.
+  return hostname.toLowerCase() === bypassHost.toLowerCase();
 }
 
 function shouldBypassMitmDns(url) {
@@ -397,10 +407,20 @@ async function getDispatcher(proxyUrl) {
   if (proxyDispatchers.size >= MEMORY_CONFIG.proxyDispatchersMaxSize) {
     proxyDispatchers.delete(proxyDispatchers.keys().next().value);
   }
-  const { ProxyAgent } = await import("undici");
-  const dispatcher = new ProxyAgent({ uri: normalized });
-  proxyDispatchers.set(normalized, dispatcher);
-  return dispatcher;
+  // Store the in-flight construction promise so concurrent first-callers for the
+  // same proxy share one ProxyAgent instead of each creating one and orphaning
+  // the loser's connection pool. Drop the entry if construction rejects.
+  const dispatcherPromise = (async () => {
+    const { ProxyAgent } = await import("undici");
+    return new ProxyAgent({ uri: normalized });
+  })().catch((err) => {
+    if (proxyDispatchers.get(normalized) === dispatcherPromise) {
+      proxyDispatchers.delete(normalized);
+    }
+    throw err;
+  });
+  proxyDispatchers.set(normalized, dispatcherPromise);
+  return dispatcherPromise;
 }
 
 /**
@@ -630,6 +650,139 @@ async function createBypassRequest(parsedUrl, realIP, options) {
   });
 }
 
+/**
+ * Create HTTP/2 request with real-IP pinning (bypass DNS) for hosts that require h2.
+ * Similar to cursor executor's makeHttp2Request() but returns a fetch-like response object
+ * consistent with createBypassRequest().
+ */
+async function createHttp2BypassRequest(parsedUrl, realIP, options) {
+  const http2Module = await import("http2");
+  const tlsModule = await import("tls");
+  const http2 = http2Module.default ?? http2Module;
+  const tls = tlsModule.default ?? tlsModule;
+
+  const HTTP2_BYPASS_TIMEOUT_MS = 60000;
+  const port = parsedUrl.port ? Number(parsedUrl.port) : HTTPS_PORT;
+
+  const body = await serializeBypassRequestBody(options.body);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const finish = (fn) => (...args) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hangTimeout);
+      try { client.close(); } catch { /* noop */ }
+      fn(...args);
+    };
+
+    const fail = finish((err) => reject(err));
+
+    const hangTimeout = setTimeout(finish(() => {
+      reject(new Error("[ProxyFetch] HTTP/2 bypass request timed out"));
+    }), HTTP2_BYPASS_TIMEOUT_MS);
+    // Don't let the timeout timer hold the event loop open on its own.
+    hangTimeout.unref?.();
+
+    // Signal abort handling
+    const onAbort = () => fail(options.signal?.reason || new Error("aborted"));
+    if (options.signal) {
+      if (options.signal.aborted) {
+        // Clear the timer before the early return — otherwise it dangles for the
+        // full timeout and, when it fires, hits `client` in the finish() TDZ.
+        clearTimeout(hangTimeout);
+        reject(options.signal.reason || new Error("aborted"));
+        return;
+      }
+      options.signal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    const client = http2.connect(`https://${parsedUrl.host}`, {
+      createConnection: () => tls.connect({
+        host: realIP,
+        port,
+        servername: parsedUrl.hostname,
+        ALPNProtocols: ["h2"],
+      }),
+    });
+
+    client.on("error", fail);
+
+    const method = (options.method || "POST").toUpperCase();
+    const reqHeaders = {
+      ":method": method,
+      ":path": parsedUrl.pathname + parsedUrl.search,
+      ":authority": parsedUrl.host,
+      ":scheme": "https",
+    };
+    // Copy user headers, skipping pseudo-header collisions and host (use :authority)
+    if (options.headers) {
+      const hdrs = (options.headers instanceof Headers)
+        ? Object.fromEntries(options.headers.entries())
+        : options.headers;
+      for (const [key, value] of Object.entries(hdrs)) {
+        const lk = key.toLowerCase();
+        if (lk === "host" || lk.startsWith(":")) continue;
+        reqHeaders[lk] = value;
+      }
+    }
+
+    const req = client.request(reqHeaders);
+
+    const chunks = [];
+    let responseHeaders = {};
+
+    req.on("response", (hdrs) => { responseHeaders = hdrs; });
+    req.on("data", (chunk) => { chunks.push(Buffer.from(chunk)); });
+    req.on("end", finish(() => {
+      options.signal?.removeEventListener("abort", onAbort);
+      const status = responseHeaders[":status"] || 0;
+      const bodyBuf = Buffer.concat(chunks);
+
+      // Build Headers object from h2 response headers (skip pseudo-headers)
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(responseHeaders)) {
+        if (key.startsWith(":")) continue;
+        if (Array.isArray(value)) {
+          for (const item of value) headers.append(key, item);
+        } else if (value != null) {
+          headers.append(key, String(value));
+        }
+      }
+
+      const response = {
+        ok: status >= HTTP_SUCCESS_MIN && status < HTTP_SUCCESS_MAX,
+        status,
+        statusText: "",
+        headers,
+        get body() {
+          return new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(bodyBuf));
+              controller.close();
+            },
+          });
+        },
+        text: async () => bodyBuf.toString(),
+        arrayBuffer: async () => bodyBuf.buffer.slice(bodyBuf.byteOffset, bodyBuf.byteOffset + bodyBuf.byteLength),
+        json: async () => {
+          const text = bodyBuf.toString();
+          try { return JSON.parse(text); } catch (e) {
+            throw new Error(`Failed to parse JSON response (${status}): ${text.slice(0, 200)}`);
+          }
+        },
+        clone: () => response,
+      };
+      resolve(response);
+    }));
+    req.on("error", fail);
+
+    if (body != null) req.write(body);
+    req.end();
+  });
+}
+
 // Bound the time-to-first-byte (connect → response headers) of an upstream call.
 // Without this a stalled upstream hangs the request forever, surfacing as the
 // client's own "API timeout" (e.g. Claude Code) instead of a clean 5xx here.
@@ -716,6 +869,17 @@ async function safeRedirectFetch(url, options, fetchImpl) {
     const method = (currentOptions.method || "GET").toUpperCase();
     if (res.status === 303 || ((res.status === 301 || res.status === 302) && method !== "GET" && method !== "HEAD")) {
       const { body, ...rest } = currentOptions;
+      // Drop the entity headers along with the body — a GET that still advertises
+      // content-length/content-type of the discarded payload confuses upstreams.
+      if (rest.headers) {
+        const cleaned = {};
+        for (const [k, v] of getRedirectHeaderEntries(rest.headers)) {
+          const lk = k.toLowerCase();
+          if (lk === "content-length" || lk === "content-type" || lk === "transfer-encoding") continue;
+          cleaned[k] = v;
+        }
+        rest.headers = cleaned;
+      }
       currentOptions = { ...rest, method: "GET" };
     }
     currentUrl = nextUrl;
@@ -732,31 +896,41 @@ async function safeRedirectFetch(url, options, fetchImpl) {
 // re-asserts the address at connect-time via a custom `lookup`, so the IP that
 // actually gets connected is the one that passed the block check. Reused per
 // process (stateless), bounded by undici's own pool.
-let _guardedDispatcher = null;
+let _guardedDispatcherPromise = null;
 async function getGuardedDispatcher() {
-  if (_guardedDispatcher) return _guardedDispatcher;
-  const dns = await import("node:dns");
-  const { Agent } = await import("undici");
-  _guardedDispatcher = new Agent({
-    connect: {
-      lookup(hostname, opts, cb) {
-        dns.lookup(hostname, opts, (err, address, family) => {
-          if (err) return cb(err, address, family);
-          // Re-assert the ACTUAL connect address — not a cached prior resolution.
-          const addrs = Array.isArray(address)
-            ? address.map((a) => a.address)
-            : [address];
-          for (const ip of addrs) {
-            if (isBlockedHostname(String(ip))) {
-              return cb(new Error(`[ProxyFetch] Connect address blocked by SSRF guard: ${ip}`), address, family);
-            }
-          }
-          cb(null, address, family);
-        });
-      },
-    },
-  });
-  return _guardedDispatcher;
+  // Cache the in-flight promise (not just the resolved Agent) so two concurrent
+  // first-callers share one construction instead of each building an Agent and
+  // orphaning the other's connection pool.
+  if (!_guardedDispatcherPromise) {
+    _guardedDispatcherPromise = (async () => {
+      const dns = await import("node:dns");
+      const { Agent } = await import("undici");
+      return new Agent({
+        connect: {
+          lookup(hostname, opts, cb) {
+            dns.lookup(hostname, opts, (err, address, family) => {
+              if (err) return cb(err, address, family);
+              // Re-assert the ACTUAL connect address — not a cached prior resolution.
+              const addrs = Array.isArray(address)
+                ? address.map((a) => a.address)
+                : [address];
+              for (const ip of addrs) {
+                if (isBlockedHostname(String(ip))) {
+                  return cb(new Error(`[ProxyFetch] Connect address blocked by SSRF guard: ${ip}`), address, family);
+                }
+              }
+              cb(null, address, family);
+            });
+          },
+        },
+      });
+    })().catch((err) => {
+      // Don't cache a rejected promise — let the next call retry construction.
+      _guardedDispatcherPromise = null;
+      throw err;
+    });
+  }
+  return _guardedDispatcherPromise;
 }
 
 /** Drain an abandoned fetch body without throwing when body/cancel is missing. */
@@ -846,6 +1020,10 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const realIP = await resolveRealIP(parsedUrl.hostname);
     if (!realIP) {
       throw new Error(`[ProxyFetch] External DNS resolution failed for MITM bypass host: ${parsedUrl.hostname}`);
+    }
+    // HTTP/2-required hosts (e.g., api2.cursor.sh) need h2 session, not HTTP/1.1
+    if (isHttp2Required(parsedUrl.hostname)) {
+      return await createHttp2BypassRequest(parsedUrl, realIP, options);
     }
     return await createBypassRequest(parsedUrl, realIP, options);
   }

@@ -39,8 +39,10 @@ describe("MITM bypass host detection", () => {
     expect(shouldBypassMitmDns("https://evil-api2.cursor.sh.attacker.com/v1")).toBe(false);
   });
 
-  it("matches exact host and subdomains", () => {
-    expect(shouldBypassMitmDns("https://sub.api2.cursor.sh/v1/chat")).toBe(true);
+  it("matches the exact bypass host only, not arbitrary subdomains (SSRF guard)", () => {
+    // A subdomain of a bypass host must NOT be bypassed: an attacker-controlled
+    // subdomain would otherwise skip the SSRF DNS guard and reach the raw-IP path.
+    expect(shouldBypassMitmDns("https://sub.api2.cursor.sh/v1/chat")).toBe(false);
   });
 
   it("detects regional Kiro and CodeWhisperer hosts via isKiroMitmHost", () => {
