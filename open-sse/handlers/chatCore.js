@@ -18,7 +18,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { cleanAnthropicToolDefinitions } from "../translator/helpers/claudeHelper.js";
+import { cleanAnthropicToolDefinitions, fixToolUseOrdering } from "../translator/helpers/claudeHelper.js";
 import { applyCloaking } from "../utils/claudeCloaking.js";
 import { deriveSessionId } from "../utils/sessionManager.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -261,6 +261,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (translatedBody.tools.length === 0 && !clientHasCacheBreakpoints) {
       delete translatedBody.tools;
       delete translatedBody.tool_choice;
+    }
+  }
+
+  // Passthrough: fix tool_use/tool_result ordering only when tools are present (compatibility fix).
+  if (passthrough && isClaudeFormatProvider && Array.isArray(translatedBody.messages)) {
+    const needsToolOrderingFix = translatedBody.messages.some(
+      (m) => Array.isArray(m.content)
+        && m.content.some((b) => b.type === "tool_use" || b.type === "tool_result")
+    );
+    if (needsToolOrderingFix) {
+      translatedBody.messages = fixToolUseOrdering(translatedBody.messages);
     }
   }
 

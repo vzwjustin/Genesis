@@ -516,7 +516,7 @@ describe("CursorExecutor — bug fixes", () => {
 
       const result = await executor.execute({
         model: "claude-3-5-sonnet",
-        body: { messages: [{ role: "user", content: "hi" }] },
+        body: Buffer.from("provider-native-protobuf"),
         stream: true,
         credentials: { accessToken: "tok", providerSpecificData: { machineId: "m" } },
         signal: new AbortController().signal,

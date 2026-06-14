@@ -1,6 +1,6 @@
 /**
  * Tests for executor / translator bug fixes:
- *  1. cursor.js    — passthrough: encode body as protobuf if not Buffer; return raw bytes
+ *  1. cursor.js    — passthrough: require Buffer body; return raw bytes
  *  2. qwen.js      — refreshCredentials uses proxyAwareFetch with proxyOptions param
  *  3. kiro.js      — messageStopEvent before metering; stream=false JSON assembly
  *  4. antigravity  — fail on missing projectId; preserve client toolConfig/safetySettings
@@ -48,34 +48,21 @@ describe("CursorExecutor — passthrough mode", () => {
     expect(buf).toEqual(fakeBody);
   });
 
-  it("encodes a non-Buffer body as protobuf in passthrough mode", async () => {
+  it("rejects a non-Buffer body in passthrough mode", async () => {
     const executor = new CursorExecutor();
     const credentials = {
       accessToken: "tok",
       providerSpecificData: { machineId: "mid-123" }
     };
 
-    let capturedBody = null;
-    vi.spyOn(executor, "makeFetchRequest").mockImplementation(async (_url, _headers, body) => {
-      capturedBody = body;
-      return makeMockHttp2(200, Buffer.from("ok"));
-    });
-    vi.spyOn(executor, "makeHttp2Request").mockImplementation(async (_url, _headers, body) => {
-      capturedBody = body;
-      return makeMockHttp2(200, Buffer.from("ok"));
-    });
-
     const jsonBody = { messages: [{ role: "user", content: "hi" }] };
-    await executor.execute({
+    await expect(executor.execute({
       model: "cursor-small",
       body: jsonBody,
       stream: true,
       credentials,
       passthrough: true
-    });
-
-    // The body sent to the network must be a Buffer (protobuf-framed), not a plain object
-    expect(Buffer.isBuffer(capturedBody) || capturedBody instanceof Uint8Array).toBe(true);
+    })).rejects.toThrow(/provider-native Buffer body/);
   });
 });
 

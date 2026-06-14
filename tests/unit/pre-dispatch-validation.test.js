@@ -153,6 +153,15 @@ describe("createErrorResult with custom error types", () => {
     });
     expect(result.resetsAtMs).toBe(resetsAt);
   });
+
+  it("sets Retry-After on 429 when resetsAtMs is provided", async () => {
+    const resetsAt = Date.now() + 45000;
+    const result = createErrorResult(429, "Rate limited", resetsAt);
+    expect(result.response.headers.get("Retry-After")).toBeTruthy();
+    const retryAfter = parseInt(result.response.headers.get("Retry-After"), 10);
+    expect(retryAfter).toBeGreaterThanOrEqual(1);
+    expect(retryAfter).toBeLessThanOrEqual(46);
+  });
 });
 
 describe("errorResponse with options", () => {

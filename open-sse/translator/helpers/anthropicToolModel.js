@@ -35,7 +35,24 @@ export function stripProviderModelPrefix(model) {
         break;
       }
     }
-    if (!stripped) break;
+    if (!stripped) {
+      // Embedded prefix (e.g. provider/cc/claude-opus-4-6 → claude-opus-4-6)
+      if (result.includes("/")) {
+        const lowered = result.toLowerCase();
+        let embedded = false;
+        for (const prefix of KNOWN_TOOL_MODEL_PREFIXES) {
+          const idx = lowered.indexOf(prefix);
+          if (idx > 0) {
+            result = result.slice(idx + prefix.length);
+            embedded = true;
+            break;
+          }
+        }
+        if (!embedded) break;
+      } else {
+        break;
+      }
+    }
   }
   return result;
 }

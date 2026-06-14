@@ -220,10 +220,12 @@ export function allowsStaleGatewayBypass(request) {
   if (/^Bearer\s+/i.test(auth)) {
     if (token.includes(".")) return true;
     if (isProviderApiKeyPrefix(token)) return true;
-    // Opaque provider bearer (e.g. Google AIza…) — ignore short garbage like "Bearer hello".
-    return token.length >= 12;
+    if (/^AIza[A-Za-z0-9_-]{20,}/.test(token)) return true;
+    return false;
   }
-  if (/^Token\s+/i.test(auth)) return token.length >= 8;
+  if (/^Token\s+/i.test(auth)) {
+    return isProviderApiKeyPrefix(token) || token.includes(".") || token.length >= 8;
+  }
   if (/^Api-?Key\s+/i.test(auth) && isProviderApiKeyPrefix(token)) return true;
   return false;
 }

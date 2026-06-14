@@ -278,7 +278,8 @@ describe("prepareClaudeRequest — preserveClientCache for tools", () => {
       }],
     };
     const out = prepareClaudeRequest(structuredClone(body), "claude");
-    expect(out.tools[0].model).toBe("strip-me");
+    expect(out.tools[0].model).toBeUndefined();
+    expect(out.tools[0].type).toBeUndefined();
     expect(out.tools[0].cache_control).toBeDefined();
   });
 });

@@ -107,33 +107,34 @@ describe("getModelInfo — resolution failure returns null provider (Requirement
       expect(result.model).toBe("totally-unknown-provider/some-model");
     });
 
-    it("resolves slash combo names before provider/model parsing", async () => {
+    it("resolves provider/model format even when a slash-named combo exists in registry", async () => {
       getComboByName.mockResolvedValue({
         name: "cc/fallback",
         models: ["cc/opus"],
       });
       const result = await getModelInfo("cc/fallback");
-      expect(result.provider).toBeNull();
-      expect(result.model).toBe("cc/fallback");
+      expect(result.provider).toBe("claude");
+      expect(result.model).toBe("fallback");
     });
   });
 });
 
 describe("getComboModels — combo match requires valid actionable targets (AGENTS.md)", () => {
-  it("returns null when provider/model string is not a registered combo name", async () => {
+  it("returns null for provider/model strings (not combo names)", async () => {
     getComboByName.mockResolvedValue(null);
     const result = await getComboModels("cc/claude-opus-4-6");
     expect(result).toBeNull();
-    expect(getComboByName).toHaveBeenCalledWith("cc/claude-opus-4-6");
+    expect(getComboByName).not.toHaveBeenCalled();
   });
 
-  it("resolves combo names that contain slashes", async () => {
+  it("returns null for slash strings (provider/model format, not combo names)", async () => {
     getComboByName.mockResolvedValue({
       name: "cc/fallback",
       models: ["cc/opus", "openai/gpt-4o"],
     });
     const result = await getComboModels("cc/fallback");
-    expect(result).toEqual(["cc/opus", "openai/gpt-4o"]);
+    expect(result).toBeNull();
+    expect(getComboByName).not.toHaveBeenCalled();
   });
 
   it("returns model list when combo has valid models", async () => {
