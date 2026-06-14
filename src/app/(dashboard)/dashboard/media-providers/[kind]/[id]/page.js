@@ -678,7 +678,7 @@ function TtsExampleCard({ providerId }) {
                 </button>
                 <button
                   onClick={openModal}
-                  className="flex w-full items-center justify-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-border text-text-muted hover:text-primary hover:border-primary/40 transition-colors sm:w-auto sm:shrink-0"
+                  className="glass-control flex w-full items-center justify-center gap-1 text-xs px-2.5 py-1.5 text-text-muted hover:text-primary transition-colors sm:w-auto sm:shrink-0"
                 >
                   <span className="material-symbols-outlined text-[14px]">language</span>
                   Select language
@@ -872,7 +872,7 @@ function TtsExampleCard({ providerId }) {
           onClick={() => setModalOpen(false)}
         >
           <div
-            className="glass-panel border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh]"
+            className="glass-modal-panel border-0 rounded-xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -1258,7 +1258,7 @@ function GenericExampleCard({ providerId, kind }) {
                 <img
                   src={refImagePreviewSrc}
                   alt="Reference"
-                  className="max-h-40 rounded-lg border border-border object-contain bg-sidebar"
+                  className="max-h-40 rounded-lg glass-stat border-0 object-contain"
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   onLoad={(e) => { e.currentTarget.style.display = "block"; }}
                 />
@@ -1291,7 +1291,7 @@ function GenericExampleCard({ providerId, kind }) {
                 <img
                   src={maskImagePreviewSrc}
                   alt="Mask"
-                  className="max-h-40 rounded-lg border border-border object-contain bg-sidebar"
+                  className="max-h-40 rounded-lg glass-stat border-0 object-contain"
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   onLoad={(e) => { e.currentTarget.style.display = "block"; }}
                 />

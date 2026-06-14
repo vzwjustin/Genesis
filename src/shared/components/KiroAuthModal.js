@@ -189,7 +189,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
             {/* AWS Builder ID */}
             <button
               onClick={() => onMethodSelect("builder-id")}
-              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
+              className="w-full p-4 text-left glass-option-card transition-colors"
             >
               <div className="flex items-start gap-3">
                 <span className="material-symbols-outlined text-brand-500 mt-0.5">shield</span>
@@ -205,7 +205,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
             {/* AWS IAM Identity Center (IDC) */}
             <button
               onClick={() => handleMethodSelect("idc")}
-              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
+              className="w-full p-4 text-left glass-option-card transition-colors"
             >
               <div className="flex items-start gap-3">
                 <span className="material-symbols-outlined text-brand-500 mt-0.5">business</span>
@@ -220,7 +220,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
 
             <button
               onClick={() => handleMethodSelect("social-google")}
-              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
+              className="w-full p-4 text-left glass-option-card transition-colors"
             >
               <div className="flex items-start gap-3">
                 <span className="material-symbols-outlined text-brand-500 mt-0.5">account_circle</span>
@@ -235,7 +235,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
 
             <button
               onClick={() => handleMethodSelect("social-github")}
-              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
+              className="w-full p-4 text-left glass-option-card transition-colors"
             >
               <div className="flex items-start gap-3">
                 <span className="material-symbols-outlined text-brand-500 mt-0.5">code</span>
@@ -251,7 +251,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, existin
             {/* Import Token */}
             <button
               onClick={() => handleMethodSelect("import")}
-              className="w-full p-4 text-left border border-border rounded-lg dashboard-row-hover transition-colors"
+              className="w-full p-4 text-left glass-option-card transition-colors"
             >
               <div className="flex items-start gap-3">
                 <span className="material-symbols-outlined text-brand-500 mt-0.5">file_upload</span>

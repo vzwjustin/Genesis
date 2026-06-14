@@ -1029,7 +1029,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelLoading ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded glass-readout text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   {tunnelProgress || "Creating tunnel..."}
                 </div>
@@ -1050,7 +1050,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelChecking ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded glass-readout text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   Checking...
                 </div>
@@ -1120,7 +1120,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : (tsLoading || tsConnecting) ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded glass-readout text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   {tsProgress || "Connecting..."}
                 </div>

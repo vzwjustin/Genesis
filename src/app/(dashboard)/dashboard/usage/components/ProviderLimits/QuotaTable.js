@@ -241,7 +241,7 @@ export default function QuotaTable({
               type="button"
               onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
               disabled={page === 1}
-              className="flex h-6 items-center rounded-md border border-border px-2 text-[10px] text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-6 items-center glass-control px-2 text-[10px] text-text-main disabled:cursor-not-allowed disabled:opacity-40"
             >
               Prev
             </button>
@@ -249,7 +249,7 @@ export default function QuotaTable({
               type="button"
               onClick={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
               disabled={page === totalPages}
-              className="flex h-6 items-center rounded-md border border-border px-2 text-[10px] text-text-main transition-colors dashboard-row-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-6 items-center glass-control px-2 text-[10px] text-text-main disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
             </button>

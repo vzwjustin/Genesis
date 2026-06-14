@@ -88,7 +88,7 @@ export default function FirstRunSecurityWizard() {
         {steps.map((step, index) => (
           <li
             key={step.key}
-            className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-2 rounded-lg glass-stat border-0 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="min-w-0">
               <p className="text-sm font-medium text-text-main">

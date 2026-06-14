@@ -154,7 +154,7 @@ export default function UsageTable({
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
-          <thead className="text-text-subtle text-xs font-medium">
+          <thead className="sticky top-0 z-10 text-text-subtle text-xs font-medium glass-stat border-0">
             <tr>
               {columns.map((col) => (
                 <th

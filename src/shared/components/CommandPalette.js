@@ -77,18 +77,18 @@ export default function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 p-4 pt-[12vh]"
+      className="fixed inset-0 z-[100] flex items-start justify-center glass-overlay-heavy p-4 pt-[12vh]"
       onClick={close}
       role="presentation"
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-border bg-surface shadow-2xl overflow-hidden"
+        className="glass-modal-panel w-full max-w-lg rounded-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Go to page"
       >
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
           <span className="material-symbols-outlined text-text-muted text-[20px]">search</span>
           <input
             autoFocus
@@ -98,7 +98,7 @@ export default function CommandPalette() {
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-text-muted"
             aria-label="Search pages"
           />
-          <kbd className="hidden sm:inline rounded border border-border px-1.5 py-0.5 text-[10px] text-text-muted">Esc</kbd>
+          <kbd className="hidden sm:inline glass-code px-1.5 py-0.5 text-[10px] text-text-muted">Esc</kbd>
         </div>
         <ul className="max-h-72 overflow-y-auto py-1" role="listbox">
           {results.length === 0 ? (

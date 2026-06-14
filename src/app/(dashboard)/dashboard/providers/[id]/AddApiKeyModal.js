@@ -170,7 +170,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           <div className="flex flex-col gap-3">
             <p className="text-xs text-text-muted">One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</p>
             <textarea
-              className="w-full rounded-[10px] border border-border bg-surface-2 p-2 text-sm font-mono resize-y min-h-[140px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 transition-all"
+              className="w-full rounded-[10px] glass-input p-2 text-sm font-mono resize-y min-h-[140px]"
               placeholder={BULK_PLACEHOLDER}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}

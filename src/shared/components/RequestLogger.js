@@ -65,13 +65,13 @@ export default function RequestLogger() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search model, provider, account…"
-            className="px-3 py-1.5 text-xs rounded-lg border border-border bg-surface min-w-[200px]"
+            className="glass-input px-3 py-1.5 text-xs min-w-[200px]"
             aria-label="Search request logs"
           />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-2 py-1.5 text-xs rounded-lg border border-border bg-surface"
+            className="glass-input px-2 py-1.5 text-xs"
             aria-label="Filter by status"
           >
             <option value="all">All status</option>
