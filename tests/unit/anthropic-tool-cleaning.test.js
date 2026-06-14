@@ -160,8 +160,8 @@ describe("prepareClaudeRequest — integrated tool cleaning", () => {
     expect(body.system[1].cache_control).toBeUndefined();
     expect(body.messages[1].content[0].cache_control).toEqual({ type: "ephemeral" });
     expect(body.tools[0].cache_control).toEqual({ type: "ephemeral" });
-    expect(body.tools[0].model).toBeUndefined();
-    expect(body.tools[0].type).toBeUndefined();
+    expect(body.tools[0].model).toBe("strip-me");
+    expect(body.tools[0].type).toBe("function");
     expect(body.tools[1].cache_control).toBeUndefined();
     expect(body.tools[1].model).toBe("claude-opus-4-8");
   });
