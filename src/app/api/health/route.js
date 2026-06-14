@@ -45,7 +45,7 @@ export async function GET() {
 
   return NextResponse.json(
     body,
-    { headers: CORS_HEADERS, status: dbOk ? 200 : 503 }
+    { headers: CORS_HEADERS, status: body.ok ? 200 : 503 }
   );
 }
 

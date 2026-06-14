@@ -74,6 +74,11 @@ describe("health route", () => {
     const src = readFileSync(join(root, "../../src/app/api/health/route.js"), "utf8");
     expect(src).toContain("db:");
   });
+
+  it("uses body.ok for HTTP status, not db alone", () => {
+    const src = readFileSync(join(root, "../../src/app/api/health/route.js"), "utf8");
+    expect(src).toContain("status: body.ok ? 200 : 503");
+  });
 });
 
 describe("settings PATCH keys", () => {

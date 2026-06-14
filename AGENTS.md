@@ -49,11 +49,11 @@ this as optional or as a "only when editing open-sse/" step — always do it.
 
 Canonical rebuild (use this exact form):
 
-    rm -rf .next-cli-build && cd cli && npm run build
+    rm -rf .next-cli-build && (cd cli && npm run build)
 
 Minimal cache-only clear (if you must keep the rest of the build dir):
 
-    rm -rf .next-cli-build/cache/webpack && cd cli && npm run build
+    rm -rf .next-cli-build/cache/webpack && (cd cli && npm run build)
 
 Important:
 

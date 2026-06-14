@@ -1,5 +1,5 @@
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, cancelResponseBody } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
@@ -203,7 +203,7 @@ export class BaseExecutor {
         if (await tryRetry(urlIndex, response.status, `status ${response.status}`)) {
           // Drain the abandoned response body so undici frees the socket
           // instead of leaking it until stall-timeout/GC across retries.
-          await response.body?.cancel?.().catch(() => {});
+          await cancelResponseBody(response);
           urlIndex--;
           continue;
         }
@@ -211,7 +211,7 @@ export class BaseExecutor {
         if (this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
-          await response.body?.cancel?.().catch(() => {});
+          await cancelResponseBody(response);
           continue;
         }
 

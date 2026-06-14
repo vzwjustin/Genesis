@@ -37,12 +37,12 @@ export function recordUpstreamTelemetry(provider, model, requestStartTime, respo
       providerReachability.recordUnreachable(provider);
     } else if (response) {
       const status = Number(response.status);
-      if (response.ok || (status >= 400 && status < 500)) {
-        circuitBreaker.recordSuccess(provider);
-        providerReachability.recordReachable(provider);
-      } else if (status >= 500) {
+      if (status >= 500) {
         circuitBreaker.recordFailure(provider);
         providerReachability.recordUnreachable(provider);
+      } else {
+        circuitBreaker.recordSuccess(provider);
+        providerReachability.recordReachable(provider);
       }
     }
   } catch {

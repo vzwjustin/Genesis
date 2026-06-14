@@ -86,6 +86,27 @@ describe("proxy routing mismatch regressions", () => {
     expect(originalFetch.mock.calls[0][1].headers["x-relay-path"]).toBe("/v1/chat");
   });
 
+  it("connectionNoProxy bypasses environment proxy when host matches", async () => {
+    process.env.HTTPS_PROXY = "http://env-proxy.example.com:8080";
+    const originalFetch = vi.fn(async () => new Response("ok", { status: 200 }));
+    globalThis.fetch = originalFetch;
+    vi.resetModules();
+    vi.doMock("../../open-sse/utils/ssrfGuard.js", () => ({
+      assertSafeResolvedHostname: vi.fn(async () => true),
+    }));
+
+    const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js?no-proxy-over-env");
+    await proxyAwareFetch("https://api.example.com/v1/chat", {}, {
+      vercelRelayUrl: "https://relay.example.net/api/relay",
+      connectionNoProxy: "example.com",
+    });
+
+    expect(originalFetch).toHaveBeenCalledOnce();
+    expect(originalFetch.mock.calls[0][0]).toBe("https://api.example.com/v1/chat");
+    expect(originalFetch.mock.calls[0][1].dispatcher).toBeDefined();
+    expect(originalFetch.mock.calls[0][1].headers?.["x-relay-target"]).toBeUndefined();
+  });
+
   it("environment proxy takes precedence over relay proxy routing", async () => {
     process.env.HTTPS_PROXY = "http://env-proxy.example.com:8080";
     const originalFetch = vi.fn(async () => new Response("ok", { status: 200 }));

@@ -67,14 +67,13 @@ Roughly **45 commits** and **2,200+ unit tests** on the audit branch. Highlights
 npm test
 
 # CLI/proxy rebuild — ALWAYS clear webpack cache first or you run stale code
-rm -rf .next-cli-build && cd cli && npm run build
+rm -rf .next-cli-build && (cd cli && npm run build)
 
 # Headless server (preferred for debugging)
 PORT=3456 HOSTNAME=0.0.0.0 node cli/app/server.js
 
 # Global dev install — symlink to fork, not a copied tarball
-rm -rf "$(npm root -g)/9router"
-ln -s "$(pwd)/cli" "$(npm root -g)/9router"
+ln -sf "$(pwd)/cli" "$(npm root -g)/9router"
 ```
 
 See [AGENTS.md](./AGENTS.md) for full agent/operator rules (passthrough, retry, DNS, streaming validity).
@@ -176,7 +175,7 @@ Build and reinstall the local CLI package from a fork:
 
 ```bash
 # Required after any open-sse/ or cli/ edit — stale .next-cli-build is the #1 "fix didn't apply" bug
-rm -rf .next-cli-build && cd cli && npm run build
+rm -rf .next-cli-build && (cd cli && npm run build)
 ln -sf "$(pwd)/cli" "$(npm root -g)/9router"   # macOS/Linux: symlink global CLI to fork
 9router --version
 ```

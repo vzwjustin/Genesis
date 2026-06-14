@@ -1,5 +1,5 @@
 import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
-import { COLORS } from "../../utils/stream.js";
+import { COLORS } from "../../utils/usageTracking.js";
 
 const OPTIONAL_PARAMS = [
   "temperature", "top_p", "top_k",
