@@ -156,6 +156,15 @@ async function calculateCost(provider, model, tokens) {
   }
 }
 
+/** Sum of in-flight upstream requests (for health/monitoring probes). */
+export function getPendingRequestTotal() {
+  let total = 0;
+  for (const count of Object.values(pendingRequests.byModel)) {
+    total += count;
+  }
+  return total;
+}
+
 export function trackPendingRequest(model, provider, connectionId, started, error = false) {
   const modelKey = provider ? `${model} (${provider})` : model;
   const timerKey = `${connectionId}|${modelKey}`;
@@ -269,18 +278,34 @@ export async function saveRequestUsage(entry) {
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
     const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
 
+    // Idempotency: when the caller supplies a stable per-request key, a true
+    // double-write (retry replay, stream+handler firing for one request) is
+    // collapsed so tokens/cost/lifetime aren't counted twice. A NULL key keeps
+    // legacy always-insert behavior (SQLite UNIQUE treats NULLs as distinct),
+    // so this never under-counts genuinely distinct requests.
+    const idempotencyKey = entry.idempotencyKey || null;
+
     // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
     // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
+    let historyInserted = true;
     db.transaction(() => {
-      db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      const insertResult = db.run(
+        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, idempotencyKey) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           entry.timestamp, entry.provider || null, entry.model || null,
           entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-          stringifyJson(tokens), stringifyJson({}),
+          stringifyJson(tokens), stringifyJson({}), idempotencyKey,
         ]
       );
+
+      // A duplicate key → 0 rows inserted → skip aggregate + lifetime bump so
+      // the day rollup and lifetime counter stay consistent with history.
+      const inserted = insertResult?.changes ?? 1;
+      if (idempotencyKey && inserted === 0) {
+        historyInserted = false;
+        return;
+      }
 
       const dateKey = getLocalDateKey(entry.timestamp);
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
@@ -297,6 +322,8 @@ export async function saveRequestUsage(entry) {
       const next = (Number.isFinite(prev) ? prev : 0) + 1;
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
     });
+
+    if (!historyInserted) return;
 
     pushToRing(entry);
     statsEmitter.emit("update");

@@ -2,6 +2,7 @@ import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
+import { saveUsageStats } from "../handlers/chatCore/requestDetail.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, MalformedSSEDataError } from "./streamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
@@ -32,6 +33,8 @@ const STREAM_MODE = {
  * @param {function} options.onStreamComplete - Callback when stream completes (content, usage)
  * @param {function} [options.onPendingRelease] - Called once when the transform stream flushes
  * @param {string} options.apiKey - API key for usage tracking
+ * @param {string} [options.idempotencyKey] - Per-stream idempotency key for usage dedup
+ * @param {string} [options.endpoint] - Client endpoint label for usage stats
  */
 export function createSSEStream(options = {}) {
   const {
@@ -46,7 +49,9 @@ export function createSSEStream(options = {}) {
     body = null,
     onStreamComplete = null,
     onPendingRelease = null,
-    apiKey = null
+    apiKey = null,
+    idempotencyKey = null,
+    endpoint = null,
   } = options;
 
   let buffer = "";
@@ -91,6 +96,24 @@ export function createSSEStream(options = {}) {
       if (item?.choices?.[0]?.finish_reason) sawTerminal = true;
       if (item?.type === "response.completed") sawTerminal = true;
     }
+  };
+
+  const logStreamUsageFallback = (usageTokens, usageProvider) => {
+    if (!hasValidUsage(usageTokens)) return;
+    if (idempotencyKey) {
+      saveUsageStats({
+        provider: usageProvider,
+        model,
+        tokens: usageTokens,
+        connectionId,
+        apiKey,
+        endpoint,
+        label: "STREAM USAGE",
+        idempotencyKey,
+      });
+      return;
+    }
+    logUsage(usageProvider, usageTokens, model, connectionId, apiKey);
   };
 
   const markTerminalFromState = () => {
@@ -311,10 +334,16 @@ export function createSSEStream(options = {}) {
 
           if (hasValidUsage(usage) && !onStreamComplete) {
             logUsage(provider, usage, model, connectionId, apiKey);
+          } else if (hasValidUsage(usage) && onStreamComplete && !sawTerminal) {
+            // onStreamComplete (streamingHandler) only saves usage when the
+            // stream ended clean (sawTerminal). A complete-but-unmarked passthrough
+            // response (content delivered, no terminal frame) would otherwise have
+            // its tokens dropped — quota leak. Log it here since the handler won't.
+            logStreamUsageFallback(usage, provider);
           } else if (!hasValidUsage(usage)) {
             appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
           }
-          
+
           // Passthrough relay: emit [DONE] only when upstream signalled terminal
           // and did not already forward [DONE].
           maybeEmitDone(controller);
@@ -384,6 +413,9 @@ export function createSSEStream(options = {}) {
 
         if (hasValidUsage(state?.usage) && !onStreamComplete && sawTerminal) {
           logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
+        } else if (hasValidUsage(state?.usage) && onStreamComplete && !sawTerminal) {
+          // Mirror passthrough: translated streams can deliver usage without a terminal frame.
+          logStreamUsageFallback(state.usage, state.provider || targetFormat);
         } else if (!hasValidUsage(state?.usage) && sawTerminal) {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
         }
@@ -407,7 +439,7 @@ export function createSSEStream(options = {}) {
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, onPendingRelease = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, onPendingRelease = null, idempotencyKey = null, endpoint = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -420,11 +452,13 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     body,
     onStreamComplete,
     onPendingRelease,
-    apiKey
+    apiKey,
+    idempotencyKey,
+    endpoint,
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, sourceFormat = null, onPendingRelease = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, sourceFormat = null, onPendingRelease = null, idempotencyKey = null, endpoint = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     sourceFormat,
@@ -435,6 +469,8 @@ export function createPassthroughStreamWithLogger(provider = null, reqLogger = n
     body,
     onStreamComplete,
     onPendingRelease,
-    apiKey
+    apiKey,
+    idempotencyKey,
+    endpoint,
   });
 }
