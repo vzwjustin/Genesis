@@ -122,6 +122,15 @@ Options:
   }
 }
 
+// Dev/linked checkout guard: when running from a source tree (npm link / git
+// clone), the auto-update path would run `npm i -g 9router@latest` and replace
+// the symlinked fork with the published package — wiping local changes. The
+// published npm tarball ships no `.git`, so its presence one level up marks a
+// dev install. Force-skip updates there.
+if (!skipUpdate && fs.existsSync(path.join(__dirname, "..", ".git"))) {
+  skipUpdate = true;
+}
+
 // Non-interactive stdin (detached/headless): default to tray mode
 if (!trayMode && !process.stdin.isTTY) {
   trayMode = true;
