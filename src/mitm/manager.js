@@ -47,6 +47,12 @@ async function resolveMitmRouterBaseUrl() {
 const MITM_PORT = 443;
 const MITM_WIN_NODE_PORT = 8443;
 const PID_FILE = path.join(MITM_DIR, ".mitm.pid");
+const MITM_SERVER_ENV_FILE = path.join(MITM_DIR, ".mitm-server.env");
+
+function cleanupMitmRuntimeFiles() {
+  try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
+  try { fs.unlinkSync(MITM_SERVER_ENV_FILE); } catch { /* ignore */ }
+}
 
 const MITM_MAX_RESTARTS = 5;
 const MITM_RESTART_DELAYS_MS = [5000, 10000, 20000, 30000, 60000];
@@ -85,19 +91,18 @@ function ensureRuntimeServer(bundledPath) {
 
     const runtimeDir = path.join(DATA_DIR, "runtime", "mitm");
     const runtimeServer = path.join(runtimeDir, "server.js");
+    const hashFile = path.join(runtimeDir, ".server.sha256");
 
-    // Skip copy only if size AND mtime match. Size alone misses equal-length
-    // hotfixes (a same-length string swap in the bundle), silently running stale.
-    if (fs.existsSync(runtimeServer)) {
+    const bundledHash = crypto.createHash("sha256").update(fs.readFileSync(bundledPath)).digest("hex");
+    if (fs.existsSync(runtimeServer) && fs.existsSync(hashFile)) {
       try {
-        const src = fs.statSync(bundledPath);
-        const dst = fs.statSync(runtimeServer);
-        if (src.size === dst.size && src.mtimeMs <= dst.mtimeMs) return runtimeServer;
+        if (fs.readFileSync(hashFile, "utf8").trim() === bundledHash) return runtimeServer;
       } catch { /* recopy */ }
     }
 
     fs.mkdirSync(runtimeDir, { recursive: true });
     fs.copyFileSync(bundledPath, runtimeServer);
+    fs.writeFileSync(hashFile, bundledHash, "utf8");
     return runtimeServer;
   } catch (e) {
     try { log(`[MITM] runtime copy failed: ${e.message}`); } catch { /* ignore */ }
@@ -194,7 +199,8 @@ function deriveKey() {
     const { machineIdSync } = require("node-machine-id");
     const raw = machineIdSync();
     return crypto.createHash("sha256").update(raw + ENCRYPT_SALT).digest();
-  } catch {
+  } catch (e) {
+    err(`CRITICAL: node-machine-id unavailable — MITM password encryption uses weak fallback key: ${e.message}`);
     return crypto.createHash("sha256").update(ENCRYPT_SALT).digest();
   }
 }
@@ -229,15 +235,32 @@ function initDbHooks(getSettingsFn, updateSettingsFn) {
   _updateSettings = updateSettingsFn;
 }
 
-async function saveMitmSettings(enabled, password) {
+async function saveMitmSettings(enabled, password, apiKey) {
   if (!_updateSettings) return;
   try {
     const updates = { mitmEnabled: enabled };
     if (password) updates.mitmSudoEncrypted = encryptPassword(password);
+    if (apiKey) updates.mitmApiKey = apiKey;
     await _updateSettings(updates);
   } catch (e) {
     err(`Failed to save settings: ${e.message}`);
   }
+}
+
+async function resolveMitmApiKey(fallbackApiKey) {
+  try {
+    if (_getSettings) {
+      const settings = await _getSettings();
+      if (settings?.mitmApiKey) return settings.mitmApiKey;
+    }
+    const { getApiKeys } = require("../lib/localDb");
+    const keys = await getApiKeys();
+    const active = keys.find((k) => k.isActive !== false);
+    if (active?.key) return active.key;
+  } catch (e) {
+    err(`Failed to resolve MITM API key from settings/DB: ${e.message}`);
+  }
+  return fallbackApiKey || process.env.ROUTER_API_KEY || "";
 }
 
 async function clearEncryptedPassword() {
@@ -437,21 +460,24 @@ async function getMitmStatus() {
   return { running, pid, certExists, certTrusted, dnsStatus };
 }
 
-async function scheduleMitmRestart(apiKey) {
-  if (mitmIsRestarting || mitmAuthFailed) return;
+async function scheduleMitmRestart(fallbackApiKey, isChainedRetry = false) {
+  if (mitmAuthFailed) return;
+  if (!isChainedRetry && mitmIsRestarting) return;
 
   const aliveMs = Date.now() - mitmLastStartTime;
   if (aliveMs >= MITM_RESTART_RESET_MS) mitmRestartCount = 0;
 
   if (mitmRestartCount >= MITM_MAX_RESTARTS) {
     err("Max restart attempts reached. Giving up.");
+    mitmIsRestarting = false;
     return;
   }
 
-  const attempt = mitmRestartCount;
-  const delay = MITM_RESTART_DELAYS_MS[Math.min(attempt, MITM_RESTART_DELAYS_MS.length - 1)];
-  mitmRestartCount++;
+  if (!isChainedRetry) mitmRestartCount++;
   mitmIsRestarting = true;
+
+  const attempt = mitmRestartCount - 1;
+  const delay = MITM_RESTART_DELAYS_MS[Math.min(attempt, MITM_RESTART_DELAYS_MS.length - 1)];
 
   log(`Restarting in ${delay / 1000}s... (${mitmRestartCount}/${MITM_MAX_RESTARTS})`);
   await new Promise((r) => setTimeout(r, delay));
@@ -469,15 +495,14 @@ async function scheduleMitmRestart(apiKey) {
       mitmIsRestarting = false;
       return;
     }
+    const apiKey = await resolveMitmApiKey(fallbackApiKey);
     await startServer(apiKey, password);
     log("🔄 Restarted successfully");
     mitmRestartCount = 0;
     mitmIsRestarting = false;
   } catch (e) {
     err(`Restart attempt ${mitmRestartCount}/${MITM_MAX_RESTARTS} failed: ${e.message}`);
-    mitmIsRestarting = false;
-    // Schedule next retry
-    scheduleMitmRestart(apiKey);
+    scheduleMitmRestart(fallbackApiKey, true);
   }
 }
 
@@ -518,19 +543,24 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
 async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) {
   // Explicit start clears any prior wrong-password latch so auto-restart works again.
   mitmAuthFailed = false;
+  intentionalKill = false;
   if (!serverProcess || serverProcess.killed) {
     try {
       if (fs.existsSync(PID_FILE)) {
         const savedPid = parseInt(fs.readFileSync(PID_FILE, "utf-8").trim(), 10);
         if (savedPid && isProcessAlive(savedPid)) {
-          serverPid = savedPid;
-          log(`♻️ Reusing existing process (PID: ${savedPid})`);
-          await saveMitmSettings(true, sudoPassword);
-          if (sudoPassword) setCachedPassword(sudoPassword);
-          return { running: true, pid: savedPid };
-        } else {
-          fs.unlinkSync(PID_FILE);
+          const health = await pollMitmHealth(2000, MITM_PORT);
+          if (health?.ok) {
+            serverPid = savedPid;
+            log(`♻️ Reusing existing process (PID: ${savedPid})`);
+            await saveMitmSettings(true, sudoPassword, apiKey);
+            if (sudoPassword) setCachedPassword(sudoPassword);
+            return { running: true, pid: savedPid };
+          }
+          log(`Stale PID ${savedPid} on port — process alive but MITM health check failed; respawning`);
+          killProcess(savedPid, true, sudoPassword);
         }
+        try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
       }
     } catch { /* ignore */ }
   }
@@ -650,13 +680,17 @@ async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) 
 
     if (_updateSettings) await _updateSettings({ mitmCertInstalled: true }).catch(() => { });
   } else if (isSudoAvailable()) {
-    // Pass HOME explicitly so os.homedir() resolves to the unprivileged user's home
-    // instead of /root when sudo resets the environment.
-    const inlineCmd = [
-      `HOME=${shellQuoteSingle(os.homedir())}`,
-      `ROUTER_API_KEY=${shellQuoteSingle(apiKey)}`,
-      `MITM_ROUTER_BASE=${shellQuoteSingle(mitmRouterBase)}`,
+    // Load secrets from a root-owned env file so ROUTER_API_KEY is not visible in ps.
+    const mitmEnvFile = MITM_SERVER_ENV_FILE;
+    const envLines = [
+      `HOME=${os.homedir()}`,
+      `ROUTER_API_KEY=${apiKey}`,
+      `MITM_ROUTER_BASE=${mitmRouterBase}`,
       "NODE_ENV=production",
+    ];
+    fs.writeFileSync(mitmEnvFile, `${envLines.join("\n")}\n`, { mode: 0o600 });
+    const inlineCmd = [
+      `set -a && . ${shellQuoteSingle(mitmEnvFile)} && set +a && exec`,
       shellQuoteSingle(process.execPath),
       shellQuoteSingle(effectiveServerPath),
     ].join(" ");
@@ -757,9 +791,11 @@ async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) 
       log(`Server exited (code: ${code})`);
       serverProcess = null;
       serverPid = null;
-      try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
+      cleanupMitmRuntimeFiles();
       // Auto-restart on unexpected exit (skip intentional kills, e.g. health-fail)
-      if (code !== 0 && !mitmIsRestarting && !intentionalKill) scheduleMitmRestart(apiKey);
+      if (code !== 0 && !mitmIsRestarting && !intentionalKill && !_startingPromise) {
+        scheduleMitmRestart(apiKey);
+      }
       intentionalKill = false;
     });
   }
@@ -767,6 +803,7 @@ async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) 
   const health = await pollMitmHealth(8000, MITM_PORT);
   if (!health) {
     if (serverProcess && !serverProcess.killed) { intentionalKill = true; try { serverProcess.kill(); } catch { /* ignore */ } serverProcess = null; }
+    cleanupMitmRuntimeFiles();
     const processUsing443 = getProcessUsingPort443();
     const portInfo = processUsing443 ? ` Port 443 already in use by ${processUsing443}.` : "";
     const reason = startError || `Check sudo password or port 443 access.${portInfo}`;
@@ -783,7 +820,7 @@ async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) 
     log(`🌐 DNS ${tool}: ${active ? "✅ active" : "❌ inactive"}`);
   }
 
-  await saveMitmSettings(true, sudoPassword);
+  await saveMitmSettings(true, sudoPassword, apiKey);
   if (sudoPassword) setCachedPassword(sudoPassword);
 
   return { running: true, pid: serverPid };
@@ -813,22 +850,23 @@ async function stopServer(sudoPassword) {
   serverProcess = null;
   serverPid = null;
 
-  if (IS_WIN) {
-    const hostsFile = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "drivers", "etc", "hosts");
-    const allHosts = Object.values(TOOL_HOSTS).flat();
-    try {
-      const { isAdmin, runElevatedPowerShell, quotePs } = require("./winElevated.js");
-      if (isAdmin()) {
-        // Direct fs write — bypass PowerShell to avoid parser pitfalls
-        const content = fs.readFileSync(hostsFile, "utf8");
-        const filtered = content.split(/\r?\n/).filter(l => !allHosts.some(h => l.includes(h))).join("\r\n");
-        const next = filtered.replace(/[\r\n\s]+$/g, "") + "\r\n";
-        if (next !== content) fs.writeFileSync(hostsFile, next, "utf8");
-        try { require("child_process").execSync("ipconfig /flushdns", { windowsHide: true, stdio: "ignore" }); } catch { /* ignore */ }
-        log("🌐 DNS: ✅ all tool hosts removed");
-      } else {
-        const hostsList = allHosts.map(quotePs).join(",");
-        const script = `
+  try {
+    if (IS_WIN) {
+      const hostsFile = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "drivers", "etc", "hosts");
+      const allHosts = Object.values(TOOL_HOSTS).flat();
+      try {
+        const { isAdmin, runElevatedPowerShell, quotePs } = require("./winElevated.js");
+        if (isAdmin()) {
+          // Direct fs write — bypass PowerShell to avoid parser pitfalls
+          const content = fs.readFileSync(hostsFile, "utf8");
+          const filtered = content.split(/\r?\n/).filter(l => !allHosts.some(h => l.includes(h))).join("\r\n");
+          const next = filtered.replace(/[\r\n\s]+$/g, "") + "\r\n";
+          if (next !== content) fs.writeFileSync(hostsFile, next, "utf8");
+          try { require("child_process").execSync("ipconfig /flushdns", { windowsHide: true, stdio: "ignore" }); } catch { /* ignore */ }
+          log("🌐 DNS: ✅ all tool hosts removed");
+        } else {
+          const hostsList = allHosts.map(quotePs).join(",");
+          const script = `
           $hosts = @(${hostsList})
           $lines = Get-Content -LiteralPath ${quotePs(hostsFile)}
           $filtered = $lines | Where-Object {
@@ -838,30 +876,32 @@ async function stopServer(sudoPassword) {
           Set-Content -LiteralPath ${quotePs(hostsFile)} -Value $filtered
           ipconfig /flushdns | Out-Null
         `;
-        await runElevatedPowerShell(script);
-      }
-    } catch (e) { err(`Failed to clean hosts: ${e.message}`); }
-  } else {
-    await removeAllDNSEntries(sudoPassword);
-  }
+          await runElevatedPowerShell(script);
+        }
+      } catch (e) { err(`Failed to clean hosts: ${e.message}`); }
+    } else {
+      await removeAllDNSEntries(sudoPassword);
+    }
 
-  // Unset NODE_EXTRA_CA_CERTS so apps don't keep trusting stale MITM cert
-  if (IS_MAC) {
-    exec(`launchctl unsetenv NODE_EXTRA_CA_CERTS`, { windowsHide: true }, (e) => {
-      if (e) log(`[launchctl] Failed to unset NODE_EXTRA_CA_CERTS: ${e.message}`);
-      else log(`[launchctl] NODE_EXTRA_CA_CERTS unset`);
-    });
-  } else if (IS_WIN) {
-    exec(`reg delete HKCU\\Environment /F /V NODE_EXTRA_CA_CERTS`, { windowsHide: true }, (e) => {
-      if (e) log(`[reg] Failed to unset NODE_EXTRA_CA_CERTS: ${e.message}`);
-      else log(`[reg] NODE_EXTRA_CA_CERTS unset`);
-    });
-  }
+    // Unset NODE_EXTRA_CA_CERTS so apps don't keep trusting stale MITM cert
+    if (IS_MAC) {
+      exec(`launchctl unsetenv NODE_EXTRA_CA_CERTS`, { windowsHide: true }, (e) => {
+        if (e) log(`[launchctl] Failed to unset NODE_EXTRA_CA_CERTS: ${e.message}`);
+        else log(`[launchctl] NODE_EXTRA_CA_CERTS unset`);
+      });
+    } else if (IS_WIN) {
+      exec(`reg delete HKCU\\Environment /F /V NODE_EXTRA_CA_CERTS`, { windowsHide: true }, (e) => {
+        if (e) log(`[reg] Failed to unset NODE_EXTRA_CA_CERTS: ${e.message}`);
+        else log(`[reg] NODE_EXTRA_CA_CERTS unset`);
+      });
+    }
 
-  try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
-  await saveMitmSettings(false, null);
-  clearCachedPassword();
-  mitmIsRestarting = false;
+    cleanupMitmRuntimeFiles();
+    await saveMitmSettings(false, null);
+    clearCachedPassword();
+  } finally {
+    mitmIsRestarting = false;
+  }
 
   return { running: false, pid: null };
 }

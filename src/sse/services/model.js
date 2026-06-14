@@ -1,6 +1,7 @@
 // Re-export from open-sse with localDb integration
 import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap } from "open-sse/services/model.js";
+import { isRegisteredProviderId } from "../utils/providerRegistry.js";
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
 const LOCAL_PROVIDER_ALIASES = {
@@ -28,6 +29,12 @@ export async function resolveModelAlias(alias) {
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr) {
+  // Combo names may contain "/" — check the full string before provider/model parsing.
+  const comboByFullName = await getComboByName(modelStr);
+  if (comboByFullName) {
+    return { provider: null, model: modelStr };
+  }
+
   const parsed = parseModel(modelStr);
 
   if (!parsed.isAlias) {
@@ -48,6 +55,9 @@ export async function getModelInfo(modelStr) {
     const matchedEmbedding = embeddingNodes.find((node) => node.prefix === parsed.providerAlias);
     if (matchedEmbedding) {
       return { provider: matchedEmbedding.id, model: parsed.model };
+    }
+    if (!isRegisteredProviderId(parsed.provider)) {
+      return { provider: null, model: modelStr };
     }
     return {
       provider: parsed.provider,
@@ -88,9 +98,6 @@ export async function getModelInfo(modelStr) {
  * @returns {Promise<string[]|null>} Array of valid models or null if not a combo / combo has no valid targets
  */
 export async function getComboModels(modelStr) {
-  // Only check if it's not in provider/model format
-  if (modelStr.includes("/")) return null;
-
   const combo = await getComboByName(modelStr);
   if (!combo || !combo.models || !Array.isArray(combo.models)) return null;
 
@@ -110,7 +117,6 @@ export async function getComboModels(modelStr) {
  * @returns {Promise<string|null>}
  */
 export async function getBrokenComboError(modelStr) {
-  if (modelStr.includes("/")) return null;
   const combo = await getComboByName(modelStr);
   if (!combo) return null;
   const models = await getComboModels(modelStr);

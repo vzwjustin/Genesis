@@ -7,13 +7,13 @@ import { CAVEMAN_PROMPTS } from "./cavemanPrompts.js";
 
 const SEP = "\n\n";
 
-export function injectCaveman(body, format, level) {
+export function injectCaveman(body, format, level, provider = null) {
   const prompt = CAVEMAN_PROMPTS[level];
   if (!body || !prompt) return false;
 
   switch (format) {
     case FORMATS.CLAUDE:
-      injectClaudeSystem(body, prompt);
+      injectClaudeSystem(body, prompt, provider ?? "claude");
       return true;
     case FORMATS.GEMINI:
     case FORMATS.GEMINI_CLI:
@@ -62,7 +62,7 @@ function appendToOpenAIMessage(msg, prompt) {
   if (typeof msg.content === "string") {
     msg.content = `${msg.content}${SEP}${prompt}`;
   } else if (Array.isArray(msg.content)) {
-    msg.content.push({ type: "input_text", text: prompt });
+    msg.content.push({ type: "text", text: prompt });
   } else {
     msg.content = prompt;
   }
@@ -83,13 +83,16 @@ function mightBeOpenAICached(msg) {
 // Claude shape: body.system as string | array of {type:"text", text}
 // Insert AFTER the last cache_control block so the cached prefix is never disturbed.
 // Caveman is small (~100 tokens) so not caching it is negligible.
-function injectClaudeSystem(body, prompt) {
+function injectClaudeSystem(body, prompt, provider = null) {
   if (typeof body.system === "string" && body.system.length > 0) {
-    // Do not mutate cached string system — append as a separate block.
-    body.system = [
-      { type: "text", text: body.system },
-      { type: "text", text: prompt },
-    ];
+    if (provider === "claude") {
+      body.system = `${body.system}${SEP}${prompt}`;
+    } else {
+      body.system = [
+        { type: "text", text: body.system },
+        { type: "text", text: prompt },
+      ];
+    }
     return;
   }
   if (Array.isArray(body.system)) {

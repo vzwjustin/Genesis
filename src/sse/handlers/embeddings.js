@@ -16,6 +16,7 @@ import {
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
 import { isInvalidJsonObjectBody } from "../utils/jsonBody.js";
+import { isRegisteredProviderId } from "../utils/providerRegistry.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 
@@ -89,7 +90,7 @@ export async function handleEmbeddings(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelEmbeddings(b, m),
+      handleSingleModel: (b, m) => handleSingleModelEmbeddings(b, m, request.signal),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -97,10 +98,10 @@ export async function handleEmbeddings(request) {
     });
   }
 
-  return handleSingleModelEmbeddings(body, modelStr);
+  return handleSingleModelEmbeddings(body, modelStr, request.signal);
 }
 
-async function handleSingleModelEmbeddings(body, modelStr) {
+async function handleSingleModelEmbeddings(body, modelStr, signal) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     const brokenComboError = await getBrokenComboError(modelStr);
@@ -117,7 +118,7 @@ async function handleSingleModelEmbeddings(body, modelStr) {
       return handleComboChat({
         body,
         models: comboModels,
-        handleSingleModel: (b, m) => handleSingleModelEmbeddings(b, m),
+        handleSingleModel: (b, m) => handleSingleModelEmbeddings(b, m, signal),
         log,
         comboName: modelStr,
         comboStrategy,
@@ -132,6 +133,11 @@ async function handleSingleModelEmbeddings(body, modelStr) {
   }
 
   const { provider, model } = modelInfo;
+
+  if (!isRegisteredProviderId(provider)) {
+    log.warn("EMBEDDINGS", `Unknown provider: ${provider}`);
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${provider}`);
+  }
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -193,6 +199,7 @@ async function handleSingleModelEmbeddings(body, modelStr) {
       modelInfo: { provider, model },
       credentials: refreshedCredentials,
       log,
+      signal,
       onCredentialsRefreshed: async (newCreds) => {
         await updateProviderCredentials(credentials.connectionId, {
           accessToken: newCreds.accessToken,

@@ -36,6 +36,7 @@ vi.mock("open-sse/utils/requestLogger.js", () => ({
 vi.mock("open-sse/config/providerModels.js", () => ({
   getModelTargetFormat: () => null,
   getModelStrip: () => [],
+  getModelUpstreamId: (_alias, modelId) => modelId,
   PROVIDER_ID_TO_ALIAS: {},
 }));
 vi.mock("open-sse/utils/error.js", () => ({

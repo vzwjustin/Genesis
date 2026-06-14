@@ -4,7 +4,6 @@ import {
   markAccountUnavailable,
   clearAccountError,
 } from "../services/auth.js";
-import { getSettingsSafe } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleSttCore } from "open-sse/handlers/sttCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -16,6 +15,7 @@ import {
   noActiveCredentialsResponse,
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
+import { isRegisteredProviderId } from "../utils/providerRegistry.js";
 import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 
@@ -34,11 +34,12 @@ export async function handleStt(request) {
   }
 
   const modelStr = formData.get("model");
-  log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
 
   const auth = await authenticateRequest(request, log);
   if (!auth.ok) return auth.response;
   const { settings } = auth;
+
+  log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!formData.get("file")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
@@ -57,7 +58,7 @@ export async function handleStt(request) {
     return handleComboChat({
       body: formData,
       models: comboModels,
-      handleSingleModel: (fd, m) => handleSingleModelStt(fd, m),
+      handleSingleModel: (fd, m) => handleSingleModelStt(fd, m, request.signal),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -65,32 +66,12 @@ export async function handleStt(request) {
     });
   }
 
-  return handleSingleModelStt(formData, modelStr);
+  return handleSingleModelStt(formData, modelStr, request.signal);
 }
 
-async function handleSingleModelStt(formData, modelStr) {
+async function handleSingleModelStt(formData, modelStr, signal) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
-    const brokenComboError = await getBrokenComboError(modelStr);
-    if (brokenComboError) {
-      return errorResponse(HTTP_STATUS.BAD_REQUEST, brokenComboError);
-    }
-    const comboModels = await getComboModels(modelStr);
-    if (comboModels) {
-      const settings = await getSettingsSafe();
-      const comboStrategies = settings.comboStrategies || {};
-      const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
-      const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-      return handleComboChat({
-        body: formData,
-        models: comboModels,
-        handleSingleModel: (fd, m) => handleSingleModelStt(fd, m),
-        log,
-        comboName: modelStr,
-        comboStrategy,
-        comboStickyLimit,
-      });
-    }
     return errorResponse(
       HTTP_STATUS.BAD_REQUEST,
       `Failed to resolve model: "${modelStr}". Not a registered alias, combo name, or valid provider/model format.`
@@ -98,10 +79,16 @@ async function handleSingleModelStt(formData, modelStr) {
   }
 
   const { provider, model } = modelInfo;
+
+  if (!isRegisteredProviderId(provider)) {
+    log.warn("STT", `Unknown provider: ${provider}`);
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${provider}`);
+  }
+
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const result = await handleSttCore({ provider, model, formData });
+    const result = await handleSttCore({ provider, model, formData, signal });
     if (result.success) return result.response;
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "STT failed");
   }
@@ -149,7 +136,7 @@ async function handleSingleModelStt(formData, modelStr) {
 
     retryCount++;
 
-    const result = await handleSttCore({ provider, model, formData, credentials: refreshedCredentials });
+    const result = await handleSttCore({ provider, model, formData, credentials: refreshedCredentials, signal });
 
     if (result.success) {
       await clearAccountError(credentials.connectionId, credentials, model);

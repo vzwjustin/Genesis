@@ -3,6 +3,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
+import { mergeAbortSignals } from "../utils/abortSignal.js";
 
 /**
  * Normalize an expiry value to epoch milliseconds.
@@ -178,7 +179,10 @@ export class BaseExecutor {
       // Abort if upstream doesn't return response headers within FETCH_CONNECT_TIMEOUT_MS
       const connectCtrl = new AbortController();
       const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), FETCH_CONNECT_TIMEOUT_MS);
-      const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+      const merged = signal
+        ? mergeAbortSignals([signal, connectCtrl.signal])
+        : { signal: connectCtrl.signal, cleanup: () => {} };
+      const mergedSignal = merged.signal;
 
       try {
         const bodyStr = JSON.stringify(transformedBody);
@@ -191,6 +195,7 @@ export class BaseExecutor {
           signal: mergedSignal
         }, proxyOptions);
         clearTimeout(connectTimer);
+        merged.cleanup?.();
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
@@ -206,6 +211,7 @@ export class BaseExecutor {
         return { response, url, headers, transformedBody };
       } catch (error) {
         clearTimeout(connectTimer);
+        merged.cleanup?.();
         lastError = error;
         const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);

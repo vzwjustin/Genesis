@@ -70,12 +70,11 @@ describe("settings API patch validation", () => {
     mocks.compare.mockResolvedValue(true);
   });
 
-  it("rejects raw password field updates", async () => {
-    const response = await PATCH(request({ password: "plaintext" }));
+  it("silently strips raw password field from PATCH body", async () => {
+    const response = await PATCH(request({ password: "plaintext", fallbackStrategy: "round-robin" }));
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe("Unsupported setting: password");
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ fallbackStrategy: "round-robin" });
   });
 
   it("rejects unknown settings fields", async () => {
@@ -99,5 +98,14 @@ describe("settings API patch validation", () => {
     expect(response.status).toBe(200);
     expect(mocks.compare).toHaveBeenCalledWith("old", "$2a$hash");
     expect(mocks.updateSettings).toHaveBeenCalledWith({ password: "hashed-password" });
+  });
+
+  it("returns 400 when currentPassword is sent but no password exists yet", async () => {
+    mocks.getSettings.mockResolvedValue({ password: null, requireLogin: true });
+    const response = await PATCH(request({ currentPassword: "unused", newPassword: "new" }));
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/omit currentPassword/i);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 });

@@ -40,11 +40,25 @@ const executors = {
 };
 
 const defaultCache = new Map();
+const DEFAULT_CACHE_MAX_SIZE = 100;
 
 export function getExecutor(provider) {
   if (executors[provider]) return executors[provider];
-  if (!defaultCache.has(provider)) defaultCache.set(provider, new DefaultExecutor(provider));
-  return defaultCache.get(provider);
+  const cached = defaultCache.get(provider);
+  if (cached) {
+    // Refresh recency: re-insert so eviction stays LRU, not FIFO.
+    defaultCache.delete(provider);
+    defaultCache.set(provider, cached);
+    return cached;
+  }
+  // Bound growth: provider strings are caller-controllable, so evict the
+  // least-recently-used entry once the cache is full.
+  if (defaultCache.size >= DEFAULT_CACHE_MAX_SIZE) {
+    defaultCache.delete(defaultCache.keys().next().value);
+  }
+  const executor = new DefaultExecutor(provider);
+  defaultCache.set(provider, executor);
+  return executor;
 }
 
 export function hasSpecializedExecutor(provider) {

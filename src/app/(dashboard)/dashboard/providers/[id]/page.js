@@ -12,6 +12,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
+import FusionConfigSection from "./FusionConfigSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
@@ -170,7 +171,7 @@ export default function ProviderDetailPage() {
     } catch (error) {
       actionError(notify, "Failed to fetch disabled models", error);
     }
-  }, [providerStorageAlias]);
+  }, [providerStorageAlias, notify]);
 
   const handleDisableModel = async (modelId) => {
     try {
@@ -235,7 +236,7 @@ export default function ProviderDetailPage() {
     } catch (error) {
       actionError(notify, "Failed to fetch aliases", error);
     }
-  }, []);
+  }, [notify]);
 
   // Fetch free models from Kilo API for kilocode provider
   useEffect(() => {
@@ -304,7 +305,7 @@ export default function ProviderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [providerId, isCompatible]);
+  }, [providerId, isCompatible, notify]);
 
   const handleUpdateNode = async (formData) => {
     try {
@@ -1451,6 +1452,11 @@ export default function ProviderDetailPage() {
             </>
           )}
         </Card>
+      )}
+
+      {/* Fusion plugin configuration (panel/judge/limits) */}
+      {providerId === "fusion" && connections.length > 0 && (
+        <FusionConfigSection connections={connections} onSaved={() => fetchConnections()} />
       )}
 
       {/* Models */}

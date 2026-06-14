@@ -35,8 +35,11 @@ async function upstreamError(res) {
 }
 
 function sttFetch(url, init, proxyOptions) {
-  return proxyAwareFetch(url, init, proxyOptions);
+  const mergedInit = activeAbortSignal ? { ...init, signal: activeAbortSignal } : init;
+  return proxyAwareFetch(url, mergedInit, proxyOptions);
 }
+
+let activeAbortSignal;
 
 // Deepgram: raw binary POST + model query param
 async function transcribeDeepgram(cfg, file, model, token, formData, proxyOptions) {
@@ -191,7 +194,7 @@ function jsonResponse(obj) {
  * STT core handler — dispatch by sttConfig.format.
  * @returns {Promise<{success, response, status?, error?}>}
  */
-export async function handleSttCore({ provider, model, formData, credentials }) {
+export async function handleSttCore({ provider, model, formData, credentials, signal }) {
   const file = formData.get("file");
   if (!file) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
@@ -205,6 +208,7 @@ export async function handleSttCore({ provider, model, formData, credentials }) 
 
   const proxyOptions = buildProxyOptionsFromCredentials(credentials);
 
+  activeAbortSignal = signal;
   try {
     switch (cfg.format) {
       case "deepgram":        return await transcribeDeepgram(cfg, file, model, token, formData, proxyOptions);
@@ -216,5 +220,7 @@ export async function handleSttCore({ provider, model, formData, credentials }) 
     }
   } catch (err) {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err.message || "STT request failed");
+  } finally {
+    activeAbortSignal = undefined;
   }
 }

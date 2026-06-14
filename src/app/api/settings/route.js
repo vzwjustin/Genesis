@@ -3,14 +3,12 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
-import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
+import { requireDashboardApiAuth } from "@/lib/auth/dashboardApiAuth";
 import {
   getRemoteExposureBlockReason,
   isRemoteExposureActive,
   isRemoteExposureRequest,
 } from "@/lib/security/exposureGate";
-import { isVerifiableLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,6 +32,8 @@ const ALLOWED_PATCH_KEYS = new Set([
   "fallbackStrategy",
   "headroomEnabled",
   "mitmAutoSetupOnImport",
+  "mitmRouterBaseUrl",
+  "dnsToolEnabled",
   "newPassword",
   "observabilityBatchSize",
   "observabilityFlushIntervalMs",
@@ -71,8 +71,11 @@ function validatePatchKeys(body) {
   return null;
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const auth = await requireDashboardApiAuth(request);
+    if (!auth.ok) return auth.response;
+
     const settings = await getSettings();
     const { password, oidcClientSecret, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
@@ -94,21 +97,44 @@ export async function GET() {
 
 export async function PATCH(request) {
   try {
-    const settings0 = await getSettings();
-    const loopbackNoLogin = settings0.requireLogin === false && isVerifiableLoopbackRequest(request);
-    if (!loopbackNoLogin) {
-      const cookieStore = await cookies();
-      const session = await getDashboardAuthSession(cookieStore.get("auth_token")?.value);
-      if (!session) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
+    const auth = await requireDashboardApiAuth(request);
+    if (!auth.ok) return auth.response;
 
+    const settings0 = await getSettings();
     const body = await request.json();
 
-    if (body.resetPasswordToDefault === true) {
-      body.password = null;
-      delete body.resetPasswordToDefault;
+    const resetPasswordToDefault = body.resetPasswordToDefault === true;
+    delete body.resetPasswordToDefault;
+    delete body.password;
+
+    const unsupportedKey = validatePatchKeys(body);
+    if (unsupportedKey) {
+      return NextResponse.json({ error: `Unsupported setting: ${unsupportedKey}` }, { status: 400 });
+    }
+
+    if (resetPasswordToDefault) {
+      const currentHash = settings0.password;
+      if (currentHash) {
+        if (!body.currentPassword) {
+          return NextResponse.json({ error: "Current password required" }, { status: 400 });
+        }
+        const isValid = await bcrypt.compare(body.currentPassword, currentHash);
+        if (!isValid) {
+          return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
+        }
+      }
+      delete body.currentPassword;
+      const projected = { ...settings0, ...body, password: null };
+      if (isRemoteExposureActive(projected) || isRemoteExposureRequest(body)) {
+        const blockReason = getRemoteExposureBlockReason(projected);
+        if (blockReason) {
+          return NextResponse.json({ error: blockReason }, { status: 400 });
+        }
+      }
+      const settings = await updateSettings({ password: null });
+      const { password, oidcClientSecret, ...safeSettings } = settings;
+      safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+      return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
     }
 
     const projected = { ...settings0, ...body };
@@ -117,11 +143,6 @@ export async function PATCH(request) {
       if (blockReason) {
         return NextResponse.json({ error: blockReason }, { status: 400 });
       }
-    }
-
-    const unsupportedKey = validatePatchKeys(body);
-    if (unsupportedKey) {
-      return NextResponse.json({ error: `Unsupported setting: ${unsupportedKey}` }, { status: 400 });
     }
 
     // If updating password, hash it
@@ -141,7 +162,7 @@ export async function PATCH(request) {
       } else {
         // First time setting password — no current password required
         if (body.currentPassword) {
-          return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
+          return NextResponse.json({ error: "No password is set; omit currentPassword" }, { status: 400 });
         }
       }
 

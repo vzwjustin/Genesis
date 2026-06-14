@@ -56,6 +56,27 @@ describe("cleanAnthropicToolDefinitions — built-in tools (Requirement 1.6)", (
     expect(cleaned[0].model).toBe("claude-sonnet-4-5");
   });
 
+  it("remaps Fable/Mythos built-in tool models to claude-opus-4-8", () => {
+    const cases = [
+      "cc/claude-fable-5",
+      "Claude Fable 5",
+      "claude-mythos-5",
+    ];
+    for (const model of cases) {
+      const cleaned = cleanAnthropicToolDefinitions(
+        [{ type: "web_search_20250305", name: "web_search", model }],
+        "claude",
+      );
+      expect(cleaned[0].model).toBe("claude-opus-4-8");
+    }
+  });
+
+  it("strips cu/ cursor prefix from built-in tool model", () => {
+    const tools = [{ type: "bash_20250124", name: "bash", model: "cu/claude-opus-4-8-high" }];
+    const cleaned = cleanAnthropicToolDefinitions(tools, "claude");
+    expect(cleaned[0].model).toBe("claude-opus-4-8-high");
+  });
+
   it("preserves cache_control on client and built-in tools", () => {
     const tools = [
       { type: "function", name: "fn", input_schema: {}, cache_control: { type: "ephemeral" } },
@@ -131,7 +152,7 @@ describe("prepareClaudeRequest — integrated tool cleaning", () => {
       ],
       tools: [
         { type: "function", name: "fn", input_schema: {}, model: "strip-me", cache_control: { type: "ephemeral" } },
-        { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6" },
+        { type: "web_search_20250305", name: "web_search", model: "Claude Fable 5" },
       ],
     };
     prepareClaudeRequest(body, "claude");
@@ -141,7 +162,7 @@ describe("prepareClaudeRequest — integrated tool cleaning", () => {
     expect(body.tools[0].cache_control).toEqual({ type: "ephemeral" });
     expect(body.tools[0].model).toBe("strip-me");
     expect(body.tools[1].cache_control).toBeUndefined();
-    expect(body.tools[1].model).toBe("cc/claude-opus-4-6");
+    expect(body.tools[1].model).toBe("claude-opus-4-8");
   });
 });
 

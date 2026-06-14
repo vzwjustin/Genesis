@@ -47,13 +47,13 @@ const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRunt
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
 const args = process.argv.slice(2);
 
-// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
-// so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
-// better-sqlite3 is optional. Logs to stderr only on failure.
-try { ensureSqliteRuntime({ silent: true }); } catch {}
-
 // Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
 try { ensureTrayRuntime({ silent: true }); } catch {}
+
+// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
+// so the server can resolve them via NODE_PATH. Run after tray install so
+// systray2's npm install does not prune better-sqlite3 from the runtime dir.
+try { ensureSqliteRuntime({ silent: true }); } catch {}
 
 // Configuration constants
 const APP_NAME = pkg.name; // Use from package.json
@@ -510,17 +510,14 @@ function openBrowser(url) {
   });
 }
 
-// Find standalone server. Dev/symlinked run uses repo .next/standalone;
-// published package ships the server under cli/app — fall back to it.
-let standaloneDir = path.join(__dirname, "../.next/standalone");
-if (!fs.existsSync(path.join(standaloneDir, "server.js"))) {
-  standaloneDir = path.join(__dirname, "app");
-}
+// Single runtime directory: the CLI build writes the packaged app under cli/app.
+// Do not fall back to root .next/standalone; that can be stale and confusing.
+const standaloneDir = path.join(__dirname, "app");
 const serverPath = path.join(standaloneDir, "server.js");
 
 if (!fs.existsSync(serverPath)) {
   console.error("Error: Standalone build not found.");
-  console.error("Please run 'npm run build:cli' first.");
+  console.error("Please run 'npm --prefix cli run build' first.");
   process.exit(1);
 }
 

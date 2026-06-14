@@ -437,6 +437,13 @@ export const PROVIDER_MODELS = {
     { id: "google/imagen-3.0-generate-002", name: "Imagen 3 (via OpenRouter)", type: "image", params: ["n", "size"] },
     { id: "black-forest-labs/FLUX.1-schnell", name: "FLUX.1 Schnell (via OpenRouter)", type: "image", params: ["n", "size"] },
   ],
+  fusion: [
+    // Single meta-model. Upstream alias "openrouter/fusion" triggers the
+    // panel+judge deliberation (Quality preset by default). Switch presets or
+    // override the panel/judge by passing a `plugins: [{ id: "fusion", ... }]`
+    // field in the request body — passthrough forwards it untouched.
+    { id: "fusion", name: "OpenRouter Fusion", upstreamModelId: "openrouter/fusion" },
+  ],
   glm: [
     { id: "glm-5.1", name: "GLM 5.1" },
     { id: "glm-5", name: "GLM 5" },

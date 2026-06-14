@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createErrorResult, parseUpstreamError, formatProviderError, PROXY_INTERNAL_ERROR_CODES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
-import { refreshWithRetry } from "../services/tokenRefresh.js";
+import { refreshWithRetry, isUnrecoverableRefreshError } from "../services/tokenRefresh.js";
 import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { urlToBase64 } from "./imageProviders/_base.js";
@@ -33,13 +33,17 @@ export async function handleImageGenerationCore({
   modelInfo,
   credentials,
   log,
+  signal,
   streamToClient = false,
   binaryOutput = false,
   onCredentialsRefreshed,
   onRequestSuccess,
-  signal,
 }) {
   const { provider, model } = modelInfo;
+
+  if (signal?.aborted) {
+    return createErrorResult(499, "Request aborted");
+  }
 
   if (!body.prompt) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
@@ -77,6 +81,9 @@ export async function handleImageGenerationCore({
       signal,
     }, proxyOptions);
   } catch (error) {
+    if (error.name === "AbortError" || signal?.aborted) {
+      return createErrorResult(499, "Request aborted");
+    }
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
     log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
@@ -101,6 +108,16 @@ export async function handleImageGenerationCore({
       log
     );
 
+    if (isUnrecoverableRefreshError(newCredentials)) {
+      log?.warn?.("TOKEN", `${provider.toUpperCase()} | unrecoverable refresh (${newCredentials.error})`);
+      return createErrorResult(
+        HTTP_STATUS.UNAUTHORIZED,
+        "Authentication failed: token refresh rejected. Re-authenticate this connection.",
+        undefined,
+        { errorCode: newCredentials.error, proxyInternal: true }
+      );
+    }
+
     if (newCredentials?.accessToken || newCredentials?.copilotToken || newCredentials?.apiKey) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for image generation`);
       Object.assign(credentials, newCredentials);
@@ -117,6 +134,9 @@ export async function handleImageGenerationCore({
           signal,
         }, proxyOptions);
       } catch (retryError) {
+        if (retryError.name === "AbortError" || signal?.aborted) {
+          return createErrorResult(499, "Request aborted");
+        }
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
         const errMsg = formatProviderError(retryError, provider, model, HTTP_STATUS.BAD_GATEWAY);
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
@@ -130,7 +150,7 @@ export async function handleImageGenerationCore({
   }
 
   if (!providerResponse.ok) {
-    const { statusCode, message } = await parseUpstreamError(providerResponse);
+    const { statusCode, message } = await parseUpstreamError(providerResponse, executor);
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     log?.debug?.("IMAGE", `Provider error: ${errMsg}`);
     return createErrorResult(statusCode, errMsg);

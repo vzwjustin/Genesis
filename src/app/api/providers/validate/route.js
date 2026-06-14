@@ -305,6 +305,7 @@ export async function POST(request) {
           break;
 
         case "openrouter":
+        case "fusion":
           const openrouterRes = await validateFetch("https://openrouter.ai/api/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` },
           }, proxyOptions);

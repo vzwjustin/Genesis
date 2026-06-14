@@ -75,10 +75,7 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1) {
 
   const rotationKey = comboName || "__default__";
   const normalizedStickyLimit = normalizeStickyLimit(stickyLimit);
-  const existingState = comboRotationState.get(rotationKey);
-  const state = typeof existingState === "number"
-    ? { index: existingState, consecutiveUseCount: 0 }
-    : (existingState || { index: 0, consecutiveUseCount: 0 });
+  const state = comboRotationState.get(rotationKey) || { index: 0, consecutiveUseCount: 0 };
 
   const currentIndex = state.index % models.length;
   const rotatedModels = rotateModelsFromIndex(models, currentIndex);
@@ -291,24 +288,18 @@ export async function isProviderAccountsExhaustedResponse(response) {
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1 }) {
-  return withComboRotationLock(comboName, async () => {
-  // Capture current rotation index before getRotatedModels advances the counter.
-  // This is used below to correctly pin back to the successful model's original
-  // position: rotatedModels[i] == models[(currentRotationIndex + i) % models.length].
-  // We hold the lock here, so reading comboRotationState is race-free.
   let currentRotationIndex = 0;
-  if (comboStrategy === "round-robin" && models && models.length > 1) {
-    const rotationKey = comboName || "__default__";
-    const existingState = comboRotationState.get(rotationKey);
-    const state = typeof existingState === "number"
-      ? { index: existingState }
-      : (existingState || { index: 0 });
-    currentRotationIndex = state.index % models.length;
-  }
+  let rotatedModels = models;
 
-  // Apply rotation strategy if enabled
-  const rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
-  
+  await withComboRotationLock(comboName, async () => {
+    if (comboStrategy === "round-robin" && models && models.length > 1) {
+      const rotationKey = comboName || "__default__";
+      const state = comboRotationState.get(rotationKey) || { index: 0 };
+      currentRotationIndex = state.index % models.length;
+    }
+    rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
+  });
+
   let lastError = null;
   let earliestRetryAfter = null;
   let lastStatus = null;
@@ -319,24 +310,16 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
 
     try {
       const result = await handleSingleModel(body, modelStr);
-      
-      // Requirement 5.2: HTTP 200 (2xx) — return response to client, do NOT advance combo position.
-      // The combo position remains at the current successful model so subsequent requests
-      // continue to use it (until a retriable error advances the position).
+
       if (result.ok) {
         log.info("COMBO", `Model ${modelStr} succeeded — returning response, combo position unchanged`);
-        // For round-robin strategy, pin the rotation state back to this model so the
-        // position does not advance for the next request. getRotatedModels pre-advances
-        // the counter, so we must undo that advancement on success.
-        //
-        // rotatedModels[i] == models[(currentRotationIndex + i) % models.length].
-        // Use comboName || "__default__" to match the key getRotatedModels uses, so
-        // unnamed combos are also correctly pinned.
         if (comboStrategy === "round-robin") {
           const rotationKey = comboName || "__default__";
-          comboRotationState.set(rotationKey, {
-            index: (currentRotationIndex + i) % models.length,
-            consecutiveUseCount: 0,
+          await withComboRotationLock(comboName, async () => {
+            comboRotationState.set(rotationKey, {
+              index: (currentRotationIndex + i) % models.length,
+              consecutiveUseCount: 0,
+            });
           });
         }
         return result;
@@ -409,7 +392,7 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
 
       // Extract error info from response for logging and final exhaustion message.
       // Re-use the pre-read body data to avoid an additional clone.
-      let errorText = errorMessage || bodyJson?.error || bodyJson?.message || result.statusText || "";
+      let errorText = errorMessage || bodyJson?.error?.message || bodyJson?.message || result.statusText || "";
       let retryAfter = bodyJson?.retryAfter || null;
 
       // unavailableResponse() puts retry hint in the Retry-After header, not the JSON body
@@ -441,7 +424,7 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
     } catch (error) {
       // Unexpected exceptions (network errors, etc.) — treat like 5xx, advance to next model
       lastError = error.message || String(error);
-      lastStatus = 500;
+      lastStatus = 503;
       log.warn("COMBO", `Model ${modelStr} threw error, advancing to next model`, { error: lastError });
     }
   }
@@ -462,5 +445,4 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   const retryHuman = formatRetryAfter(minRetryAt);
   log.warn("COMBO", `All models exhausted | ${msg} (${retryHuman})`);
   return unavailableResponse(finalStatus, msg, minRetryAt, retryHuman);
-  });
 }

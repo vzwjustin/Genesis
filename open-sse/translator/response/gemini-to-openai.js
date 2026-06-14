@@ -217,6 +217,9 @@ export function geminiToOpenAIResponse(chunk, state) {
   // Finish reason - include usage in final chunk
   if (candidate.finishReason) {
     let finishReason = candidate.finishReason.toLowerCase();
+    if (finishReason === "function_calls") {
+      finishReason = "tool_calls";
+    }
     if (finishReason === "stop" && state.toolCalls.size > 0) {
       finishReason = "tool_calls";
     }

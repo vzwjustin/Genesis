@@ -82,19 +82,25 @@ function processTextNode(node) {
   
   if (skipTags.includes(tagName)) return;
   
-  // Store original text if not already stored
-  if (!node._originalText) {
+  // Re-cache the source text whenever React (or anything else) changed the node
+  // since our last write. Without this, a node reused across route changes — e.g.
+  // the header <h1> — keeps its first-loaded _originalText forever, and the block
+  // below reverts every later update back to that stale value (header freezes on
+  // the old page title until a full refresh). node._i18nRendered is the value WE
+  // last wrote; if the live value differs, the new value is a fresh source.
+  if (node._originalText === undefined || node.nodeValue !== node._i18nRendered) {
     node._originalText = node.nodeValue;
   }
-  
+
   // Use original text for translation
   const original = node._originalText;
   const translated = translate(original);
-  
+
   // Only update if different to avoid unnecessary DOM mutations
   if (translated !== node.nodeValue) {
     node.nodeValue = translated;
   }
+  node._i18nRendered = node.nodeValue;
 }
 
 // Process all text nodes in element

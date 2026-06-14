@@ -10,13 +10,21 @@ import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
-    super(provider, PROVIDERS[provider] || PROVIDERS.openai);
+    const config = PROVIDERS[provider];
+    super(
+      provider,
+      config ?? {
+        format: "openai",
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   transformRequest(model, body) {
-    if (hasAnthropicCacheBreakpoints(body)) return body;
-    const transformed = this.applyJsonSchemaFallback(body);
-    return injectReasoningContent({ provider: this.provider, model, body: transformed });
+    const withReasoning = injectReasoningContent({ provider: this.provider, model, body });
+    if (hasAnthropicCacheBreakpoints(body)) return withReasoning;
+    const transformed = this.applyJsonSchemaFallback(withReasoning);
+    return transformed;
   }
 
   // Fallback json_schema → json_object for openai-compatible providers without native Structured Output.
@@ -67,6 +75,9 @@ export class DefaultExecutor extends BaseExecutor {
           return `${resolveXiaomiTokenplanBaseUrl(credentials)}/chat/completions`;
         }
         const url = this.config.baseUrl;
+        if (!url) {
+          throw new Error(`Unknown provider "${this.provider}" has no configured base URL`);
+        }
         if (url?.includes("{accountId}")) {
           const accountId = credentials?.providerSpecificData?.accountId;
           if (!accountId) throw new Error(`${this.provider} requires accountId in providerSpecificData`);

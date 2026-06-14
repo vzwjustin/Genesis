@@ -7,7 +7,18 @@ const CORS_HEADERS = {
 };
 
 export async function GET() {
-  return NextResponse.json({ ok: true }, { headers: CORS_HEADERS });
+  let dbOk = true;
+  try {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    await getAdapter();
+  } catch {
+    dbOk = false;
+  }
+
+  return NextResponse.json(
+    { ok: dbOk, db: dbOk },
+    { headers: CORS_HEADERS, status: dbOk ? 200 : 503 }
+  );
 }
 
 export async function OPTIONS() {

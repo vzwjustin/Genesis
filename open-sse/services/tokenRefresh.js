@@ -80,6 +80,29 @@ async function dedupRefresh(provider, oldToken, fn, log) {
   return promise;
 }
 
+/** Parse OAuth refresh error body for unrecoverable token states (invalid_grant, reused, etc.) */
+export function parseOAuthRefreshErrorBody(errorText, log, label) {
+  let errorCode = null;
+  try {
+    const parsed = JSON.parse(errorText);
+    errorCode = parsed?.error?.code || (typeof parsed?.error === "string" ? parsed.error : null);
+  } catch {}
+
+  if (
+    errorCode === "refresh_token_reused" ||
+    errorCode === "invalid_grant" ||
+    errorCode === "token_expired" ||
+    errorCode === "invalid_token" ||
+    errorCode === "invalid_request"
+  ) {
+    log?.error?.("TOKEN_REFRESH", `Refresh token unrecoverable for ${label}. Re-auth required.`, {
+      errorCode,
+    });
+    return { error: "unrecoverable_refresh_error", code: errorCode };
+  }
+  return null;
+}
+
 // Check if refresh result indicates unrecoverable error (caller should stop retry, force re-auth)
 export function isUnrecoverableRefreshError(result) {
   return (
@@ -133,26 +156,8 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
 
     if (!response.ok) {
       const errorText = await response.text();
-
-      // Detect unrecoverable errors (invalid_grant/reused/expired) so callers stop retrying
-      let errorCode = null;
-      try {
-        const parsed = JSON.parse(errorText);
-        errorCode = parsed?.error?.code || (typeof parsed?.error === "string" ? parsed.error : null);
-      } catch {}
-
-      if (
-        errorCode === "refresh_token_reused" ||
-        errorCode === "invalid_grant" ||
-        errorCode === "token_expired" ||
-        errorCode === "invalid_token"
-      ) {
-        log?.error?.("TOKEN_REFRESH", `Refresh token unrecoverable for ${provider}. Re-auth required.`, {
-          status: response.status,
-          errorCode,
-        });
-        return { error: "unrecoverable_refresh_error", code: errorCode };
-      }
+      const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, provider);
+      if (unrecoverable) return unrecoverable;
 
       log?.error?.("TOKEN_REFRESH", `Failed to refresh token for ${provider}`, {
         status: response.status,
@@ -205,6 +210,8 @@ export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = 
 
     if (!response.ok) {
       const errorText = await response.text();
+      const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "claude");
+      if (unrecoverable) return unrecoverable;
       log?.error?.("TOKEN_REFRESH", "Failed to refresh Claude OAuth token", { status: response.status, error: errorText });
       return null;
     }
@@ -242,6 +249,8 @@ export async function refreshGoogleToken(refreshToken, clientId, clientSecret, l
 
     if (!response.ok) {
       const errorText = await response.text();
+      const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "google");
+      if (unrecoverable) return unrecoverable;
       log?.error?.("TOKEN_REFRESH", "Failed to refresh Google token", { status: response.status, error: errorText });
       return null;
     }
@@ -297,6 +306,8 @@ export async function refreshQwenToken(refreshToken, log, proxyOptions = null) {
       };
     } else {
       const errorText = await response.text().catch(() => "");
+      const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "qwen");
+      if (unrecoverable) return unrecoverable;
       log?.warn?.("TOKEN_REFRESH", `Error with Qwen endpoint`, {
         status: response.status,
         error: errorText,
@@ -339,26 +350,8 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
 
   if (!response.ok) {
     const errorText = await response.text();
-
-    // Detect unrecoverable errors (token reused/expired) — Auth0 revokes whole family on retry
-    let errorCode = null;
-    try {
-      const parsed = JSON.parse(errorText);
-      errorCode = parsed?.error?.code || (typeof parsed?.error === "string" ? parsed.error : null);
-    } catch {}
-
-    if (
-      errorCode === "refresh_token_reused" ||
-      errorCode === "invalid_grant" ||
-      errorCode === "token_expired" ||
-      errorCode === "invalid_token"
-    ) {
-      log?.error?.("TOKEN_REFRESH", "Codex refresh token already used or invalid. Re-auth required.", {
-        status: response.status,
-        errorCode,
-      });
-      return { error: "unrecoverable_refresh_error", code: errorCode };
-    }
+    const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "codex");
+    if (unrecoverable) return unrecoverable;
 
     log?.error?.("TOKEN_REFRESH", "Failed to refresh Codex token", {
       status: response.status,
@@ -424,6 +417,8 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
 
     if (!response.ok) {
       const errorText = await response.text();
+      const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "kiro-aws");
+      if (unrecoverable) return unrecoverable;
       log?.error?.("TOKEN_REFRESH", "Failed to refresh Kiro AWS token", {
         status: response.status,
         error: errorText,
@@ -463,6 +458,8 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
 
   if (!response.ok) {
     const errorText = await response.text();
+    const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "kiro-social");
+    if (unrecoverable) return unrecoverable;
     log?.error?.("TOKEN_REFRESH", "Failed to refresh Kiro social token", {
       status: response.status,
       error: errorText,
@@ -569,6 +566,8 @@ export async function refreshGitHubToken(refreshToken, log, proxyOptions = null)
 
   if (!response.ok) {
     const errorText = await response.text();
+    const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "github");
+    if (unrecoverable) return unrecoverable;
     log?.error?.("TOKEN_REFRESH", "Failed to refresh GitHub token", {
       status: response.status,
       error: errorText,
@@ -821,9 +820,7 @@ export async function getAllAccessTokens(userInfo, log) {
   if (userInfo.connections && Array.isArray(userInfo.connections)) {
     for (const connection of userInfo.connections) {
       if (connection.isActive && connection.provider) {
-        const token = await getAccessToken(connection.provider, {
-          refreshToken: connection.refreshToken
-        }, log);
+        const token = await getAccessToken(connection.provider, connection, log);
 
         if (token) {
           results[connection.provider] = token;

@@ -18,6 +18,7 @@ import {
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
 import { isInvalidJsonObjectBody } from "../utils/jsonBody.js";
+import { isRegisteredProviderId } from "../utils/providerRegistry.js";
 import * as log from "../utils/logger.js";
 
 /**
@@ -105,6 +106,11 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
   }
 
   const { provider, model } = modelInfo;
+
+  if (!isRegisteredProviderId(provider)) {
+    log.warn("IMAGE", `Unknown provider: ${provider}`);
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${provider}`);
+  }
 
   // noAuth providers — derived from image adapter config
   if (getImageAdapter(provider)?.noAuth) {

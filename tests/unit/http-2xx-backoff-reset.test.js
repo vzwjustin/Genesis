@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock localDb before importing auth.js
 vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(),
+  getProviderConnectionById: vi.fn().mockResolvedValue(null),
   updateProviderConnection: vi.fn().mockResolvedValue(undefined),
   validateApiKey: vi.fn(),
   getSettings: vi.fn().mockResolvedValue({}),

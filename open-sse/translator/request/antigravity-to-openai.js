@@ -175,16 +175,30 @@ function convertContent(content) {
 
     // Function response → collect all, each becomes a separate tool message
     if (part.functionResponse) {
+      if (!part.functionResponse.id) {
+        console.warn("[antigravity-to-openai] skipping functionResponse without id");
+        continue;
+      }
       toolResults.push({
         role: "tool",
-        tool_call_id: part.functionResponse.id || part.functionResponse.name,
+        tool_call_id: part.functionResponse.id,
         content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
       });
     }
   }
 
-  // Content with only functionResponses → return array of tool messages
+  // Content with tool results — include trailing user text when present
   if (toolResults.length > 0) {
+    if (textParts.length > 0 || reasoningContent) {
+      const textMsg = { role: "user" };
+      if (textParts.length > 0) {
+        textMsg.content = textParts.length === 1 && textParts[0].type === "text" ? textParts[0].text : textParts;
+      }
+      if (reasoningContent) {
+        textMsg.reasoning_content = reasoningContent;
+      }
+      return [...toolResults, textMsg];
+    }
     return toolResults;
   }
 

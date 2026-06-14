@@ -3,6 +3,12 @@ import { Buffer } from "node:buffer";
 import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../../utils/proxyFetch.js";
 
 /** Route TTS upstream fetches through connection/env proxy when configured. */
+let activeTtsAbortSignal;
+
+export function setActiveTtsAbortSignal(signal) {
+  activeTtsAbortSignal = signal;
+}
+
 export async function ttsFetch(url, init, credentialsOrProxyOptions = null) {
   let proxyOptions = null;
   if (credentialsOrProxyOptions) {
@@ -17,7 +23,8 @@ export async function ttsFetch(url, init, credentialsOrProxyOptions = null) {
       proxyOptions = buildProxyOptionsFromCredentials(maybeProxy);
     }
   }
-  return proxyAwareFetch(url, init, proxyOptions);
+  const mergedInit = activeTtsAbortSignal ? { ...init, signal: activeTtsAbortSignal } : init;
+  return proxyAwareFetch(url, mergedInit, proxyOptions);
 }
 
 export const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";

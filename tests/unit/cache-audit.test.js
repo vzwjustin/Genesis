@@ -38,7 +38,7 @@ describe("cache audit — tool cleaning", () => {
     expect(out[0]).toEqual(tools[0]);
   });
 
-  it("keeps cc/ prefix byte-identical on cached built-in tools", () => {
+  it("keeps cached built-in tools identical except allowed model prefix strip", () => {
     const tools = [
       {
         type: "bash",
@@ -48,8 +48,10 @@ describe("cache audit — tool cleaning", () => {
       },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0].model).toBe("cc/claude-opus-4-6");
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0].model).toBe("claude-opus-4-6");
+    expect(out[0].type).toBe("bash");
+    expect(out[0].name).toBe("Bash");
+    expect(out[0].cache_control).toEqual(tools[0].cache_control);
   });
 });
 

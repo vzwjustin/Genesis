@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getTtsAdapter, synthesizeViaConfig } from "./ttsProviders/index.js";
+import { setActiveTtsAbortSignal } from "./ttsProviders/_base.js";
 
 // Re-export voice fetchers + voices APIs for backward compat with existing routes
 export {
@@ -65,11 +66,12 @@ function createTtsResponse(base64Audio, format, responseFormat) {
  *
  * @returns {Promise<{success, response, status?, error?}>}
  */
-export async function handleTtsCore({ provider, model, input, credentials, responseFormat = "mp3", language }) {
+export async function handleTtsCore({ provider, model, input, credentials, responseFormat = "mp3", language, signal }) {
   if (!input?.trim()) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
   }
 
+  setActiveTtsAbortSignal(signal);
   try {
     // Special-case adapters (google-tts, edge-tts, local-device, elevenlabs, openai, openrouter, gemini)
     const adapter = getTtsAdapter(provider);
@@ -87,5 +89,7 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support TTS via this route.`);
   } catch (err) {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err.message || "TTS synthesis failed");
+  } finally {
+    setActiveTtsAbortSignal(undefined);
   }
 }

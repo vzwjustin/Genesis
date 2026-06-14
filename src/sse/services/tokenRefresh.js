@@ -162,8 +162,8 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
   try {
     const updates = {};
 
-    if (newCredentials.accessToken)         updates.accessToken  = newCredentials.accessToken;
-    if (newCredentials.refreshToken)        updates.refreshToken = newCredentials.refreshToken;
+    if (newCredentials.accessToken != null)         updates.accessToken  = newCredentials.accessToken;
+    if (newCredentials.refreshToken != null)        updates.refreshToken = newCredentials.refreshToken;
     if (newCredentials.expiresIn) {
       updates.expiresAt = toExpiresAt(newCredentials.expiresIn);
       updates.expiresIn = newCredentials.expiresIn;
@@ -271,16 +271,10 @@ export async function checkAndRefreshToken(provider, credentials) {
         // Non-blocking: refresh projectId with the new access token
         _refreshProjectId(provider, creds.connectionId, creds.accessToken, creds);
       } else {
-        // Token refresh failed (returned null) — mark for Account_Fallback
-        log.warn("TOKEN_REFRESH", "Token refresh failed — marking connection unusable for fallback", {
+        // Token refresh failed (returned null) — skip this connection for the current request only.
+        log.warn("TOKEN_REFRESH", "Token refresh failed — connection skipped for this request", {
           provider,
           connectionId: creds.connectionId,
-        });
-        // Mark connection as permanently unusable (testStatus=error excludes from credential selection)
-        await updateProviderConnection(creds.connectionId, {
-          testStatus: "error",
-          lastError: "Token refresh failed",
-          lastErrorAt: new Date().toISOString(),
         });
         creds._tokenRefreshFailed = true;
         return creds;
@@ -315,6 +309,15 @@ export async function checkAndRefreshToken(provider, credentials) {
         creds.providerSpecificData = updatedSpecific;
         creds.copilotToken = copilotToken.token;
       } else {
+        log.warn("TOKEN_REFRESH", "Copilot token refresh failed — marking connection unusable", {
+          provider,
+          connectionId: creds.connectionId,
+        });
+        await updateProviderConnection(creds.connectionId, {
+          testStatus: "error",
+          lastError: "Copilot token refresh failed",
+          lastErrorAt: new Date().toISOString(),
+        });
         creds._tokenRefreshFailed = true;
       }
     }

@@ -107,9 +107,10 @@ describe("Round 25 — getModelInfoCore fail-closed", () => {
 });
 
 describe("Round 25 — nested built-in tool model prefix strip", () => {
-  it("strips multiple provider prefixes from built-in tool model", () => {
-    expect(stripProviderModelPrefix("provider/cc/claude-opus-4-6")).toBe("claude-opus-4-6");
-    const tools = [{ type: "web_search_20250305", name: "web_search", model: "provider/cc/claude-opus-4-6" }];
+  it("strips known provider prefixes from built-in tool model", () => {
+    expect(stripProviderModelPrefix("cc/claude-opus-4-6")).toBe("claude-opus-4-6");
+    expect(stripProviderModelPrefix("provider/cc/claude-opus-4-6")).toBe("provider/cc/claude-opus-4-6");
+    const tools = [{ type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6" }];
     const cleaned = cleanAnthropicToolDefinitions(tools, "claude");
     expect(cleaned[0].model).toBe("claude-opus-4-6");
   });

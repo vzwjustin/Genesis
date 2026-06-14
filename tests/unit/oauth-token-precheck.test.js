@@ -97,10 +97,13 @@ describe("OAuth Token Pre-Check (5-minute expiry window)", () => {
       expect(src).toContain("updateProviderConnection");
     });
 
-    it("refresh failure marks connection testStatus error for fallback", () => {
+    it("refresh failure skips connection for current request without permanent testStatus error", () => {
       const src = readFileSync(join(root, "../../src/sse/services/tokenRefresh.js"), "utf8");
-      expect(src).toContain('testStatus: "error"');
-      expect(src).toContain("Token refresh failed");
+      expect(src).toContain("_tokenRefreshFailed = true");
+      const start = src.indexOf("// Token refresh failed (returned null)");
+      const end = src.indexOf("// ── 2. GitHub Copilot");
+      const nullFailureBlock = src.slice(start, end);
+      expect(nullFailureBlock).not.toMatch(/testStatus:\s*"error"/);
     });
 
     it("GitHub path refreshes copilot token when within buffer", () => {

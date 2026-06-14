@@ -29,15 +29,23 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   // System message
   if (body.system) {
-    const systemContent = Array.isArray(body.system)
-      ? body.system.map(s => s.text || "").join("\n")
-      : body.system;
-    
-    if (systemContent) {
-      result.messages.push({
-        role: "system",
-        content: systemContent
-      });
+    if (Array.isArray(body.system)) {
+      const textParts = [];
+      for (const block of body.system) {
+        if (block?.text) {
+          textParts.push(block.text);
+        } else if (block?.type && block.type !== "text") {
+          console.warn(
+            `[claude-to-openai] non-text system block type "${block.type}" cannot be represented in OpenAI format`
+          );
+        }
+      }
+      const systemContent = textParts.join("\n");
+      if (systemContent) {
+        result.messages.push({ role: "system", content: systemContent });
+      }
+    } else if (typeof body.system === "string" && body.system) {
+      result.messages.push({ role: "system", content: body.system });
     }
   }
 
@@ -60,16 +68,21 @@ export function claudeToOpenAIRequest(model, body, stream) {
   // Fix missing tool responses - OpenAI requires every tool_call to have a response
   fixMissingToolResponses(result.messages);
 
-  // Tools
+  // Tools — preserve Anthropic built-ins; convert client function tools to OpenAI shape
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map(tool => ({
-      type: "function",
-      function: {
-        name: tool.name,
-        description: String(tool.description || ""),
-        parameters: tool.input_schema || { type: "object", properties: {} }
+    result.tools = body.tools.map((tool) => {
+      if (tool.type && tool.type !== "function") {
+        return { ...tool };
       }
-    }));
+      return {
+        type: "function",
+        function: {
+          name: tool.name,
+          description: String(tool.description || ""),
+          parameters: tool.input_schema || { type: "object", properties: {} },
+        },
+      };
+    });
   }
 
   // Tool choice
@@ -130,11 +143,21 @@ function convertClaudeMessage(msg) {
     const parts = [];
     const toolCalls = [];
     const toolResults = [];
+    let reasoningContent = "";
 
     for (const block of msg.content) {
       switch (block.type) {
         case "text":
           parts.push({ type: "text", text: block.text });
+          break;
+
+        case "thinking":
+          if (block.thinking) {
+            reasoningContent += block.thinking;
+          }
+          break;
+
+        case "redacted_thinking":
           break;
 
         case "image":
@@ -144,6 +167,11 @@ function convertClaudeMessage(msg) {
               image_url: {
                 url: `data:${block.source.media_type};base64,${block.source.data}`
               }
+            });
+          } else if (block.source?.type === "url" && block.source.url) {
+            parts.push({
+              type: "image_url",
+              image_url: { url: block.source.url }
             });
           }
           break;
@@ -196,16 +224,19 @@ function convertClaudeMessage(msg) {
       if (parts.length > 0) {
         result.content = flattenTextOnlyParts(parts) ?? parts;
       }
+      if (reasoningContent) result.reasoning_content = reasoningContent;
       result.tool_calls = toolCalls;
       return result;
     }
 
     // Return content
-    if (parts.length > 0) {
-      return {
+    if (parts.length > 0 || reasoningContent) {
+      const result = {
         role,
-        content: flattenTextOnlyParts(parts) ?? parts
+        content: parts.length > 0 ? (flattenTextOnlyParts(parts) ?? parts) : (reasoningContent ? "" : null)
       };
+      if (reasoningContent) result.reasoning_content = reasoningContent;
+      return result;
     }
     
     // Empty content array
@@ -220,9 +251,13 @@ function convertClaudeMessage(msg) {
 // Convert tool choice
 function convertToolChoice(choice) {
   if (!choice) return "auto";
-  if (typeof choice === "string") return choice;
-  
+  if (typeof choice === "string") {
+    if (choice === "none") return "none";
+    return choice;
+  }
+
   switch (choice.type) {
+    case "none": return "none";
     case "auto": return "auto";
     case "any": return "required";
     case "tool": return { type: "function", function: { name: choice.name } };

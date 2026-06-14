@@ -40,6 +40,7 @@ export function isRtkEnabled() {
 function restoreItems(items, snapshot) {
   if (!Array.isArray(items) || !Array.isArray(snapshot)) return;
   for (let i = 0; i < snapshot.length; i++) {
+    if (snapshot[i] == null) continue;
     items[i] = snapshot[i];
   }
 }
@@ -73,8 +74,8 @@ export function compressMessages(body, enabled = rtkEnabled, filterConfig = null
 
   const clientCache = hasAnthropicCacheBreakpoints(body);
 
-  // Kiro format: conversationState.history + conversationState.currentMessage
-  if (body.conversationState && !clientCache) {
+  // Kiro format: only currentMessage is compressed; history is never touched.
+  if (body.conversationState) {
     return compressKiroFormat(body, enabled, filterConfig);
   }
 
@@ -101,7 +102,8 @@ export function compressMessages(body, enabled = rtkEnabled, filterConfig = null
     // those bytes are part of the cached prefix; mutating them invalidates the cache.
     cacheFloor = findLastCacheBoundary(items);
     protectedSnapshot = snapshotCacheProtectedRegion(items, cacheFloor);
-    itemsSnapshot = items.map((item) => {
+    itemsSnapshot = items.map((item, i) => {
+      if (i <= cacheFloor) return null;
       try {
         return structuredClone(item);
       } catch {
@@ -239,15 +241,25 @@ function restoreGeminiContents(contents, snapshot) {
 
 function compressGeminiContents(contents, filterConfig) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
+  const cacheFloor = findLastCacheBoundary(contents);
+  const protectedSnapshot = snapshotCacheProtectedRegion(contents, cacheFloor);
   const snapshot = contents.map((c) => JSON.parse(JSON.stringify(c)));
   try {
-    for (const content of contents) {
+    for (let ci = 0; ci < contents.length; ci++) {
+      if (shouldSkipMessageForCache(ci, contents, cacheFloor)) continue;
+      const content = contents[ci];
       if (!Array.isArray(content?.parts)) continue;
       for (const part of content.parts) {
         if (part?.functionResponse) {
           compressFunctionResponse(part.functionResponse, stats, filterConfig);
         }
       }
+    }
+
+    if (!verifyCacheBoundaryIntegrity(contents, cacheFloor, protectedSnapshot)) {
+      console.error("[RTK] CRITICAL: cache boundary integrity violation — reverting all compression");
+      restoreGeminiContents(contents, snapshot);
+      return null;
     }
   } catch (e) {
     console.warn("[RTK] compressGeminiContents error:", e.message);
@@ -319,13 +331,16 @@ function compressText(text, stats, shape, filterConfig) {
     if (isFilterEnabled(name, filterConfig)) {
       const namedOut = safeApply(namedFilter, text);
       if (namedOut && namedOut.length > 0 && namedOut.length < bytesIn) {
-        candidates.push({ out: namedOut, filter: name });
+        const reduction = 1 - namedOut.length / bytesIn;
+        // Reject suspiciously aggressive named output (>95% reduction) — fall through to smart-truncate.
+        if (reduction < 0.95) {
+          candidates.push({ out: namedOut, filter: name });
+        }
       }
     }
   }
 
-  // Fallback only when named filter failed or grew the input (Req 7.8–7.10)
-  if (candidates.length === 0 && isFilterEnabled("smart-truncate", filterConfig)) {
+  if (isFilterEnabled("smart-truncate", filterConfig)) {
     const truncOut = safeApply(smartTruncate, text);
     if (truncOut && truncOut.length > 0 && truncOut.length < bytesIn) {
       candidates.push({ out: truncOut, filter: "smart-truncate" });

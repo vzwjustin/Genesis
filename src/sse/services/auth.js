@@ -1,4 +1,4 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettingsSafe } from "@/lib/localDb";
+import { getProviderConnections, getProviderConnectionById, validateApiKey, updateProviderConnection, getSettingsSafe } from "@/lib/localDb";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -18,8 +18,9 @@ import { hasValidLocalCliToken } from "@/shared/auth/cliToken.js";
 import { strictProxyFieldFromResolved } from "open-sse/utils/proxyFetch.js";
 import * as log from "../utils/logger.js";
 
-// Mutex to prevent race conditions during account selection
+// Mutex to prevent race conditions during account selection and state updates
 let selectionMutex = Promise.resolve();
+let accountStateMutex = Promise.resolve();
 
 /**
  * Get provider credentials from localDb
@@ -160,6 +161,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // 2. Find the current "active" connection (most recently used)
       // 3. Stick to it for stickyLimit consecutive requests
       // 4. Then rotate to the next connection in priority order
+      //
+      // CONCURRENCY: the read-modify-write of consecutiveUseCount below
+      // (read current → await updateProviderConnection → write) is a TOCTOU
+      // hazard, but it runs inside selectionMutex (acquired at the top of
+      // getProviderCredentials, released in the finally), so all selections
+      // are serialized in-process — concurrent requests cannot read the same
+      // snapshot. Do NOT move this block outside the mutex. Residual caveat:
+      // multiple processes sharing one DB are not serialized by this mutex;
+      // sticky limits would need a DB-level atomic increment to hold there.
 
       const byPriority = [...availableConnections].sort((a, b) => (a.priority || 999) - (b.priority || 999));
 
@@ -177,14 +187,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         // No connection has been used yet — start with highest priority
         connection = byPriority[0];
         await updateProviderConnection(connection.id, {
-          lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: 1
         });
       } else if (currentCount < stickyLimit) {
         // Sticky: stay with current connection until limit reached
         connection = current;
         await updateProviderConnection(connection.id, {
-          lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: currentCount + 1
         });
       } else {
@@ -197,7 +205,6 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
         // Reset count to 1 for the newly selected connection
         await updateProviderConnection(connection.id, {
-          lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: 1
         });
       }
@@ -250,49 +257,60 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  */
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, meta = {}) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
-  const connections = await getProviderConnections({ provider });
-  const conn = connections.find(c => c.id === connectionId);
-  const backoffLevel = conn?.backoffLevel || 0;
 
-  // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
-  let shouldFallback, cooldownMs, newBackoffLevel;
-  if (resetsAtMs && resetsAtMs > Date.now()) {
-    shouldFallback = true;
-    cooldownMs = Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
-    newBackoffLevel = 0;
-  } else {
-    ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel, meta));
+  const currentMutex = accountStateMutex;
+  let resolveMutex;
+  accountStateMutex = new Promise(resolve => { resolveMutex = resolve; });
+
+  try {
+    await currentMutex;
+
+    const connections = await getProviderConnections({ provider });
+    const conn = connections.find(c => c.id === connectionId);
+    const backoffLevel = conn?.backoffLevel || 0;
+
+    // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
+    let shouldFallback, cooldownMs, newBackoffLevel;
+    if (resetsAtMs && resetsAtMs > Date.now()) {
+      shouldFallback = true;
+      cooldownMs = Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
+      newBackoffLevel = 0;
+    } else {
+      ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel, meta));
+    }
+    if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
+
+    const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
+    const lockUpdate = buildModelLockUpdate(model, cooldownMs);
+
+    // Round-robin bumps consecutiveUseCount at selection, before the request is
+    // known to succeed. If this connection just failed and we're falling back,
+    // roll that bump back so a failed attempt doesn't consume a sticky slot and
+    // starve healthy accounts (rotation counts successes, not attempts).
+    const rolledBackUseCount = Math.max(0, (conn?.consecutiveUseCount || 0) - 1);
+
+    await updateProviderConnection(connectionId, {
+      ...lockUpdate,
+      testStatus: "unavailable",
+      lastError: reason,
+      errorCode: status,
+      lastErrorAt: new Date().toISOString(),
+      backoffLevel: newBackoffLevel ?? backoffLevel,
+      consecutiveUseCount: rolledBackUseCount
+    });
+
+    const lockKey = Object.keys(lockUpdate)[0];
+    const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
+    log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
+
+    if (provider && status && reason) {
+      console.error(`❌ ${provider} [${status}]: ${reason}`);
+    }
+
+    return { shouldFallback: true, cooldownMs };
+  } finally {
+    if (resolveMutex) resolveMutex();
   }
-  if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
-
-  const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
-  const lockUpdate = buildModelLockUpdate(model, cooldownMs);
-
-  // Round-robin bumps consecutiveUseCount at selection, before the request is
-  // known to succeed. If this connection just failed and we're falling back,
-  // roll that bump back so a failed attempt doesn't consume a sticky slot and
-  // starve healthy accounts (rotation counts successes, not attempts).
-  const rolledBackUseCount = Math.max(0, (conn?.consecutiveUseCount || 0) - 1);
-
-  await updateProviderConnection(connectionId, {
-    ...lockUpdate,
-    testStatus: "unavailable",
-    lastError: reason,
-    errorCode: status,
-    lastErrorAt: new Date().toISOString(),
-    backoffLevel: newBackoffLevel ?? backoffLevel,
-    consecutiveUseCount: rolledBackUseCount
-  });
-
-  const lockKey = Object.keys(lockUpdate)[0];
-  const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-  log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
-
-  if (provider && status && reason) {
-    console.error(`❌ ${provider} [${status}]: ${reason}`);
-  }
-
-  return { shouldFallback: true, cooldownMs };
 }
 
 /**
@@ -306,18 +324,22 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
  */
 export async function clearAccountError(connectionId, currentConnection, model = null) {
   if (!connectionId || connectionId === "noauth") return;
-  const conn = currentConnection._connection || currentConnection;
+
+  const freshConn = (await getProviderConnectionById(connectionId))
+    || currentConnection._connection
+    || currentConnection;
+  const conn = freshConn;
   const now = Date.now();
   const allLockKeys = Object.keys(conn).filter(k => k.startsWith("modelLock_"));
 
   if (!conn.testStatus && !conn.lastError && !conn.rateLimitedUntil && allLockKeys.length === 0) return;
 
-  // Keys to clear: current model's lock + all expired locks
+  // Keys to clear: current model's lock + account-level lock + all expired locks
   const keysToClear = allLockKeys.filter(k => {
-    if (model && k === `modelLock_${model}`) return true; // succeeded model
-    if (model && k === "modelLock___all") return true;    // account-level lock
+    if (model && k === `modelLock_${model}`) return true;
+    if (k === "modelLock___all") return true;
     const expiry = conn[k];
-    return expiry && new Date(expiry).getTime() <= now;   // expired
+    return expiry && new Date(expiry).getTime() <= now;
   });
 
   if (keysToClear.length === 0 && conn.testStatus !== "unavailable" && !conn.lastError && !conn.rateLimitedUntil) return;
@@ -335,6 +357,9 @@ export async function clearAccountError(connectionId, currentConnection, model =
   if (remainingActiveLocks.length === 0) {
     Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0, rateLimitedUntil: null });
   }
+
+  // Record successful use for round-robin recency (deferred from selection until success)
+  clearObj.lastUsedAt = new Date().toISOString();
 
   await updateProviderConnection(connectionId, clearObj);
 }

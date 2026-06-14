@@ -165,6 +165,11 @@ export async function resolveConnectionProxyConfig(
       error
     );
 
+    const legacy = normalizeLegacyProxy(providerSpecificData);
+    const strictProxy = Object.prototype.hasOwnProperty.call(providerSpecificData, "strictProxy")
+      ? providerSpecificData.strictProxy === true
+      : undefined;
+
     return {
       source: "error",
 
@@ -175,7 +180,8 @@ export async function resolveConnectionProxyConfig(
       connectionProxyUrl: "",
       connectionNoProxy: "",
 
-      strictProxy: false,
+      ...legacy,
+      ...(strictProxy !== undefined ? { strictProxy } : {}),
     };
   }
 }

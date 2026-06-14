@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/requestDetailsDb";
 import { getProviderNodes } from "@/lib/localDb";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
+import { requireDashboardApiAuth } from "@/lib/auth/dashboardApiAuth";
 
 /**
  * GET /api/usage/providers
  * Returns list of unique providers from request details
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    const auth = await requireDashboardApiAuth(request);
+    if (!auth.ok) return auth.response;
+
     const { details } = await getRequestDetails({ pageSize: 9999 });
 
     // Extract unique providers

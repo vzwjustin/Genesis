@@ -50,6 +50,7 @@ vi.mock("../../open-sse/utils/clientDetector.js", () => ({
 vi.mock("../../open-sse/config/providerModels.js", () => ({
   getModelTargetFormat: () => null,
   getModelStrip: () => [],
+  getModelUpstreamId: (_alias, modelId) => modelId,
   PROVIDER_ID_TO_ALIAS: {},
 }));
 vi.mock("../../open-sse/utils/toolDeduper.js", () => ({

@@ -22,9 +22,14 @@ const localDbMocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
   updateProviderConnection: vi.fn(),
   getProviderConnectionById: vi.fn(),
+  getSettings: vi.fn(async () => ({ requireLogin: true })),
 }));
 
 vi.mock("@/lib/localDb", () => localDbMocks);
+
+vi.mock("@/lib/auth/dashboardApiAuth", () => ({
+  requireDashboardApiAuth: vi.fn(async () => ({ ok: true })),
+}));
 
 const usageMocks = vi.hoisted(() => ({
   getUsageForProvider: vi.fn(),

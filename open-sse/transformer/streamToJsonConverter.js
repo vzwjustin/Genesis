@@ -5,6 +5,16 @@
  */
 
 /**
+ * Infer Responses API event type when upstream omits the event: line.
+ */
+function inferEventType(parsed) {
+  if (parsed && typeof parsed.type === "string" && parsed.type.startsWith("response.")) {
+    return parsed.type;
+  }
+  return "message";
+}
+
+/**
  * Process a single SSE message and update state accordingly.
  */
 function processSSEMessage(msg, state) {
@@ -12,9 +22,8 @@ function processSSEMessage(msg, state) {
 
   const eventMatch = msg.match(/^event:\s*(.+)$/m);
   const dataMatch = msg.match(/^data:\s*(.+)$/m);
-  if (!eventMatch || !dataMatch) return;
+  if (!dataMatch) return;
 
-  const eventType = eventMatch[1].trim();
   const dataStr = dataMatch[1].trim();
   if (dataStr === "[DONE]") return;
 
@@ -26,10 +35,16 @@ function processSSEMessage(msg, state) {
     return;
   }
 
+  const eventType = eventMatch ? eventMatch[1].trim() : inferEventType(parsed);
+
   if (eventType === "response.created") {
     state.responseId = parsed.response?.id || state.responseId;
     state.created = parsed.response?.created_at || state.created;
   } else if (eventType === "response.output_item.done") {
+    if (!parsed.item) {
+      state.status = "failed";
+      return;
+    }
     // Some translators reuse output_index across distinct items (e.g. a tool_call
     // emitted at index 0 alongside a message/reasoning item also at index 0).
     // A plain set() would overwrite the earlier item and lose it. If the slot is
@@ -38,14 +53,17 @@ function processSSEMessage(msg, state) {
     const idx = parsed.output_index ?? 0;
     const existing = state.items.get(idx);
     if (existing && existing.id !== parsed.item?.id) {
-      let free = idx;
+      let free = state.items.size;
       while (state.items.has(free)) free++;
       state.items.set(free, parsed.item);
     } else {
       state.items.set(idx, parsed.item);
     }
   } else if (eventType === "response.completed") {
-    state.status = "completed";
+    // Sticky-fail: a prior parse error or explicit failure must not be overwritten.
+    if (!state.parseError && state.status !== "failed") {
+      state.status = "completed";
+    }
     if (parsed.response?.usage) {
       state.usage.input_tokens = parsed.response.usage.input_tokens || 0;
       state.usage.output_tokens = parsed.response.usage.output_tokens || 0;
@@ -65,7 +83,7 @@ const EMPTY_RESPONSE = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
  */
 export async function convertResponsesStreamToJson(stream) {
   if (!stream || typeof stream.getReader !== "function") {
-    return { id: `resp_${Date.now()}`, object: "response", created_at: Math.floor(Date.now() / 1000), status: "failed", output: [], usage: { ...EMPTY_RESPONSE } };
+    return { id: `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, object: "response", created_at: Math.floor(Date.now() / 1000), status: "failed", output: [], usage: { ...EMPTY_RESPONSE } };
   }
 
   const reader = stream.getReader();
@@ -119,6 +137,10 @@ export async function convertResponsesStreamToJson(stream) {
     if (hasGap) {
       state.status = "failed";
     }
+  }
+
+  if (state.parseError) {
+    state.status = "failed";
   }
 
   return {

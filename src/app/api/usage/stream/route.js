@@ -1,8 +1,12 @@
 import { getUsageStats, statsEmitter } from "@/lib/usageDb";
+import { requireDashboardApiAuth } from "@/lib/auth/dashboardApiAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
+  const auth = await requireDashboardApiAuth(request);
+  if (!auth.ok) return auth.response;
+
   const encoder = new TextEncoder();
   const state = { closed: false, keepalive: null, send: null, sendPending: null };
 

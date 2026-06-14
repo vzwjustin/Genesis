@@ -173,13 +173,13 @@ export function getProviderConfig(provider) {
       baseUrl: ANTHROPIC_COMPATIBLE_DEFAULTS.baseUrl,
     };
   }
-  return PROVIDERS[provider] || PROVIDERS.openai;
+  return PROVIDERS[provider] ?? null;
 }
 
 // Get number of fallback URLs for provider (for retry logic)
 export function getProviderFallbackCount(provider) {
   const config = getProviderConfig(provider);
-  return config.baseUrls?.length || 1;
+  return config?.baseUrls?.length || 1;
 }
 
 // Build provider URL

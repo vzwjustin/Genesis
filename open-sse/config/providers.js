@@ -121,6 +121,18 @@ export const PROVIDERS = {
       "X-Title": "Endpoint Proxy"
     }
   },
+  fusion: {
+    // OpenRouter Fusion meta-model. Same endpoint + auth as openrouter; the
+    // "openrouter/fusion" upstream model id (see providerModels) triggers the
+    // panel+judge deliberation. Clients may override the panel/judge via the
+    // request body's `plugins` field, which passthrough preserves.
+    baseUrl: "https://openrouter.ai/api/v1/chat/completions",
+    format: "openai",
+    headers: {
+      "HTTP-Referer": "https://endpoint-proxy.local",
+      "X-Title": "Endpoint Proxy"
+    }
+  },
   openai: {
     baseUrl: "https://api.openai.com/v1/chat/completions",
     format: "openai"

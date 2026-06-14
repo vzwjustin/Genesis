@@ -77,10 +77,12 @@ export function createResponsesApiTransformStream(logger = null) {
     completedSent: false,
     finishReasonSeen: false,
     thinkCarry: "",
-    lastIdx: 0
+    lastIdx: 0,
+    usage: null
   };
 
   const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
   const nextSeq = () => ++state.seq;
   
   const emit = (controller, eventType, data) => {
@@ -267,23 +269,27 @@ export function createResponsesApiTransformStream(logger = null) {
   const sendCompleted = (controller) => {
     if (!state.completedSent) {
       state.completedSent = true;
+      const response = {
+        id: state.responseId,
+        object: "response",
+        created_at: state.created,
+        status: "completed",
+        background: false,
+        error: null
+      };
+      if (state.usage) {
+        response.usage = { ...state.usage };
+      }
       emit(controller, "response.completed", {
         type: "response.completed",
-        response: {
-          id: state.responseId,
-          object: "response",
-          created_at: state.created,
-          status: "completed",
-          background: false,
-          error: null
-        }
+        response
       });
     }
   };
 
   return new TransformStream({
     transform(chunk, controller) {
-      const text = new TextDecoder().decode(chunk);
+      const text = decoder.decode(chunk, { stream: true });
       logger?.logInput(text.trim());
       state.buffer += text;
 
@@ -309,7 +315,7 @@ export function createResponsesApiTransformStream(logger = null) {
         if (!parsed.choices?.length) continue;
         
         const choice = parsed.choices[0];
-        const idx = choice.index || 0;
+        const idx = choice.index ?? 0;
         state.lastIdx = idx;
         const delta = choice.delta || {};
 
@@ -364,7 +370,7 @@ export function createResponsesApiTransformStream(logger = null) {
 
           if (content.includes("<think>")) {
             state.inThinking = true;
-            content = content.replace("<think>", "");
+            content = content.replace(/<think>/g, "");
             startReasoning(controller, idx);
           }
 
@@ -434,6 +440,14 @@ export function createResponsesApiTransformStream(logger = null) {
           }
         }
 
+        if (parsed.usage) {
+          state.usage = {
+            input_tokens: parsed.usage.prompt_tokens ?? parsed.usage.input_tokens ?? 0,
+            output_tokens: parsed.usage.completion_tokens ?? parsed.usage.output_tokens ?? 0,
+            total_tokens: parsed.usage.total_tokens ?? 0
+          };
+        }
+
         // Handle finish_reason
         if (choice.finish_reason) {
           state.finishReasonSeen = true;
@@ -453,18 +467,21 @@ export function createResponsesApiTransformStream(logger = null) {
     },
 
     flush(controller) {
-      // Emit any held-back partial tag as real text — it never completed.
-      if (state.thinkCarry) {
-        const carry = state.thinkCarry;
-        state.thinkCarry = "";
-        if (state.inThinking) emitReasoningDelta(controller, carry);
-        else emitTextDelta(controller, state.lastIdx || 0, carry);
+      if (!state.finishReasonSeen) {
+        // Emit any held-back partial tag as real text — it never completed.
+        if (state.thinkCarry) {
+          const carry = state.thinkCarry;
+          state.thinkCarry = "";
+          if (state.inThinking) emitReasoningDelta(controller, carry);
+          else emitTextDelta(controller, state.lastIdx || 0, carry);
+        }
+        for (const i in state.msgItemAdded) closeMessage(controller, i);
+        closeReasoning(controller);
+        for (const i in state.funcCallIds) closeToolCall(controller, i);
       }
-      for (const i in state.msgItemAdded) closeMessage(controller, i);
-      closeReasoning(controller);
-      for (const i in state.funcCallIds) closeToolCall(controller, i);
 
       if (state.finishReasonSeen) {
+        for (const i in state.funcCallIds) closeToolCall(controller, i);
         sendCompleted(controller);
         logger?.logOutput("data: [DONE]");
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));

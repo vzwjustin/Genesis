@@ -67,11 +67,11 @@ describe("tts.js + stt.js account lifecycle", () => {
 });
 
 describe("nested combo retry (match chat.js)", () => {
-  it("tts handleSingleModelTts re-expands combo when provider is null", () => {
+  it("tts handleSingleModelTts does not re-expand combo when provider is null", () => {
     const src = readHandler("tts.js");
     const fn = src.slice(src.indexOf("async function handleSingleModelTts"));
-    expect(fn).toContain("getComboModels(modelStr)");
-    expect(fn).toContain("handleComboChat({");
+    expect(fn).not.toContain("getComboModels(modelStr)");
+    expect(fn).toContain("Failed to resolve model");
   });
 
   it("image handleSingleModelImage re-expands combo when provider is null", () => {

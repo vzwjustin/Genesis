@@ -2,6 +2,7 @@ import { createRequire } from "module";
 import { FORMATS } from "./formats.js";
 import { ensureToolCallIds, fixMissingToolResponses } from "./helpers/toolCallHelper.js";
 import { prepareClaudeRequest, hasAnthropicCacheBreakpoints } from "./helpers/claudeHelper.js";
+import { stripAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./helpers/openaiHelper.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
@@ -79,14 +80,22 @@ function stripContentTypes(body, stripList = []) {
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null) {
   ensureInitialized();
   let result = structuredClone(body);
-  const clientOwnsCacheLayout = hasAnthropicCacheBreakpoints(body);
+  let clientOwnsCacheLayout = hasAnthropicCacheBreakpoints(body);
 
   if (clientOwnsCacheLayout && sourceFormat !== targetFormat) {
-    const err = new Error(
-      "Cannot translate across formats when the client placed Anthropic cache_control breakpoints"
-    );
-    err.code = "cache_translation_forbidden";
-    throw err;
+    // OpenAI-format endpoints cannot honor Anthropic cache_control markers, so
+    // preserving them byte-for-byte is meaningless — strip and translate normally.
+    // For Claude/Gemini targets the markers are expected to survive, so refuse.
+    if (targetFormat === FORMATS.OPENAI) {
+      stripAnthropicCacheBreakpoints(result);
+      clientOwnsCacheLayout = false;
+    } else {
+      const err = new Error(
+        "Cannot translate across formats when the client placed Anthropic cache_control breakpoints"
+      );
+      err.code = "cache_translation_forbidden";
+      throw err;
+    }
   }
 
   if (!clientOwnsCacheLayout) {
@@ -237,6 +246,7 @@ export function initState(sourceFormat) {
     inThinkingBlock: false,
     currentBlockIndex: null,
     toolCalls: new Map(),
+    toolCallIndex: 0,
     finishReason: null,
     finishReasonSent: false,
     usage: null,

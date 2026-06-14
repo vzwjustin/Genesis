@@ -262,7 +262,8 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
         timestamp: new Date().toISOString(),
         failed: true,
         incomplete: logOptions.incomplete === true,
-        passthrough: options.passthrough === true,
+        // Per-call override wins; fall back to the logger-wide closure default.
+        passthrough: (logOptions.passthrough ?? options.passthrough) === true,
         error: redactSensitiveText(error?.message || String(error)),
         stack: error?.stack ? redactSensitiveText(error.stack) : undefined,
         requestBody: sanitizeLogValue(requestBody)
@@ -406,30 +407,9 @@ export async function readRequestLogSessionFile(sessionName, fileName) {
   }
 }
 
-export function logError(provider, { error, url, model, requestBody }) {
-  if (!fs || !LOGS_DIR) return;
-  
-  try {
-    if (!fs.existsSync(LOGS_DIR)) {
-      fs.mkdirSync(LOGS_DIR, { recursive: true });
-    }
-    
-    const date = new Date().toISOString().split("T")[0];
-    const logPath = path.join(LOGS_DIR, `${provider}-${date}.log`);
-    
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      type: "error",
-      provider,
-      model,
-      url,
-      error: error?.message || String(error),
-      stack: error?.stack,
-      requestBody
-    };
-    
-    fs.appendFileSync(logPath, JSON.stringify(logEntry) + "\n");
-  } catch (err) {
-    console.log("[LOG] Failed to write error log:", err.message);
-  }
-}
+// NOTE: A standalone `logError(provider, {...})` export used to live here. It
+// wrote url/error/stack/requestBody to disk WITHOUT redaction, unlike the
+// session-scoped logError (see createRequestLogger above) which routes every
+// field through redactSensitiveText/sanitizeLogValue. It had zero callers, so
+// it was removed rather than hardened — a dead export that leaks secrets is
+// best deleted. Use createRequestLogger().logError for error logging.

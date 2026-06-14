@@ -10,48 +10,26 @@ import {
   findLastCacheBoundary,
   itemHasCacheControl,
 } from "../../rtk/cacheBoundary.js";
+import {
+  normalizeAnthropicBuiltinToolModel,
+  stripProviderModelPrefix,
+} from "./anthropicToolModel.js";
 
+export { stripProviderModelPrefix, normalizeAnthropicBuiltinToolModel } from "./anthropicToolModel.js";
 export { hasAnthropicCacheBreakpoints };
 
-// Check if message has valid non-empty content
 export function hasValidContent(msg) {
   if (typeof msg.content === "string" && msg.content.trim()) return true;
   if (Array.isArray(msg.content)) {
     return msg.content.some(block =>
       (block.type === "text" && block.text?.trim()) ||
       block.type === "tool_use" ||
-      block.type === "tool_result"
+      block.type === "tool_result" ||
+      block.type === "image" ||
+      block.type === "document"
     );
   }
   return false;
-}
-
-const KNOWN_TOOL_MODEL_PREFIXES = ["cc/", "anthropic/", "claude/", "openrouter/"];
-
-/** Strip one or more provider prefixes from built-in tool model names (e.g. cc/claude-opus-4-6). */
-export function stripProviderModelPrefix(model) {
-  if (typeof model !== "string" || !model.includes("/")) return model;
-  let result = model;
-  for (let i = 0; i < 8; i++) {
-    const lowered = result.toLowerCase();
-    let stripped = false;
-    for (const prefix of KNOWN_TOOL_MODEL_PREFIXES) {
-      if (lowered.startsWith(prefix)) {
-        result = result.slice(prefix.length);
-        stripped = true;
-        break;
-      }
-    }
-    if (!stripped) {
-      const slash = result.indexOf("/");
-      if (slash > 0 && slash <= 32 && !result.slice(0, slash).includes(".")) {
-        result = result.slice(slash + 1);
-        stripped = true;
-      }
-    }
-    if (!stripped) break;
-  }
-  return result;
 }
 
 /**
@@ -73,8 +51,13 @@ export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientC
     const toolProtected = preserveClientCache
       && (itemHasCacheControl(tool) || (toolFloor >= 0 && i <= toolFloor));
 
-    // Tools in the cached prefix: 100% byte-identical — no field stripping or prefix rewrites.
+    // Cached prefix: compatibility fixes on built-in tool.model only (prefix strip + fable→opus)
     if (toolProtected) {
+      if (tool.type && tool.type !== "function" && typeof tool.model === "string") {
+        const cleanedTool = { ...tool };
+        cleanedTool.model = normalizeAnthropicBuiltinToolModel(cleanedTool.model);
+        return cleanedTool;
+      }
       return { ...tool };
     }
 
@@ -85,7 +68,7 @@ export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientC
 
     const cleanedTool = { ...tool };
     if (typeof cleanedTool.model === "string") {
-      cleanedTool.model = stripProviderModelPrefix(cleanedTool.model);
+      cleanedTool.model = normalizeAnthropicBuiltinToolModel(cleanedTool.model);
     }
     return cleanedTool;
   });
@@ -138,6 +121,9 @@ export function fixToolUseOrdering(messages) {
   const contentHasToolUse = (content) =>
     Array.isArray(content) && content.some((b) => b.type === "tool_use");
 
+  const contentHasToolResult = (content) =>
+    Array.isArray(content) && content.some((b) => b.type === "tool_result");
+
   const cloneMessageShell = (msg, content) => {
     const out = { role: msg.role, content };
     if (msg.cache_control) out.cache_control = msg.cache_control;
@@ -147,29 +133,27 @@ export function fixToolUseOrdering(messages) {
 
   // Pass 2: Merge consecutive same-role messages
   const merged = [];
+  let lastOrigIdx = -1;
 
   for (let mi = 0; mi < messages.length; mi++) {
     const msg = messages[mi];
     const last = merged[merged.length - 1];
-    const lastMergedIdx = merged.length - 1;
     const msgContent = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
     const skipMerge = last?.role === "assistant" && (contentHasToolUse(last.content) || contentHasToolUse(msgContent))
+      || contentHasToolResult(last?.content) || contentHasToolResult(msgContent)
       || messageHasCacheMarker(last) || messageHasCacheMarker(msg)
-      || (cacheFloor >= 0 && (lastMergedIdx <= cacheFloor || mi <= cacheFloor));
+      || (cacheFloor >= 0 && ((lastOrigIdx >= 0 && lastOrigIdx <= cacheFloor) || mi <= cacheFloor));
 
     if (last && last.role === msg.role && !skipMerge) {
-      // Merge content arrays
+      // Merge content arrays (text-only / homogeneous blocks — never mix tool_result with other types)
       const lastContent = Array.isArray(last.content) ? last.content : [{ type: "text", text: last.content }];
-
-      // Put tool_result first, then other content
-      const toolResults = [...lastContent.filter(b => b.type === "tool_result"), ...msgContent.filter(b => b.type === "tool_result")];
-      const otherContent = [...lastContent.filter(b => b.type !== "tool_result"), ...msgContent.filter(b => b.type !== "tool_result")];
-
-      last.content = [...toolResults, ...otherContent];
+      last.content = [...lastContent, ...msgContent];
+      lastOrigIdx = mi;
     } else {
       // Ensure content is array
       const content = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
       merged.push(cloneMessageShell(msg, [...content]));
+      lastOrigIdx = mi;
     }
   }
 
@@ -204,6 +188,13 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
         body.messages = [...prefix, ...tail];
       } else if (cacheFloor < 0) {
         body.messages = fixToolUseOrdering(body.messages);
+      }
+    }
+    if (body.tools && Array.isArray(body.tools)) {
+      body.tools = cleanAnthropicToolDefinitions(body.tools, provider, { preserveClientCache });
+      if (body.tools.length === 0) {
+        delete body.tools;
+        delete body.tool_choice;
       }
     }
     return body;
@@ -314,7 +305,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
   // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
   if (body.tools && Array.isArray(body.tools)) {
-    body.tools = cleanAnthropicToolDefinitions(body.tools, provider);
+    body.tools = cleanAnthropicToolDefinitions(body.tools, provider, { preserveClientCache });
     if (!preserveClientCache) {
       body.tools = body.tools.map((tool, i) => {
         if (i === body.tools.length - 1) {
@@ -342,4 +333,3 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
   return body;
 }
-

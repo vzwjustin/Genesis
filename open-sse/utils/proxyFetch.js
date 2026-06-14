@@ -3,6 +3,7 @@ import { createRequire } from "module";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import { assertSafeResolvedHostname } from "./ssrfGuard.js";
+import { mergeAbortSignals } from "./abortSignal.js";
 
 const require = createRequire(import.meta.url);
 const { isKiroMitmHost } = require("../../src/shared/constants/mitmToolHosts.js");
@@ -106,6 +107,7 @@ async function tryGotScrapingFetch(url, options) {
 
 // DNS cache — use Map to avoid prototype pollution via malformed hostnames
 const DNS_CACHE = new Map();
+const DNS_CACHE_MAX_SIZE = 256;
 const MITM_BYPASS_HOSTS = [
   "cloudcode-pa.googleapis.com",
   "daily-cloudcode-pa.googleapis.com",
@@ -138,10 +140,11 @@ async function getMitmDnsServers() {
     const settings = await getSettings();
     const servers = extractDnsServersFromSettings(settings?.dnsToolEnabled);
     if (servers.length > 0) return servers;
+    return DEFAULT_DNS_SERVERS;
   } catch (error) {
-    console.warn("[ProxyFetch] Failed to load DNS resolver settings:", error.message);
+    console.error("[ProxyFetch] CRITICAL: Failed to load DNS resolver settings — MITM bypass DNS will fail closed:", error.message);
+    return [];
   }
-  return DEFAULT_DNS_SERVERS;
 }
 
 /**
@@ -154,14 +157,22 @@ async function resolveRealIP(hostname) {
   try {
     const dns = await import("dns");
     const { promisify } = await import("util");
+    const servers = await getMitmDnsServers();
+    if (!servers.length) {
+      console.error(`[ProxyFetch] No DNS resolvers configured for MITM bypass host: ${hostname}`);
+      return null;
+    }
     const resolver = new dns.Resolver();
-    resolver.setServers(await getMitmDnsServers());
+    resolver.setServers(servers);
     const resolve4 = promisify(resolver.resolve4.bind(resolver));
     const addresses = await resolve4(hostname);
     // A NODATA result ([]) must not poison the cache with an undefined IP for the TTL.
     if (!addresses || addresses.length === 0) {
       console.warn(`[ProxyFetch] DNS returned no A records for ${hostname}`);
       return null;
+    }
+    if (DNS_CACHE.size >= DNS_CACHE_MAX_SIZE) {
+      DNS_CACHE.delete(DNS_CACHE.keys().next().value);
     }
     DNS_CACHE.set(hostname, { ip: addresses[0], expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
     return addresses[0];
@@ -315,27 +326,39 @@ async function getDispatcher(proxyUrl) {
   const normalized = normalizeProxyUrl(proxyUrl);
   if (!normalized) return null;
 
-  if (!proxyDispatchers.has(normalized)) {
-    // Evict oldest entry if max size reached
-    if (proxyDispatchers.size >= MEMORY_CONFIG.proxyDispatchersMaxSize) {
-      proxyDispatchers.delete(proxyDispatchers.keys().next().value);
-    }
-    const { ProxyAgent } = await import("undici");
-    proxyDispatchers.set(normalized, new ProxyAgent({ uri: normalized }));
+  const existing = proxyDispatchers.get(normalized);
+  if (existing) {
+    // Refresh recency so eviction is LRU, not FIFO: a hot dispatcher should
+    // outlive idle ones regardless of insertion order.
+    proxyDispatchers.delete(normalized);
+    proxyDispatchers.set(normalized, existing);
+    return existing;
   }
 
-  return proxyDispatchers.get(normalized);
+  // Evict least-recently-used entry if max size reached
+  if (proxyDispatchers.size >= MEMORY_CONFIG.proxyDispatchersMaxSize) {
+    proxyDispatchers.delete(proxyDispatchers.keys().next().value);
+  }
+  const { ProxyAgent } = await import("undici");
+  const dispatcher = new ProxyAgent({ uri: normalized });
+  proxyDispatchers.set(normalized, dispatcher);
+  return dispatcher;
 }
 
 /**
  * Create HTTPS request with manual socket connection (bypass DNS)
  */
 async function createBypassRequest(parsedUrl, realIP, options) {
-  const httpsModule = await import("https");
+  const isHttps = parsedUrl.protocol === "https:";
+  // Static string literals — a computed `import(cond ? "https" : "http")` makes
+  // webpack build a context module that fails at runtime ("Cannot find module 'https'").
+  const transportModule = isHttps ? await import("https") : await import("http");
   const netModule = await import("net");
-  // CJS modules expose exports via .default in ESM dynamic import context
-  const https = httpsModule.default ?? httpsModule;
+  const transport = transportModule.default ?? transportModule;
   const net = netModule.default ?? netModule;
+  const port = parsedUrl.port
+    ? Number(parsedUrl.port)
+    : (isHttps ? HTTPS_PORT : 80);
 
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
@@ -373,7 +396,7 @@ async function createBypassRequest(parsedUrl, realIP, options) {
       options.signal.addEventListener("abort", onAbort);
     }
 
-    socket.connect(HTTPS_PORT, realIP, () => {
+    socket.connect(port, realIP, () => {
       const reqOptions = {
         socket,
         // SNI + cert hostname are validated against the hostname the caller
@@ -382,16 +405,16 @@ async function createBypassRequest(parsedUrl, realIP, options) {
         // that present a different cert. The MITM_BYPASS_HOSTS targets are
         // all public-CA-issued (Google / GitHub / AWS / Cursor) so default
         // verification works without any extra trust store.
-        servername: parsedUrl.hostname,
+        ...(isHttps ? { servername: parsedUrl.hostname } : {}),
         path: parsedUrl.pathname + parsedUrl.search,
         method: options.method || "POST",
         headers: {
           ...options.headers,
-          Host: parsedUrl.hostname,
+          Host: parsedUrl.hostname + (parsedUrl.port ? `:${parsedUrl.port}` : ""),
         },
       };
 
-      req = https.request(reqOptions, (res) => {
+      req = transport.request(reqOptions, (res) => {
         if (settled) return;
         settled = true;
         options.signal?.removeEventListener("abort", onAbort);
@@ -406,6 +429,19 @@ async function createBypassRequest(parsedUrl, realIP, options) {
         // clone) consumers must not be mixed with the stream — materializeBody
         // throws if streamConsumed is set.
         let streamConsumed = false;
+
+        const destroyOnAbort = () => {
+          try { socket.destroy(); } catch { /* noop */ }
+          try { activeRes?.destroy(); } catch { /* noop */ }
+        };
+
+        if (options.signal) {
+          if (options.signal.aborted) {
+            destroyOnAbort();
+          } else {
+            options.signal.addEventListener("abort", destroyOnAbort, { once: true });
+          }
+        }
 
         res.on("data", (chunk) => bodyChunks.push(Buffer.from(chunk)));
         res.on("end", () => { bodyEnded = true; });
@@ -433,11 +469,20 @@ async function createBypassRequest(parsedUrl, realIP, options) {
         };
 
         const buildFetchResponse = () => {
+          const headers = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (Array.isArray(value)) {
+              for (const item of value) headers.append(key, item);
+            } else if (value != null) {
+              headers.append(key, value);
+            }
+          }
+
           const response = {
             ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
             status: res.statusCode,
             statusText: res.statusMessage,
-            headers: new Map(Object.entries(res.headers)),
+            headers,
             get body() {
               let offset = 0;
               streamConsumed = true;
@@ -535,7 +580,10 @@ const DEFAULT_UPSTREAM_TIMEOUT_MS = 120000; // 2 min to first byte
 
 function withUpstreamTimeout(options) {
   const ms = Number(options.timeoutMs ?? process.env.UPSTREAM_TIMEOUT_MS ?? DEFAULT_UPSTREAM_TIMEOUT_MS);
-  if (!Number.isFinite(ms) || ms <= 0 || typeof AbortSignal?.any !== "function") {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    if (ms === 0) {
+      console.warn("[ProxyFetch] UPSTREAM_TIMEOUT_MS=0 disables upstream timeout — stalled upstreams may hang indefinitely");
+    }
     return { fetchOptions: options, done: () => {} };
   }
   const tc = new AbortController();
@@ -544,8 +592,16 @@ function withUpstreamTimeout(options) {
     ms
   );
   if (typeof timer.unref === "function") timer.unref();
-  const signal = options.signal ? AbortSignal.any([options.signal, tc.signal]) : tc.signal;
-  return { fetchOptions: { ...options, signal }, done: () => clearTimeout(timer) };
+  const merged = options.signal
+    ? mergeAbortSignals([options.signal, tc.signal])
+    : { signal: tc.signal, cleanup: () => {} };
+  return {
+    fetchOptions: { ...options, signal: merged.signal },
+    done: () => {
+      clearTimeout(timer);
+      merged.cleanup?.();
+    },
+  };
 }
 
 /**
@@ -621,11 +677,20 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   }
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  const envProxyUrl = connectionProxyUrl ? null : normalizeRuntimeProxyUrl(getEnvProxyUrl(targetUrl), "environment");
-  let proxyUrl = connectionProxyUrl || envProxyUrl;
-
-  // Vercel relay is lower precedence than per-connection proxy (AGENTS.md § outbound proxy routing)
+  const connectionProxyConfigured =
+    (proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true)
+    && Boolean(normalizeString(proxyOptions?.url ?? proxyOptions?.connectionProxyUrl));
   const vercelRelayUrl = !connectionProxyUrl ? normalizeString(proxyOptions?.vercelRelayUrl) : null;
+
+  // Precedence: per-connection proxy → relay/vercel pool → environment proxy → direct
+  let proxyUrl = connectionProxyUrl;
+  if (!proxyUrl && !vercelRelayUrl) {
+    const envProxyUrl = connectionProxyConfigured
+      ? null
+      : normalizeRuntimeProxyUrl(getEnvProxyUrl(targetUrl), "environment");
+    proxyUrl = envProxyUrl;
+  }
+
   if (!proxyUrl && vercelRelayUrl) {
     const relayNoProxy = normalizeString(proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy);
     if (relayNoProxy && shouldBypassByNoProxy(targetUrl, relayNoProxy)) {
@@ -650,7 +715,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
         const dispatcher = await getDispatcher(proxyUrl);
-        return await originalFetch(url, { ...options, dispatcher });
+        return await safeRedirectFetch(url, options, (u, o) => originalFetch(u, { ...o, dispatcher }));
       } catch (proxyError) {
         // Use the same default-strict rule as the regular host path: throw unless
         // strictProxy is explicitly opt-out (false). This keeps proxy routing

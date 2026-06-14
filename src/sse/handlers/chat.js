@@ -26,6 +26,7 @@ import {
   exhaustedAccountsResponse,
 } from "../utils/providerCredentialRetry.js";
 import { isInvalidJsonObjectBody } from "../utils/jsonBody.js";
+import { isRegisteredProviderId } from "../utils/providerRegistry.js";
 
 /**
  * Handle chat completion request
@@ -55,19 +56,18 @@ export async function handleChat(request, clientRawRequest = null) {
       signal: request.signal,
     };
   }
-  // Log request endpoint and model
-  const url = new URL(request.url);
-  const modelStr = body.model;
-
-  // Count messages (support both messages[] and input[] formats)
-  const msgCount = body.messages?.length || body.input?.length || 0;
-  const toolCount = body.tools?.length || 0;
-  const effort = body.reasoning_effort || body.reasoning?.effort || null;
-  log.request("POST", `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`);
 
   const auth = await authenticateRequest(request, log);
   if (!auth.ok) return auth.response;
   const { apiKey, settings } = auth;
+
+  // Log request endpoint and model (after auth)
+  const url = new URL(request.url);
+  const modelStr = body.model;
+  const msgCount = body.messages?.length || body.input?.length || 0;
+  const toolCount = body.tools?.length || 0;
+  const effort = body.reasoning_effort || body.reasoning?.effort || null;
+  log.request("POST", `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`);
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
@@ -116,36 +116,8 @@ export async function handleChat(request, clientRawRequest = null) {
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null) {
   const modelInfo = await getModelInfo(modelStr);
 
-  // If provider is null, this might be a combo name - check and handle
+  // If provider is null, resolution was already attempted at the outer handler.
   if (!modelInfo.provider) {
-    const brokenComboError = await getBrokenComboError(modelStr);
-    if (brokenComboError) {
-      log.warn("CHAT", `Combo resolution failed: ${brokenComboError}`);
-      return validationErrorResponse(VALIDATION_ERROR_TYPES.VALIDATION_FAILED, brokenComboError);
-    }
-
-    const comboModels = await getComboModels(modelStr);
-    if (comboModels) {
-      const chatSettings = await getSettingsSafe();
-      // Check for combo-specific strategy first, fallback to global
-      const comboStrategies = chatSettings.comboStrategies || {};
-      const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
-      const comboStrategy = comboSpecificStrategy || chatSettings.comboStrategy || "fallback";
-      
-      const comboStickyLimit = chatSettings.comboStickyRoundRobinLimit;
-      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-      return handleComboChat({
-        body,
-        models: comboModels,
-        handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
-        log,
-        comboName: modelStr,
-        comboStrategy,
-        comboStickyLimit
-      });
-    }
-    // All resolution methods exhausted: not a provider/model format, not a registered alias,
-    // not a valid combo. Return HTTP 400 per Requirement 2.4 — do NOT silently fall back.
     log.warn("CHAT", `Model resolution failed: "${modelStr}" is not a registered alias, combo, or provider/model format`);
     return validationErrorResponse(
       VALIDATION_ERROR_TYPES.VALIDATION_FAILED,
@@ -154,6 +126,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+  if (!isRegisteredProviderId(provider)) {
+    log.warn("CHAT", `Unknown provider: ${provider}`);
+    return validationErrorResponse(
+      VALIDATION_ERROR_TYPES.VALIDATION_FAILED,
+      `Unknown provider: ${provider}`
+    );
+  }
 
   // Log resolved routing path for every request (Requirement 2.5)
   log.info("ROUTING", `${modelStr} → ${provider}/${model}`);

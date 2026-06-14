@@ -4,9 +4,9 @@ import { translateRequest } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
-import { refreshWithRetry } from "../services/tokenRefresh.js";
+import { refreshWithRetry, isUnrecoverableRefreshError } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getModelTargetFormat, getModelStrip, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getModelTargetFormat, getModelStrip, getModelUpstreamId, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, VALIDATION_ERROR_TYPES, PROXY_INTERNAL_ERROR_CODES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
@@ -26,6 +26,7 @@ import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import {
   hasAnthropicCacheBreakpoints,
+  hasClientAnthropicCacheBreakpoints,
   snapshotCacheProtectedBody,
   verifyCacheProtectedBody,
   restoreBodyFromJsonSnapshot,
@@ -90,6 +91,23 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
 
+  let originalClientBody;
+  try {
+    originalClientBody = structuredClone(body);
+  } catch {
+    try {
+      originalClientBody = JSON.parse(JSON.stringify(body));
+    } catch {
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Request body could not be cloned", undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
+    }
+  }
+
+  // reasoning_effort "none" → explicit disabled thinking before translation (Claude rejects bare effort)
+  if (!passthrough && body.reasoning_effort === "none" && !body.thinking) {
+    const { reasoning_effort: _re, ...rest } = body;
+    body = { ...rest, thinking: { type: "disabled" } };
+  }
+
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
   // PASSTHROUGH GUARD: Do NOT inject thinking config in passthrough mode — only model + auth are swapped.
@@ -137,7 +155,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const reqLogger = await createRequestLogger(sourceFormat, targetFormat, model, { passthrough });
   if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientRawRequest.body, clientRawRequest.headers);
-  reqLogger.logRawRequest(body);
+  reqLogger.logRawRequest(originalClientBody);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
 
   // Native passthrough: CLI tool and provider are the same ecosystem
@@ -177,7 +195,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  const clientHasCacheBreakpoints = hasAnthropicCacheBreakpoints(translatedBody);
+  // The translator strips Anthropic cache_control markers when translating to an
+  // OpenAI-format target (they can't be honored upstream), so the cache layout is
+  // no longer client-owned in that path. Mirror that here or model-id resolution,
+  // snapshotting, and compression gating would all misfire on the stale markers.
+  const cacheStrippedForOpenAITarget =
+    !passthrough && targetFormat === FORMATS.OPENAI && sourceFormat !== targetFormat;
+  const clientHasCacheBreakpoints =
+    !cacheStrippedForOpenAITarget && hasAnthropicCacheBreakpoints(originalClientBody);
 
   // Pristine client snapshot — before model swap, OAuth metadata, tool cleaning, dedupe, or compression.
   const cacheProtectedSnapshot = clientHasCacheBreakpoints
@@ -185,21 +210,44 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     : null;
 
   // Keep the client's upstream model id when they own cache layout — rewriting breaks KV hits.
+  // Otherwise resolve to the model's upstream id (e.g. fusion → openrouter/fusion). For every
+  // provider whose model id already equals its upstream id, getModelUpstreamId is a no-op.
   if (clientHasCacheBreakpoints && typeof translatedBody.model === "string") {
     const parsed = parseModel(translatedBody.model);
     translatedBody.model = parsed.model || model;
   } else {
-    translatedBody.model = model;
+    translatedBody.model = getModelUpstreamId(alias, model);
+  }
+
+  // OpenRouter Fusion: apply the connection's saved plugin config (panel/judge/limits)
+  // unless the client already supplied its own `plugins`. The OpenRouter Fusion endpoint
+  // reads this top-level field; passthrough/openai translation preserves it untouched.
+  if (provider === "fusion" && !passthrough) {
+    const savedFusion = credentials?.providerSpecificData?.fusion;
+    const clientSentPlugins = Array.isArray(body.plugins) && body.plugins.length > 0;
+    if (savedFusion && typeof savedFusion === "object" && savedFusion.enabled !== false && !clientSentPlugins) {
+      const fusionPlugin = { id: "fusion" };
+      if (Array.isArray(savedFusion.analysis_models) && savedFusion.analysis_models.length > 0) {
+        fusionPlugin.analysis_models = savedFusion.analysis_models;
+      }
+      if (typeof savedFusion.model === "string" && savedFusion.model.trim()) {
+        fusionPlugin.model = savedFusion.model.trim();
+      }
+      if (Number.isFinite(savedFusion.max_tool_calls)) {
+        fusionPlugin.max_tool_calls = savedFusion.max_tool_calls;
+      }
+      translatedBody.plugins = [fusionPlugin];
+    }
   }
 
   // OAuth metadata alignment for passthrough (translated path uses prepareClaudeRequest).
   if (passthrough && (provider === "claude" || provider?.startsWith("anthropic-compatible"))) {
-    const apiKey = credentials?.accessToken || credentials?.apiKey;
-    if (apiKey?.includes("sk-ant-oat")) {
+    const bearerKey = credentials?.accessToken || credentials?.apiKey;
+    if (bearerKey?.includes("sk-ant-oat")) {
       const cached = getCachedClaudeHeaders(connectionId, credentials?._requestHeaders);
       const sessionId = cached?.["x-claude-code-session-id"]
         || (connectionId ? deriveSessionId(connectionId) : null);
-      Object.assign(translatedBody, applyCloaking(translatedBody, apiKey, sessionId));
+      Object.assign(translatedBody, applyCloaking(translatedBody, bearerKey, sessionId));
     }
   }
 
@@ -365,22 +413,21 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           { errorCode: PROXY_INTERNAL_ERROR_CODES.COMPRESSION_RESTORE_FAILED, proxyInternal: true }
         );
       }
-    } else if (compressionActive) {
-      return createErrorResult(
-        HTTP_STATUS.BAD_GATEWAY,
-        "Compression failed with no recoverable body snapshot",
-        undefined,
-        { errorCode: PROXY_INTERNAL_ERROR_CODES.COMPRESSION_RESTORE_FAILED, proxyInternal: true }
-      );
     } else {
+      // NOTE: when compressionActive is true, originalBodySnapshot is always
+      // set (line ~258) — the only path that leaves it null also sets
+      // compressionActive=false. So the `if (originalBodySnapshot)` branch
+      // above covers every active-compression failure; no separate
+      // compressionActive branch is reachable here.
       console.warn(`[COMPRESSION] Error during compression, continuing: ${compressionError.message}`);
     }
   }
 
-  // Caveman mutates the request body — never run when client cache breakpoints are present.
-  if (cavemanEnabled && cavemanLevel && compressionActive) {
+  // Caveman mutates the request body — never run when client cache breakpoints are present
+  // or when cache integrity already failed.
+  if (cavemanEnabled && cavemanLevel && compressionActive && !cacheIntegrityFailed) {
     try {
-      const cavemanInjected = injectCaveman(translatedBody, finalFormat, cavemanLevel);
+      const cavemanInjected = injectCaveman(translatedBody, finalFormat, cavemanLevel, provider);
       if (cavemanInjected) {
         log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
         console.log(`[COMPRESSION] chain: caveman:${cavemanLevel}`);
@@ -406,6 +453,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (preDispatchCacheErr) return preDispatchCacheErr;
 
   const executor = getExecutor(provider);
+  let pendingReleased = false;
+  const releasePending = () => {
+    if (pendingReleased) return;
+    pendingReleased = true;
+    trackPendingRequest(model, provider, connectionId, false);
+  };
   trackPendingRequest(model, provider, connectionId, true);
   appendRequestLog({ model, provider, connectionId, status: "PENDING" }).catch(() => { });
 
@@ -433,10 +486,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const streamController = createStreamController({
     onDisconnect: (reason) => {
-      trackPendingRequest(model, provider, connectionId, false);
+      releasePending();
       if (onDisconnect) onDisconnect(reason);
     },
-    onError: () => trackPendingRequest(model, provider, connectionId, false),
+    onError: () => releasePending(),
     log, provider, model
   });
 
@@ -506,7 +559,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     finalBody = result.transformedBody;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
-    trackPendingRequest(model, provider, connectionId, false, true);
+    releasePending();
     reqLogger.logError(error, translatedBody);
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
@@ -539,12 +592,23 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Handle 401/403 - try token refresh (skip for noAuth / non-refreshable providers)
   if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
     if (executor.supportsTokenRefresh === false) {
+      releasePending();
       const { message } = await parseUpstreamError(providerResponse, executor);
       finalizeFailedRequest(message, providerResponse.status);
       return createErrorResult(providerResponse.status, message);
     }
     try {
       const newCredentials = await refreshWithRetry(() => executor.refreshCredentials(credentials, log, proxyOptions), 3, log);
+      if (isUnrecoverableRefreshError(newCredentials)) {
+        log?.warn?.("TOKEN", `${provider.toUpperCase()} | unrecoverable refresh (${newCredentials.error})`);
+        releasePending();
+        return createErrorResult(
+          HTTP_STATUS.UNAUTHORIZED,
+          "Authentication failed: token refresh rejected. Re-authenticate this connection.",
+          undefined,
+          { errorCode: newCredentials.error, proxyInternal: true }
+        );
+      }
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed`);
         Object.assign(credentials, newCredentials);
@@ -573,6 +637,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           finalBody = retryResult.transformedBody;
         } catch (retryError) {
           log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
+          releasePending();
           finalizeFailedRequest(`Retry after token refresh failed: ${retryError.message}`, HTTP_STATUS.BAD_GATEWAY);
           return createErrorResult(
             HTTP_STATUS.BAD_GATEWAY,
@@ -581,12 +646,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         }
       } else {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
+        releasePending();
         const { message } = await parseUpstreamError(providerResponse, executor);
         finalizeFailedRequest(message, providerResponse.status);
         return createErrorResult(providerResponse.status, message);
       }
     } catch (e) {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh threw: ${e.message}`);
+      releasePending();
       const { message } = await parseUpstreamError(providerResponse, executor);
       finalizeFailedRequest(message, providerResponse.status);
       return createErrorResult(providerResponse.status, message);
@@ -595,7 +662,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Provider returned error
   if (!providerResponse.ok) {
-    trackPendingRequest(model, provider, connectionId, false, true);
+    releasePending();
 
     // PASSTHROUGH GUARD: In passthrough mode, preserve the upstream error response shape.
     // Do NOT reformat into a generic proxy error — relay the provider's native error body.
@@ -676,7 +743,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, passthrough };
   const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
-  const trackDone = () => trackPendingRequest(model, provider, connectionId, false);
+  const trackDone = releasePending;
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
@@ -706,7 +773,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Destructure streamDetailId so both the initial placeholder save and the
   // onStreamComplete update reference the same DB record.
   const { onStreamComplete, streamDetailId, fireRequestSuccess } = buildOnStreamComplete({ ...sharedCtx, onRequestSuccess });
-  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId, fireRequestSuccess });
+  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId, fireRequestSuccess, onPendingRelease: releasePending });
 }
 
 export function isTokenExpiringSoon(expiresAt, bufferMs = 5 * 60 * 1000) {

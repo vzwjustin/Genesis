@@ -36,7 +36,8 @@ export function claudeToOpenAIResponse(chunk, state) {
       const block = chunk.content_block;
       if (block?.type === "server_tool_use") {
         // Built-in tool (web search) - Claude handles internally, skip
-        state.serverToolBlockIndex = chunk.index;
+        if (!state.serverToolBlockIndexes) state.serverToolBlockIndexes = new Set();
+        state.serverToolBlockIndexes.add(chunk.index);
         break;
       }
       if (block?.type === "text") {
@@ -66,7 +67,7 @@ export function claudeToOpenAIResponse(chunk, state) {
 
     case "content_block_delta": {
       // Skip deltas for built-in server tool blocks (web search)
-      if (chunk.index === state.serverToolBlockIndex) break;
+      if (state.serverToolBlockIndexes?.has(chunk.index)) break;
       const delta = chunk.delta;
       if (delta?.type === "text_delta" && delta.text) {
         results.push(createChunk(state, { content: delta.text }));
@@ -90,8 +91,8 @@ export function claudeToOpenAIResponse(chunk, state) {
 
     case "content_block_stop": {
       // Skip stop for built-in server tool blocks (web search)
-      if (chunk.index === state.serverToolBlockIndex) {
-        state.serverToolBlockIndex = -1;
+      if (state.serverToolBlockIndexes?.has(chunk.index)) {
+        state.serverToolBlockIndexes.delete(chunk.index);
         break;
       }
       if (state.inThinkingBlock && chunk.index === state.currentBlockIndex) {
@@ -162,11 +163,13 @@ export function claudeToOpenAIResponse(chunk, state) {
     case "message_stop": {
       if (!state.finishReasonSent) {
         const finishReason = state.finishReason || (state.toolCalls?.size > 0 ? "tool_calls" : "stop");
-        const usageObj = (state.usage && typeof state.usage === 'object') ? {
+        const promptTokens = state.usage?.prompt_tokens || state.usage?.input_tokens || 0;
+        const completionTokens = state.usage?.completion_tokens || state.usage?.output_tokens || 0;
+        const usageObj = (state.usage && typeof state.usage === "object") ? {
           usage: {
-            prompt_tokens: state.usage.input_tokens || 0,
-            completion_tokens: state.usage.output_tokens || 0,
-            total_tokens: (state.usage.input_tokens || 0) + (state.usage.output_tokens || 0)
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            total_tokens: promptTokens + completionTokens
           }
         } : {};
         results.push({

@@ -1,5 +1,5 @@
 import { requireRouteAuth } from "@/sse/utils/routeAuth.js";
-import { buildModelsList } from "../route.js";
+import { buildModelsList, ModelsDbError } from "../route.js";
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
@@ -41,7 +41,7 @@ export async function GET(request, { params }) {
             type: "invalid_request_error",
           },
         },
-        { status: 404, headers: { "Access-Control-Allow-Origin": "*" } }
+        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
       );
     }
 
@@ -50,6 +50,12 @@ export async function GET(request, { params }) {
       headers: { "Access-Control-Allow-Origin": "*" },
     });
   } catch (error) {
+    if (error instanceof ModelsDbError) {
+      return Response.json(
+        { error: { message: error.message, type: "service_unavailable" } },
+        { status: 503, headers: { "Access-Control-Allow-Origin": "*" } }
+      );
+    }
     console.log("Error fetching models by kind:", error);
     return Response.json(
       { error: { message: error.message, type: "server_error" } },

@@ -84,9 +84,17 @@ function modelKind(model) {
 function inferKindFromUnknownModelId(modelId) {
   const lower = String(modelId).toLowerCase();
   if (/embed/.test(lower)) return "embedding";
+  if (/whisper|asr|transcri/.test(lower)) return "stt";
   if (/tts|speech|audio|voice/.test(lower)) return "tts";
   if (/image|imagen|dall-?e|flux|sdxl|sd-|stable-diffusion/.test(lower)) return "image";
   return LLM_KIND;
+}
+
+export class ModelsDbError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ModelsDbError";
+  }
 }
 
 async function fetchCompatibleModelIds(connection, proxyOptions = null) {
@@ -173,7 +181,8 @@ export async function buildModelsList(kindFilter) {
     connections = await getProviderConnections();
     connections = connections.filter(c => c.isActive !== false);
   } catch (e) {
-    console.log("Could not fetch providers, returning all models");
+    console.log("Could not fetch providers:", e);
+    throw new ModelsDbError(e?.message || "Database unavailable");
   }
 
   let combos = [];
@@ -229,38 +238,14 @@ export async function buildModelsList(kindFilter) {
   }
 
   if (connections.length === 0) {
-    // DB unavailable -> return static models, filtered by per-model kind
-    const aliasToProviderId = Object.fromEntries(
-      Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
-    );
-    for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
-      const providerId = aliasToProviderId[alias] || alias;
-      if (!providerMatchesKinds(providerId, kindFilter)) continue;
-      for (const model of providerModels) {
-        if (!kindFilter.includes(modelKind(model))) continue;
-        if (isDisabled(alias, model.id)) continue;
-        models.push({
-          id: `${alias}/${model.id}`,
-          object: "model",
-          owned_by: alias,
-        });
-      }
-    }
-
-    for (const customModel of customModels) {
-      if (!customModel?.id || (customModel.type && customModel.type !== "llm")) continue;
-      // Custom models without active connection are LLM-only by current schema
+    // No active connections — expose registered aliases only (not the full static catalog).
+    for (const [alias, target] of Object.entries(modelAliases)) {
+      if (typeof target !== "string" || !target.trim()) continue;
       if (!kindFilter.includes(LLM_KIND)) continue;
-      const providerAlias = customModel.providerAlias;
-      if (!providerAlias) continue;
-
-      const modelId = String(customModel.id).trim();
-      if (!modelId) continue;
-
       models.push({
-        id: `${providerAlias}/${modelId}`,
+        id: alias,
         object: "model",
-        owned_by: providerAlias,
+        owned_by: "alias",
       });
     }
   } else {
@@ -457,6 +442,12 @@ export async function GET(request) {
       headers: { "Access-Control-Allow-Origin": "*" },
     });
   } catch (error) {
+    if (error instanceof ModelsDbError) {
+      return Response.json(
+        { error: { message: error.message, type: "service_unavailable" } },
+        { status: 503, headers: { "Access-Control-Allow-Origin": "*" } }
+      );
+    }
     console.log("Error fetching models:", error);
     return Response.json(
       { error: { message: error.message, type: "server_error" } },

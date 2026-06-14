@@ -94,6 +94,19 @@ describe("convertResponsesStreamToJson — terminal status (Bug A)", () => {
     const result = await convertResponsesStreamToJson(sseStream(sse));
     expect(result.status).toBe("failed");
   });
+
+  it("reports status 'failed' when malformed JSON is followed by response.completed", async () => {
+    const sse = [
+      'event: response.created\ndata: {"response":{"id":"resp_parse","created_at":1700000000}}',
+      'event: response.output_item.done\ndata: {bad json',
+      'event: response.completed\ndata: {"response":{"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}',
+    ].join("\n\n");
+
+    const result = await convertResponsesStreamToJson(sseStream(sse));
+    expect(result.status).toBe("failed");
+    expect(result.status).not.toBe("completed");
+    expect(result.output).toHaveLength(0);
+  });
 });
 
 // ===========================================================================
