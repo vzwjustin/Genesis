@@ -106,7 +106,10 @@ function cloneForCompress(value) {
 function compressedMessageText(msg) {
   if (typeof msg?.content === "string") return msg.content;
   if (Array.isArray(msg?.content)) {
-    return msg.content.map((part) => part?.text || "").filter(Boolean).join("");
+    return msg.content
+      .map((part) => part?.text || part?.input_text || part?.output_text || "")
+      .filter(Boolean)
+      .join("");
   }
   return "";
 }
