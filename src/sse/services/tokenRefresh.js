@@ -164,7 +164,7 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
 
     if (newCredentials.accessToken != null)         updates.accessToken  = newCredentials.accessToken;
     if (newCredentials.refreshToken != null)        updates.refreshToken = newCredentials.refreshToken;
-    if (newCredentials.expiresIn) {
+    if (newCredentials.expiresIn != null) {
       updates.expiresAt = toExpiresAt(newCredentials.expiresIn);
       updates.expiresIn = newCredentials.expiresIn;
     } else if (newCredentials.expiresAt) {
