@@ -186,7 +186,7 @@ describe("isNativePassthrough", () => {
 });
 
 describe("detectClientTool — MITM proxy", () => {
-  it("returns null when x-9router-mitm-proxy is set", () => {
+  it("returns null when x-genesis-mitm-proxy is set", () => {
     expect(detectClientTool({ [MITM_PROXY_HEADER.name]: MITM_PROXY_HEADER.value, "user-agent": "cursor/3.1" }, {})).toBeNull();
   });
 });

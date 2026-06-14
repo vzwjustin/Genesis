@@ -184,8 +184,8 @@ export default function Sidebar({ onClose }) {
         {/* Logo */}
         <div className="px-5 py-5 flex flex-col gap-2">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-xl bg-brand-500 text-white shrink-0 shadow-[0_4px_14px_-4px_rgba(229,106,74,0.55)]">
-              <span className="material-symbols-outlined text-[20px]">hub</span>
+            <div className="flex items-center justify-center size-9 rounded-xl bg-linear-to-br from-brand-400 to-[#6B5CE7] text-[#0B0D14] shrink-0 shadow-[0_4px_14px_-4px_rgba(201,168,76,0.55)] ring-1 ring-white/25">
+              <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
             </div>
             <div className="flex flex-col min-w-0">
               <h1 className="sidebar-brand-title text-sm font-semibold tracking-tight truncate">
@@ -370,8 +370,8 @@ export default function Sidebar({ onClose }) {
         isOpen={showUpdateModal}
         onClose={() => setShowUpdateModal(false)}
         onConfirm={handleUpdate}
-        title="Update 9Router"
-        message="Open release history to upgrade or downgrade 9Router from GitHub releases."
+        title="Update Genesis"
+        message="Open release history to upgrade or downgrade Genesis from GitHub releases."
         confirmText="Release history"
         cancelText="Cancel"
         variant="primary"
@@ -431,7 +431,7 @@ function ManualUpdatePanel({ latestVersion, installCmd, releases, selectedReleas
           <h2 className="text-lg font-semibold">Release history</h2>
           <p className="text-xs text-white/60">
             {isDisconnected
-              ? "Updater started. 9Router will restart when installation finishes."
+              ? "Updater started. Genesis will restart when installation finishes."
               : isCountingDown
                 ? `Command copied. Server will stop in ${countdown}s...`
                 : latestVersion
@@ -481,7 +481,7 @@ function ManualUpdatePanel({ latestVersion, installCmd, releases, selectedReleas
       <ol className="text-xs text-white/70 space-y-1 list-decimal list-inside mb-4">
         <li>Click <strong>Install & Restart</strong> for automatic upgrade or downgrade.</li>
         <li>If automatic install is unavailable, copy the command and run it manually.</li>
-        <li>9Router restarts after the selected version installs.</li>
+        <li>Genesis restarts after the selected version installs.</li>
       </ol>
 
       {isDisconnected ? (

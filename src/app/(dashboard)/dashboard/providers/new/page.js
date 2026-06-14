@@ -191,7 +191,7 @@ export default function NewProviderPage() {
             checked={formData.isActive}
             onChange={(checked) => handleChange("isActive", checked)}
             label="Active"
-            description="When on, 9Router can route requests to this provider. Turn off to pause it without deleting it."
+            description="When on, Genesis can route requests to this provider. Turn off to pause it without deleting it."
           />
 
           {/* Error Message */}

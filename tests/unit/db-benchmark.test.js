@@ -27,14 +27,14 @@ async function bench(label, fn) {
 
 beforeAll(async () => {
   // SQLite setup
-  tempSqlite = fs.mkdtempSync(path.join(os.tmpdir(), "9router-bench-sqlite-"));
+  tempSqlite = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-bench-sqlite-"));
   process.env.DATA_DIR = tempSqlite;
   vi.resetModules();
   sqliteDb = await import("@/lib/db/index.js");
   await sqliteDb.initDb();
 
   // Lowdb setup — direct lowdb usage (mimics legacy behavior)
-  tempLowdb = fs.mkdtempSync(path.join(os.tmpdir(), "9router-bench-lowdb-"));
+  tempLowdb = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-bench-lowdb-"));
   const dbFile = path.join(tempLowdb, "db.json");
   fs.writeFileSync(dbFile, JSON.stringify({ providerConnections: [], usageHistory: [] }));
   lowDb = new Low(new JSONFile(dbFile), { providerConnections: [], usageHistory: [] });

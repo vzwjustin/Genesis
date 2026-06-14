@@ -5,11 +5,11 @@ import { fileURLToPath } from "url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
-// Isolate the runtime data dir so tests never read or mutate the real ~/.9router
+// Isolate the runtime data dir so tests never read or mutate the real ~/.genesis
 // DB. Several tests run `DELETE FROM providerConnections` and seed fixtures via
 // getAdapter(); without this they wipe the user's live provider connections.
-// getDataDir() honors DATA_DIR over the ~/.9router default.
-const TEST_DATA_DIR = join(tmpdir(), "9router-test-data");
+// getDataDir() honors DATA_DIR over the ~/.genesis default.
+const TEST_DATA_DIR = join(tmpdir(), "genesis-test-data");
 process.env.DATA_DIR = TEST_DATA_DIR;
 
 export default defineConfig({

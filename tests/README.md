@@ -1,6 +1,6 @@
-# 9Router Tests
+# Genesis Tests
 
-Unit and integration tests for the 9router proxy, API routes, translators, and handlers.
+Unit and integration tests for the genesis proxy, API routes, translators, and handlers.
 
 ## Setup
 

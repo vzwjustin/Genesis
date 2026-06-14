@@ -1,11 +1,11 @@
-// MITM Tools — IDE traffic captured and routed through 9Router.
+// MITM Tools — IDE traffic captured and routed through Genesis.
 export const MITM_TOOLS = {
   antigravity: {
     id: "antigravity",
     name: "Antigravity",
     image: "/providers/antigravity.png",
     color: "#4285F4",
-    description: "Route Antigravity IDE traffic through 9Router",
+    description: "Route Antigravity IDE traffic through Genesis",
     configType: "mitm",
     mitmDomain: "daily-cloudcode-pa.googleapis.com",
     modelAliases: ["gemini-3.5-flash-low", "gemini-3-flash-agent", "gemini-3.5-flash-extra-low", "gemini-3.1-pro-low", "gemini-pro-agent", "claude-sonnet-4-6", "claude-opus-4-6-thinking", "gpt-oss-120b-medium", "gemini-3-flash"],
@@ -26,7 +26,7 @@ export const MITM_TOOLS = {
     name: "GitHub Copilot",
     image: "/providers/copilot.png",
     color: "#1F6FEB",
-    description: "Route Copilot IDE traffic through 9Router",
+    description: "Route Copilot IDE traffic through Genesis",
     configType: "mitm",
     mitmDomain: "api.individual.githubcopilot.com",
     modelAliases: ["gpt-4o-mini", "claude-haiku-4.5", "gpt-4o", "gpt-5-mini"],
@@ -41,7 +41,7 @@ export const MITM_TOOLS = {
     name: "Kiro",
     image: "/providers/kiro.png",
     color: "#FF6B00",
-    description: "Route Kiro IDE traffic through 9Router",
+    description: "Route Kiro IDE traffic through Genesis",
     configType: "mitm",
     mitmDomain: "runtime.us-east-1.kiro.dev",
     defaultModels: [
@@ -59,7 +59,7 @@ export const MITM_TOOLS = {
     name: "Cursor",
     image: "/providers/cursor.png",
     color: "#000000",
-    description: "Route Cursor IDE traffic through 9Router",
+    description: "Route Cursor IDE traffic through Genesis",
     configType: "mitm",
     mitmDomain: "api2.cursor.sh",
     defaultModels: [
@@ -107,7 +107,7 @@ export const CLI_TOOLS = {
     name: "Open Claw",
     image: "/providers/openclaw.png",
     color: "#FF6B35",
-    description: "Connect Open Claw to 9Router models",
+    description: "Connect Open Claw to Genesis models",
     configType: "custom",
   },
   codex: {
@@ -145,7 +145,7 @@ export const CLI_TOOLS = {
     name: "Hermes Agent",
     image: "/providers/hermes.png",
     color: "#8B5CF6",
-    description: "Connect Hermes agent runs to 9Router",
+    description: "Connect Hermes agent runs to Genesis",
     configType: "custom",
   },
   droid: {
@@ -153,7 +153,7 @@ export const CLI_TOOLS = {
     name: "Factory Droid",
     image: "/providers/droid.png",
     color: "#00D4FF",
-    description: "Connect Factory Droid to 9Router models",
+    description: "Connect Factory Droid to Genesis models",
     configType: "custom",
   },
   cursor: {
@@ -220,7 +220,7 @@ export const CLI_TOOLS = {
     name: "Continue",
     image: "/providers/continue.png",
     color: "#7C3AED",
-    description: "Connect Continue configs to 9Router",
+    description: "Connect Continue configs to Genesis",
     configType: "guide",
     guideSteps: [
       { step: 1, title: "Open Config", desc: "Open Continue configuration file" },
@@ -250,7 +250,7 @@ export const CLI_TOOLS = {
     defaultCommand: "amp",
     modelAliases: ["g25p", "g25f", "cs45", "g54"],
     notes: [
-      { type: "info", text: "Use 9Router model aliases to keep Amp shorthand mappings stable across provider updates." },
+      { type: "info", text: "Use Genesis model aliases to keep Amp shorthand mappings stable across provider updates." },
       { type: "warning", text: "Suggested shorthand examples: g25p → gemini/gemini-2.5-pro, g25f → gemini/gemini-2.5-flash, cs45 → cc/claude-sonnet-4-5-20250929." },
     ],
     guideSteps: [
@@ -258,7 +258,7 @@ export const CLI_TOOLS = {
       { step: 2, title: "API Key", type: "apiKeySelector" },
       { step: 3, title: "Base URL", value: "{{baseUrl}}", copyable: true },
       { step: 4, title: "Select Model", type: "modelSelector" },
-      { step: 5, title: "Add Shorthands", desc: "Map Amp shorthand names such as g25p or cs45 to 9Router aliases in your local config." },
+      { step: 5, title: "Add Shorthands", desc: "Map Amp shorthand names such as g25p or cs45 to Genesis aliases in your local config." },
     ],
     codeBlock: {
       language: "bash",
@@ -275,15 +275,15 @@ amp --model "{{model}}"
     name: "Qwen Code",
     image: "/providers/qwen.png",
     color: "#10B981",
-    description: "Alibaba Qwen Code CLI — supports OpenAI, Anthropic & Gemini providers via 9Router",
+    description: "Alibaba Qwen Code CLI — supports OpenAI, Anthropic & Gemini providers via Genesis",
     docsUrl: "https://qwenlm.github.io/qwen-code-docs/en/users/configuration/model-providers/",
     configType: "guide",
     defaultCommand: "qwen",
     notes: [
-      { type: "info", text: "Qwen Code can use OpenAI, Anthropic, or Gemini models. Add 9Router as an OpenAI-compatible provider in its settings.json." },
+      { type: "info", text: "Qwen Code can use OpenAI, Anthropic, or Gemini models. Add Genesis as an OpenAI-compatible provider in its settings.json." },
       { type: "info", text: "You can use any model from your connected providers here — Qwen, Claude, Gemini, GPT, and more — not just Qwen models." },
       { type: "warning", text: "Config path: Linux/macOS ~/.qwen/settings.json • Windows %USERPROFILE%\\.qwen\\settings.json" },
-      { type: "error", text: "Qwen OAuth free tier was discontinued on 2026-04-15. Use 9Router with alicode/openrouter/anthropic/gemini providers instead." },
+      { type: "error", text: "Qwen OAuth free tier was discontinued on 2026-04-15. Use Genesis with alicode/openrouter/anthropic/gemini providers instead." },
     ],
     modelAliases: ["coder-model", "qwen3-coder-plus", "qwen3-coder-flash", "vision-model", "claude-sonnet-4-6", "claude-opus-4-6-thinking", "gemini-3-flash", "gemini-3.1-pro-high"],
     defaultModels: [
@@ -335,7 +335,7 @@ amp --model "{{model}}"
       { id: "deepseek-chat", name: "DeepSeek V3 Chat", alias: "deepseek-chat" },
     ],
     notes: [
-      { type: "info", text: "DeepSeek TUI uses ~/.deepseek/config.toml for configuration. 9Router will update the provider to 'openai' mode with your base_url, api_key, and model." },
+      { type: "info", text: "DeepSeek TUI uses ~/.deepseek/config.toml for configuration. Genesis will update the provider to 'openai' mode with your base_url, api_key, and model." },
       { type: "warning", text: "Config path: Linux/macOS ~/.deepseek/config.toml • Windows %USERPROFILE%\\.deepseek\\config.toml" },
     ],
   },
@@ -354,7 +354,7 @@ amp --model "{{model}}"
       },
       {
         type: "info",
-        text: "Configure 9router as an OpenAI-compatible provider to route all jcode requests through 9router's optimization layer."
+        text: "Configure genesis as an OpenAI-compatible provider to route all jcode requests through genesis's optimization layer."
       },
       {
         type: "warning",
@@ -373,7 +373,7 @@ amp --model "{{model}}"
     name: "Gemini CLI",
     image: "/providers/gemini.png",
     color: "#4285F4",
-    description: "Route Google Gemini CLI through 9Router",
+    description: "Route Google Gemini CLI through Genesis",
     configType: "env",
     envVars: {
       baseUrl: "GEMINI_API_BASE_URL",
@@ -384,7 +384,7 @@ amp --model "{{model}}"
       { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", alias: "flash", defaultValue: "gc/gemini-2.5-flash" },
     ],
     notes: [
-      { type: "info", text: "Gemini CLI uses OAuth or API key. Connect a gemini-cli provider, then point GEMINI_API_BASE_URL at your 9router endpoint." },
+      { type: "info", text: "Gemini CLI uses OAuth or API key. Connect a gemini-cli provider, then point GEMINI_API_BASE_URL at your genesis endpoint." },
     ],
     guideSteps: [
       { step: 1, title: "Connect provider", desc: "Add a gemini-cli OAuth connection under Providers" },
@@ -398,7 +398,7 @@ amp --model "{{model}}"
     name: "GitHub Copilot CLI",
     image: "/providers/copilot.png",
     color: "#1F6FEB",
-    description: "Configure Copilot CLI custom models via 9Router",
+    description: "Configure Copilot CLI custom models via Genesis",
     configType: "custom",
     defaultModels: [
       { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },

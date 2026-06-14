@@ -27,7 +27,7 @@ const CURSOR_BARE_MODEL_ALIASES = {
   "gpt-5.4": "gpt-5.4-medium",
 };
 
-/** Cursor API rejects 9router routing prefixes (cu/gpt-5.5-high) — strip before protobuf encode. */
+/** Cursor API rejects genesis routing prefixes (cu/gpt-5.5-high) — strip before protobuf encode. */
 export function normalizeCursorUpstreamModel(modelName) {
   if (modelName == null) return modelName;
   let s = String(modelName).trim();

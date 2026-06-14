@@ -14,7 +14,7 @@ const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 
 beforeAll(async () => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-dash-r5-"));
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-dash-r5-"));
   process.env.DATA_DIR = tempDir;
   try { global._dbAdapter?.instance?.close?.(); } catch { /* ignore */ }
   delete global._dbAdapter;

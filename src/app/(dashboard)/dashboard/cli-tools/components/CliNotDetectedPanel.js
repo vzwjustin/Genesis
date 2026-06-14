@@ -5,7 +5,7 @@ import InlineAlert from "@/shared/components/InlineAlert";
 import { REMOTE_CLI_SETUP_HINT } from "./cliInstallMode";
 
 /**
- * Info banner when the CLI is not installed on the 9Router host (typical remote server).
+ * Info banner when the CLI is not installed on the Genesis host (typical remote server).
  */
 export default function CliNotDetectedPanel({
   cliName,

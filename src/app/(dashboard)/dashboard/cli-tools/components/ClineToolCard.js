@@ -69,7 +69,7 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
 
   const getConfigStatus = () => {
     if (!status?.installed) return null;
-    if (!status.has9Router) return "not_configured";
+    if (!status.hasGenesis) return "not_configured";
     const url = status.settings?.openAiBaseUrl || "";
     return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl }) ? "configured" : "other";
   };
@@ -90,7 +90,7 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
     try {
       const keyToUse = (selectedApiKey && selectedApiKey.trim())
         ? selectedApiKey
-        : (!cloudEnabled ? "sk_9router" : selectedApiKey);
+        : (!cloudEnabled ? "sk_genesis" : selectedApiKey);
 
       const res = await fetch("/api/cli-tools/cline-settings", {
         method: "POST",
@@ -134,7 +134,7 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_genesis" : "<API_KEY_FROM_DASHBOARD>");
     const effectiveUrl = getEffectiveBaseUrl();
     const baseWithoutV1 = effectiveUrl.endsWith("/v1") ? effectiveUrl.slice(0, -3) : effectiveUrl;
 

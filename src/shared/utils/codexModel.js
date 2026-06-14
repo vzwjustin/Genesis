@@ -1,4 +1,4 @@
-/** Codex config.toml uses native OpenAI model ids (gpt-5.5), not 9router routing ids (cx/gpt-5.5). */
+/** Codex config.toml uses native OpenAI model ids (gpt-5.5), not genesis routing ids (cx/gpt-5.5). */
 export function toCodexNativeModel(model) {
   if (!model || typeof model !== "string") return model;
   if (model.startsWith("cx/")) return model.slice(3);

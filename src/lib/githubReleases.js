@@ -3,11 +3,11 @@ import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 const GITHUB_HEADERS = {
   Accept: "application/vnd.github+json",
-  "User-Agent": "9Router",
+  "User-Agent": "Genesis",
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const G_KEY = "__9routerGitHubReleasesCache";
+const G_KEY = "__genesisGitHubReleasesCache";
 
 function gcache() {
   if (!globalThis[G_KEY]) globalThis[G_KEY] = { ts: 0, data: null };

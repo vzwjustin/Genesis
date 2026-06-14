@@ -15,7 +15,7 @@ import { hasValidLocalCliToken } from "@/shared/auth/cliToken";
 import {
   verifyApiKeyCrc,
   isLocalhostSentinelKey,
-  has9routerCredentialAttempt,
+  hasgenesisCredentialAttempt,
   allowsStaleGatewayBypass,
   extractApiKey,
   getGatewayApiKeyCandidates,
@@ -97,7 +97,7 @@ async function hasValidApiKey(request) {
 }
 
 async function getPublicLlmApiAuthError(request) {
-  if (has9routerCredentialAttempt(request)) return "Invalid API key";
+  if (hasgenesisCredentialAttempt(request)) return "Invalid API key";
   if (isLoopbackRequest(request)) return "Missing API key";
   return "API key required for remote API access";
 }
@@ -108,7 +108,7 @@ async function canAccessPublicLlmApi(request) {
   const settings = await loadSettings();
   const requireApiKey = settings?.requireApiKey === true;
 
-  if (has9routerCredentialAttempt(request)) {
+  if (hasgenesisCredentialAttempt(request)) {
     if (await hasValidApiKey(request)) return true;
     if (!requireApiKey && isLoopbackRequest(request) && allowsStaleGatewayBypass(request)) {
       return true;

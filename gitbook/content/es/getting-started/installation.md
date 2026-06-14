@@ -1,6 +1,6 @@
 # Instalación
 
-Guía detallada de instalación de 9Router con consejos de solución de problemas.
+Guía detallada de instalación de Genesis con consejos de solución de problemas.
 
 ---
 
@@ -31,37 +31,37 @@ npm --version
 
 ### Método 1: Instalación global (Recomendado)
 
-Instala 9Router globalmente para usar desde cualquier lugar:
+Instala Genesis globalmente para usar desde cualquier lugar:
 
 ```bash
-npm install -g 9router
+npm install -g genesis
 ```
 
-**Iniciar 9Router:**
+**Iniciar Genesis:**
 
 ```bash
-9router
+genesis
 ```
 
 **Beneficios:**
 - ✅ Ejecuta desde cualquier directorio
-- ✅ Comando simple: `9router`
-- ✅ Auto-actualizaciones con `npm update -g 9router`
+- ✅ Comando simple: `genesis`
+- ✅ Auto-actualizaciones con `npm update -g genesis`
 
 ### Método 2: Instalación local
 
 Instala en un proyecto específico:
 
 ```bash
-mkdir my-9router
-cd my-9router
-npm install 9router
+mkdir my-genesis
+cd my-genesis
+npm install genesis
 ```
 
-**Iniciar 9Router:**
+**Iniciar Genesis:**
 
 ```bash
-npx 9router
+npx genesis
 ```
 
 **Beneficios:**
@@ -74,8 +74,8 @@ npx 9router
 Clona y compila desde GitHub:
 
 ```bash
-git clone https://github.com/decolua/9router.git
-cd 9router/app
+git clone https://github.com/decolua/genesis.git
+cd genesis/app
 npm install
 npm run build
 npm start
@@ -93,13 +93,13 @@ npm start
 ### Iniciar el servidor
 
 ```bash
-9router
+genesis
 ```
 
 **Qué sucede:**
 1. El servidor inicia en `http://localhost:20128`
 2. El dashboard se abre automáticamente en el navegador
-3. Se crea el directorio de datos en `~/.9router`
+3. Se crea el directorio de datos en `~/.genesis`
 4. API key generada automáticamente
 
 ### Login del dashboard
@@ -193,7 +193,7 @@ export JWT_SECRET="your-secure-secret-change-this"
 export INITIAL_PASSWORD="your-password"
 
 # Storage
-export DATA_DIR="~/.9router"
+export DATA_DIR="~/.genesis"
 
 # Server
 export PORT="20128"
@@ -205,11 +205,11 @@ export ENABLE_REQUEST_LOGS="false"
 
 ### Directorio de datos
 
-**Ubicación por defecto:** `~/.9router`
+**Ubicación por defecto:** `~/.genesis`
 
 **Contenido:**
 ```
-~/.9router/
+~/.genesis/
   ├── db.json           # Database (providers, combos, usage)
   ├── api-keys.json     # API keys
   └── logs/             # Request logs (if enabled)
@@ -219,7 +219,7 @@ export ENABLE_REQUEST_LOGS="false"
 
 ```bash
 export DATA_DIR="/custom/path"
-9router
+genesis
 ```
 
 ### Configuración de puerto
@@ -230,13 +230,13 @@ export DATA_DIR="/custom/path"
 
 ```bash
 export PORT="3000"
-9router
+genesis
 ```
 
 **O usa la línea de comandos:**
 
 ```bash
-9router --port 3000
+genesis --port 3000
 ```
 
 ---
@@ -263,14 +263,14 @@ kill -9 <PID>
 **Solución 2: Usa otro puerto**
 
 ```bash
-9router --port 3000
+genesis --port 3000
 ```
 
 ### Permiso denegado
 
 **Error:**
 ```
-Error: EACCES: permission denied, mkdir '/usr/local/lib/node_modules/9router'
+Error: EACCES: permission denied, mkdir '/usr/local/lib/node_modules/genesis'
 ```
 
 **Solución: Usa sudo (no recomendado) o corrige los permisos de npm**
@@ -283,7 +283,7 @@ echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
 
 # Luego instalar nuevamente
-npm install -g 9router
+npm install -g genesis
 ```
 
 ### Versión de Node.js muy antigua
@@ -345,23 +345,23 @@ Dashboard → Provider → Disconnect → Reconnect
 
 ### Uso alto de memoria
 
-**Problema:** 9Router usa demasiada RAM
+**Problema:** Genesis usa demasiada RAM
 
 **Solución: Reinicia el servidor**
 
 ```bash
 # Detener
-pkill -f 9router
+pkill -f genesis
 
 # Iniciar
-9router
+genesis
 ```
 
 **O usa PM2 para auto-reinicio:**
 
 ```bash
 npm install -g pm2
-pm2 start 9router --name 9router
+pm2 start genesis --name genesis
 pm2 save
 ```
 
@@ -372,8 +372,8 @@ pm2 save
 ### Desarrollo local
 
 ```bash
-npm install -g 9router
-9router
+npm install -g genesis
+genesis
 ```
 
 **Caso de uso:** Codificación personal, pruebas
@@ -382,7 +382,7 @@ npm install -g 9router
 
 ```bash
 # Instalar
-npm install -g 9router
+npm install -g genesis
 
 # Configurar
 export JWT_SECRET="your-secure-secret"
@@ -391,7 +391,7 @@ export NODE_ENV="production"
 
 # Iniciar con PM2
 npm install -g pm2
-pm2 start 9router --name 9router
+pm2 start genesis --name genesis
 pm2 save
 pm2 startup
 ```
@@ -401,15 +401,15 @@ pm2 startup
 ### Docker
 
 ```bash
-docker pull 9router/9router:latest
+docker pull genesis/genesis:latest
 
 docker run -d \
   -p 20128:20128 \
   -e JWT_SECRET="your-secure-secret" \
   -e INITIAL_PASSWORD="your-password" \
-  -v 9router-data:/root/.9router \
-  --name 9router \
-  9router/9router:latest
+  -v genesis-data:/root/.genesis \
+  --name genesis \
+  genesis/genesis:latest
 ```
 
 **Caso de uso:** Despliegue containerizado, Kubernetes
@@ -444,13 +444,13 @@ server {
 ### Eliminar instalación global
 
 ```bash
-npm uninstall -g 9router
+npm uninstall -g genesis
 ```
 
 ### Eliminar el directorio de datos
 
 ```bash
-rm -rf ~/.9router
+rm -rf ~/.genesis
 ```
 
 ### Eliminar la configuración
@@ -458,7 +458,7 @@ rm -rf ~/.9router
 ```bash
 # Eliminar variables de entorno del archivo de configuración del shell
 nano ~/.bashrc  # o ~/.zshrc
-# Eliminar exports relacionados con 9router
+# Eliminar exports relacionados con genesis
 ```
 
 ---
@@ -473,6 +473,6 @@ nano ~/.bashrc  # o ~/.zshrc
 
 ## ¿Necesitas ayuda?
 
-- **Sitio web**: [9router.com](https://9router.com)
-- **GitHub**: [github.com/decolua/9router](https://github.com/decolua/9router)
-- **Issues**: [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
+- **Sitio web**: [genesis.com](https://genesis.com)
+- **GitHub**: [github.com/decolua/genesis](https://github.com/decolua/genesis)
+- **Issues**: [github.com/decolua/genesis/issues](https://github.com/decolua/genesis/issues)

@@ -1,4 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="24" fill="#0a0a0a"/>
-  <text x="96" y="120" font-family="Arial, sans-serif" font-size="80" font-weight="bold" fill="#ffffff" text-anchor="middle">9R</text>
+  <rect width="192" height="192" rx="28" fill="url(#bg)"/>
+  <path d="M58 50C58 50 88 46 104 76C116 98 100 120 78 128C96 132 118 140 128 162" stroke="url(#stroke)" stroke-width="14" stroke-linecap="round" fill="none"/>
+  <circle cx="136" cy="58" r="8" fill="#E8D5A3"/>
+  <defs>
+    <linearGradient id="bg" x1="24" y1="12" x2="168" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E1838"/>
+      <stop offset="1" stop-color="#0B0916"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="58" y1="48" x2="132" y2="164" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8D5A3"/>
+      <stop offset="0.55" stop-color="#C9A84C"/>
+      <stop offset="1" stop-color="#7C6BF0"/>
+    </linearGradient>
+  </defs>
 </svg>

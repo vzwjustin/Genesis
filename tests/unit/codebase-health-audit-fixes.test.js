@@ -92,7 +92,7 @@ describe("codebase health audit fixes", () => {
     let tempDir;
 
     beforeEach(async () => {
-      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-idem-ring-"));
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-idem-ring-"));
       process.env.DATA_DIR = tempDir;
       vi.resetModules();
       const sqliteDb = await import("@/lib/db/index.js");

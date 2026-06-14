@@ -17,9 +17,9 @@ Working if: fewer unnecessary diff lines, fewer overcomplication rewrites, clari
 
 ---
 
-# 9router Fork — Agent Instructions
+# genesis Fork — Agent Instructions
 
-This repository is a fork/customization of `9router`, used as a local AI CLI proxy/router.
+This repository is a fork/customization of `genesis`, used as a local AI CLI proxy/router.
 
 The proxy sits between CLI/agent clients and upstream providers such as Anthropic, OpenAI, Codex, Claude Code-compatible flows, and other OpenAI-style clients.
 
@@ -73,8 +73,8 @@ The global install should point directly to the fork. Run from the repo root so
 the paths resolve correctly regardless of machine (Linux PC / macOS) or where the
 fork is checked out:
 
-    rm -rf "$(npm root -g)/9router"
-    ln -s "$(pwd)/cli" "$(npm root -g)/9router"
+    rm -rf "$(npm root -g)/genesis"
+    ln -s "$(pwd)/cli" "$(npm root -g)/genesis"
 
 `$(npm root -g)` resolves the global module dir per machine (e.g.
 `/opt/homebrew/lib/node_modules` on macOS Homebrew, `/usr/lib/node_modules` or an
@@ -84,17 +84,17 @@ Before debugging runtime behavior, verify the global package is a symlink to the
 
 Expected path (macOS Homebrew shown; the prefix differs on Linux):
 
-    /opt/homebrew/lib/node_modules/9router -> <your-fork>/cli
+    /opt/homebrew/lib/node_modules/genesis -> <your-fork>/cli
 
 ---
 
 ### 3. Run headless server directly
 
-The `9router` CLI wrapper, `cli.js`, detects non-interactive TTY and may auto-exit with a tray-mode fallback.
+The `genesis` CLI wrapper, `cli.js`, detects non-interactive TTY and may auto-exit with a tray-mode fallback.
 
 For headless deployment, run the server directly:
 
-    PORT=3456 HOSTNAME=0.0.0.0 node /opt/homebrew/lib/node_modules/9router/app/server.js
+    PORT=3456 HOSTNAME=0.0.0.0 node /opt/homebrew/lib/node_modules/genesis/app/server.js
 
 Do not use the CLI wrapper for headless server debugging unless specifically testing wrapper behavior.
 
@@ -769,7 +769,7 @@ When runtime behavior does not match source:
 1. Confirm the edited file is in the fork.
 2. Clear `.next-cli-build` or at least `.next-cli-build/cache/webpack`.
 3. Rebuild with `cd cli && npm run build`.
-4. Confirm `/opt/homebrew/lib/node_modules/9router` is a symlink to the fork.
+4. Confirm `/opt/homebrew/lib/node_modules/genesis` is a symlink to the fork.
 5. Launch server directly with `node .../app/server.js`.
 6. Grep the compiled chunks for the expected code.
 7. Confirm whether the request path is translated mode or passthrough mode.
@@ -786,7 +786,7 @@ Default assumption:
 ### First-time setup (once per VM)
 
 1. Copy env: `cp .env.example .env`
-2. Set a writable data dir in `.env` (default example uses `/var/lib/9router`): `DATA_DIR=/workspace/.data`
+2. Set a writable data dir in `.env` (default example uses `/var/lib/genesis`): `DATA_DIR=/workspace/.data`
 3. Default login password is `INITIAL_PASSWORD` from `.env` (example: `change-me`; falls back to `123456` if unset)
 
 ### Run the server (production mode recommended)
@@ -798,7 +798,7 @@ npm run build
 PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run start
 ```
 
-Run in tmux for long-lived sessions. Do not use the `9router` CLI wrapper in headless/non-TTY environments; use `node cli/app/server.js` after `cd cli && npm run build` when testing the packaged CLI.
+Run in tmux for long-lived sessions. Do not use the `genesis` CLI wrapper in headless/non-TTY environments; use `node cli/app/server.js` after `cd cli && npm run build` when testing the packaged CLI.
 
 ### Tests and lint
 

@@ -96,7 +96,7 @@ export function extractBearerToken(request) {
 }
 
 /**
- * Parse a 9router API key and extract machineId + keyId.
+ * Parse a genesis API key and extract machineId + keyId.
  * - New format: sk-{machineId}-{keyId}-{crc8} (CRC-verified)
  * - Old format: sk-{keyId}
  * @param {string} apiKey

@@ -116,7 +116,7 @@ export function isNewFormatKey(apiKey) {
 }
 
 /** Localhost-only sentinel used by CLI tools when no real key is configured. */
-export const LOCALHOST_SENTINEL_API_KEY = "sk_9router";
+export const LOCALHOST_SENTINEL_API_KEY = "sk_genesis";
 
 export function isLocalhostSentinelKey(apiKey) {
   return apiKey === LOCALHOST_SENTINEL_API_KEY;
@@ -147,7 +147,7 @@ function isNewFormatGatewayKeyShape(parts) {
 }
 
 /** sk-{machineId}-{keyId}-{crc8} or legacy sk-{id} — gateway-managed keys only. */
-export function is9routerKeyShape(token) {
+export function isgenesisKeyShape(token) {
   if (!token || typeof token !== "string" || !token.startsWith("sk-")) return false;
   if (isProviderApiKeyPrefix(token)) return false;
   const parts = token.split("-");
@@ -191,12 +191,12 @@ function extractAuthorizationCredentialToken(request) {
 /** Gateway token from Authorization (Bearer or raw sk-…). */
 function extractAuthorizationGatewayToken(request) {
   const token = extractAuthorizationCredentialToken(request);
-  if (!token || !looksLike9routerApiKey(token)) return null;
+  if (!token || !looksLikegenesisApiKey(token)) return null;
   return token;
 }
 
 function isVerifiableGatewayToken(token) {
-  if (!token || !looksLike9routerApiKey(token)) return false;
+  if (!token || !looksLikegenesisApiKey(token)) return false;
   if (isLocalhostSentinelKey(token)) return true;
   return verifyApiKeyCrc(token);
 }
@@ -204,7 +204,7 @@ function isVerifiableGatewayToken(token) {
 /** True when Authorization carries a non-gateway credential (OAuth JWT, provider sk-, etc.). */
 export function hasNonGatewayBearer(request) {
   const token = extractAuthorizationCredentialToken(request);
-  return !!token && !looksLike9routerApiKey(token);
+  return !!token && !looksLikegenesisApiKey(token);
 }
 
 /** Vendor-specific API key headers (non-gateway credential signals for stale-gateway bypass). */
@@ -215,7 +215,7 @@ export function hasProviderApiKeyHeader(request) {
   const xApiKey = request.headers.get("x-api-key")?.trim();
   if (xApiKey) {
     if (isProviderApiKeyPrefix(xApiKey)) return true;
-    if (!looksLike9routerApiKey(xApiKey)) return true;
+    if (!looksLikegenesisApiKey(xApiKey)) return true;
   }
   for (const name of PROVIDER_API_KEY_HEADER_NAMES) {
     if (request.headers.get(name)?.trim()) return true;
@@ -228,7 +228,7 @@ export function hasProviderApiKeyHeader(request) {
 export function allowsStaleGatewayBypass(request) {
   if (hasProviderApiKeyHeader(request)) return true;
   const token = extractAuthorizationCredentialToken(request);
-  if (!token || looksLike9routerApiKey(token)) return false;
+  if (!token || looksLikegenesisApiKey(token)) return false;
   const auth = request.headers.get("Authorization")?.trim() || "";
   if (/^Bearer\s+/i.test(auth)) {
     if (token.includes(".")) return true;
@@ -251,7 +251,7 @@ export function getGatewayApiKeyCandidates(request) {
   const stale = [];
 
   for (const token of [xApiKey, authToken].filter(Boolean)) {
-    if (!looksLike9routerApiKey(token)) continue;
+    if (!looksLikegenesisApiKey(token)) continue;
     if (isVerifiableGatewayToken(token)) {
       if (!verifiable.includes(token)) verifiable.push(token);
     } else if (!allowsStaleGatewayBypass(request) && !stale.includes(token)) {
@@ -268,15 +268,15 @@ export function extractGatewayApiKey(request) {
   const authToken = extractAuthorizationGatewayToken(request);
 
   for (const token of [xApiKey, authToken].filter(Boolean)) {
-    if (looksLike9routerApiKey(token) && isVerifiableGatewayToken(token)) {
+    if (looksLikegenesisApiKey(token) && isVerifiableGatewayToken(token)) {
       return token;
     }
   }
 
-  if (xApiKey && looksLike9routerApiKey(xApiKey) && !allowsStaleGatewayBypass(request)) {
+  if (xApiKey && looksLikegenesisApiKey(xApiKey) && !allowsStaleGatewayBypass(request)) {
     return xApiKey;
   }
-  if (authToken && looksLike9routerApiKey(authToken) && !allowsStaleGatewayBypass(request)) {
+  if (authToken && looksLikegenesisApiKey(authToken) && !allowsStaleGatewayBypass(request)) {
     return authToken;
   }
 
@@ -291,31 +291,31 @@ export function extractApiKey(request) {
 }
 
 /**
- * True when a header value is intended as 9router gateway auth (not provider OAuth/JWT).
+ * True when a header value is intended as genesis gateway auth (not provider OAuth/JWT).
  * OAuth/JWT and provider keys (sk-ant-*, sk-proj-*, etc.) are ignored for gateway auth.
  */
-export function looksLike9routerApiKey(token) {
+export function looksLikegenesisApiKey(token) {
   if (!token || typeof token !== "string") return false;
   const trimmed = token.trim();
   if (isLocalhostSentinelKey(trimmed)) return true;
-  return is9routerKeyShape(trimmed);
+  return isgenesisKeyShape(trimmed);
 }
 
 /**
- * True when the request presents a 9router API key credential attempt.
+ * True when the request presents a genesis API key credential attempt.
  * Gateway-shaped Bearer, ApiKey/Api-Key, raw sk-, and x-api-key count; Basic and
  * provider OAuth/JWT do not block loopback no-auth bypass.
  */
-export function has9routerCredentialAttempt(request) {
+export function hasgenesisCredentialAttempt(request) {
   const xApiKey = request.headers.get("x-api-key")?.trim();
-  if (xApiKey && looksLike9routerApiKey(xApiKey)) {
+  if (xApiKey && looksLikegenesisApiKey(xApiKey)) {
     if (isVerifiableGatewayToken(xApiKey)) return true;
     // Stale shaped x-api-key must not block loopback when a provider credential is also present.
     if (!allowsStaleGatewayBypass(request)) return true;
   }
 
   const authToken = extractAuthorizationCredentialToken(request);
-  if (!authToken || !looksLike9routerApiKey(authToken)) return false;
+  if (!authToken || !looksLikegenesisApiKey(authToken)) return false;
   if (isVerifiableGatewayToken(authToken)) return true;
   if (!allowsStaleGatewayBypass(request)) return true;
   return false;

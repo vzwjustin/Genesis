@@ -76,7 +76,7 @@ export default function SkillsPage() {
       <Card padding="md">
         <div className="text-xs text-text-muted mb-2">Send this to your agent:</div>
         <div className="glass-stat rounded-lg border-0 px-3 py-2 font-mono text-[12px] text-text-main">
-          Read this skill and use it: {getSkillRawUrl("9router")}
+          Read this skill and use it: {getSkillRawUrl("genesis")}
         </div>
       </Card>
 

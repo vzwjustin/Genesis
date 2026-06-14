@@ -9,7 +9,7 @@ import {
   parseApiKey,
   verifyApiKeyCrc,
   isLocalhostSentinelKey,
-  has9routerCredentialAttempt,
+  hasgenesisCredentialAttempt,
   getGatewayApiKeyCandidates,
   allowsStaleGatewayBypass,
 } from "@/shared/utils/apiKey.js";
@@ -379,7 +379,7 @@ export async function authenticateRequest(request, log) {
     return { ok: true, apiKey: null, settings, cliToken: true };
   }
 
-  const hasCredentialHeader = has9routerCredentialAttempt(request);
+  const hasCredentialHeader = hasgenesisCredentialAttempt(request);
   const candidates = hasCredentialHeader ? getGatewayApiKeyCandidates(request) : [];
   let apiKey = null;
   for (const candidate of candidates) {

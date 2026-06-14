@@ -452,7 +452,7 @@ describe("round-5: importDb validation", () => {
   let tempDir;
 
   beforeAll(async () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-r5-import-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-r5-import-"));
     process.env.DATA_DIR = tempDir;
     try { global._dbAdapter?.instance?.close?.(); } catch { /* ignore */ }
     delete global._dbAdapter;

@@ -1,47 +1,47 @@
 import { describe, it, expect } from "vitest";
 import {
-  is9routerKeyShape,
-  looksLike9routerApiKey,
-  has9routerCredentialAttempt,
+  isgenesisKeyShape,
+  looksLikegenesisApiKey,
+  hasgenesisCredentialAttempt,
   extractGatewayApiKey,
   getGatewayApiKeyCandidates,
   extractApiKey,
 } from "../../src/shared/utils/apiKey.js";
 import { makeTestApiKey, useTestApiKeySecret } from "../helpers/apiKeyTestUtils.js";
 
-describe("9router API key shape detection", () => {
+describe("genesis API key shape detection", () => {
   it("matches new-format gateway keys", () => {
-    expect(is9routerKeyShape("sk-deadbeef-test01-00000000")).toBe(true);
+    expect(isgenesisKeyShape("sk-deadbeef-test01-00000000")).toBe(true);
   });
 
   it("matches legacy two-part sk- keys", () => {
-    expect(is9routerKeyShape("sk-badkeyyy")).toBe(true);
+    expect(isgenesisKeyShape("sk-badkeyyy")).toBe(true);
   });
 
   it("excludes provider API key prefixes", () => {
-    expect(is9routerKeyShape("sk-ant-api03-key")).toBe(false);
-    expect(is9routerKeyShape("sk-proj-openai-key")).toBe(false);
-    expect(is9routerKeyShape("sk-or-v1-key")).toBe(false);
-    expect(is9routerKeyShape("sk-svcacct-prod-agent")).toBe(false);
-    expect(is9routerKeyShape("sk-admin-org-mgmt")).toBe(false);
+    expect(isgenesisKeyShape("sk-ant-api03-key")).toBe(false);
+    expect(isgenesisKeyShape("sk-proj-openai-key")).toBe(false);
+    expect(isgenesisKeyShape("sk-or-v1-key")).toBe(false);
+    expect(isgenesisKeyShape("sk-svcacct-prod-agent")).toBe(false);
+    expect(isgenesisKeyShape("sk-admin-org-mgmt")).toBe(false);
   });
 
   it("excludes arbitrary four-part sk- tokens that are not gateway layout", () => {
-    expect(is9routerKeyShape("sk-foo-bar-baz-12345678")).toBe(false);
-    expect(has9routerCredentialAttempt({
+    expect(isgenesisKeyShape("sk-foo-bar-baz-12345678")).toBe(false);
+    expect(hasgenesisCredentialAttempt({
       headers: { get: (n) => (n === "Authorization" ? "Bearer sk-foo-bar-baz-12345678" : null) },
     })).toBe(false);
   });
 
   it("excludes long sk- provider secrets (OpenAI-style single segment)", () => {
     const openAiStyle = `sk-${"a".repeat(48)}`;
-    expect(is9routerKeyShape(openAiStyle)).toBe(false);
-    expect(looksLike9routerApiKey(openAiStyle)).toBe(false);
+    expect(isgenesisKeyShape(openAiStyle)).toBe(false);
+    expect(looksLikegenesisApiKey(openAiStyle)).toBe(false);
   });
 
   it("excludes non-sk tokens", () => {
-    expect(looksLike9routerApiKey("sk_9router")).toBe(true);
-    expect(looksLike9routerApiKey("eyJhbGciOiJIUzI1NiJ9")).toBe(false);
+    expect(looksLikegenesisApiKey("sk_genesis")).toBe(true);
+    expect(looksLikegenesisApiKey("eyJhbGciOiJIUzI1NiJ9")).toBe(false);
   });
 
   it("detects credential attempts only for gateway-shaped keys", () => {
@@ -49,12 +49,12 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({ Authorization: "Bearer sk-badkeyyy" }))).toBe(true);
-    expect(has9routerCredentialAttempt(req({ Authorization: "bearer sk-badkeyyy" }))).toBe(true);
-    expect(has9routerCredentialAttempt(req({ Authorization: "Bearer sk-proj-abc" }))).toBe(false);
-    expect(has9routerCredentialAttempt(req({ "x-api-key": "sk-ant-api03-key" }))).toBe(false);
-    expect(has9routerCredentialAttempt(req({ Authorization: "garbage" }))).toBe(false);
-    expect(has9routerCredentialAttempt(req({ Authorization: "Basic dXNlcjpwYXNz" }))).toBe(false);
+    expect(hasgenesisCredentialAttempt(req({ Authorization: "Bearer sk-badkeyyy" }))).toBe(true);
+    expect(hasgenesisCredentialAttempt(req({ Authorization: "bearer sk-badkeyyy" }))).toBe(true);
+    expect(hasgenesisCredentialAttempt(req({ Authorization: "Bearer sk-proj-abc" }))).toBe(false);
+    expect(hasgenesisCredentialAttempt(req({ "x-api-key": "sk-ant-api03-key" }))).toBe(false);
+    expect(hasgenesisCredentialAttempt(req({ Authorization: "garbage" }))).toBe(false);
+    expect(hasgenesisCredentialAttempt(req({ Authorization: "Basic dXNlcjpwYXNz" }))).toBe(false);
   });
 
   it("ignores stale gateway-shaped x-api-key when Bearer is a provider token", () => {
@@ -62,7 +62,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "Bearer eyJhbGciOiJSUzI1NiJ9.payload.sig",
     }))).toBe(false);
@@ -77,7 +77,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-ant-api03-provider-key",
       Authorization: "Bearer sk-badkeyyy",
     }))).toBe(false);
@@ -92,7 +92,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "Bearer AIzaSyD-provider-google-key",
     }))).toBe(false);
@@ -103,7 +103,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       "x-goog-api-key": "AIzaSyD-provider-google-key",
       Authorization: "Bearer sk-badkeyyy",
     }))).toBe(false);
@@ -118,7 +118,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       "api-key": "azure-openai-provider-secret",
     }))).toBe(false);
@@ -129,7 +129,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "Token hello",
     }))).toBe(true);
@@ -144,7 +144,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       Authorization: "Bearer hello",
       "x-api-key": "sk-badkeyyy",
     }))).toBe(true);
@@ -155,10 +155,10 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       Authorization: "Bearer sk-badkeyyy",
     }))).toBe(true);
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       Authorization: "Token deepgram-provider-secret",
       "x-api-key": "sk-badkeyyy",
     }))).toBe(false);
@@ -166,7 +166,7 @@ describe("9router API key shape detection", () => {
       Authorization: "Token deepgram-provider-secret",
       "x-api-key": "sk-badkeyyy",
     }))).toBe(null);
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       Authorization: "token dg_live_provider_key",
       "x-api-key": "sk-badkeyyy",
     }))).toBe(false);
@@ -177,7 +177,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({ "x-api-key": "sk-badkeyyy" }))).toBe(true);
+    expect(hasgenesisCredentialAttempt(req({ "x-api-key": "sk-badkeyyy" }))).toBe(true);
     expect(extractGatewayApiKey(req({ "x-api-key": "sk-badkeyyy" }))).toBe("sk-badkeyyy");
   });
 
@@ -197,7 +197,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "sk-ant-api03-provider-key",
     }))).toBe(false);
@@ -212,7 +212,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "Basic dXNlcjpwYXNz",
     }))).toBe(true);
@@ -227,7 +227,7 @@ describe("9router API key shape detection", () => {
       headers: { get: (name) => headers[name] ?? null },
     });
 
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({
       Authorization: "sk-badkeyyy",
       "x-api-key": "sk-ant-api03-provider-key",
     }))).toBe(false);
@@ -290,8 +290,8 @@ describe("9router API key shape detection", () => {
     });
 
     expect(extractGatewayApiKey(req({ Authorization: `ApiKey ${gatewayKey}` }))).toBe(gatewayKey);
-    expect(has9routerCredentialAttempt(req({ Authorization: "ApiKey sk-badkeyyy" }))).toBe(true);
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({ Authorization: "ApiKey sk-badkeyyy" }))).toBe(true);
+    expect(hasgenesisCredentialAttempt(req({
       Authorization: "ApiKey sk-badkeyyy",
       "x-api-key": "sk-ant-api03-provider-key",
     }))).toBe(false);
@@ -306,8 +306,8 @@ describe("9router API key shape detection", () => {
     });
 
     expect(extractGatewayApiKey(req({ Authorization: `Api-Key ${gatewayKey}` }))).toBe(gatewayKey);
-    expect(has9routerCredentialAttempt(req({ Authorization: "Api-Key sk-badkeyyy" }))).toBe(true);
-    expect(has9routerCredentialAttempt(req({
+    expect(hasgenesisCredentialAttempt(req({ Authorization: "Api-Key sk-badkeyyy" }))).toBe(true);
+    expect(hasgenesisCredentialAttempt(req({
       Authorization: "Api-Key sk-badkeyyy",
       "x-api-key": "sk-ant-api03-provider-key",
     }))).toBe(false);

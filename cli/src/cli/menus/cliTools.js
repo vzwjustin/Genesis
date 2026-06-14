@@ -169,10 +169,10 @@ async function buildCodexHeader() {
   const result = await api.getCliToolSettings("codex");
   if (!result.success) return `  ${COLORS.red}Failed to load settings${COLORS.reset}`;
 
-  const { installed, has9Router, config } = result.data;
+  const { installed, hasGenesis, config } = result.data;
   if (!installed) return `Status:   ${COLORS.red}✗ Codex CLI not installed${COLORS.reset}`;
 
-  if (!has9Router) {
+  if (!hasGenesis) {
     return [
       `Status:   ${COLORS.red}✗ Not configured${COLORS.reset}`,
       `${COLORS.dim}Run "Quick Setup" to configure${COLORS.reset}`
@@ -257,18 +257,18 @@ async function buildDroidHeader() {
   const result = await api.getCliToolSettings("droid");
   if (!result.success) return `  ${COLORS.red}Failed to load settings${COLORS.reset}`;
 
-  const { installed, has9Router, settings } = result.data;
+  const { installed, hasGenesis, settings } = result.data;
   if (!installed) return `Status:   ${COLORS.red}✗ Factory Droid not installed${COLORS.reset}`;
 
-  if (!has9Router) {
+  if (!hasGenesis) {
     return [
       `Status:   ${COLORS.red}✗ Not configured${COLORS.reset}`,
       `${COLORS.dim}Run "Quick Setup" to configure${COLORS.reset}`
     ].join("\n");
   }
 
-  // Extract 9Router custom model config
-  const custom = settings?.customModels?.find(m => m.id === "custom:9Router-0");
+  // Extract Genesis custom model config
+  const custom = settings?.customModels?.find(m => m.id === "custom:Genesis-0");
   const lines = [`Status:   ${COLORS.green}✓ Configured${COLORS.reset}`];
   if (custom?.baseUrl) lines.push(`Endpoint: ${COLORS.cyan}${custom.baseUrl}${COLORS.reset}`);
   if (custom?.model)   lines.push(`Model:    ${COLORS.dim}${custom.model}${COLORS.reset}`);
@@ -340,20 +340,20 @@ async function buildOpenClawHeader() {
   const result = await api.getCliToolSettings("openclaw");
   if (!result.success) return `  ${COLORS.red}Failed to load settings${COLORS.reset}`;
 
-  const { installed, has9Router, settings } = result.data;
+  const { installed, hasGenesis, settings } = result.data;
   if (!installed) return `Status:   ${COLORS.red}✗ Open Claw not installed${COLORS.reset}`;
 
-  if (!has9Router) {
+  if (!hasGenesis) {
     return [
       `Status:   ${COLORS.red}✗ Not configured${COLORS.reset}`,
       `${COLORS.dim}Run "Quick Setup" to configure${COLORS.reset}`
     ].join("\n");
   }
 
-  // Extract 9Router provider config
-  const provider = settings?.models?.providers?.["9router"];
+  // Extract Genesis provider config
+  const provider = settings?.models?.providers?.["genesis"];
   const primary = settings?.agents?.defaults?.model?.primary || "";
-  const model = primary.startsWith("9router/") ? primary.replace("9router/", "") : (provider?.models?.[0]?.id || "");
+  const model = primary.startsWith("genesis/") ? primary.replace("genesis/", "") : (provider?.models?.[0]?.id || "");
   const lines = [`Status:   ${COLORS.green}✓ Configured${COLORS.reset}`];
   if (provider?.baseUrl) lines.push(`Endpoint: ${COLORS.cyan}${provider.baseUrl}${COLORS.reset}`);
   if (model)             lines.push(`Model:    ${COLORS.dim}${model}${COLORS.reset}`);
@@ -421,10 +421,10 @@ async function buildOpenCodeHeader() {
   const result = await api.getCliToolSettings("opencode");
   if (!result.success) return `  ${COLORS.red}Failed to load settings${COLORS.reset}`;
 
-  const { installed, has9Router, opencode } = result.data;
+  const { installed, hasGenesis, opencode } = result.data;
   if (!installed) return `Status:   ${COLORS.red}✗ OpenCode CLI not installed${COLORS.reset}`;
 
-  if (!has9Router) {
+  if (!hasGenesis) {
     return [
       `Status:   ${COLORS.red}✗ Not configured${COLORS.reset}`,
       `${COLORS.dim}Run "Quick Setup" to configure${COLORS.reset}`
@@ -509,10 +509,10 @@ async function buildHermesHeader() {
   const result = await api.getCliToolSettings("hermes");
   if (!result.success) return `  ${COLORS.red}Failed to load settings${COLORS.reset}`;
 
-  const { installed, has9Router, settings } = result.data;
+  const { installed, hasGenesis, settings } = result.data;
   if (!installed) return `Status:   ${COLORS.red}✗ Hermes Agent not installed${COLORS.reset}`;
 
-  if (!has9Router) {
+  if (!hasGenesis) {
     return [
       `Status:   ${COLORS.red}✗ Not configured${COLORS.reset}`,
       `${COLORS.dim}Run "Quick Setup" to configure${COLORS.reset}`
@@ -575,7 +575,7 @@ async function showCliToolsMenu(port, breadcrumb = []) {
   await showMenuWithBack({
     title: "🔧 CLI Tools",
     breadcrumb,
-    headerContent: `Configure CLI tools to use 9Router\nEndpoint: ${endpoint}`,
+    headerContent: `Configure CLI tools to use Genesis\nEndpoint: ${endpoint}`,
     items: [
       {
         label: "Claude Code",

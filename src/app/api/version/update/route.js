@@ -14,7 +14,7 @@ export async function POST(request) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   if (process.env.NODE_ENV !== "production") {
     return NextResponse.json(
-      { success: false, message: "Update is only available in production build (9router CLI)" },
+      { success: false, message: "Update is only available in production build (genesis CLI)" },
       { status: 403 }
     );
   }
@@ -28,7 +28,7 @@ export async function POST(request) {
   const targetVersion = normalizeTargetVersion(body.version);
   if (targetVersion === null) {
     return NextResponse.json(
-      { success: false, message: "Invalid 9Router version" },
+      { success: false, message: "Invalid Genesis version" },
       { status: 400 }
     );
   }

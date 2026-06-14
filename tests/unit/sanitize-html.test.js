@@ -12,19 +12,19 @@ describe("sanitizeHtml", () => {
   });
 
   it("removes javascript urls", () => {
-    const html = sanitizeHtml('<a href="javascript:alert(1)">bad</a><a href="https://9router.com">good</a>');
+    const html = sanitizeHtml('<a href="javascript:alert(1)">bad</a><a href="https://genesis.com">good</a>');
 
     expect(html).toContain("<a>bad</a>");
-    expect(html).toContain('<a href="https://9router.com">good</a>');
+    expect(html).toContain('<a href="https://genesis.com">good</a>');
     expect(html).not.toContain("javascript:");
   });
 
   it("removes obfuscated dangerous urls in fallback mode", () => {
-    const html = sanitizeHtml('<a href="java\nscript:alert(1)">bad</a><img src=data:text/html,<script>alert(1)</script>><a href="https://9router.com">good</a>');
+    const html = sanitizeHtml('<a href="java\nscript:alert(1)">bad</a><img src=data:text/html,<script>alert(1)</script>><a href="https://genesis.com">good</a>');
 
     expect(html).toContain("<a>bad</a>");
     expect(html).toContain("<img>");
-    expect(html).toContain('<a href="https://9router.com">good</a>');
+    expect(html).toContain('<a href="https://genesis.com">good</a>');
     expect(html).not.toContain("java\nscript:");
     expect(html).not.toContain("data:text/html");
   });

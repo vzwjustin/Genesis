@@ -2,7 +2,7 @@ import pkg from "../../../package.json" with { type: "json" };
 
 // App configuration
 export const APP_CONFIG = {
-  name: "9Router Proxy",
+  name: "Genesis Proxy",
   description: "AI Infrastructure Management",
   version: pkg.version,
 };
@@ -10,7 +10,7 @@ export const APP_CONFIG = {
 // Fork used for in-app updates, release list, and changelog
 export const FORK_GITHUB = {
   owner: "vzwjustin",
-  repo: "9router",
+  repo: "genesis",
   defaultBranch: "master",
 };
 
@@ -23,7 +23,7 @@ export const GITHUB_CONFIG = {
   repo: FORK_GITHUB.repo,
   changelogUrl: `https://raw.githubusercontent.com/${forkRepoSlug}/refs/heads/${FORK_GITHUB.defaultBranch}/CHANGELOG.md`,
   releasesApiUrl: `https://api.github.com/repos/${forkRepoSlug}/releases?per_page=30`,
-  donateUrl: "https://9router.com/api/donate",
+  donateUrl: "https://genesis.com/api/donate",
 };
 
 /** npm global install spec for the fork (optionally pinned to a release tag). */
@@ -41,7 +41,7 @@ export function formatInstallCommand(version) {
 
 // Updater configuration
 export const UPDATER_CONFIG = {
-  npmPackageName: "9router",
+  npmPackageName: "genesis",
   githubPackageSpec,
   installCmd: `npm i -g ${githubPackageSpec}`,
   installCmdLatest: `npm i -g ${githubPackageSpec} --prefer-online`,

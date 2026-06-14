@@ -116,7 +116,7 @@ export function isSameOriginDashboardFetch(request) {
 
 /**
  * Logged-in dashboard on loopback or LAN socket with same-origin fetch.
- * Covers hairpin access (browser on the 9Router host via its LAN IP → 127.0.0.1 socket).
+ * Covers hairpin access (browser on the Genesis host via its LAN IP → 127.0.0.1 socket).
  */
 export function isLocalDashboardSession(request) {
   const forwardedIp = getForwardedClientIp(request);

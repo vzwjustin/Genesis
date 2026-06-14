@@ -117,7 +117,7 @@ describe("wave2 — usageRepo input_tokens in 24h stats", () => {
   let sqliteDb;
 
   beforeEach(async () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-wave2-usage-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-wave2-usage-"));
     process.env.DATA_DIR = tempDir;
     vi.resetModules();
     sqliteDb = await import("@/lib/db/index.js");
@@ -156,13 +156,86 @@ describe("wave2 — usageRepo input_tokens in 24h stats", () => {
   });
 });
 
+const mitmRouteMocks = vi.hoisted(() => ({
+  json: vi.fn((body, init) => ({ status: init?.status || 200, body })),
+  getMitmStatus: vi.fn(),
+  trustCert: vi.fn(),
+  enableToolDNS: vi.fn(),
+  disableToolDNS: vi.fn(),
+  getCachedPassword: vi.fn(() => "cached"),
+  loadEncryptedPassword: vi.fn(async () => null),
+  setCachedPassword: vi.fn(),
+  isSudoPasswordRequired: vi.fn(() => false),
+  initDbHooks: vi.fn(),
+  getSettings: vi.fn(async () => ({})),
+  updateSettings: vi.fn(),
+}));
+
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
+describe("wave2 — antigravity-mitm PATCH trust-cert", () => {
+  let PATCH;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mitmRouteMocks.getMitmStatus.mockResolvedValue({ certTrusted: true });
+    mitmRouteMocks.trustCert.mockResolvedValue(undefined);
+
+    vi.doMock("next/server", () => ({
+      NextResponse: { json: mitmRouteMocks.json },
+    }));
+    vi.doMock("@/mitm/manager", () => ({
+      getMitmStatus: mitmRouteMocks.getMitmStatus,
+      trustCert: mitmRouteMocks.trustCert,
+      enableToolDNS: mitmRouteMocks.enableToolDNS,
+      disableToolDNS: mitmRouteMocks.disableToolDNS,
+      getCachedPassword: mitmRouteMocks.getCachedPassword,
+      loadEncryptedPassword: mitmRouteMocks.loadEncryptedPassword,
+      setCachedPassword: mitmRouteMocks.setCachedPassword,
+      isSudoPasswordRequired: mitmRouteMocks.isSudoPasswordRequired,
+      initDbHooks: mitmRouteMocks.initDbHooks,
+      startServer: vi.fn(),
+      stopServer: vi.fn(),
+    }));
+    vi.doMock("@/lib/localDb", () => ({
+      getSettings: mitmRouteMocks.getSettings,
+      updateSettings: mitmRouteMocks.updateSettings,
+    }));
+
+    ({ PATCH } = await import("../../src/app/api/cli-tools/antigravity-mitm/route.js"));
+  });
+
+  it("accepts trust-cert without tool", async () => {
+    const response = await PATCH({
+      json: async () => ({ action: "trust-cert", sudoPassword: "pw" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.certTrusted).toBe(true);
+    expect(mitmRouteMocks.trustCert).toHaveBeenCalledWith("pw");
+  });
+
+  it("still requires tool for DNS enable", async () => {
+    const response = await PATCH({
+      json: async () => ({ action: "enable" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("tool required");
+    expect(mitmRouteMocks.enableToolDNS).not.toHaveBeenCalled();
+  });
+});
+
 describe("wave2 — MITM stopServer DNS cleanup finally", () => {
   const originalDataDir = process.env.DATA_DIR;
   let tempDir;
   let manager;
 
   beforeEach(async () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-wave2-mitm-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-wave2-mitm-"));
     process.env.DATA_DIR = tempDir;
     vi.resetModules();
     mitmDnsMocks.removeAllDNSEntries.mockReset();

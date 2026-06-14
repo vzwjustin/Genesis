@@ -209,7 +209,7 @@ async function pipeOpenAIasConnectRPC(routerRes, res, protobuf) {
 
 /**
  * Intercept Cursor IDE ConnectRPC chat requests:
- * decode proto → OpenAI → 9router SSE → re-encode ConnectRPC frames.
+ * decode proto → OpenAI → genesis SSE → re-encode ConnectRPC frames.
  */
 async function intercept(req, res, bodyBuffer, _mappedModel, passthrough) {
   try {

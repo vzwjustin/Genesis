@@ -27,7 +27,9 @@ function getLinuxCertConfig() {
   // Fallback to Debian default if none exist
   return LINUX_CERT_PATHS[0];
 }
-const ROOT_CA_CN = "9Router MITM Root CA";
+const ROOT_CA_CN = "Genesis MITM Root CA";
+/** Pre-rebrand certs migrated from ~/.9router still use this CN in the keychain. */
+const LEGACY_ROOT_CA_CNS = ["9Router MITM Root CA", "9router MITM Root CA"];
 
 // Get SHA1 fingerprint from cert file using Node.js crypto
 function getCertFingerprint(certPath) {
@@ -51,17 +53,12 @@ async function checkCertInstalled(certPath) {
 function checkCertInstalledMac(certPath) {
   return new Promise((resolve) => {
     try {
-      const fingerprint = getCertFingerprint(certPath).replace(/:/g, "");
-      // Verify exact cert bytes match — same CN with different fingerprint = stale cert
-      exec(`security find-certificate -a -c "${ROOT_CA_CN}" -Z /Library/Keychains/System.keychain 2>/dev/null`, { windowsHide: true }, (error, stdout) => {
-        if (error || !stdout) return resolve(false);
-        const match = new RegExp(`SHA-1 hash:\\s*${fingerprint}`, "i").test(stdout);
-        if (!match) return resolve(false);
-        // Cert exists with matching fingerprint — confirm trust policy
-        exec(`security verify-cert -c "${certPath}" -p ssl -k /Library/Keychains/System.keychain 2>/dev/null`, { windowsHide: true }, (err2) => {
-          resolve(!err2);
-        });
-      });
+      // CN-agnostic: matches migrated 9Router CAs and Genesis CAs by file bytes + trust policy
+      exec(
+        `security verify-cert -c "${certPath}" -p ssl -k /Library/Keychains/System.keychain 2>/dev/null`,
+        { windowsHide: true },
+        (err) => resolve(!err),
+      );
     } catch {
       resolve(false);
     }
@@ -107,8 +104,15 @@ async function installCert(sudoPassword, certPath) {
 }
 
 async function installCertMac(sudoPassword, certPath) {
-  // Remove all old certs with same name first to avoid duplicate/stale cert conflict
-  const deleteOld = `security delete-certificate -c "9Router MITM Root CA" /Library/Keychains/System.keychain 2>/dev/null || true`;
+  const fingerprint = getCertFingerprint(certPath).replace(/:/g, "");
+  const legacyDeletes = LEGACY_ROOT_CA_CNS.map(
+    (cn) => `security delete-certificate -c "${cn}" /Library/Keychains/System.keychain 2>/dev/null || true`,
+  ).join("; ");
+  const deleteOld = [
+    legacyDeletes,
+    `security delete-certificate -c "${ROOT_CA_CN}" /Library/Keychains/System.keychain 2>/dev/null || true`,
+    `security delete-certificate -Z "${fingerprint}" /Library/Keychains/System.keychain 2>/dev/null || true`,
+  ].join("; ");
   const install = `security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`;
   try {
     await execWithPassword(`${deleteOld} && ${install}`, sudoPassword);
@@ -178,12 +182,12 @@ async function uninstallCertWindows() {
 
 function checkCertInstalledLinux() {
   const config = getLinuxCertConfig();
-  const certFile = `${config.dir}/9router-root-ca.crt`;
+  const certFile = `${config.dir}/genesis-root-ca.crt`;
   return Promise.resolve(fs.existsSync(certFile));
 }
 
 async function updateNssDatabases(certPath, action = 'add') {
-  const certName = "9Router MITM Root CA";
+  const certName = "Genesis MITM Root CA";
   
   const script = `
     if ! command -v certutil &> /dev/null; then
@@ -235,7 +239,7 @@ async function installCertLinux(sudoPassword, certPath) {
   }
   
   const config = getLinuxCertConfig();
-  const destFile = `${config.dir}/9router-root-ca.crt`;
+  const destFile = `${config.dir}/genesis-root-ca.crt`;
   
   // Copy to the discovered directory and execute the specific update command
   const cmd = `cp "${certPath}" "${destFile}" && (${config.cmd} 2>/dev/null || true)`;
@@ -258,7 +262,7 @@ async function uninstallCertLinux(sudoPassword) {
   }
   
   const config = getLinuxCertConfig();
-  const destFile = `${config.dir}/9router-root-ca.crt`;
+  const destFile = `${config.dir}/genesis-root-ca.crt`;
   const cmd = `rm -f "${destFile}" && (${config.cmd} 2>/dev/null || true)`;
   
   try {

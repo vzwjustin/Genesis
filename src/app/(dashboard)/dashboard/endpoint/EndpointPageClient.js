@@ -1417,7 +1417,7 @@ export default function APIPageClient({ machineId }) {
                   Cloudflare Tunnel
                 </p>
                 <p className="text-sm text-text-muted">
-                  Make your local 9Router reachable from the internet — no router or network setup needed. Share the endpoint URL with your team, or use it in Cursor, Cline, and other AI tools from anywhere.
+                  Make your local Genesis reachable from the internet — no router or network setup needed. Share the endpoint URL with your team, or use it in Cursor, Cline, and other AI tools from anywhere.
                 </p>
               </div>
             </div>
