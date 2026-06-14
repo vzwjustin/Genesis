@@ -18,10 +18,7 @@ export default function ThemeToggle({ className, variant = "default" }) {
       "hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
     ),
     card: cn(
-      "flex items-center justify-center size-11 rounded-full",
-      "bg-surface/60 hover:bg-surface",
-      "border border-border",
-      "backdrop-blur-md shadow-sm hover:shadow-md",
+      "flex items-center justify-center size-11 rounded-full glass-btn-soft",
       "text-text-muted hover:text-brand-500",
       "transition-all group"
     ),

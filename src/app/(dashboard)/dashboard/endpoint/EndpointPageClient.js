@@ -1029,7 +1029,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelLoading ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded glass-readout text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   {tunnelProgress || "Creating tunnel..."}
                 </div>
@@ -1050,7 +1050,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelChecking ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded glass-readout text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   Checking...
                 </div>
@@ -1120,7 +1120,7 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : (tsLoading || tsConnecting) ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-input text-sm text-text-muted">
+                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded glass-readout text-sm text-text-muted">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                   {tsProgress || "Connecting..."}
                 </div>
@@ -1626,7 +1626,7 @@ function Tooltip({ text }) {
   return (
     <span className="relative group inline-flex items-center">
       <span className="material-symbols-outlined text-[14px] text-text-muted cursor-help">help</span>
-      <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 w-64 rounded bg-gray-900 text-white text-xs px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+      <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 w-64 rounded-lg glass-panel border-0 px-2.5 py-1.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
         {text}
       </span>
     </span>

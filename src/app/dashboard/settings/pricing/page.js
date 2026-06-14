@@ -104,7 +104,7 @@ export default function PricingSettingsPage() {
             Total Models
           </div>
           <div className="text-2xl font-semibold tracking-tight">
-            {loading ? <span className="inline-block h-7 w-12 animate-pulse rounded bg-surface-2" /> : getModelCount()}
+            {loading ? <span className="inline-block h-7 w-12 animate-pulse rounded glass-skeleton" /> : getModelCount()}
           </div>
         </div>
         <div className="glass-stat flex flex-col gap-1 p-4 transition-shadow">
@@ -112,7 +112,7 @@ export default function PricingSettingsPage() {
             Providers
           </div>
           <div className="text-2xl font-semibold tracking-tight">
-            {loading ? <span className="inline-block h-7 w-12 animate-pulse rounded bg-surface-2" /> : getProviders().length}
+            {loading ? <span className="inline-block h-7 w-12 animate-pulse rounded glass-skeleton" /> : getProviders().length}
           </div>
         </div>
         <div className="glass-stat flex flex-col gap-1 p-4 transition-shadow">
@@ -120,7 +120,7 @@ export default function PricingSettingsPage() {
             Status
           </div>
           <div className={`text-2xl font-semibold tracking-tight ${loadError ? "text-danger" : "text-success"}`}>
-            {loading ? <span className="inline-block h-7 w-16 animate-pulse rounded bg-surface-2" /> : loadError ? "Error" : "Active"}
+            {loading ? <span className="inline-block h-7 w-16 animate-pulse rounded glass-skeleton" /> : loadError ? "Error" : "Active"}
           </div>
         </div>
       </div>
@@ -169,7 +169,7 @@ export default function PricingSettingsPage() {
         {loading ? (
           <div className="space-y-3 py-2">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-5 animate-pulse rounded bg-surface-2" style={{ width: `${70 - i * 10}%` }} />
+              <div key={i} className="h-5 animate-pulse rounded glass-skeleton" style={{ width: `${70 - i * 10}%` }} />
             ))}
           </div>
         ) : loadError ? (

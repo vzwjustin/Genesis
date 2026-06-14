@@ -209,7 +209,7 @@ useEffect(() => {
             <>
               <InlineAlert
                 variant="info"
-                title={<>Writes to <code className="px-1 bg-surface-2 rounded">chatLanguageModels.json</code></>}
+                title={<>Writes to <code className="glass-code px-1">chatLanguageModels.json</code></>}
                 message="Reload VS Code after applying for changes to take effect."
               />
 
@@ -256,7 +256,7 @@ useEffect(() => {
                       )}
                     </div>
                     <div>
-                      <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1 rounded border text-xs transition-colors ${activeProviders?.length ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}>Add Model</button>
+                      <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1 rounded border text-xs transition-colors ${activeProviders?.length ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed glass-control border-0"}`}>Add Model</button>
                     </div>
                   </div>
                 </div>

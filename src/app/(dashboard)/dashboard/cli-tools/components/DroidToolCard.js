@@ -260,9 +260,9 @@ useEffect(() => {
                   <div className="space-y-3 text-sm">
                     <div>
                       <p className="text-text-muted mb-1">macOS / Linux / Windows:</p>
-                      <code className="block px-3 py-2 bg-surface-2 rounded font-mono text-xs">curl -fsSL https://app.factory.ai/cli | sh</code>
+                      <code className="glass-code block px-3 py-2 font-mono text-xs">curl -fsSL https://app.factory.ai/cli | sh</code>
                     </div>
-                    <p className="text-text-muted">After installation, run <code className="px-1 bg-surface-2 rounded">droid</code> to verify.</p>
+                    <p className="text-text-muted">After installation, run <code className="glass-code px-1">droid</code> to verify.</p>
                   </div>
                 </div>
               )}
@@ -333,12 +333,12 @@ useEffect(() => {
                         onChange={(e) => setModelInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addModel(); } }}
                         placeholder="provider/model-id"
-                        className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 sm:py-1.5"
+                        className="w-full min-w-0 px-2 py-2 glass-input rounded text-xs sm:py-1.5"
                       />
                       <button
                         onClick={() => setModalOpen(true)}
                         disabled={!hasActiveProviders}
-                        className={`px-2 py-1.5 rounded text-xs font-medium shrink-0 ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed border border-border"}`}
+                        className={`px-2 py-1.5 rounded text-xs font-medium shrink-0 ${hasActiveProviders ? "dashboard-chip-active cursor-pointer" : "opacity-50 cursor-not-allowed glass-control border-0"}`}
                       >
                         Select
                       </button>

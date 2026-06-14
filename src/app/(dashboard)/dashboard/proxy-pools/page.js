@@ -758,7 +758,7 @@ export default function ProxyPoolsPage() {
               value={batchImportText}
               onChange={(e) => setBatchImportText(e.target.value)}
               placeholder={"http://user:pass@127.0.0.1:7897\n127.0.0.1:7897:user:pass"}
-              className="w-full min-h-[180px] py-2 px-3 text-sm text-text-main bg-surface border border-border rounded-brand focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 focus:outline-none transition-all"
+              className="w-full min-h-[180px] py-2 px-3 text-sm text-text-main glass-input rounded-brand focus:outline-none transition-all"
             />
             <p className="text-xs text-text-muted mt-1">
               Supported formats: protocol://user:pass@host:port, host:port:user:pass
@@ -978,7 +978,7 @@ export default function ProxyPoolsPage() {
             hint="Comma-separated hosts/domains to bypass proxy"
           />
 
-          <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 glass-stat border-0 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-medium text-sm">Active</p>
               <p className="text-xs text-text-muted">Inactive pools won&apos;t be used when routing requests.</p>
@@ -990,7 +990,7 @@ export default function ProxyPoolsPage() {
             />
           </div>
 
-          <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 glass-stat border-0 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-medium text-sm">Strict Proxy</p>
               <p className="text-xs text-text-muted">If the proxy is unreachable, fail the request instead of sending it directly (which would reveal your real IP).</p>

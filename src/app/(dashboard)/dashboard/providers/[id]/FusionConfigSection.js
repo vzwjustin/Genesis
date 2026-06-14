@@ -165,7 +165,7 @@ export default function FusionConfigSection({ connections, onSaved }) {
           <select
             value={selected.id}
             onChange={(e) => setSelectedId(e.target.value)}
-            className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-sm"
+            className="glass-input rounded-md px-2 py-1.5 text-sm"
           >
             {connections.map((c) => (
               <option key={c.id} value={c.id}>
@@ -194,7 +194,7 @@ export default function FusionConfigSection({ connections, onSaved }) {
             onChange={(e) => setModelsText(e.target.value)}
             rows={4}
             placeholder={"anthropic/claude-opus-latest\nopenai/gpt-latest\ngoogle/gemini-pro-latest"}
-            className="rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-xs leading-relaxed"
+            className="glass-code rounded-md px-3 py-2 font-mono text-xs leading-relaxed block w-full"
           />
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-text-muted">Presets:</span>

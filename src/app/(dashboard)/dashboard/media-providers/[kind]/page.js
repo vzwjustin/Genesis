@@ -249,7 +249,7 @@ export default function MediaProviderKindPage() {
       )}
 
       {allProviders.length === 0 ? (
-        <div className="glass-panel text-center py-12 border border-dashed border-border rounded-xl text-text-muted text-sm">
+        <div className="glass-panel glass-dashed-action text-center py-12 rounded-xl text-text-muted text-sm">
           No providers support <strong>{kindConfig.label}</strong> yet.
         </div>
       ) : (

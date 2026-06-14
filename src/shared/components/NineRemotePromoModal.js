@@ -65,7 +65,7 @@ export default function NineRemotePromoModal({ isOpen, onClose }) {
           {/* Feature cards */}
           <div className="flex gap-2 w-full">
             {FEATURES.map(({ icon, label, desc }) => (
-              <div key={label} className="flex-1 flex flex-col items-center gap-1.5 py-4 px-1 rounded-[10px] border border-border-subtle bg-surface-2">
+              <div key={label} className="flex-1 flex flex-col items-center gap-1.5 py-4 px-1 rounded-[10px] glass-stat border-0">
                 <span className="material-symbols-outlined text-primary text-[22px]">{icon}</span>
                 <p className="text-xs font-semibold text-text-main">{label}</p>
                 <p className="text-[10px] text-text-muted text-center leading-4">{desc}</p>

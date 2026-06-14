@@ -130,7 +130,7 @@ function Section({ title, icon, kind, providers, connections, combos, onCreateCo
 
       {/* Providers grid — bottom */}
       {providers.length === 0 ? (
-        <div className="glass-panel text-center py-8 border border-dashed border-border rounded-xl text-text-muted text-sm">
+        <div className="glass-panel glass-dashed-action text-center py-8 rounded-xl text-text-muted text-sm">
           No providers.
         </div>
       ) : (

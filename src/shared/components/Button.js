@@ -4,8 +4,8 @@ import { cn } from "@/shared/utils/cn";
 
 const variants = {
   primary: "bg-brand-500 hover:bg-brand-600 text-[#0B0D14] shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
-  secondary: "bg-surface text-text-main border border-border dashboard-row-hover disabled:opacity-50",
-  outline: "border border-border bg-surface text-text-main dashboard-row-hover",
+  secondary: "glass-btn-soft text-text-main disabled:opacity-50",
+  outline: "glass-btn-soft text-text-main",
   ghost: "text-text-muted dashboard-row-hover hover:text-text-main",
   danger: "bg-danger hover:bg-danger/90 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
   success: "bg-success hover:bg-success/90 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",

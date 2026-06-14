@@ -27,7 +27,7 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
       <span className="text-[10px] font-medium text-text-muted w-3 text-center shrink-0">{index + 1}</span>
       {editing ? (
         <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={handleKeyDown}
-          className="min-w-0 flex-1 rounded border border-primary/40 bg-surface px-1.5 py-0.5 font-mono text-xs text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40" />
+          className="min-w-0 flex-1 rounded glass-input px-1.5 py-0.5 font-mono text-xs text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40" />
       ) : (
         <div className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main dashboard-row-hover transition-colors"
           onClick={() => setEditing(true)} title="Click to edit">{model}</div>
@@ -117,9 +117,9 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
               <>
                 <label className="text-sm font-medium mb-1 block">Combo Name</label>
                 <div className="flex items-stretch">
-                  <span className="inline-flex items-center px-2 rounded-l border border-r-0 border-border bg-surface-2 text-text-muted font-mono text-sm">{forcePrefix}</span>
+                  <span className="glass-code inline-flex items-center px-2 rounded-l border-r-0 text-text-muted font-mono text-sm">{forcePrefix}</span>
                   <input value={name} onChange={handleNameChange} placeholder="my-combo"
-                    className="flex-1 min-w-0 rounded-r border border-border bg-surface-2 px-2 py-1.5 font-mono text-sm outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40" />
+                    className="glass-input flex-1 min-w-0 rounded-r px-2 py-1.5 font-mono text-sm outline-none" />
                 </div>
                 {nameError && <p className="text-[11px] text-danger mt-0.5">{nameError}</p>}
               </>
@@ -134,7 +134,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
           <div>
             <label className="text-sm font-medium mb-1.5 block">Models</label>
             {models.length === 0 ? (
-              <div className="text-center py-4 rounded-lg glass-panel border border-dashed border-border">
+              <div className="glass-dashed-action text-center py-4 rounded-lg">
                 <span className="material-symbols-outlined text-text-muted text-xl mb-1">layers</span>
                 <p className="text-xs text-text-muted">No models added yet</p>
               </div>

@@ -543,7 +543,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         {(step === "waiting" || step === "input") && !isDeviceCode && (
           <>
             {/* Option A: Auto via popup */}
-            <div className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg bg-sidebar/50">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg glass-stat border-0">
               <span className="material-symbols-outlined text-base text-primary animate-spin">
                 progress_activity
               </span>

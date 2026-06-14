@@ -940,7 +940,6 @@ button {
 
 /* Light glass cards on dashboard main */
 .glass-panel {
-  border-radius: 18px;
   border: 1px solid var(--glass-edge);
   background: linear-gradient(
     165deg,
@@ -971,7 +970,6 @@ button {
 }
 
 .glass-stat {
-  border-radius: 16px;
   border: 1px solid var(--glass-edge);
   background: linear-gradient(
     165deg,
@@ -1203,6 +1201,407 @@ button {
     rgba(255, 255, 255, 0.04) 100%
   ) !important;
   border-color: var(--glass-edge-subtle) !important;
+}
+
+/* bg-surface-2 form fields — common on provider/media detail pages */
+.dashboard-main-shell input[class*="bg-surface-2"]:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+.dashboard-main-shell select[class*="bg-surface-2"],
+.dashboard-main-shell textarea[class*="bg-surface-2"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.68) 0%,
+    rgba(255, 255, 255, 0.44) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-input)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-input)) saturate(var(--glass-saturate-input));
+  border-color: var(--glass-edge) !important;
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .dashboard-main-shell input[class*="bg-surface-2"]:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+.dark .dashboard-main-shell select[class*="bg-surface-2"],
+.dark .dashboard-main-shell textarea[class*="bg-surface-2"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle) !important;
+}
+
+.dashboard-main-shell input[class*="bg-surface-2"]:focus-visible,
+.dashboard-main-shell select[class*="bg-surface-2"]:focus-visible,
+.dashboard-main-shell textarea[class*="bg-surface-2"]:focus-visible {
+  border-color: rgba(201, 168, 76, 0.45) !important;
+  box-shadow: var(--glass-highlight-soft), var(--shadow-focus);
+}
+
+/* Compact toolbar / filter controls on dashboard pages */
+.glass-control {
+  border: 1px solid var(--glass-edge);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.38) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dark .glass-control {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+.glass-control:hover:not(:disabled) {
+  border-color: rgba(201, 168, 76, 0.35);
+  box-shadow: var(--glass-highlight-soft), 0 4px 12px -8px rgba(15, 23, 42, 0.12);
+}
+
+.dark .glass-control:hover:not(:disabled) {
+  border-color: rgba(201, 168, 76, 0.28);
+  box-shadow: var(--glass-highlight-soft), 0 4px 14px -10px rgba(0, 0, 0, 0.4);
+}
+
+.glass-control:focus-visible {
+  outline: 2px solid rgba(201, 168, 76, 0.45);
+  outline-offset: 1px;
+}
+
+/* Soft glass buttons — inherits border-radius from parent (e.g. rounded-full) */
+.glass-btn-soft {
+  border: 1px solid var(--glass-edge);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.68) 0%,
+    rgba(255, 255, 255, 0.42) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dark .glass-btn-soft {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+.glass-btn-soft:hover:not(:disabled) {
+  border-color: rgba(201, 168, 76, 0.35);
+  box-shadow: var(--glass-highlight-soft), 0 4px 14px -8px rgba(15, 23, 42, 0.14);
+}
+
+.dark .glass-btn-soft:hover:not(:disabled) {
+  border-color: rgba(201, 168, 76, 0.28);
+}
+
+/* Read-only value wells (endpoint tunnel status, etc.) */
+.glass-readout {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.28) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .glass-readout {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+/* bg-input / translucent search fields in dashboard shell */
+.dashboard-main-shell [class*="bg-input"],
+.dashboard-main-shell input[class*="bg-surface/60"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.38) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-input)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-input)) saturate(var(--glass-saturate-input));
+  border-color: var(--glass-edge) !important;
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .dashboard-main-shell [class*="bg-input"],
+.dark .dashboard-main-shell input[class*="bg-surface/60"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle) !important;
+}
+
+.dashboard-main-shell code[class*="bg-surface-2/80"] {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(255, 255, 255, 0.28) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .dashboard-main-shell code[class*="bg-surface-2/80"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.03) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle);
+}
+
+/* File inputs on glass forms */
+.dashboard-main-shell input[type="file"][class*="file:bg-surface-2"]::file-selector-button,
+.dashboard-main-shell input[type="file"][class*="file:border-border"]::file-selector-button {
+  border: 1px solid var(--glass-edge) !important;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.38) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+}
+
+.dark .dashboard-main-shell input[type="file"][class*="file:bg-surface-2"]::file-selector-button {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle) !important;
+}
+
+/* Selectable option cards in auth modals */
+.glass-option-card {
+  border: 1px solid var(--glass-edge);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.3) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.dark .glass-option-card {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+.glass-option-card:hover {
+  border-color: rgba(201, 168, 76, 0.4);
+  box-shadow: var(--glass-highlight-soft), 0 6px 18px -10px rgba(15, 23, 42, 0.16);
+}
+
+.dark .glass-option-card:hover {
+  border-color: rgba(201, 168, 76, 0.32);
+}
+
+/* Compact frosted badges / pills */
+.glass-badge {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.28) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .glass-badge {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+/* Dark frosted tooltips */
+.glass-tooltip {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(11, 13, 20, 0.88);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate-input));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 8px 24px -10px rgba(0, 0, 0, 0.55);
+  color: #f8fafc;
+}
+
+/* Inline monospace snippets inside glass panels */
+.glass-code {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.32) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .glass-code {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+/* Auto-glass inline code that still uses bg-surface-2 utility classes */
+.dashboard-main-shell code[class*="bg-surface-2"] {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.32) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .dashboard-main-shell code[class*="bg-surface-2"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle);
+}
+
+/* Read-only value chips in CLI tool cards */
+.dashboard-main-shell [class*="bg-surface/40"] {
+  border: 1px solid var(--glass-edge-subtle);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.22) 100%
+  ) !important;
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  box-shadow: var(--glass-highlight-soft);
+}
+
+.dark .dashboard-main-shell [class*="bg-surface/40"] {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 100%
+  ) !important;
+  border-color: var(--glass-edge-subtle);
+}
+
+/* Table headers inside glass panels */
+.glass-panel table thead tr,
+.glass-stat table thead tr {
+  border-bottom: 1px solid var(--glass-edge-subtle);
+}
+
+.glass-panel table thead th,
+.glass-stat table thead th {
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+}
+
+.dark .glass-panel table thead th,
+.dark .glass-stat table thead th {
+  background: color-mix(in srgb, var(--color-surface-2) 65%, transparent);
+}
+
+/* Dashed action rows (add provider, add model, etc.) */
+.glass-dashed-action {
+  border: 1px dashed var(--glass-edge);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  -webkit-backdrop-filter: blur(var(--glass-blur-xs)) saturate(var(--glass-saturate-input));
+  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dark .glass-dashed-action {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  border-color: var(--glass-edge-subtle);
+}
+
+.glass-dashed-action:hover {
+  border-color: rgba(201, 168, 76, 0.45);
+  box-shadow: var(--glass-highlight-soft);
+}
+
+/* Defaults live in components layer so Tailwind rounded-* utilities can override */
+@layer components {
+  .glass-panel {
+    border-radius: 18px;
+  }
+
+  .glass-stat {
+    border-radius: 16px;
+  }
+
+  .glass-control {
+    border-radius: 0.5rem;
+  }
+
+  .glass-dashed-action {
+    border-radius: 0.5rem;
+  }
+
+  .glass-readout {
+    border-radius: 0.375rem;
+  }
+
+  .glass-option-card {
+    border-radius: 0.5rem;
+  }
+
+  .glass-code {
+    border-radius: 0.375rem;
+  }
 }
 
 .glass-inset-panel {
@@ -1564,6 +1963,14 @@ button {
   .dashboard-segment-group,
   .dashboard-segment-flex,
   .glass-input,
+  .glass-control,
+  .glass-btn-soft,
+  .glass-readout,
+  .glass-option-card,
+  .glass-badge,
+  .glass-tooltip,
+  .glass-code,
+  .glass-dashed-action,
   .landing-glass-card,
   .landing-glass-terminal,
   .landing-glass-cta,
@@ -1606,6 +2013,34 @@ button {
   .glass-overlay,
   .glass-overlay-heavy {
     background: rgba(11, 13, 20, 0.88) !important;
+  }
+
+  .glass-panel table thead th,
+  .glass-stat table thead th {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--color-surface-2) !important;
+  }
+
+  .glass-control,
+  .glass-btn-soft,
+  .glass-readout,
+  .glass-option-card,
+  .glass-badge,
+  .glass-tooltip,
+  .glass-code,
+  .glass-dashed-action {
+    background: var(--color-surface-2) !important;
+    border-color: var(--color-border-subtle) !important;
+  }
+
+  .dark .glass-control,
+  .dark .glass-btn-soft,
+  .dark .glass-readout,
+  .dark .glass-option-card,
+  .dark .glass-code,
+  .dark .glass-dashed-action {
+    background: var(--color-surface-3) !important;
   }
 
   .landing-glass-btn {

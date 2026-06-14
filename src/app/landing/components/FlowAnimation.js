@@ -31,7 +31,7 @@ const PROVIDERS = [
   {
     id: "github",
     name: "GitHub Copilot",
-    color: "bg-gray-700",
+    color: "bg-[#16132A]",
     textColor: "text-white",
   },
 ];

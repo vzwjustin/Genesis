@@ -7,9 +7,9 @@ const STYLES = {
   connected: "bg-success/10 text-success",
   not_configured: "bg-warning/10 text-warning",
   other: "bg-info/10 text-info",
-  not_installed: "bg-surface-3 text-text-muted",
+  not_installed: "glass-badge text-text-muted",
   remote_setup: "bg-info/10 text-info",
-  unknown: "bg-surface-3 text-text-muted",
+  unknown: "glass-badge text-text-muted",
 };
 
 const LABELS = {

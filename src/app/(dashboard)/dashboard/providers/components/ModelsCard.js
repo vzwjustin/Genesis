@@ -82,7 +82,7 @@ function AddCustomModelModal({ isOpen, onSave, onClose }) {
         <div>
           <label className="text-xs text-text-muted mb-1 block">Model ID</label>
           <input
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface-2 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 transition-all"
+            className="w-full px-3 py-2 text-sm glass-input rounded-lg transition-all"
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
@@ -268,7 +268,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
 
           <button
             onClick={() => setShowAddCustomModel(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
+            className="glass-dashed-action flex items-center gap-1.5 px-3 py-2 text-xs text-text-muted transition-colors hover:text-brand-500"
           >
             <span className="material-symbols-outlined text-sm">add</span>
             Add Model

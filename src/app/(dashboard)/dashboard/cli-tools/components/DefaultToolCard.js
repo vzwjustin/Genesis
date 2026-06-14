@@ -62,7 +62,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           value={modelValue}
           onChange={(e) => setModelValue(e.target.value)}
           placeholder="provider/model-id"
-          className="w-full sm:w-auto flex-1 px-3 py-2 bg-surface-2 rounded-lg text-sm border border-border focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+          className="w-full sm:w-auto flex-1 px-3 py-2 glass-input rounded-lg text-sm"
         />
         <button
           onClick={() => setShowModelModal(true)}
@@ -70,7 +70,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           className={`shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
             hasActiveProviders
               ? "dashboard-chip-active cursor-pointer"
-              : "opacity-50 cursor-not-allowed border border-border"
+              : "opacity-50 cursor-not-allowed glass-control border-0"
           }`}
         >
           Select Model

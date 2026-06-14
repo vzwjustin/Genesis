@@ -78,7 +78,7 @@ export default function RequestLogSessionModal({ sessionName, onClose }) {
       ) : (
         <div className="flex flex-col gap-3 min-h-[320px]">
           <div className="flex flex-wrap items-center gap-2">
-            <code className="text-xs font-mono bg-surface-2 px-2 py-1 rounded truncate max-w-full">{session?.name}</code>
+            <code className="text-xs font-mono glass-code px-2 py-1 rounded truncate max-w-full">{session?.name}</code>
             {session?.hasError ? (
               <Badge variant="error" size="sm">failed</Badge>
             ) : (

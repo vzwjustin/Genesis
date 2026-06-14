@@ -181,7 +181,7 @@ export default function RequestDetailsTab() {
               value={filters.provider}
               onChange={(e) => setFilters({ ...filters, provider: e.target.value })}
               className={cn(
-                "h-9 px-3 rounded-lg border border-border bg-surface",
+                "h-9 px-3 rounded-lg glass-input",
                 "text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40",
                 "w-full min-w-0 cursor-pointer"
               )}
@@ -204,7 +204,7 @@ export default function RequestDetailsTab() {
               value={filters.startDate}
               onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
               className={cn(
-                "h-9 px-3 rounded-lg border border-border bg-surface",
+                "h-9 px-3 rounded-lg glass-input",
                 "w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
               )}
             />
@@ -218,7 +218,7 @@ export default function RequestDetailsTab() {
               value={filters.endDate}
               onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
               className={cn(
-                "h-9 px-3 rounded-lg border border-border bg-surface",
+                "h-9 px-3 rounded-lg glass-input",
                 "w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
               )}
             />

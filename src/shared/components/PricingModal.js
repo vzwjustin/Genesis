@@ -166,7 +166,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
               {allProviders.map(provider => {
                 const models = Object.keys(pricingData[provider]).sort();
                 return (
-                  <div key={provider} className="border border-border rounded-lg overflow-hidden">
+                  <div key={provider} className="glass-panel overflow-hidden rounded-lg border-0">
                     <div className="glass-stat border-0 px-4 py-2 font-semibold text-sm">
                       {providerLabel(provider)}
                       <span className="ml-2 text-text-muted font-normal">
@@ -175,7 +175,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-surface-2 text-text-muted uppercase text-xs">
+                        <thead className="text-text-muted uppercase text-xs">
                           <tr>
                             <th className="px-3 py-2 text-left">Model</th>
                             <th className="px-3 py-2 text-right">Input</th>
@@ -197,7 +197,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                                     min="0"
                                     value={pricingData[provider][model][field] || 0}
                                     onChange={(e) => handlePricingChange(provider, model, field, e.target.value)}
-                                    className="w-20 px-2 py-1 text-right bg-surface-2 border border-border rounded focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+                                    className="glass-input w-20 px-2 py-1 text-right"
                                   />
                                 </td>
                               ))}
@@ -231,7 +231,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm text-text-muted hover:text-text border border-border rounded transition-colors"
+              className="glass-btn-soft px-4 py-2 text-sm text-text-muted hover:text-text rounded transition-colors"
               disabled={saving}
             >
               Cancel

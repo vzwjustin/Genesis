@@ -112,12 +112,12 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or description..."
-            className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+            className="glass-input flex-1 px-2 py-1.5 rounded text-xs"
           />
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40"
+            className="glass-input px-2 py-1.5 rounded text-xs"
           >
             <option value="all">All</option>
             <option value="authless">Authless</option>
@@ -156,7 +156,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={s.iconUrl} alt="" className="size-7 rounded shrink-0 object-contain" onError={(e) => { e.target.style.display = "none"; }} />
                     ) : (
-                      <div className="size-7 rounded bg-surface shrink-0" />
+                      <div className="size-7 rounded glass-stat border-0 shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -181,7 +181,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                         added
                           ? "bg-success/10 text-success cursor-default"
                           : expanded
-                          ? "bg-surface border border-border text-text-muted dashboard-row-hover transition-colors"
+                          ? "glass-control text-text-muted"
                           : "dashboard-filter-active border border-transparent font-medium"
                       }`}
                     >
@@ -189,7 +189,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
                     </button>
                   </div>
                   {expanded && (
-                    <div className="px-3 py-2 bg-surface/40 border-t border-border flex flex-col gap-2">
+                    <div className="px-3 py-2 glass-stat border-0 border-t border-border-subtle flex flex-col gap-2">
                       {isLoadingTools && (
                         <div className="flex items-center gap-2 text-text-muted text-[10px] py-1">
                           <span className="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>

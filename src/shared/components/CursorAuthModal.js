@@ -179,7 +179,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose, existingCo
                 onChange={(e) => setAccessToken(e.target.value)}
                 placeholder="Access token will be auto-filled..."
                 rows={3}
-                className="w-full px-3 py-2 text-sm font-mono border border-border rounded-lg bg-surface-2 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40 transition-all resize-none"
+                className="w-full px-3 py-2 text-sm font-mono glass-input rounded-lg resize-none"
               />
             </div>
 

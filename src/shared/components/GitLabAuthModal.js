@@ -108,7 +108,7 @@ export default function GitLabAuthModal({ isOpen, providerInfo, onSuccess, onClo
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setMode("oauth")}
-                className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border dashboard-row-hover transition-colors text-left"
+                className="flex flex-col items-center gap-2 p-4 rounded-lg glass-option-card transition-colors text-left"
               >
                 <span className="material-symbols-outlined text-2xl text-brand-500">lock_open</span>
                 <div>
@@ -118,7 +118,7 @@ export default function GitLabAuthModal({ isOpen, providerInfo, onSuccess, onClo
               </button>
               <button
                 onClick={() => setMode("pat")}
-                className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border dashboard-row-hover transition-colors text-left"
+                className="flex flex-col items-center gap-2 p-4 rounded-lg glass-option-card transition-colors text-left"
               >
                 <span className="material-symbols-outlined text-2xl text-brand-500">key</span>
                 <div>

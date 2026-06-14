@@ -465,10 +465,10 @@ export default function CachingPageClient() {
                           setRtkFilterConfig(next);
                           patchSetting({ rtkFilterConfig: next });
                         }}
-                        className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                           enabled
                             ? "dashboard-chip-active"
-                            : "bg-transparent border-border text-text-muted dashboard-row-hover transition-colors"
+                            : "glass-control text-text-muted"
                         }`}
                       >
                         {label}
@@ -490,10 +490,10 @@ export default function CachingPageClient() {
                       key={lvl.id}
                       type="button"
                       onClick={() => { setCavemanLevel(lvl.id); patchSetting({ cavemanLevel: lvl.id }); }}
-                      className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                         cavemanLevel === lvl.id
                           ? "dashboard-chip-active"
-                          : "bg-transparent border-border text-text-muted dashboard-row-hover transition-colors"
+                          : "glass-control text-text-muted"
                       }`}
                       title={lvl.desc}
                     >
@@ -606,7 +606,7 @@ export default function CachingPageClient() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                     historyFilter === s.value
                       ? "dashboard-filter-active border-transparent"
-                      : "border-border text-text-muted dashboard-row-hover transition-colors"
+                      : "glass-control text-text-muted"
                   }`}
                 >
                   {s.label}
