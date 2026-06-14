@@ -110,7 +110,8 @@ function extractEmailFromAccessToken(accessToken) {
 export async function fetchKiroProfileArn(accessToken) {
   if (!accessToken) return null;
   try {
-    const response = await fetch("https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles", {
+    // Route through oauthFetch (proxy-aware) per fork convention — no bare fetch in oauth modules.
+    const response = await oauthFetch("https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
