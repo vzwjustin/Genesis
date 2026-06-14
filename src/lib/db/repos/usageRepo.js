@@ -657,7 +657,7 @@ export async function getUsageStats(period = "all") {
         }
         const ake = stats.byApiKey[localKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cost += entryCost;
-        if (r.timestamp > (ake.lastUsed || "")) ake.lastUsed = r.timestamp;
+        if (new Date(r.timestamp) > new Date(ake.lastUsed || 0)) ake.lastUsed = r.timestamp;
       }
 
       const endpoint = r.endpoint || "Unknown";
@@ -667,7 +667,7 @@ export async function getUsageStats(period = "all") {
       }
       const epe = stats.byEndpoint[epKey];
       epe.requests++; epe.promptTokens += promptTokens; epe.completionTokens += completionTokens; epe.cost += entryCost;
-      if (r.timestamp > (epe.lastUsed || "")) epe.lastUsed = r.timestamp;
+      if (new Date(r.timestamp) > new Date(epe.lastUsed || 0)) epe.lastUsed = r.timestamp;
     }
   }
 
