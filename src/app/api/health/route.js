@@ -18,17 +18,18 @@ export async function GET() {
   }
 
   const body = { ok: dbOk, db: dbOk };
+  let degraded = false;
 
   try {
     body.uptime_seconds = Math.floor(process.uptime());
   } catch {
-    body.ok = false;
+    degraded = true;
   }
 
   try {
     body.active_connections = getPendingRequestTotal();
   } catch {
-    body.ok = false;
+    degraded = true;
   }
 
   try {
@@ -40,12 +41,16 @@ export async function GET() {
       body.last_errors[name] = entry.lastErrorAt;
     }
   } catch {
-    body.ok = false;
+    degraded = true;
+  }
+
+  if (degraded) {
+    body.degraded = true;
   }
 
   return NextResponse.json(
     body,
-    { headers: CORS_HEADERS, status: body.ok ? 200 : 503 }
+    { headers: CORS_HEADERS, status: dbOk ? 200 : 503 }
   );
 }
 

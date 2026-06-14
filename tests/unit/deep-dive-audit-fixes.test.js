@@ -75,9 +75,11 @@ describe("health route", () => {
     expect(src).toContain("db:");
   });
 
-  it("uses body.ok for HTTP status, not db alone", () => {
+  it("returns 503 only for db failure; optional telemetry fails open", () => {
     const src = readFileSync(join(root, "../../src/app/api/health/route.js"), "utf8");
-    expect(src).toContain("status: body.ok ? 200 : 503");
+    expect(src).toContain("status: dbOk ? 200 : 503");
+    expect(src).toContain("degraded");
+    expect(src).not.toMatch(/catch\s*\{[^}]*body\.ok\s*=\s*false/s);
   });
 });
 
