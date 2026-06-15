@@ -222,11 +222,14 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
 
   if (!providerResponse.body) {
     return createDisconnectAwareStream(
-      new ReadableStream({
-        start(controller) {
-          controller.close();
-        },
-      }),
+      {
+        readable: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        writable: { getWriter: () => ({ abort: () => Promise.resolve() }) },
+      },
       wrappedController,
       { onIncomplete }
     );
