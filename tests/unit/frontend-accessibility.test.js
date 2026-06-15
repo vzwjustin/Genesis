@@ -70,16 +70,12 @@ describe("frontend accessibility regressions", () => {
     expect(sidebar).toContain('fetch("/api/version/update"');
   });
 
-  it("shows compression stats in the token saver card", () => {
-    const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
-    const summary = read("src/shared/components/CompressionSummaryCard.js");
+  it("shows compression stats on the caching page", () => {
     const statRow = read("src/shared/components/CompressionStatRow.js");
     const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
 
-    expect(endpoint).toContain('fetch("/api/compression/stats"');
-    expect(endpoint).toContain("CompressionSummaryCard");
-    expect(summary).toContain("CompressionStatRow");
-    expect(summary).toContain("/dashboard/caching");
+    expect(caching).toContain('fetch("/api/compression/stats"');
+    expect(caching).toContain("CompressionStatRow");
     expect(statRow).toContain("Saved");
     expect(statRow).toContain("Est. tokens saved");
     expect(statRow).toContain("Savings not measurable");
@@ -95,12 +91,11 @@ describe("frontend accessibility regressions", () => {
   });
 
   it("exposes Headroom controls tied to live proxy reachability", () => {
-    const endpoint = read("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.js");
     const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
     const headroomHint = read("src/shared/utils/headroomStatusHint.js");
 
-    expect(endpoint).toContain("fetch(\"/api/headroom/status\")");
-    expect(endpoint).toContain("headroomEnabled");
+    expect(caching).toContain("fetch(\"/api/headroom/status\")");
+    expect(caching).toContain("headroomEnabled");
     expect(headroomHint).toContain("headroomCanEnable");
     expect(caching).toContain("headroomCanEnable(headroomStatus)");
     expect(caching).toContain('disabled={!headroomCanEnable(headroomStatus)}');
