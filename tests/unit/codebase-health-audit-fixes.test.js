@@ -34,6 +34,12 @@ describe("codebase health audit fixes", () => {
       expect(stripped.Authorization).toBeUndefined();
       expect(stripped["0"]).toBeUndefined();
     });
+
+    it("treats empty HeadersInit as no redirect headers", async () => {
+      const { getRedirectHeaderEntries, stripCredentialHeadersOnRedirect } = await import("../../open-sse/utils/proxyFetch.js");
+      expect(getRedirectHeaderEntries()).toEqual([]);
+      expect(stripCredentialHeadersOnRedirect()).toEqual({});
+    });
   });
 
   describe("circuitBreaker — half-open probe serialization", () => {

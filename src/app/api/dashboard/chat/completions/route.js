@@ -1,6 +1,7 @@
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { getApiKeys, getSettingsSafe, validateApiKey } from "@/lib/localDb";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import {
   getGatewayApiKeyCandidates,
@@ -85,6 +86,9 @@ function stripStaleGatewayHeaders(headers, preserveToken = null) {
  * paste a key into the Basic Chat UI.
  */
 export async function POST(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
+
   await ensureInitialized();
 
   const settings = await getSettingsSafe();

@@ -5,6 +5,7 @@ const mockHandleChat = vi.fn(async () => new Response(JSON.stringify({ ok: true 
 const mockGetSettings = vi.fn(async () => ({ requireApiKey: true }));
 const mockGetApiKeys = vi.fn(async () => [{ key: "sk-internal-test", isActive: true }]);
 const mockValidateApiKey = vi.fn(async () => true);
+const mockRequireSpawnRouteAuth = vi.fn(async () => ({ ok: true }));
 
 vi.mock("@/sse/handlers/chat.js", () => ({
   handleChat: (...args) => mockHandleChat(...args),
@@ -27,6 +28,10 @@ vi.mock("@/lib/localDb", () => ({
   validateApiKey: (...args) => mockValidateApiKey(...args),
 }));
 
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: (...args) => mockRequireSpawnRouteAuth(...args),
+}));
+
 const { POST } = await import("../../src/app/api/dashboard/chat/completions/route.js");
 
 describe("dashboard chat completions route", () => {
@@ -36,7 +41,22 @@ describe("dashboard chat completions route", () => {
     mockGetSettings.mockResolvedValue({ requireApiKey: true });
     mockGetApiKeys.mockResolvedValue([{ key: "sk-internal-test", isActive: true }]);
     mockValidateApiKey.mockResolvedValue(true);
+    mockRequireSpawnRouteAuth.mockResolvedValue({ ok: true });
     mockHandleChat.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+  });
+
+  it("rejects unauthenticated dashboard chat before injecting an API key", async () => {
+    mockRequireSpawnRouteAuth.mockResolvedValue({ ok: false, error: "Login required", status: 401 });
+    const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(401);
+    expect(mockHandleChat).not.toHaveBeenCalled();
+    expect(mockGetApiKeys).not.toHaveBeenCalled();
   });
 
   it("proxies to handleChat with internal API key when requireApiKey=true", async () => {
@@ -240,7 +260,7 @@ describe("dashboard chat completions route", () => {
     expect(internalRequest.headers.get("x-api-key")).toBeNull();
   });
 
-  it("strips stale bearer when sk_genesis sentinel is already usable", async () => {
+  it("injects internal key when sk_genesis sentinel is not verifiably loopback", async () => {
     const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
       method: "POST",
       headers: {
@@ -255,8 +275,8 @@ describe("dashboard chat completions route", () => {
     await POST(request);
     const internalRequest = mockHandleChat.mock.calls[0][0];
     expect(internalRequest.headers.get("x-api-key")).toBe("sk_genesis");
-    expect(internalRequest.headers.get("Authorization")).toBeNull();
-    expect(mockGetApiKeys).not.toHaveBeenCalled();
+    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk-internal-test");
+    expect(mockGetApiKeys).toHaveBeenCalled();
   });
 
   it("strips orphaned stale x-api-key when valid Bearer is already present", async () => {
@@ -280,7 +300,7 @@ describe("dashboard chat completions route", () => {
     expect(mockGetApiKeys).not.toHaveBeenCalled();
   });
 
-  it("preserves sk_genesis sentinel without injecting internal key", async () => {
+  it("injects internal key over sk_genesis when loopback is not verifiable", async () => {
     const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
       method: "POST",
       headers: {
@@ -293,11 +313,11 @@ describe("dashboard chat completions route", () => {
 
     await POST(request);
     const internalRequest = mockHandleChat.mock.calls[0][0];
-    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk_genesis");
-    expect(mockGetApiKeys).not.toHaveBeenCalled();
+    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk-internal-test");
+    expect(mockGetApiKeys).toHaveBeenCalled();
   });
 
-  it("does not inject on loopback when settings are unavailable (default requireApiKey off)", async () => {
+  it("injects on unverifiable loopback when settings are unavailable", async () => {
     mockGetSettings.mockRejectedValue(new Error("db unavailable"));
     const request = new Request("http://localhost:3456/api/dashboard/chat/completions", {
       method: "POST",
@@ -310,8 +330,8 @@ describe("dashboard chat completions route", () => {
 
     await POST(request);
     const internalRequest = mockHandleChat.mock.calls[0][0];
-    expect(internalRequest.headers.get("Authorization")).toBeNull();
-    expect(mockGetApiKeys).not.toHaveBeenCalled();
+    expect(internalRequest.headers.get("Authorization")).toBe("Bearer sk-internal-test");
+    expect(mockGetApiKeys).toHaveBeenCalled();
   });
 
   it("injects internal key on remote host when sk_genesis sentinel is present", async () => {

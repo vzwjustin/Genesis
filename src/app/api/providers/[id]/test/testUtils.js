@@ -16,6 +16,7 @@ import {
   KILOCODE_CONFIG,
 } from "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
 
 // OAuth provider test endpoints
 const OAUTH_TEST_CONFIG = {
@@ -328,13 +329,17 @@ async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null
   const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
   let proxyOptions = null;
   if (effectiveProxy?.vercelRelayUrl) {
-    proxyOptions = { vercelRelayUrl: effectiveProxy.vercelRelayUrl };
+    proxyOptions = {
+      vercelRelayUrl: effectiveProxy.vercelRelayUrl,
+      relayAuthSecret: effectiveProxy.relayAuthSecret || "",
+      strictProxy: effectiveProxy.strictProxy,
+    };
   } else if (effectiveProxy?.connectionProxyEnabled && effectiveProxy?.connectionProxyUrl) {
     proxyOptions = {
       connectionProxyEnabled: true,
       connectionProxyUrl: effectiveProxy.connectionProxyUrl,
       connectionNoProxy: effectiveProxy.connectionNoProxy || "",
-      strictProxy: effectiveProxy.strictProxy === true,
+      strictProxy: effectiveProxy.strictProxy,
     };
   }
   return proxyAwareFetch(url, options, proxyOptions);
@@ -345,7 +350,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
     const modelsBase = connection.providerSpecificData?.baseUrl;
     if (!modelsBase) return { valid: false, error: "Missing base URL" };
     try {
-      const res = await fetchWithConnectionProxy(`${modelsBase.replace(/\/$/, "")}/models`, {
+      const normalizedBase = validateProviderBaseUrl(modelsBase);
+      const res = await fetchWithConnectionProxy(`${normalizedBase}/models`, {
         headers: { "Authorization": `Bearer ${connection.apiKey}` },
       }, effectiveProxy);
       return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
@@ -360,7 +366,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
     try {
       modelsBase = modelsBase.replace(/\/$/, "");
       if (modelsBase.endsWith("/messages")) modelsBase = modelsBase.slice(0, -9);
-      const res = await fetchWithConnectionProxy(`${modelsBase}/models`, {
+      const normalizedBase = validateProviderBaseUrl(modelsBase);
+      const res = await fetchWithConnectionProxy(`${normalizedBase}/models`, {
         headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "Authorization": `Bearer ${connection.apiKey}` },
       }, effectiveProxy);
       return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };

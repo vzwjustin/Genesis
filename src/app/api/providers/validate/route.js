@@ -7,8 +7,17 @@ import { openaiToCommandCode } from "open-sse/translator/request/openai-to-comma
 import { PROVIDER_ENDPOINTS } from "@/shared/constants/config";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+
+function normalizeNodeBaseUrl(baseUrl, endpointSuffix = "") {
+  let normalizedBase = String(baseUrl || "").trim().replace(/\/$/, "");
+  if (endpointSuffix && normalizedBase.endsWith(endpointSuffix)) {
+    normalizedBase = normalizedBase.slice(0, -endpointSuffix.length);
+  }
+  return validateProviderBaseUrl(normalizedBase);
+}
 
 async function buildValidateProxyOptions(providerSpecificData) {
   if (!providerSpecificData) return null;
@@ -18,7 +27,8 @@ async function buildValidateProxyOptions(providerSpecificData) {
     connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
     connectionNoProxy: proxyConfig.connectionNoProxy || "",
     vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
-    strictProxy: proxyConfig.strictProxy === true,
+    relayAuthSecret: proxyConfig.relayAuthSecret || "",
+    strictProxy: proxyConfig.strictProxy,
   };
 }
 
@@ -127,7 +137,8 @@ export async function POST(request) {
         if (!node) {
           return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
         }
-        const modelsUrl = `${node.baseUrl?.replace(/\/$/, "")}/models`;
+        const baseUrl = normalizeNodeBaseUrl(node.baseUrl);
+        const modelsUrl = `${baseUrl}/models`;
         const res = await validateFetch(modelsUrl, {
           headers: { "Authorization": `Bearer ${apiKey}` },
         }, proxyOptions);
@@ -144,7 +155,7 @@ export async function POST(request) {
         if (!node) {
           return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
         }
-        const baseUrl = node.baseUrl?.replace(/\/$/, "");
+        const baseUrl = normalizeNodeBaseUrl(node.baseUrl, "/embeddings");
         const modelsRes = await validateFetch(`${baseUrl}/models`, {
           headers: { "Authorization": `Bearer ${apiKey}` },
         }, proxyOptions);
@@ -175,10 +186,7 @@ export async function POST(request) {
           return NextResponse.json({ error: "Anthropic Compatible node not found" }, { status: 404 });
         }
 
-        let normalizedBase = node.baseUrl?.trim().replace(/\/$/, "") || "";
-        if (normalizedBase.endsWith("/messages")) {
-          normalizedBase = normalizedBase.slice(0, -9); // remove /messages
-        }
+        const normalizedBase = normalizeNodeBaseUrl(node.baseUrl, "/messages");
 
         const modelsUrl = `${normalizedBase}/models`;
 

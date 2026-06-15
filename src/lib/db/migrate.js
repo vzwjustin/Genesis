@@ -34,18 +34,37 @@ function assertTableName(tableName) {
   return tableName;
 }
 
-// Insert rows one-by-one, collect failures, then assert COUNT(*) matches input length.
+// Insert rows one-by-one, collect failures, then assert COUNT(*) matches the
+// number of DISTINCT ids that inserted cleanly. The source JSON can legitimately
+// carry duplicate ids (e.g. a re-saved connection); INSERT OR REPLACE collapses
+// those to one row by design (last-write-wins, no data loss), so the expected
+// count is distinct successful ids — not raw rows.length, which would falsely
+// abort the whole migration and strand the user on JSON storage forever.
 function importWithAssertion(adapter, tableName, rows, insertFn, rowMeta) {
   assertTableName(tableName);
   const dropped = [];
+  const insertedIds = new Set();
   for (const row of rows) {
-    try { insertFn(row); }
-    catch (err) { dropped.push({ ...rowMeta(row), reason: err.message }); }
+    const meta = rowMeta(row);
+    try {
+      if (typeof meta.id !== "string" || meta.id.trim() === "") {
+        throw new Error("missing required id");
+      }
+      insertFn(row);
+      insertedIds.add(meta.id);
+    } catch (err) {
+      dropped.push({ ...meta, reason: err.message });
+    }
   }
+  if (dropped.length > 0) {
+    console.warn(`[DB][migrate] ${tableName} dropped ${dropped.length} row(s):`, dropped);
+    throw new MigrationAborted(`${tableName} dropped ${dropped.length} row(s)`, dropped);
+  }
+  const expected = insertedIds.size;
   const inserted = adapter.get(`SELECT COUNT(*) as c FROM ${tableName}`)?.c ?? 0;
-  if (inserted !== rows.length) {
-    console.warn(`[DB][migrate] ${tableName} row-count mismatch: expected ${rows.length}, got ${inserted}. Dropped:`, dropped);
-    throw new MigrationAborted(`${tableName} row-count mismatch: expected ${rows.length}, got ${inserted}`, dropped);
+  if (inserted !== expected) {
+    console.warn(`[DB][migrate] ${tableName} row-count mismatch: expected ${expected}, got ${inserted}. Dropped:`, dropped);
+    throw new MigrationAborted(`${tableName} row-count mismatch: expected ${expected}, got ${inserted}`, dropped);
   }
 }
 

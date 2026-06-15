@@ -1,10 +1,14 @@
 import { getConsoleLogs, getConsoleEmitter, initConsoleLogCapture } from "@/lib/consoleLogBuffer";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
 initConsoleLogCapture();
 
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
+
   const encoder = new TextEncoder();
   const emitter = getConsoleEmitter();
   const state = { closed: false, send: null, sendClear: null, keepalive: null };

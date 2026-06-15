@@ -48,6 +48,7 @@ export function shouldStripCredentialHeaderOnRedirect(headerName) {
  * @returns {Array<[string, string]>}
  */
 export function getRedirectHeaderEntries(headers) {
+  if (!headers) return [];
   if (headers instanceof Headers) {
     return Array.from(headers.entries());
   }
@@ -922,8 +923,13 @@ function withUpstreamTimeout(options) {
  * redirect:"follow" would chase it, defeating assertSafeResolvedHostname.
  */
 async function safeRedirectFetch(url, options, fetchImpl) {
+  // The loopback policy is the CALLER's (derived from the originally-configured
+  // provider host), never the redirect target's. Deriving allowLoopback from the
+  // attacker-controlled Location host would let any upstream 30x-redirect to
+  // http://localhost/ and pass the guard (SSRF to the router's own services).
+  const { ssrfAllowLoopback = false, ...restOptions } = options || {};
   let currentUrl = typeof url === "string" ? url : url.toString();
-  let currentOptions = { ...options, redirect: "manual" };
+  let currentOptions = { ...restOptions, redirect: "manual" };
 
   for (let hop = 0; hop <= MAX_UPSTREAM_REDIRECTS; hop++) {
     const res = await fetchImpl(currentUrl, currentOptions);
@@ -943,9 +949,11 @@ async function safeRedirectFetch(url, options, fetchImpl) {
     }
 
     const nextHost = new URL(nextUrl).hostname;
-    const allowLoopback = ["localhost", "127.0.0.1", "::1"].includes(nextHost.toLowerCase());
+    // allowLoopback comes from the caller's policy (ssrfAllowLoopback), NOT from
+    // whether the redirect target itself is loopback. A non-loopback-origin chain
+    // must never gain loopback access just because the Location points at localhost.
     try {
-      await assertSafeResolvedHostname(nextHost, { allowLoopback });
+      await assertSafeResolvedHostname(nextHost, { allowLoopback: ssrfAllowLoopback });
     } catch (dnsError) {
       throw new Error(`[ProxyFetch] Redirect blocked by SSRF guard: ${dnsError.message}`);
     }
@@ -1073,7 +1081,17 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // closes the DNS-rebind window between the check above and the real connect.
   // Loopback providers (ollama/searxng) are intentionally allowed, so skip them.
   const directFetch = async (u, o) => {
-    if (directIsLoopback) return originalFetch(u, o);
+    // Decide loopback per-HOP from the host actually being dialed, not the once-
+    // computed origin closure. A loopback-origin provider (ollama) that redirects
+    // to a different host — another localhost port or, across the DNS-cache window,
+    // a rebound private address — must NOT skip the connect-time guarded dispatcher
+    // just because the original target was loopback (rebind/loopback-pivot fix).
+    let hopIsLoopback = false;
+    try {
+      const hopHost = new URL(typeof u === "string" ? u : u.toString()).hostname.toLowerCase();
+      hopIsLoopback = directIsLoopback && ["localhost", "127.0.0.1", "::1"].includes(hopHost);
+    } catch { /* unparseable URL — fall through to guarded path */ }
+    if (hopIsLoopback) return originalFetch(u, o);
     let dispatcher;
     try {
       dispatcher = await getGuardedDispatcher();
@@ -1190,7 +1208,11 @@ export function resolveStrictProxyOption(value) {
 
 /** Copy strictProxy from resolveConnectionProxyConfig only when that resolver set it. */
 export function strictProxyFieldFromResolved(resolvedProxy) {
-  if (!resolvedProxy || !Object.prototype.hasOwnProperty.call(resolvedProxy, "strictProxy")) {
+  if (
+    !resolvedProxy
+    || !Object.prototype.hasOwnProperty.call(resolvedProxy, "strictProxy")
+    || resolvedProxy.strictProxy === undefined
+  ) {
     return {};
   }
   return { strictProxy: resolvedProxy.strictProxy === true };

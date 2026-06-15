@@ -2,7 +2,7 @@
 import { Buffer } from "node:buffer";
 import { ttsFetch } from "./_base.js";
 
-export default {
+const openaiTtsAdapter = {
   async synthesize(text, model, credentials) {
     if (!credentials?.apiKey) throw new Error("No OpenAI API key configured");
 
@@ -29,3 +29,5 @@ export default {
     return { base64: Buffer.from(buf).toString("base64"), format: "mp3" };
   },
 };
+
+export default openaiTtsAdapter;

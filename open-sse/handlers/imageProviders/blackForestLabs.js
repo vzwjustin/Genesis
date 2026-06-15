@@ -4,7 +4,7 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
 const BASE_URL = "https://api.bfl.ai/v1";
 
-export default {
+const blackForestLabsAdapter = {
   async: true,
   buildUrl: (model) => `${BASE_URL}/${model}`,
   buildHeaders: (creds) => {
@@ -42,3 +42,5 @@ export default {
     return { created: nowSec(), data: [] };
   },
 };
+
+export default blackForestLabsAdapter;

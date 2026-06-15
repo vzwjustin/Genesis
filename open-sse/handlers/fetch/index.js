@@ -2,6 +2,7 @@
 // Returns normalized shape across all providers
 
 import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../../utils/proxyFetch.js";
+import { mergeAbortSignals } from "../../utils/abortSignal.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FORMAT = "markdown";
@@ -30,17 +31,22 @@ function sanitizeHeaders(headers) {
   return out;
 }
 
-async function tryFetch(url, init, timeoutMs, proxyOptions = null) {
+async function tryFetch(url, init, timeoutMs, proxyOptions = null, signal = null) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const merged = mergeAbortSignals([signal, ctrl.signal]);
   try {
-    const res = await proxyAwareFetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: ctrl.signal }, proxyOptions);
+    const res = await proxyAwareFetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: merged.signal }, proxyOptions);
     return { ok: true, res };
   } catch (err) {
+    if (signal?.aborted) {
+      return { ok: false, aborted: true, error: "Request aborted" };
+    }
     const isAbort = err?.name === "AbortError";
     return { ok: false, timeout: isAbort, error: err?.message || String(err) };
   } finally {
     clearTimeout(timer);
+    merged.cleanup?.();
   }
 }
 
@@ -89,9 +95,10 @@ async function readJsonOrText(res) {
  * @param {Object} [params.providerConfig]
  * @param {Object} [params.credentials]
  * @param {Function} [params.log]
+ * @param {AbortSignal} [params.signal]
  * @returns {Promise<FetchResult>}
  */
-export async function handleFetchCore({ url, format, maxCharacters, provider, providerConfig, credentials, log }) {
+export async function handleFetchCore({ url, format, maxCharacters, provider, providerConfig, credentials, log, signal }) {
   if (!url || typeof url !== "string") {
     return { success: false, status: 400, error: "url is required" };
   }
@@ -108,16 +115,16 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
 
   try {
     if (provider === "firecrawl") {
-      return await runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions });
+      return await runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions, signal });
     }
     if (provider === "jina-reader") {
-      return await runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions });
+      return await runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions, signal });
     }
     if (provider === "tavily") {
-      return await runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions });
+      return await runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions, signal });
     }
     if (provider === "exa") {
-      return await runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions });
+      return await runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions, signal });
     }
     return { success: false, status: 400, error: `Unsupported provider: ${provider}` };
   } catch (err) {
@@ -126,7 +133,7 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   }
 }
 
-async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions }) {
+async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions, signal }) {
   const upstreamStart = Date.now();
   const r = await tryFetch("https://api.firecrawl.dev/v1/scrape", {
     method: "POST",
@@ -135,9 +142,10 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
       ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
     },
     body: JSON.stringify({ url, formats: [fmt] })
-  }, timeoutMs, proxyOptions);
+  }, timeoutMs, proxyOptions, signal);
 
   if (!r.ok) {
+    if (r.aborted) return { success: false, status: 499, error: r.error };
     return { success: false, status: r.timeout ? 504 : 502, error: r.error };
   }
   const upstreamMs = Date.now() - upstreamStart;
@@ -160,15 +168,16 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
   };
 }
 
-async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions }) {
+async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions, signal }) {
   const target = `https://r.jina.ai/${encodeURIComponent(url)}`;
   const upstreamStart = Date.now();
   const r = await tryFetch(target, {
     method: "GET",
     headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {}
-  }, timeoutMs, proxyOptions);
+  }, timeoutMs, proxyOptions, signal);
 
   if (!r.ok) {
+    if (r.aborted) return { success: false, status: 499, error: r.error };
     return { success: false, status: r.timeout ? 504 : 502, error: r.error };
   }
   const upstreamMs = Date.now() - upstreamStart;
@@ -186,7 +195,7 @@ async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuer
   };
 }
 
-async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions }) {
+async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions, signal }) {
   const upstreamStart = Date.now();
   const r = await tryFetch("https://api.tavily.com/extract", {
     method: "POST",
@@ -195,9 +204,10 @@ async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
       ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
     },
     body: JSON.stringify({ urls: [url], extract_depth: "basic" })
-  }, timeoutMs, proxyOptions);
+  }, timeoutMs, proxyOptions, signal);
 
   if (!r.ok) {
+    if (r.aborted) return { success: false, status: 499, error: r.error };
     return { success: false, status: r.timeout ? 504 : 502, error: r.error };
   }
   const upstreamMs = Date.now() - upstreamStart;
@@ -219,7 +229,7 @@ async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
   };
 }
 
-async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions }) {
+async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, proxyOptions, signal }) {
   const upstreamStart = Date.now();
   const r = await tryFetch("https://api.exa.ai/contents", {
     method: "POST",
@@ -228,9 +238,10 @@ async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery
       ...(apiKey ? { "x-api-key": apiKey } : {})
     },
     body: JSON.stringify({ ids: [url], text: true })
-  }, timeoutMs, proxyOptions);
+  }, timeoutMs, proxyOptions, signal);
 
   if (!r.ok) {
+    if (r.aborted) return { success: false, status: 499, error: r.error };
     return { success: false, status: r.timeout ? 504 : 502, error: r.error };
   }
   const upstreamMs = Date.now() - upstreamStart;

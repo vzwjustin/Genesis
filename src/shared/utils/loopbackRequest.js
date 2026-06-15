@@ -1,4 +1,4 @@
-import { normalizeHostHeaderHostname, isPrivateLanHostname, isPrivateLanIp } from "@/shared/utils/host";
+import { normalizeHostHeaderHostname, isLanDashboardHost, isPrivateLanHostname, isPrivateLanIp } from "@/shared/utils/host";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -53,8 +53,9 @@ function getForwardedClientIp(request) {
 }
 
 /**
- * True when the request appears to originate from the local machine (loopback host,
- * loopback origin, and no remote client IP in forwarding headers).
+ * True when the request originates from a verifiable loopback socket.
+ * Host/Origin alone are spoofable by non-browser clients, so missing socket
+ * metadata fails closed.
  */
 export function isLoopbackRequest(request) {
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
@@ -75,8 +76,7 @@ export function isLoopbackRequest(request) {
     return isLoopbackIp(socketIp);
   }
 
-  // Direct local connection: loopback Host, no forwarding headers (CLI clients omit Origin).
-  return true;
+  return false;
 }
 
 /**
@@ -145,7 +145,7 @@ export function isPrivateLanAccessRequest(request) {
   if (!host) return false;
 
   if (isPrivateLanIp(socketIp)) {
-    return isPrivateLanHostname(host) || isLoopbackHostname(host) || Boolean(host);
+    return isPrivateLanHostname(host) || isLoopbackHostname(host) || isLanDashboardHost(host);
   }
 
   // Same-host browser via LAN IP or hostname (hairpin → loopback socket)

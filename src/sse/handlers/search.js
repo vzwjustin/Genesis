@@ -10,7 +10,7 @@ import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
-import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData, getBrokenComboErrorFromData } from "open-sse/services/combo.js";
 import {
   resolveProviderRetryLimits,
@@ -133,7 +133,8 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
       provider: resolvedProvider,
       providerConfig,
       credentials: null,
-      log
+      log,
+      signal: request.signal
     });
     if (result.success) return result.response;
     return result.response;
@@ -196,20 +197,15 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
       providerConfig,
       credentials: refreshedCredentials,
       log,
-      onCredentialsRefreshed: async (newCreds) => {
-        await updateProviderCredentials(credentials.connectionId, {
-          accessToken: newCreds.accessToken,
-          refreshToken: newCreds.refreshToken,
-          providerSpecificData: newCreds.providerSpecificData,
-          testStatus: "active"
-        });
-      },
-      onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials);
-      }
+      signal: request.signal,
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      await clearAccountError(credentials.connectionId, credentials);
+      return result.response;
+    }
+
+    if (result.status === 499) return result.response || errorResponse(499, result.error || "Request aborted");
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId);
 

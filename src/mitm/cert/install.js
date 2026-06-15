@@ -1,6 +1,6 @@
 const fs = require("fs");
 const crypto = require("crypto");
-const { exec } = require("child_process");
+const { exec, execFile } = require("child_process");
 const { execWithPassword, isSudoAvailable } = require("../dns/dnsConfig.js");
 const { runElevatedPowerShell, quotePs } = require("../winElevated.js");
 const { log, err } = require("../logger");
@@ -54,10 +54,14 @@ function checkCertInstalledMac(certPath) {
   return new Promise((resolve) => {
     try {
       // CN-agnostic: matches migrated 9Router CAs and Genesis CAs by file bytes + trust policy
-      exec(
-        `security verify-cert -c "${certPath}" -p ssl -k /Library/Keychains/System.keychain 2>/dev/null`,
+      execFile(
+        "security",
+        ["verify-cert", "-c", certPath, "-p", "ssl", "-k", "/Library/Keychains/System.keychain"],
         { windowsHide: true },
-        (err) => resolve(!err),
+        (err, stdout = "", stderr = "") => {
+          const output = `${stdout}\n${stderr}`;
+          resolve(!err || /Cert Verify Result:\s*No error/.test(output));
+        },
       );
     } catch {
       resolve(false);

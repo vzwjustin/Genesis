@@ -166,6 +166,8 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, si
       return result.response;
     }
 
+    if (result.status === 499) return result.response || errorResponse(499, result.error || "Request aborted");
+
     const { shouldFallback } = await markAccountUnavailable(
       credentials.connectionId,
       result.status,

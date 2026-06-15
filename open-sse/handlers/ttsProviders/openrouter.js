@@ -1,7 +1,7 @@
 // OpenRouter TTS — via chat completions + audio modality (SSE stream)
 import { ttsFetch } from "./_base.js";
 
-export default {
+const openrouterTtsAdapter = {
   async synthesize(text, model, credentials) {
     if (!credentials?.apiKey) throw new Error("No OpenRouter API key configured");
 
@@ -70,3 +70,5 @@ export default {
     return { base64: chunks.join(""), format: "wav" };
   },
 };
+
+export default openrouterTtsAdapter;

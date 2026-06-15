@@ -234,7 +234,7 @@ describe("AbortError propagation in web executors", () => {
       },
       signal: { aborted: true },
       log: {},
-    })).rejects.toThrow(/abort/i);
+    })).rejects.toMatchObject({ name: "AbortError", message: "Request aborted" });
   });
 });
 

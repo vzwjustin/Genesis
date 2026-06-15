@@ -11,6 +11,11 @@ export { COLORS, formatSSE };
 // sharedEncoder is stateless — safe to share across streams
 const sharedEncoder = new TextEncoder();
 
+// Upper bound on the partial-line buffer to prevent unbounded heap growth when
+// an upstream streams a large body containing no "\n" byte. Mirrors the
+// MAX_BLOCK_CHARS guard in sseToJsonHandler.js.
+const MAX_SSE_BUFFER_CHARS = 1024 * 1024;
+
 /**
  * Stream modes
  */
@@ -177,6 +182,15 @@ export function createSSEStream(options = {}) {
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
 
+      // Cap unbounded buffer growth: a newline-free upstream payload would
+      // otherwise accumulate indefinitely (the stall watchdog only fires on
+      // zero bytes, not on steady newline-free bytes). If the retained partial
+      // exceeds the cap, flush it through the normal per-line path and reset.
+      if (buffer.length > MAX_SSE_BUFFER_CHARS) {
+        lines.push(buffer);
+        buffer = "";
+      }
+
       for (const line of lines) {
         const trimmed = line.trim();
         if (isDebugEnabled && trimmed) {
@@ -316,16 +330,25 @@ export function createSSEStream(options = {}) {
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
           if (buffer.trim()) {
-            processPassthroughDataLine(buffer.trim());
-            let output = buffer;
-            if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
-              output = "data: " + buffer.slice(5);
+            // Always run usage accounting on the remainder (it swallows JSON
+            // parse errors). Re-emit a trailing buffer only when it is either
+            // newline-terminated or parses as a complete SSE data frame; this
+            // preserves valid final chunks/[DONE] without fabricating malformed
+            // partial JSON into a complete event.
+            const trimmedBuffer = buffer.trim();
+            const trailingParsed = parseSSELine(trimmedBuffer, sourceFormat || FORMATS.OPENAI);
+            processPassthroughDataLine(trimmedBuffer);
+            if (buffer.endsWith("\n") || trailingParsed) {
+              let output = buffer;
+              if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
+                output = "data: " + buffer.slice(5);
+              }
+              if (!output.endsWith("\n\n")) {
+                output += output.endsWith("\n") ? "\n" : "\n\n";
+              }
+              reqLogger?.appendConvertedChunk?.(output);
+              controller.enqueue(sharedEncoder.encode(output));
             }
-            if (!output.endsWith("\n\n")) {
-              output += output.endsWith("\n") ? "\n" : "\n\n";
-            }
-            reqLogger?.appendConvertedChunk?.(output);
-            controller.enqueue(sharedEncoder.encode(output));
           }
 
           if (!hasValidUsage(usage) && totalContentLength > 0) {

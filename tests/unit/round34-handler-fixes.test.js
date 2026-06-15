@@ -66,6 +66,18 @@ describe("tts.js + stt.js account lifecycle", () => {
   });
 });
 
+describe("fetch.js + search.js account lifecycle", () => {
+  it("fetch clears account error inside the success branch", () => {
+    const src = readHandler("fetch.js");
+    expect(src).toMatch(/if \(result\.success\) \{[\s\S]*clearAccountError\(credentials\.connectionId, credentials\)/);
+  });
+
+  it("search clears account error inside the success branch", () => {
+    const src = readHandler("search.js");
+    expect(src).toMatch(/if \(result\.success\) \{[\s\S]*clearAccountError\(credentials\.connectionId, credentials\)/);
+  });
+});
+
 describe("nested combo retry (match chat.js)", () => {
   it("tts handleSingleModelTts does not re-expand combo when provider is null", () => {
     const src = readHandler("tts.js");

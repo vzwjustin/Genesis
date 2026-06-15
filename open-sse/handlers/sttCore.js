@@ -218,6 +218,9 @@ export async function handleSttCore({ provider, model, formData, credentials, si
       default:                return await transcribeOpenAICompatible(cfg, file, model, token, formData, proxyOptions, signal);
     }
   } catch (err) {
+    if (signal?.aborted || err?.name === "AbortError" || err?.message === "Request aborted") {
+      return createErrorResult(499, "Request aborted");
+    }
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err.message || "STT request failed");
   }
 }

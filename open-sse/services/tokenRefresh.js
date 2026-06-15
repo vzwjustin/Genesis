@@ -42,6 +42,27 @@ export const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 // Dedup: cache in-flight promise + recent result to prevent refresh_token_reused (Auth0 family revoke)
 const REFRESH_RESULT_TTL_MS = process.env.NODE_ENV === "test" ? 0 : 10_000;
 const refreshDedupCache = new Map();
+// Cap dedup cache so rotated (now-stale) plaintext refresh-token keys can't
+// accumulate in heap indefinitely. Entries under old token keys are never
+// revisited after rotation, so prune expired/excess on each insert.
+const REFRESH_DEDUP_MAX_ENTRIES = 500;
+
+function pruneRefreshDedupCache() {
+  const now = Date.now();
+  for (const [k, v] of refreshDedupCache) {
+    // Keep in-flight promises (no expiresAt); drop entries past TTL.
+    if (v.expiresAt != null && v.expiresAt <= now) {
+      refreshDedupCache.delete(k);
+    }
+  }
+  // Hard size bound: evict oldest (insertion-order) settled entries first.
+  if (refreshDedupCache.size > REFRESH_DEDUP_MAX_ENTRIES) {
+    for (const [k, v] of refreshDedupCache) {
+      if (refreshDedupCache.size <= REFRESH_DEDUP_MAX_ENTRIES) break;
+      if (!v.promise) refreshDedupCache.delete(k);
+    }
+  }
+}
 
 export function __clearRefreshDedupCacheForTests() {
   refreshDedupCache.clear();
@@ -67,6 +88,7 @@ async function dedupRefresh(provider, oldToken, fn, log) {
       const result = await fn();
       if (result != null) {
         refreshDedupCache.set(key, { result, expiresAt: Date.now() + REFRESH_RESULT_TTL_MS });
+        pruneRefreshDedupCache();
       } else {
         refreshDedupCache.delete(key);
       }
@@ -92,8 +114,9 @@ export function parseOAuthRefreshErrorBody(errorText, log, label) {
     errorCode === "refresh_token_reused" ||
     errorCode === "invalid_grant" ||
     errorCode === "token_expired" ||
-    errorCode === "invalid_token" ||
-    errorCode === "invalid_request"
+    errorCode === "invalid_token"
+    // NOTE: invalid_request is RFC6749 §5.2 (malformed/transient request),
+    // NOT a dead refresh token — excluded so a hiccup doesn't hard-disable a valid connection.
   ) {
     log?.error?.("TOKEN_REFRESH", `Refresh token unrecoverable for ${label}. Re-auth required.`, {
       errorCode,
@@ -110,7 +133,6 @@ export function isUnrecoverableRefreshError(result) {
     typeof result === "object" &&
     (result.error === "unrecoverable_refresh_error" ||
       result.error === "refresh_token_reused" ||
-      result.error === "invalid_request" ||
       result.error === "invalid_grant")
   );
 }

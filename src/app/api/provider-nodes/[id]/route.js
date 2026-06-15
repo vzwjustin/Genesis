@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
+
+function normalizeProviderNodeBaseUrl(baseUrl, endpointSuffix = "") {
+  let sanitizedBaseUrl = baseUrl.trim().replace(/\/$/, "");
+  if (endpointSuffix && sanitizedBaseUrl.endsWith(endpointSuffix)) {
+    sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -endpointSuffix.length);
+  }
+  return validateProviderBaseUrl(sanitizedBaseUrl);
+}
+
+function invalidBaseUrlResponse() {
+  return NextResponse.json({ error: "Invalid base URL" }, { status: 400 });
+}
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
@@ -16,11 +29,11 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Provider node not found" }, { status: 404 });
     }
 
-    if (!name?.trim()) {
+    if (typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    if (!prefix?.trim()) {
+    if (typeof prefix !== "string" || !prefix.trim()) {
       return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
     }
 
@@ -29,26 +42,24 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
     }
 
-    if (!baseUrl?.trim()) {
+    if (typeof baseUrl !== "string") {
+      return invalidBaseUrlResponse();
+    }
+
+    if (!baseUrl.trim()) {
       return NextResponse.json({ error: "Base URL is required" }, { status: 400 });
     }
 
-    let sanitizedBaseUrl = baseUrl.trim();
-    
-    // Sanitize Base URL for Anthropic Compatible
-    if (node.type === "anthropic-compatible") {
-      sanitizedBaseUrl = sanitizedBaseUrl.replace(/\/$/, "");
-      if (sanitizedBaseUrl.endsWith("/messages")) {
-        sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
-      }
-    }
-
-    // Sanitize Base URL for Custom Embedding (strip trailing slash and /embeddings)
-    if (node.type === "custom-embedding") {
-      sanitizedBaseUrl = sanitizedBaseUrl.replace(/\/$/, "");
-      if (sanitizedBaseUrl.endsWith("/embeddings")) {
-        sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -"/embeddings".length);
-      }
+    let sanitizedBaseUrl;
+    try {
+      const endpointSuffix = node.type === "anthropic-compatible"
+        ? "/messages"
+        : node.type === "custom-embedding"
+          ? "/embeddings"
+          : "";
+      sanitizedBaseUrl = normalizeProviderNodeBaseUrl(baseUrl, endpointSuffix);
+    } catch {
+      return invalidBaseUrlResponse();
     }
 
     const updates = {

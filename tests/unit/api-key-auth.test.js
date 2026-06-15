@@ -35,11 +35,13 @@ const log = {
   maskKey: (k) => `${k.slice(0, 4)}***`,
 };
 
-function makeRequest(headers = {}) {
+function makeRequest(headers = {}, socketIp = null) {
   return {
     headers: {
       get: (name) => headers[name] ?? headers[name.toLowerCase()] ?? null,
     },
+    socket: socketIp ? { remoteAddress: socketIp } : undefined,
+    ip: socketIp || undefined,
   };
 }
 
@@ -48,7 +50,7 @@ function makeLoopbackRequest(headers = {}) {
     host: "localhost:20128",
     origin: "http://localhost:20128",
     ...headers,
-  });
+  }, "127.0.0.1");
 }
 
 const VALID_TEST_KEY = makeTestApiKey();

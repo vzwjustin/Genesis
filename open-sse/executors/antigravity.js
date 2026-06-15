@@ -265,8 +265,10 @@ export class AntigravityExecutor extends BaseExecutor {
             continue;
           }
 
-          // Auto retry only for 429 when retryMs is 0 or undefined
-          if (response.status === HTTP_STATUS.RATE_LIMITED && (!retryMs || retryMs === 0) && retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES) {
+          // Auto retry for 429 when retryMs is absent, or present but exceeds the
+          // max wait cap (a long reset is treated as a bounded backoff retry rather
+          // than abandoned immediately — backoffMs stays capped at MAX_RETRY_AFTER_MS).
+          if (response.status === HTTP_STATUS.RATE_LIMITED && (!retryMs || retryMs > MAX_RETRY_AFTER_MS) && retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES) {
             retryAttemptsByUrl[urlIndex]++;
             // Exponential backoff: 2s, 4s, 8s...
             const backoffMs = Math.min(1000 * (2 ** retryAttemptsByUrl[urlIndex]), MAX_RETRY_AFTER_MS);

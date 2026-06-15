@@ -114,10 +114,37 @@ const IMPORT_OBJECT_SECTIONS = [
   "disabledModels",
 ];
 
+const IMPORT_REQUIRED_STRING_FIELDS = {
+  providerConnections: ["id", "provider"],
+  providerNodes: ["id"],
+  proxyPools: ["id"],
+  apiKeys: ["id", "key"],
+  combos: ["id", "name"],
+  customModels: ["providerAlias", "id"],
+};
+
+function assertImportRowObject(section, row, index) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    throw new Error(`Invalid database payload: ${section}[${index}] must be an object`);
+  }
+}
+
+function assertRequiredStringFields(section, row, index) {
+  for (const field of IMPORT_REQUIRED_STRING_FIELDS[section] || []) {
+    if (typeof row[field] !== "string" || row[field].trim() === "") {
+      throw new Error(`Invalid database payload: ${section}[${index}].${field} must be a non-empty string`);
+    }
+  }
+}
+
 function validateImportPayload(payload) {
   for (const key of IMPORT_ARRAY_SECTIONS) {
     if (payload[key] != null && !Array.isArray(payload[key])) {
       throw new Error(`Invalid database payload: ${key} must be an array`);
+    }
+    for (const [index, row] of (payload[key] || []).entries()) {
+      assertImportRowObject(key, row, index);
+      assertRequiredStringFields(key, row, index);
     }
   }
   for (const key of IMPORT_OBJECT_SECTIONS) {

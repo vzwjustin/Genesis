@@ -451,6 +451,12 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   if (reasoningJoined.length > 0) message.reasoning_content = reasoningJoined;
   if (toolCallMap.size > 0) {
     message.tool_calls = [...toolCallMap.entries()].sort((a, b) => a[0] - b[0]).map(([, tc]) => tc);
+    // Correct finish_reason for tool_calls: a provider may accumulate tool_call
+    // deltas and terminate via a bare [DONE] sentinel without ever setting a
+    // choice.finish_reason, leaving the default "stop". Clients that gate tool
+    // execution on finish_reason === "tool_calls" would otherwise drop the call.
+    // Mirrors nonStreamingHandler.js's tool_calls finish_reason correction.
+    if (finishReason !== "tool_calls") finishReason = "tool_calls";
   }
 
   const result = {

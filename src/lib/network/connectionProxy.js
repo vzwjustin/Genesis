@@ -26,6 +26,13 @@ function validateProxyUrl(value) {
   return raw;
 }
 
+function resolveProxyPoolStrictProxy(proxyPool) {
+  if (!proxyPool || !Object.prototype.hasOwnProperty.call(proxyPool, "strictProxy")) {
+    return undefined;
+  }
+  return proxyPool.strictProxy === true;
+}
+
 /**
  * Normalize legacy proxy configuration.
  */
@@ -92,6 +99,7 @@ export async function resolveConnectionProxyConfig(
          * instead of HTTP_PROXY environment variables.
          */
         if (proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno") {
+          const strictProxy = resolveProxyPoolStrictProxy(proxyPool);
           return {
             source: proxyPool.type,
 
@@ -102,7 +110,7 @@ export async function resolveConnectionProxyConfig(
             connectionProxyUrl: "",
             connectionNoProxy: noProxy,
 
-            strictProxy: proxyPool.strictProxy === true,
+            ...(strictProxy !== undefined ? { strictProxy } : {}),
 
             vercelRelayUrl: proxyUrl, // Still mapped to vercelRelayUrl in the unified payload since they use the exact same header spec
             relayAuthSecret: normalizeString(proxyPool.relayAuthSecret),
@@ -112,6 +120,7 @@ export async function resolveConnectionProxyConfig(
         /**
          * Standard proxy pool
          */
+        const strictProxy = resolveProxyPoolStrictProxy(proxyPool);
         return {
           source: "pool",
 
@@ -122,7 +131,7 @@ export async function resolveConnectionProxyConfig(
           connectionProxyUrl: proxyUrl,
           connectionNoProxy: noProxy,
 
-          strictProxy: proxyPool.strictProxy === true,
+          ...(strictProxy !== undefined ? { strictProxy } : {}),
         };
       }
     }

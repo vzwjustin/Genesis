@@ -12,6 +12,7 @@ import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
 
 async function buildProxyOptionsFromConnection(conn) {
   const proxyConfig = await resolveConnectionProxyConfig(conn?.providerSpecificData || {});
@@ -20,7 +21,8 @@ async function buildProxyOptionsFromConnection(conn) {
     connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
     connectionNoProxy: proxyConfig.connectionNoProxy || "",
     vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
-    strictProxy: proxyConfig.strictProxy === true,
+    relayAuthSecret: proxyConfig.relayAuthSecret || "",
+    strictProxy: proxyConfig.strictProxy,
   };
 }
 
@@ -100,11 +102,16 @@ export class ModelsDbError extends Error {
 async function fetchCompatibleModelIds(connection, proxyOptions = null) {
   if (!connection?.apiKey) return [];
 
-  const baseUrl = typeof connection?.providerSpecificData?.baseUrl === "string"
+  let baseUrl = typeof connection?.providerSpecificData?.baseUrl === "string"
     ? connection.providerSpecificData.baseUrl.trim().replace(/\/$/, "")
     : "";
 
   if (!baseUrl) return [];
+  try {
+    baseUrl = validateProviderBaseUrl(baseUrl);
+  } catch {
+    return [];
+  }
 
   let url = `${baseUrl}/models`;
   const headers = {
@@ -315,13 +322,20 @@ export async function buildModelsList(kindFilter) {
         })
         .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
 
+      const customModelKindById = new Map();
       const customModelIds = customModels
         .filter((m) => {
-          if (!m?.id || (m.type && m.type !== "llm")) return false;
+          if (!m?.id) return false;
+          const kind = modelKind(m);
+          if (!kindFilter.includes(kind)) return false;
           const alias = m.providerAlias;
           return alias === staticAlias || alias === outputAlias || alias === providerId;
         })
-        .map((m) => String(m.id).trim())
+        .map((m) => {
+          const modelId = String(m.id).trim();
+          if (modelId) customModelKindById.set(modelId, modelKind(m));
+          return modelId;
+        })
         .filter((modelId) => modelId !== "");
 
       const aliasModelIds = Object.values(modelAliases || {})
@@ -351,7 +365,7 @@ export async function buildModelsList(kindFilter) {
 
       for (const modelId of mergedModelIds) {
         // Resolve kind: prefer static metadata, otherwise infer from ID heuristics
-        const kind = staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
+        const kind = staticModelKindById.get(modelId) || customModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
         if (!kindFilter.includes(kind)) continue;
         if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
 

@@ -80,7 +80,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
     if (content.includes("<think>")) {
       state.inThinking = true;
-      content = content.replace("<think>", "");
+      content = content.replace(/<think>/g, "");
       startReasoning(state, emit, idx);
     }
 

@@ -223,6 +223,42 @@ describe("round-5: usage connection unsupported", () => {
     const body = await res.json();
     expect(body.error).toContain("not available");
   });
+
+  it("preserves strict proxy routing for usage calls", async () => {
+    localDbMocks.getProviderConnectionById.mockResolvedValue({
+      id: "c1",
+      provider: "glm",
+      authType: "apikey",
+      apiKey: "sk-test",
+      providerSpecificData: { proxyPoolId: "pool-1" },
+    });
+    usageMocks.getUsageForProvider.mockResolvedValue({ ok: true });
+    const { resolveConnectionProxyConfig } = await import("@/lib/network/connectionProxy");
+    resolveConnectionProxyConfig.mockResolvedValueOnce({
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://proxy.local:8080",
+      connectionNoProxy: "",
+      vercelRelayUrl: "",
+      relayAuthSecret: "relay-secret",
+      strictProxy: true,
+    });
+
+    const { GET } = await import("../../src/app/api/usage/[connectionId]/route.js");
+    const res = await GET(new Request("http://localhost/api/usage/c1"), {
+      params: Promise.resolve({ connectionId: "c1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(usageMocks.getUsageForProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "c1" }),
+      expect.objectContaining({
+        connectionProxyEnabled: true,
+        connectionProxyUrl: "http://proxy.local:8080",
+        relayAuthSecret: "relay-secret",
+        strictProxy: true,
+      }),
+    );
+  });
 });
 
 // ── 4. request-logs sessions limit validation ───────────────────────────────
@@ -491,5 +527,18 @@ describe("round-5: importDb validation", () => {
     });
     const conn = (await getProviderConnections()).find((c) => c.id === "p0");
     expect(conn.priority).toBe(0);
+  });
+
+  it("rejects malformed rows before wiping existing data", async () => {
+    const { setModelAlias, getModelAliases, importDb } = await import("../../src/lib/db/index.js");
+    await setModelAlias("keep-after-bad-import", "still-here");
+
+    await expect(importDb({
+      providerConnections: [
+        { provider: "openai", authType: "apikey" },
+      ],
+    })).rejects.toThrow(/providerConnections\[0\]\.id must be a non-empty string/i);
+
+    expect((await getModelAliases())["keep-after-bad-import"]).toBe("still-here");
   });
 });

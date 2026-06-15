@@ -42,6 +42,10 @@ function buildExecCredentials(credentials, clientHasCacheBreakpoints) {
     : credentials;
 }
 
+function isClientAbortError(error, signal) {
+  return signal?.aborted || error?.name === "AbortError" || error?.message === "Request aborted";
+}
+
 /**
  * Core chat handler - shared between SSE and Worker
  * @param {object} options.body - Request body
@@ -608,21 +612,24 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
     recordUpstreamTelemetry(provider, model, requestStartTime, providerResponse);
   } catch (error) {
-    recordUpstreamTelemetry(provider, model, requestStartTime, null, { isNetworkError: true });
+    const clientAbort = isClientAbortError(error, upstreamSignal);
+    if (!clientAbort) {
+      recordUpstreamTelemetry(provider, model, requestStartTime, null, { isNetworkError: true });
+    }
     releasePending();
     reqLogger.logError(error, translatedBody);
-    appendRequestLog({ model, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
+    appendRequestLog({ model, provider, connectionId, status: `FAILED ${clientAbort ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,
       latency: { ttft: 0, total: Date.now() - requestStartTime },
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: translatedBody || null,
-      response: { error: error.message || String(error), status: error.name === "AbortError" ? 499 : 502, thinking: null },
+      response: { error: error.message || String(error), status: clientAbort ? 499 : 502, thinking: null },
       status: "error"
     })).catch(() => { });
 
-    if (error.name === "AbortError") {
+    if (clientAbort) {
       streamController.handleError(error);
       return createErrorResult(499, "Request aborted");
     }

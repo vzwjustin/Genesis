@@ -15,7 +15,7 @@ function normalizeProxyPoolInput(body = {}) {
   const proxyUrl = typeof body?.proxyUrl === "string" ? body.proxyUrl.trim() : "";
   const noProxy = typeof body?.noProxy === "string" ? body.noProxy.trim() : "";
   const isActive = body?.isActive === undefined ? true : body.isActive === true;
-  const strictProxy = body?.strictProxy === true;
+  const strictProxy = body?.strictProxy === undefined ? true : body.strictProxy === true;
   const typeResult = normalizeProxyPoolType(body?.type, { defaultType: "http" });
   if (typeResult.error) {
     return { error: typeResult.error };

@@ -143,6 +143,8 @@ async function handleSingleModelStt(formData, modelStr, signal) {
       return result.response;
     }
 
+    if (result.status === 499) return result.response || errorResponse(499, result.error || "Request aborted");
+
     const { shouldFallback } = await markAccountUnavailable(
       credentials.connectionId,
       result.status,
