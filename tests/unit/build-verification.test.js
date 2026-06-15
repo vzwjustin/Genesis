@@ -55,4 +55,23 @@ describe("build verification (Task 20)", () => {
 
     expect(hit).toBe(true);
   });
+
+  it("compiled CLI chunks bundle openai-to-cursor translator (not createRequire-only)", () => {
+    const chunksDir = join(root, "cli/app/.next-cli-build/server/chunks");
+    if (!existsSync(chunksDir)) return;
+
+    const chunks = readdirSync(chunksDir)
+      .filter((name) => name.endsWith(".js"))
+      .map((name) => readFileSync(join(chunksDir, name), "utf8"));
+
+    const hasCursorTranslatorBody = chunks.some((src) =>
+      src.includes("Cursor does not support remote image_url content blocks"),
+    );
+    const usesRuntimeCreateRequireForTranslators = chunks.some((src) =>
+      src.includes("createRequire") && src.includes("open-sse/translator/index.js"),
+    );
+
+    expect(hasCursorTranslatorBody).toBe(true);
+    expect(usesRuntimeCreateRequireForTranslators).toBe(false);
+  });
 });

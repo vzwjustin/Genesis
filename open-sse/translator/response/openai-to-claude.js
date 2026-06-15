@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 
 // Must match openai-to-claude.js request translator (empty = real Claude Code behavior).
