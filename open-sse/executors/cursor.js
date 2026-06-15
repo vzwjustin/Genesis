@@ -38,6 +38,12 @@ async function readFetchBodyWithCap(response, maxBytes) {
   return buf;
 }
 
+function createAbortError() {
+  const err = new Error("Request aborted");
+  err.name = "AbortError";
+  return err;
+}
+
 // Detect cloud environment
 const isCloudEnv = () => {
   if (typeof caches !== "undefined" && typeof caches === "object") return true;
@@ -320,7 +326,13 @@ export class CursorExecutor extends BaseExecutor {
       req.on("error", finish(reject));
 
       if (signal) {
-        const onAbort = finish(() => reject(new Error("Request aborted")));
+        // Cancel the in-flight request stream (not just the session) so an
+        // aborted upload/response is torn down promptly.
+        const onAbort = finish(() => { try { req.close(); } catch { /* noop */ } reject(createAbortError()); });
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
         signal.addEventListener("abort", onAbort, { once: true });
       }
 
@@ -391,9 +403,9 @@ export class CursorExecutor extends BaseExecutor {
 
       if (signal) {
         if (signal.aborted) {
-          return finish(reject)(new Error("Request aborted"));
+          return finish(reject)(createAbortError());
         }
-        signal.addEventListener("abort", finish(() => reject(new Error("Request aborted"))), { once: true });
+        signal.addEventListener("abort", finish(() => reject(createAbortError())), { once: true });
       }
 
       // Build the CONNECT request. Include Proxy-Authorization when the proxy URL
@@ -482,7 +494,17 @@ export class CursorExecutor extends BaseExecutor {
           });
 
           req.on("response", (hdrs) => { responseHeaders = hdrs; });
-          req.on("data", (chunk) => { chunks.push(chunk); });
+          let received = 0;
+          req.on("data", (chunk) => {
+            received += chunk.length;
+            // Cap the buffered response, mirroring the direct HTTP/2 path — a
+            // malicious or runaway upstream over the proxy tunnel must not OOM.
+            if (received > CURSOR_MAX_RESPONSE_BYTES) {
+              finish(() => reject(new Error(`Cursor response body exceeds ${CURSOR_MAX_RESPONSE_BYTES} byte limit`)))();
+              return;
+            }
+            chunks.push(chunk);
+          });
           req.on("end", finish(() => {
             resolve({
               status: responseHeaders[":status"],
@@ -522,9 +544,7 @@ export class CursorExecutor extends BaseExecutor {
     }
 
     if (signal?.aborted) {
-      const err = new Error("Request aborted");
-      err.name = "AbortError";
-      throw err;
+      throw createAbortError();
     }
 
     try {
@@ -543,7 +563,8 @@ export class CursorExecutor extends BaseExecutor {
       const usingProxy = usingConnectProxy || usingRelay;
       const needsDnsBypass = shouldBypassMitmDns(url);
       let bypassIP = null;
-      if (needsDnsBypass && !usingProxy && http2) {
+      const usingNativeHttp2Transport = this.makeHttp2Request === CursorExecutor.prototype.makeHttp2Request;
+      if (needsDnsBypass && !usingProxy && http2 && usingNativeHttp2Transport) {
         try {
           bypassIP = await resolveRealIP(new URL(url).hostname);
         } catch (dnsErr) {
@@ -557,7 +578,7 @@ export class CursorExecutor extends BaseExecutor {
       const hostname = new URL(url).hostname;
       const shouldForceFetch = (usingConnectProxy && !isHttp2Required(hostname))
         || usingRelay
-        || (!usingProxy && needsDnsBypass && !bypassIP);
+        || (!usingProxy && needsDnsBypass && !bypassIP && usingNativeHttp2Transport);
 
       let response;
       if (usingConnectProxy && http2 && isHttp2Required(hostname)) {

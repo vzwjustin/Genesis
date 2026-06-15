@@ -59,6 +59,16 @@ describe("proxy URL validation", () => {
     }
   });
 
+  it("defaults proxy pools to strict fail-closed routing", () => {
+    const createRouteSrc = readFileSync(join(root, "../../src/app/api/proxy-pools/route.js"), "utf8");
+    const repoSrc = readFileSync(join(root, "../../src/lib/db/repos/proxyPoolsRepo.js"), "utf8");
+    const pageSrc = readFileSync(join(root, "../../src/app/(dashboard)/dashboard/proxy-pools/page.js"), "utf8");
+
+    expect(createRouteSrc).toContain("body?.strictProxy === undefined ? true");
+    expect(repoSrc).toContain("data.strictProxy === undefined ? true");
+    expect(pageSrc).toContain("data.strictProxy !== false");
+  });
+
   it("does not expose raw deployment errors from token-bearing relay deploy routes", () => {
     const files = [
       "../../src/app/api/proxy-pools/vercel-deploy/route.js",

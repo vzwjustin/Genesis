@@ -6,6 +6,7 @@
  * - Passthrough non-streaming validates shape before onRequestSuccess
  * - Compression restore failure fails closed
  * - Token refresh retry uses merged upstream signal
+ * - Client abort (499) does not mark account unavailable
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -114,6 +115,50 @@ describe("chat handler — pre-flight skips do not consume retry slots", () => {
     expect(src).toContain("proxyInternal: result.proxyInternal");
     expect(src).toContain("errorCode: result.errorCode");
   });
+
+  it("returns client aborts before markAccountUnavailable", () => {
+    const abortIdx = src.indexOf("if (result.status === 499)");
+    const markIdx = src.indexOf("markAccountUnavailable(");
+    expect(abortIdx).toBeGreaterThan(-1);
+    expect(markIdx).toBeGreaterThan(-1);
+    expect(abortIdx).toBeLessThan(markIdx);
+  });
+});
+
+describe("non-chat handlers — client aborts do not mark accounts unavailable", () => {
+  const files = [
+    "src/sse/handlers/embeddings.js",
+    "src/sse/handlers/imageGeneration.js",
+    "src/sse/handlers/tts.js",
+    "src/sse/handlers/stt.js",
+    "src/sse/handlers/search.js",
+    "src/sse/handlers/fetch.js",
+  ];
+
+  for (const rel of files) {
+    it(`${rel} returns 499 before markAccountUnavailable`, () => {
+      const src = readFileSync(join(root, "../..", rel), "utf8");
+      const abortIdx = src.indexOf("result.status === 499");
+      const markIdx = src.indexOf("markAccountUnavailable(");
+      expect(abortIdx).toBeGreaterThan(-1);
+      expect(markIdx).toBeGreaterThan(-1);
+      expect(abortIdx).toBeLessThan(markIdx);
+    });
+  }
+});
+
+describe("media cores — aborts preserve 499", () => {
+  for (const rel of ["open-sse/handlers/ttsCore.js", "open-sse/handlers/sttCore.js"]) {
+    it(`${rel} maps AbortError to 499`, () => {
+      const src = readFileSync(join(root, "../..", rel), "utf8");
+      const abortIdx = src.indexOf('err?.name === "AbortError"');
+      const statusIdx = src.indexOf('createErrorResult(499, "Request aborted")');
+      const badGatewayIdx = src.indexOf("HTTP_STATUS.BAD_GATEWAY", abortIdx);
+      expect(abortIdx).toBeGreaterThan(-1);
+      expect(statusIdx).toBeGreaterThan(abortIdx);
+      expect(statusIdx).toBeLessThan(badGatewayIdx);
+    });
+  }
 });
 
 describe("nonStreamingHandler — passthrough validates before onRequestSuccess", () => {

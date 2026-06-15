@@ -135,14 +135,16 @@ export async function GET(request, { params }) {
       );
     }
 
-    // Resolve connection proxy config; force strictProxy=false so quota/refresh fall back to direct on failure
+    // Resolve connection proxy config; usage/quota calls must honor the same
+    // fail-closed proxy routing as normal provider requests.
     const proxyConfig = await resolveConnectionProxyConfig(connection.providerSpecificData);
     const proxyOptions = {
       connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
       connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
       connectionNoProxy: proxyConfig.connectionNoProxy || "",
       vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
-      strictProxy: false,
+      relayAuthSecret: proxyConfig.relayAuthSecret || "",
+      strictProxy: proxyConfig.strictProxy,
     };
 
     // Refresh credentials only for OAuth connections (apikey has no token refresh)

@@ -20,6 +20,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const mockCheckCircuitBreaker = vi.hoisted(() => vi.fn(() => ({ denied: false })));
+const mockRecordUpstreamTelemetry = vi.hoisted(() => vi.fn());
+
 // --- Mocks ---
 
 vi.mock("open-sse/services/provider.js", () => ({
@@ -135,6 +138,10 @@ vi.mock("open-sse/handlers/chatCore/nonStreamingHandler.js", () => ({
 vi.mock("open-sse/handlers/chatCore/streamingHandler.js", () => ({
   handleStreamingResponse: vi.fn(() => ({ success: true, response: new Response("{}") })),
   buildOnStreamComplete: () => ({ onStreamComplete: () => {} }),
+}));
+vi.mock("open-sse/utils/upstreamTelemetry.js", () => ({
+  checkCircuitBreaker: (...args) => mockCheckCircuitBreaker(...args),
+  recordUpstreamTelemetry: (...args) => mockRecordUpstreamTelemetry(...args),
 }));
 vi.mock("open-sse/utils/toolDeduper.js", () => ({
   dedupeTools: (tools) => ({ tools, stripped: [] }),
@@ -331,6 +338,7 @@ describe("Passthrough proxy responsibilities (task 2.6)", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe(499);
+      expect(mockRecordUpstreamTelemetry).not.toHaveBeenCalled();
     });
 
     it("returns error result when executor throws network error in passthrough mode", async () => {
@@ -342,6 +350,13 @@ describe("Passthrough proxy responsibilities (task 2.6)", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe(502);
+      expect(mockRecordUpstreamTelemetry).toHaveBeenCalledWith(
+        "claude",
+        "claude-sonnet-4-20250514",
+        expect.any(Number),
+        null,
+        { isNetworkError: true }
+      );
     });
 
     it("returns upstream error when provider returns non-OK in passthrough mode", async () => {

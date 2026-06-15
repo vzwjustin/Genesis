@@ -101,6 +101,23 @@ describe("streamHandler — stall timeout does not fabricate [DONE]", () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "stream stall timeout" }));
     expect(out).not.toContain("[DONE]");
   });
+
+  it("handles a null-body upstream response by closing cleanly (no TypeError)", async () => {
+    vi.useRealTimers();
+    const controller = createStreamController({ provider: "openai", model: "gpt-4" });
+    const transform = new TransformStream({
+      transform(chunk, ctrl) { ctrl.enqueue(chunk); },
+    });
+
+    // providerResponse.body == null (e.g. 204 / HEAD / empty error). The no-body
+    // branch must pass the {readable, writable} shape, not a bare ReadableStream,
+    // or createDisconnectAwareStream throws on transformStream.readable.getReader().
+    const readable = pipeWithDisconnect({ body: null }, transform, controller);
+    const reader = readable.getReader();
+    const { done } = await reader.read();
+
+    expect(done).toBe(true);
+  });
 });
 
 describe("stream.js — passthrough terminal semantics", () => {

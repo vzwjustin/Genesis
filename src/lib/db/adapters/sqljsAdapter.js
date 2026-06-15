@@ -108,7 +108,15 @@ export async function createSqlJsAdapter(filePath) {
       const result = fn();
       db.exec(`RELEASE ${sp}`);
       txDepth -= 1;
-      scheduleSave();
+      // Outermost transaction committed: persist synchronously so a crash
+      // after a successful commit cannot lose the recorded data (durability).
+      // Nested transactions defer to the outer one to avoid mid-tx writes.
+      if (txDepth === 0) {
+        dirty = true;
+        flushPendingSave();
+      } else {
+        scheduleSave();
+      }
       return result;
     } catch (e) {
       try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}

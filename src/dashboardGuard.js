@@ -87,7 +87,7 @@ function isPublicLlmApi(pathname) {
 async function hasValidApiKey(request) {
   for (const apiKey of getGatewayApiKeyCandidates(request)) {
     if (isLocalhostSentinelKey(apiKey)) {
-      if (isLoopbackRequest(request)) return true;
+      if (isVerifiableLoopbackRequest(request)) return true;
       continue;
     }
     if (!verifyApiKeyCrc(apiKey)) continue;
@@ -98,7 +98,7 @@ async function hasValidApiKey(request) {
 
 async function getPublicLlmApiAuthError(request) {
   if (hasgenesisCredentialAttempt(request)) return "Invalid API key";
-  if (isLoopbackRequest(request)) return "Missing API key";
+  if (isVerifiableLoopbackRequest(request)) return "Missing API key";
   return "API key required for remote API access";
 }
 
@@ -110,13 +110,13 @@ async function canAccessPublicLlmApi(request) {
 
   if (hasgenesisCredentialAttempt(request)) {
     if (await hasValidApiKey(request)) return true;
-    if (!requireApiKey && isLoopbackRequest(request) && allowsStaleGatewayBypass(request)) {
+    if (!requireApiKey && isVerifiableLoopbackRequest(request) && allowsStaleGatewayBypass(request)) {
       return true;
     }
     return false;
   }
 
-  if (!requireApiKey && isLoopbackRequest(request)) return true;
+  if (!requireApiKey && isVerifiableLoopbackRequest(request)) return true;
 
   return false;
 }
@@ -206,9 +206,14 @@ export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
   const isLocalOnlyPath = LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p));
+  const settings = isLocalOnlyPath || ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))
+    ? await loadSettings()
+    : null;
 
   // Local-only gate for spawn-capable / host-secret routes.
   if (isLocalOnlyPath) {
+    const tunnelBlocked = await rejectTunnelDashboardApi(request, settings);
+    if (tunnelBlocked) return tunnelBlocked;
     if (!(await canAccessLocalOnlyRoute(request))) {
       return NextResponse.json({ error: "CLI token or login required" }, { status: 403 });
     }
@@ -220,7 +225,7 @@ export async function proxy(request) {
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
   if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
-    const tunnelBlocked = await rejectTunnelDashboardApi(request, await loadSettings());
+    const tunnelBlocked = await rejectTunnelDashboardApi(request, settings);
     if (tunnelBlocked) return tunnelBlocked;
     if (await hasValidLocalCliToken(request) || await hasValidToken(request))
       return NextResponse.next();

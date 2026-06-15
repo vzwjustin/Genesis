@@ -1,12 +1,19 @@
 // Shared TTS helpers
 import { Buffer } from "node:buffer";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../../utils/proxyFetch.js";
 
-/** Route TTS upstream fetches through connection/env proxy when configured. */
-let activeTtsAbortSignal;
+/**
+ * Per-request abort signal, scoped via AsyncLocalStorage so concurrent TTS
+ * requests on the same event loop don't clobber each other's signal. A plain
+ * module-level variable would let request B overwrite A's signal (and A's
+ * cleanup null out B's), coupling unrelated requests' cancellation.
+ */
+const ttsSignalStore = new AsyncLocalStorage();
 
-export function setActiveTtsAbortSignal(signal) {
-  activeTtsAbortSignal = signal;
+/** Run `fn` with `signal` bound as the active TTS abort signal for its async context. */
+export function runWithTtsAbortSignal(signal, fn) {
+  return ttsSignalStore.run(signal, fn);
 }
 
 export async function ttsFetch(url, init, credentialsOrProxyOptions = null) {
@@ -23,7 +30,8 @@ export async function ttsFetch(url, init, credentialsOrProxyOptions = null) {
       proxyOptions = buildProxyOptionsFromCredentials(maybeProxy);
     }
   }
-  const mergedInit = activeTtsAbortSignal ? { ...init, signal: activeTtsAbortSignal } : init;
+  const activeSignal = ttsSignalStore.getStore();
+  const mergedInit = activeSignal ? { ...init, signal: activeSignal } : init;
   return proxyAwareFetch(url, mergedInit, proxyOptions);
 }
 

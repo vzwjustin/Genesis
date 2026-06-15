@@ -3,6 +3,7 @@ import { createProviderNode, getProviderNodes } from "@/models";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,18 @@ const ANTHROPIC_COMPATIBLE_DEFAULTS = {
 const CUSTOM_EMBEDDING_DEFAULTS = {
   baseUrl: "https://api.openai.com/v1",
 };
+
+function normalizeProviderNodeBaseUrl(baseUrl, fallbackBaseUrl, endpointSuffix = "") {
+  let sanitizedBaseUrl = (baseUrl || fallbackBaseUrl).trim().replace(/\/$/, "");
+  if (endpointSuffix && sanitizedBaseUrl.endsWith(endpointSuffix)) {
+    sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -endpointSuffix.length);
+  }
+  return validateProviderBaseUrl(sanitizedBaseUrl);
+}
+
+function invalidBaseUrlResponse() {
+  return NextResponse.json({ error: "Invalid base URL" }, { status: 400 });
+}
 
 // GET /api/provider-nodes - List all provider nodes
 export async function GET(request) {
@@ -39,11 +52,11 @@ export async function POST(request) {
     const body = await request.json();
     const { name, prefix, apiType, baseUrl, type } = body;
 
-    if (!name?.trim()) {
+    if (typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    if (!prefix?.trim()) {
+    if (typeof prefix !== "string" || !prefix.trim()) {
       return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
     }
 
@@ -55,22 +68,30 @@ export async function POST(request) {
         return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
       }
 
+      let sanitizedBaseUrl;
+      try {
+        sanitizedBaseUrl = normalizeProviderNodeBaseUrl(baseUrl, OPENAI_COMPATIBLE_DEFAULTS.baseUrl);
+      } catch {
+        return invalidBaseUrlResponse();
+      }
+
       const node = await createProviderNode({
         id: `${OPENAI_COMPATIBLE_PREFIX}${apiType}-${generateId()}`,
         type: "openai-compatible",
         prefix: prefix.trim(),
         apiType,
-        baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
+        baseUrl: sanitizedBaseUrl,
         name: name.trim(),
       });
       return NextResponse.json({ node }, { status: 201 });
     }
 
     if (nodeType === "custom-embedding") {
-      // Strip trailing slash and /embeddings if user pasted full endpoint
-      let sanitizedBaseUrl = (baseUrl || CUSTOM_EMBEDDING_DEFAULTS.baseUrl).trim().replace(/\/$/, "");
-      if (sanitizedBaseUrl.endsWith("/embeddings")) {
-        sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -"/embeddings".length);
+      let sanitizedBaseUrl;
+      try {
+        sanitizedBaseUrl = normalizeProviderNodeBaseUrl(baseUrl, CUSTOM_EMBEDDING_DEFAULTS.baseUrl, "/embeddings");
+      } catch {
+        return invalidBaseUrlResponse();
       }
 
       const node = await createProviderNode({
@@ -84,11 +105,11 @@ export async function POST(request) {
     }
 
     if (nodeType === "anthropic-compatible") {
-      // Sanitize Base URL: remove trailing slash, and remove trailing /messages if user added it
-      // This prevents double-appending /messages at runtime
-      let sanitizedBaseUrl = (baseUrl || ANTHROPIC_COMPATIBLE_DEFAULTS.baseUrl).trim().replace(/\/$/, "");
-      if (sanitizedBaseUrl.endsWith("/messages")) {
-        sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
+      let sanitizedBaseUrl;
+      try {
+        sanitizedBaseUrl = normalizeProviderNodeBaseUrl(baseUrl, ANTHROPIC_COMPATIBLE_DEFAULTS.baseUrl, "/messages");
+      } catch {
+        return invalidBaseUrlResponse();
       }
 
       const node = await createProviderNode({

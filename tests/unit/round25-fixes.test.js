@@ -117,15 +117,15 @@ describe("Round 25 — nested built-in tool model prefix strip", () => {
 });
 
 describe("Round 25 — loopback Host spoofing blocked", () => {
-  it("allows loopback Host without Origin when socket IP is unavailable (CLI direct connect)", () => {
-    expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(true);
+  it("rejects loopback Host without socket IP", () => {
+    expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(false);
   });
 
-  it("allows loopback Host with loopback Origin when socket IP is unavailable", () => {
+  it("rejects loopback Host with loopback Origin when socket IP is unavailable", () => {
     expect(isLoopbackRequest(makeRequest({
       host: "localhost:20128",
       origin: "http://localhost:20128",
-    }))).toBe(true);
+    }))).toBe(false);
   });
 
   it("rejects loopback Host without Origin when proxy headers indicate remote client", () => {
@@ -189,8 +189,8 @@ describe("Round 25 — verifiable loopback for management API", () => {
     expect(isVerifiableLoopbackRequest(makeRequest({ host: "localhost:20128" }, "127.0.0.1"))).toBe(true);
   });
 
-  it("still allows CLI-style loopback for public LLM auth when socket is unavailable", () => {
-    expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(true);
+  it("rejects CLI-style loopback for public LLM auth when socket is unavailable", () => {
+    expect(isLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(false);
     expect(isVerifiableLoopbackRequest(makeRequest({ host: "localhost:20128" }))).toBe(false);
   });
 });
@@ -214,7 +214,11 @@ describe("dashboard loopback session detection", () => {
     expect(isCliLoopbackClient(makeRequest({
       host: "localhost:20128",
       "x-9r-cli-token": "abc",
-    }))).toBe(true);
+    }, "127.0.0.1"))).toBe(true);
+    expect(isCliLoopbackClient(makeRequest({
+      host: "localhost:20128",
+      "x-9r-cli-token": "abc",
+    }))).toBe(false);
     expect(isCliLoopbackClient(makeRequest({
       host: "localhost:20128",
       origin: "http://localhost:20128",

@@ -215,6 +215,8 @@ async function handleSingleModelEmbeddings(body, modelStr, signal) {
 
     if (result.success) return result.response;
 
+    if (result.status === 499) return result.response;
+
     const { shouldFallback } = await markAccountUnavailable(
       credentials.connectionId,
       result.status,

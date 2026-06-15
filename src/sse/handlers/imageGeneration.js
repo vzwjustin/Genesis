@@ -192,6 +192,8 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
 
     if (result.success) return result.response;
 
+    if (result.status === 499) return result.response;
+
     const { shouldFallback } = await markAccountUnavailable(
       credentials.connectionId,
       result.status,

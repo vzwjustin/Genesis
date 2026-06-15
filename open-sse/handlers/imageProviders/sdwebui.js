@@ -1,7 +1,7 @@
 // SD WebUI (AUTOMATIC1111) — local, noAuth
 import { nowSec } from "./_base.js";
 
-export default {
+const sdwebuiAdapter = {
   noAuth: true,
   buildUrl: () => "http://localhost:7860/sdapi/v1/txt2img",
   buildHeaders: () => ({ "Content-Type": "application/json" }),
@@ -15,3 +15,5 @@ export default {
     return { created: nowSec(), data: images };
   },
 };
+
+export default sdwebuiAdapter;

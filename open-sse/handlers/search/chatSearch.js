@@ -4,6 +4,7 @@
  */
 
 import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../../utils/proxyFetch.js";
+import { mergeAbortSignals } from "../../utils/abortSignal.js";
 
 const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_RESULTS = 10;
@@ -288,6 +289,7 @@ const CHAT_SEARCH_CONFIG = {
  * @param {string} [params.model]
  * @param {{apiKey?:string, accessToken?:string}} params.credentials
  * @param {{info?:Function, warn?:Function, error?:Function}} [params.log]
+ * @param {AbortSignal} [params.signal]
  * @returns {Promise<{success:boolean, status?:number, error?:string, data?:object}>}
  */
 export async function handleChatSearch({
@@ -296,7 +298,8 @@ export async function handleChatSearch({
   maxResults,
   model,
   credentials,
-  log
+  log,
+  signal
 }) {
   const startTime = Date.now();
   const cfg = CHAT_SEARCH_CONFIG[provider];
@@ -335,6 +338,7 @@ export async function handleChatSearch({
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const merged = mergeAbortSignals([signal, controller.signal]);
 
   let upstreamStart = Date.now();
   let resp;
@@ -343,11 +347,15 @@ export async function handleChatSearch({
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: controller.signal
+      signal: merged.signal
     }, proxyOptions);
   } catch (err) {
     clearTimeout(timer);
+    merged.cleanup?.();
     if (err?.name === "AbortError") {
+      if (signal?.aborted) {
+        return { success: false, status: 499, error: "Request aborted" };
+      }
       log?.warn?.(`[chatSearch] timeout provider=${provider}`);
       return { success: false, status: 504, error: "Upstream timeout" };
     }
@@ -359,6 +367,7 @@ export async function handleChatSearch({
     };
   }
   clearTimeout(timer);
+  merged.cleanup?.();
   const upstreamLatency = Date.now() - upstreamStart;
 
   let data;

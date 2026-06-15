@@ -26,6 +26,11 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
+// The undici ProxyAgent only supports http/https proxies. Restrict the
+// user-supplied proxy endpoint to those schemes at the application level so
+// validation does not depend solely on the library's own parsing.
+const SUPPORTED_PROXY_SCHEMES = new Set(["http:", "https:"]);
+
 export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
   const normalizedProxyUrl = normalizeString(proxyUrl);
   if (!normalizedProxyUrl) {
@@ -43,6 +48,20 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
     Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0
       ? Math.min(timeoutMsRaw, 30000)
       : DEFAULT_TIMEOUT_MS;
+
+  let parsedProxyUrl;
+  try {
+    parsedProxyUrl = new URL(normalizedProxyUrl);
+  } catch {
+    return { ok: false, status: 400, error: "Invalid proxy URL" };
+  }
+  if (!SUPPORTED_PROXY_SCHEMES.has(parsedProxyUrl.protocol)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Unsupported proxy scheme: ${parsedProxyUrl.protocol}`,
+    };
+  }
 
   let dispatcher;
 

@@ -115,6 +115,53 @@ describe("fetchModelsForConnection auth refresh", () => {
     expect(fetchOpts.headers.Authorization).toBe("Bearer oauth-access-token");
   });
 
+  it("rejects unsafe openai-compatible model baseUrl before fetch", async () => {
+    const connection = {
+      id: "conn-oc-unsafe",
+      provider: "openai-compatible-chat-abc",
+      authType: "apikey",
+      apiKey: "sk-test",
+      providerSpecificData: { baseUrl: "https://127.0.0.1:11434/v1" },
+    };
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    const result = await fetchModelsForConnection(connection);
+
+    expect(result.status).toBe(400);
+    expect(result.error).toContain("Invalid base URL");
+    expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
+  });
+
+  it("forwards relay auth secret for compatible model listing", async () => {
+    const connection = {
+      id: "conn-oc-relay",
+      provider: "openai-compatible-chat-abc",
+      authType: "apikey",
+      apiKey: "sk-test",
+      providerSpecificData: { baseUrl: "https://compat.example.com/v1", proxyPoolId: "pool-1" },
+    };
+    mocks.resolveConnectionProxyConfig.mockResolvedValueOnce({
+      vercelRelayUrl: "https://relay.example.com/api/relay",
+      relayAuthSecret: "relay-secret",
+      strictProxy: true,
+    });
+    mocks.proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: "glm-4.7" }] }),
+    });
+
+    const { fetchModelsForConnection } = await import("../../src/lib/models/fetchConnectionModels.js");
+    const result = await fetchModelsForConnection(connection);
+
+    expect(result.models).toHaveLength(1);
+    expect(mocks.proxyAwareFetch.mock.calls[0][2]).toMatchObject({
+      vercelRelayUrl: "https://relay.example.com/api/relay",
+      relayAuthSecret: "relay-secret",
+      strictProxy: true,
+    });
+  });
+
   it("retries openai-compatible model fetch after 401 when token refresh succeeds", async () => {
     const connection = {
       id: "conn-oc-retry",

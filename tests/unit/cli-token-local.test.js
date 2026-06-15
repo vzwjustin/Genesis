@@ -29,6 +29,11 @@ describe("hasValidLocalCliToken", () => {
     expect(await hasValidLocalCliToken(makeRequest({ cliToken: "cli-token", socketIp: "127.0.0.1" }))).toBe(true);
   });
 
+  it("rejects matching CLI token when loopback Host has no socket IP", async () => {
+    const { hasValidLocalCliToken } = await import("../../src/shared/auth/cliToken.js");
+    expect(await hasValidLocalCliToken(makeRequest({ cliToken: "cli-token" }))).toBe(false);
+  });
+
   it("accepts matching CLI token from private LAN socket", async () => {
     const { hasValidLocalCliToken } = await import("../../src/shared/auth/cliToken.js");
     expect(await hasValidLocalCliToken(makeRequest({

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
-import { isBlockedHostname } from "open-sse/utils/ssrfGuardCore.js";
+import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 async function fetchWithTimeout(url, options = {}, timeout = 10000) {
@@ -13,18 +13,13 @@ async function fetchWithTimeout(url, options = {}, timeout = 10000) {
   }
 }
 
-// Validate URL format and block embedded credentials
-const isValidUrl = (url) => {
-  try {
-    const parsed = new URL(url);
-    if (parsed.username || parsed.password) return false;
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-    if (isBlockedHostname(parsed.hostname)) return false;
-    return true;
-  } catch {
-    return false;
+function normalizeProviderNodeBaseUrl(baseUrl, endpointSuffix = "") {
+  let normalizedBase = String(baseUrl || "").trim().replace(/\/$/, "");
+  if (endpointSuffix && normalizedBase.endsWith(endpointSuffix)) {
+    normalizedBase = normalizedBase.slice(0, -endpointSuffix.length);
   }
-};
+  return validateProviderBaseUrl(normalizedBase);
+}
 
 // Parse error details for user-friendly messages
 const getErrorMessage = (error) => {
@@ -67,14 +62,18 @@ export async function POST(request) {
       return NextResponse.json({ error: "Base URL and API key required" }, { status: 400 });
     }
 
-    // Validate URL format
-    if (!isValidUrl(baseUrl)) {
+    let normalizedBase;
+    try {
+      normalizedBase = normalizeProviderNodeBaseUrl(
+        baseUrl,
+        type === "anthropic-compatible" ? "/messages" : type === "custom-embedding" ? "/embeddings" : "",
+      );
+    } catch {
       return NextResponse.json({ error: "Invalid URL format" }, { status: 400 });
     }
 
     // Custom Embedding Validation - test POST /embeddings directly
     if (type === "custom-embedding") {
-      const normalizedBase = baseUrl.trim().replace(/\/$/, "");
       if (!modelId?.trim()) {
         return NextResponse.json({ valid: false, error: "Model ID required for embedding validation" });
       }
@@ -104,11 +103,6 @@ export async function POST(request) {
 
     // Anthropic Compatible Validation
     if (type === "anthropic-compatible") {
-      let normalizedBase = baseUrl.trim().replace(/\/$/, "");
-      if (normalizedBase.endsWith("/messages")) {
-        normalizedBase = normalizedBase.slice(0, -9);
-      }
-
       const modelsUrl = `${normalizedBase}/models`;
       const res = await fetchWithTimeout(modelsUrl, {
         method: "GET",
@@ -156,7 +150,7 @@ export async function POST(request) {
     }
 
     // OpenAI Compatible Validation (Default)
-    const modelsUrl = `${baseUrl.replace(/\/$/, "")}/models`;
+    const modelsUrl = `${normalizedBase}/models`;
     const res = await fetchWithTimeout(modelsUrl, {
       headers: { "Authorization": `Bearer ${apiKey}` },
     });
@@ -170,7 +164,7 @@ export async function POST(request) {
 
     // Fallback: try chat/completions if modelId provided
     if (modelId) {
-      const chatRes = await fetchWithTimeout(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      const chatRes = await fetchWithTimeout(`${normalizedBase}/chat/completions`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,

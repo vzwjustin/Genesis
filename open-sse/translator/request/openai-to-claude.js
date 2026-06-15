@@ -219,6 +219,12 @@ Respond ONLY with the JSON object, no other text.`);
       result.thinking = { type: "disabled" };
     } else if (budget) {
       result.thinking = { type: "enabled", budget_tokens: budget };
+    } else {
+      // Unrecognized/forward-compatible reasoning_effort (e.g. "minimal").
+      // The caller asked to control reasoning, so don't silently drop it;
+      // fall back to the medium budget rather than leaving thinking unset.
+      console.warn(`[openai-to-claude] unknown reasoning_effort "${body.reasoning_effort}", defaulting to medium budget`);
+      result.thinking = { type: "enabled", budget_tokens: effortToBudget.medium };
     }
   }
 

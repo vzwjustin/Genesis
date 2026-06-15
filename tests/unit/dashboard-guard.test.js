@@ -68,7 +68,7 @@ describe("dashboard guard public LLM API access", () => {
   });
 
   it("allows loopback public LLM API without API key when requireApiKey is unset (default off)", async () => {
-    const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }));
+    const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -77,7 +77,7 @@ describe("dashboard guard public LLM API access", () => {
   it("rejects loopback public LLM API without API key when requireApiKey=true", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: true });
 
-    const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }));
+    const response = await proxy(request("/v1/chat/completions", { host: "localhost:20128" }, "127.0.0.1"));
 
     expect(response.status).toBe(401);
     expect(response.body.error).toBe("Missing API key");
@@ -103,7 +103,7 @@ describe("dashboard guard public LLM API access", () => {
   it("rejects loopback rewritten public LLM API without API key when requireApiKey=true", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: true });
 
-    const response = await proxy(request("/api/v1/chat/completions", { host: "localhost:20128" }));
+    const response = await proxy(request("/api/v1/chat/completions", { host: "localhost:20128" }, "127.0.0.1"));
 
     expect(response.status).toBe(401);
     expect(response.body.error).toBe("Missing API key");
@@ -216,7 +216,7 @@ describe("dashboard guard public LLM API access", () => {
     const response = await proxy(request("/v1/models", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -225,7 +225,7 @@ describe("dashboard guard public LLM API access", () => {
   it("allows loopback public LLM API when settings are unavailable (default requireApiKey off)", async () => {
     mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
 
-    const response = await proxy(request("/v1/models", { host: "localhost:20128" }));
+    const response = await proxy(request("/v1/models", { host: "localhost:20128" }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -247,7 +247,7 @@ describe("dashboard guard public LLM API access", () => {
       host: "localhost:20128",
       "x-api-key": "sk-badkeyyy",
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -283,7 +283,7 @@ describe("dashboard guard public LLM API access", () => {
     const response = await proxy(request("/v1/models", {
       host: "localhost:20128",
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
-    }));
+    }, "127.0.0.1"));
 
     expect(response.status).toBe(401);
     expect(response.body.error).toBe("Missing API key");
@@ -294,7 +294,7 @@ describe("dashboard guard public LLM API access", () => {
     const response = await proxy(request("/v1/models", {
       host: "localhost:20128",
       authorization: "Bearer sk_genesis",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -308,7 +308,7 @@ describe("dashboard guard public LLM API access", () => {
       host: "localhost:20128",
       authorization: `Bearer ${VALID_TEST_KEY}`,
       "x-api-key": "sk-ant-api03-provider-key",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
@@ -322,7 +322,7 @@ describe("dashboard guard public LLM API access", () => {
       host: "localhost:20128",
       "x-api-key": VALID_TEST_KEY,
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
@@ -335,7 +335,7 @@ describe("dashboard guard public LLM API access", () => {
       host: "localhost:20128",
       "x-api-key": "sk-badkeyyy",
       authorization: "sk-ant-api03-provider-key",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -376,7 +376,7 @@ describe("dashboard guard public LLM API access", () => {
       host: "localhost:20128",
       "x-api-key": "sk-ant-api03-provider-key",
       authorization: "Bearer sk-badkeyyy",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -389,7 +389,7 @@ describe("dashboard guard public LLM API access", () => {
       host: "localhost:20128",
       "x-goog-api-key": "AIzaSyD-provider-google-key",
       authorization: "Bearer sk-badkeyyy",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -402,7 +402,7 @@ describe("dashboard guard public LLM API access", () => {
       host: "localhost:20128",
       "x-api-key": "sk-badkeyyy",
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -414,7 +414,7 @@ describe("dashboard guard public LLM API access", () => {
     const response = await proxy(request("/v1/models", {
       host: "localhost:20128",
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
@@ -427,7 +427,7 @@ describe("dashboard guard public LLM API access", () => {
       host: "localhost:20128",
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
       "x-api-key": VALID_TEST_KEY,
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
@@ -481,11 +481,11 @@ describe("dashboard guard management API access", () => {
     expect(response.status).toBe(401);
   });
 
-  it("allows management API with valid CLI token on loopback host without socket IP", async () => {
+  it("allows management API with valid CLI token on verifiable loopback socket", async () => {
     const response = await proxy(request("/api/keys", {
       host: "localhost:20128",
       "x-9r-cli-token": "cli-token",
-    }));
+    }, "127.0.0.1"));
 
     expect(response).toBe(mocks.nextResponse);
   });
@@ -600,11 +600,11 @@ describe("dashboard guard local-only access", () => {
     expect(response.status).toBe(403);
   });
 
-  it("isLocalRequest treats raw IPv6 loopback host as local", () => {
+  it("isLocalRequest treats raw IPv6 loopback socket as local", () => {
     const localRequest = request("/api/cli-tools/antigravity-mitm", {
       host: "::1",
       origin: "http://[::1]:20128",
-    });
+    }, "::1");
 
     expect(__test__.isLocalRequest(localRequest)).toBe(true);
   });
@@ -701,6 +701,22 @@ describe("dashboard guard local-only access", () => {
     const response = await proxy(cookieReq);
     expect(response.status).toBe(403);
     expect(response.body.error).toBe("CLI token or login required");
+  });
+
+  it("blocks local-only route from configured tunnel host before LAN-socket allow", async () => {
+    mocks.getSettings.mockResolvedValue({
+      requireLogin: true,
+      tunnelDashboardAccess: false,
+      tunnelUrl: "https://router.example.com",
+    });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "router.example.com",
+    }, "192.168.8.50"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Dashboard access via tunnel is disabled");
   });
 });
 
@@ -929,6 +945,22 @@ describe("dashboard guard cli-tools local-only coverage", () => {
       headers: new Headers({ host: "router.example.com" }),
       cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
       url: "http://router.example.com/api/cli-tools/claude-settings",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("CLI token or login required");
+  });
+
+  it("blocks cli-tools settings from public host even when proxy socket is private", async () => {
+    const cookieReq = {
+      nextUrl: { pathname: "/api/cli-tools/claude-settings" },
+      method: "GET",
+      headers: new Headers({ host: "router.example.com" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://router.example.com/api/cli-tools/claude-settings",
+      socket: { remoteAddress: "192.168.8.50" },
+      ip: "192.168.8.50",
     };
 
     const response = await proxy(cookieReq);

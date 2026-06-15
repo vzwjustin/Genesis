@@ -12,9 +12,10 @@ import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
 import { withSearchCache } from "./cache.js";
 import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../../utils/proxyFetch.js";
+import { mergeAbortSignals } from "../../utils/abortSignal.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
-const NON_RETRIABLE = new Set([400, 401, 403, 404]);
+const NON_RETRIABLE = new Set([400, 401, 403, 404, 499]);
 
 const CONTROL_CHAR_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
 
@@ -63,7 +64,7 @@ function successResult(data) {
  * Run a single dedicated search provider attempt.
  * @returns {Promise<{success:boolean, status?:number, error?:string, data?:object}>}
  */
-async function tryDedicatedProvider({ provider, providerConfig, body, credentials, log, globalStartTime }) {
+async function tryDedicatedProvider({ provider, providerConfig, body, credentials, log, globalStartTime, signal }) {
   const startTime = Date.now();
   const token = credentials?.apiKey || credentials?.accessToken || undefined;
 
@@ -100,6 +101,7 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
   const timeout = Math.min(providerConfig.timeoutMs || 10000, Math.max(remaining, 1000));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
+  const merged = mergeAbortSignals([signal, controller.signal]);
 
   log?.info?.("SEARCH", `${provider.id} | "${params.query.slice(0, 80)}" | type=${params.searchType}`);
 
@@ -109,7 +111,7 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
       providerConfig,
       params,
       fetcher: async () => {
-        const resp = await proxyAwareFetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal }, proxyOptions);
+        const resp = await proxyAwareFetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: merged.signal }, proxyOptions);
         if (!resp.ok) {
           const errText = await resp.text().catch(() => "");
           log?.error?.("SEARCH", `${provider.id} ${resp.status}: ${errText.slice(0, 200)}`);
@@ -142,12 +144,16 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
     if (err?.status) {
       return { success: false, status: err.status, error: err.message };
     }
+    if (signal?.aborted) {
+      return { success: false, status: 499, error: "Request aborted" };
+    }
     const isTimeout = err.name === "AbortError";
     const status = isTimeout ? 504 : 502;
     log?.error?.("SEARCH", `${provider.id} ${isTimeout ? "timeout" : "error"}: ${err.message}`);
     return { success: false, status, error: `${provider.id} ${isTimeout ? "timeout" : "error"}: ${err.message}` };
   } finally {
     clearTimeout(timer);
+    merged.cleanup?.();
   }
 }
 
@@ -161,8 +167,9 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
  * @param {object}   [options.providerConfig] Provider's searchConfig (if dedicated)
  * @param {object|null} options.credentials  Provider credentials
  * @param {object}   [options.log]           Logger
+ * @param {AbortSignal} [options.signal]     Client abort signal
  */
-export async function handleSearchCore({ body, provider, providerConfig, credentials, log }) {
+export async function handleSearchCore({ body, provider, providerConfig, credentials, log, signal }) {
   const globalStartTime = Date.now();
 
   // 1. Sanitize query
@@ -179,7 +186,8 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
       body: normalizedBody,
       credentials,
       log,
-      globalStartTime
+      globalStartTime,
+      signal
     });
   } else if (provider.searchViaChat) {
     result = await handleChatSearch({
@@ -188,13 +196,15 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
       maxResults: normalizedBody.max_results,
       model: provider.searchViaChat.defaultModel,
       credentials,
-      log
+      log,
+      signal
     });
   } else {
     return errorResult(400, `Provider ${provider.id} does not support web search`);
   }
 
   if (result.success) return successResult(result.data);
+  if (result.status === 499) return errorResult(499, result.error || "Request aborted");
 
   // 3. Failover within global timeout for retriable errors
   if (
@@ -210,7 +220,8 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
       maxResults: normalizedBody.max_results,
       model: provider.searchViaChat.defaultModel,
       credentials,
-      log
+      log,
+      signal
     });
     if (fallback.success) return successResult(fallback.data);
   }

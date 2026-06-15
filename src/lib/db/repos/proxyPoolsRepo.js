@@ -66,7 +66,7 @@ export async function createProxyPool(data) {
     noProxy: data.noProxy || "",
     type: data.type || "http",
     isActive: data.isActive !== undefined ? data.isActive : true,
-    strictProxy: data.strictProxy === true,
+    strictProxy: data.strictProxy === undefined ? true : data.strictProxy === true,
     testStatus: data.testStatus || "unknown",
     lastTestedAt: data.lastTestedAt || null,
     lastError: data.lastError || null,

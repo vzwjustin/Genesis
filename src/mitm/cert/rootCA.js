@@ -37,7 +37,7 @@ async function generateRootCA() {
   }
 
   if (!fs.existsSync(MITM_DIR)) {
-    fs.mkdirSync(MITM_DIR, { recursive: true });
+    fs.mkdirSync(MITM_DIR, { recursive: true, mode: 0o700 });
   }
 
   console.log("🔐 Generating Root CA certificate...");
@@ -86,7 +86,9 @@ async function generateRootCA() {
   const privateKeyPem = forge.pki.privateKeyToPem(keys.privateKey);
   const certPem = forge.pki.certificateToPem(cert);
 
-  fs.writeFileSync(ROOT_CA_KEY_PATH, privateKeyPem);
+  fs.writeFileSync(ROOT_CA_KEY_PATH, privateKeyPem, { mode: 0o600 });
+  // writeFileSync mode is masked by umask; chmod explicitly to guarantee 0600.
+  fs.chmodSync(ROOT_CA_KEY_PATH, 0o600);
   fs.writeFileSync(ROOT_CA_CERT_PATH, certPem);
 
   console.log("✅ Root CA generated successfully");
@@ -153,8 +155,7 @@ function generateLeafCert(domain, rootCA) {
     {
       name: "subjectAltName",
       altNames: [
-        { type: 2, value: domain }, // DNS
-        { type: 2, value: `*.${domain}` } // Wildcard
+        { type: 2, value: domain } // DNS — exact host only; no over-broad *.domain wildcard
       ]
     }
   ]);

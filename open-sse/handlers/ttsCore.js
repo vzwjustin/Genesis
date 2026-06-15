@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getTtsAdapter, synthesizeViaConfig } from "./ttsProviders/index.js";
-import { setActiveTtsAbortSignal } from "./ttsProviders/_base.js";
+import { runWithTtsAbortSignal } from "./ttsProviders/_base.js";
 
 // Re-export voice fetchers + voices APIs for backward compat with existing routes
 export {
@@ -71,25 +71,27 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
   }
 
-  setActiveTtsAbortSignal(signal);
-  try {
-    // Special-case adapters (google-tts, edge-tts, local-device, elevenlabs, openai, openrouter, gemini)
-    const adapter = getTtsAdapter(provider);
-    if (adapter) {
-      const result = await adapter.synthesize(input.trim(), model, credentials, responseFormat, { language });
-      // Adapter may return a full {success, response} (legacy) or {base64, format}
-      if (result.success !== undefined) return result;
-      return createTtsResponse(result.base64, result.format, responseFormat);
+  return runWithTtsAbortSignal(signal, async () => {
+    try {
+      // Special-case adapters (google-tts, edge-tts, local-device, elevenlabs, openai, openrouter, gemini)
+      const adapter = getTtsAdapter(provider);
+      if (adapter) {
+        const result = await adapter.synthesize(input.trim(), model, credentials, responseFormat, { language });
+        // Adapter may return a full {success, response} (legacy) or {base64, format}
+        if (result.success !== undefined) return result;
+        return createTtsResponse(result.base64, result.format, responseFormat);
+      }
+
+      // Generic config-driven (hyperbolic, deepgram, nvidia, huggingface, inworld, cartesia, playht, coqui, tortoise, qwen, ...)
+      const result = await synthesizeViaConfig(provider, input.trim(), model, credentials);
+      if (result) return createTtsResponse(result.base64, result.format, responseFormat);
+
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support TTS via this route.`);
+    } catch (err) {
+      if (signal?.aborted || err?.name === "AbortError" || err?.message === "Request aborted") {
+        return createErrorResult(499, "Request aborted");
+      }
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err.message || "TTS synthesis failed");
     }
-
-    // Generic config-driven (hyperbolic, deepgram, nvidia, huggingface, inworld, cartesia, playht, coqui, tortoise, qwen, ...)
-    const result = await synthesizeViaConfig(provider, input.trim(), model, credentials);
-    if (result) return createTtsResponse(result.base64, result.format, responseFormat);
-
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support TTS via this route.`);
-  } catch (err) {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err.message || "TTS synthesis failed");
-  } finally {
-    setActiveTtsAbortSignal(undefined);
-  }
+  });
 }

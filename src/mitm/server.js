@@ -16,6 +16,17 @@ const LOCAL_PORT = 443;
 const IS_WIN = process.platform === "win32";
 const ENABLE_FILE_LOG = IS_DEV;
 
+// Upstream TLS validation is enforced by default. The proxy connects to the
+// resolved IP with `servername` set to the real host, so Node validates the
+// upstream cert against the real hostname (servername takes priority over host
+// in checkServerIdentity). Set GENESIS_MITM_INSECURE_UPSTREAM=1 ONLY for legit
+// local/self-signed upstreams (ollama, localhost) or behind a TLS-terminating
+// corporate proxy where validation must be relaxed deliberately.
+const TLS_REJECT_UNAUTHORIZED = process.env.GENESIS_MITM_INSECURE_UPSTREAM !== "1";
+if (!TLS_REJECT_UNAUTHORIZED) {
+  err("⚠️  Upstream TLS validation DISABLED (GENESIS_MITM_INSECURE_UPSTREAM=1) — upstream certs are NOT verified");
+}
+
 // Clear stale dump files on every MITM start (prevents unbounded disk usage)
 clearDumpDir();
 const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };

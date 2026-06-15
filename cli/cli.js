@@ -142,11 +142,19 @@ const RUNTIME = process.execPath;
 
 // Compare semver versions: returns 1 if a > b, -1 if a < b, 0 if equal
 function compareVersions(a, b) {
-  const partsA = a.split(".").map(Number);
-  const partsB = b.split(".").map(Number);
+  // Strip any prerelease/build metadata (e.g. '1.2.3-beta.1', '1.2.3+sha')
+  // and coerce missing/non-numeric parts to 0 so short or prerelease versions
+  // compare numerically instead of falling through to 'equal' on NaN.
+  const parse = (v) => String(v).split("+")[0].split("-")[0].split(".");
+  const partsA = parse(a);
+  const partsB = parse(b);
   for (let i = 0; i < 3; i++) {
-    if (partsA[i] > partsB[i]) return 1;
-    if (partsA[i] < partsB[i]) return -1;
+    const na = Number(partsA[i]);
+    const nb = Number(partsB[i]);
+    const va = Number.isFinite(na) ? na : 0;
+    const vb = Number.isFinite(nb) ? nb : 0;
+    if (va > vb) return 1;
+    if (va < vb) return -1;
   }
   return 0;
 }

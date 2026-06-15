@@ -4,7 +4,7 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
 const BASE_URL = "https://queue.fal.run";
 
-export default {
+const falAiAdapter = {
   async: true,
   buildUrl: (model) => `${BASE_URL}/${model}`,
   buildHeaders: (creds) => {
@@ -40,3 +40,5 @@ export default {
     return { created: nowSec(), data: images.map((img) => ({ url: img.url || img })) };
   },
 };
+
+export default falAiAdapter;

@@ -15,6 +15,7 @@ import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { refreshGoogleToken as refreshGoogleTokenWithProxy } from "open-sse/services/tokenRefresh.js";
 import { getProviderModels } from "open-sse/config/providerModels.js";
+import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
 
 async function buildProxyOptionsFromConnection(connection) {
   const proxyConfig = await resolveConnectionProxyConfig(connection?.providerSpecificData || {});
@@ -23,7 +24,8 @@ async function buildProxyOptionsFromConnection(connection) {
     connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
     connectionNoProxy: proxyConfig.connectionNoProxy || "",
     vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
-    strictProxy: proxyConfig.strictProxy === true,
+    relayAuthSecret: proxyConfig.relayAuthSecret || "",
+    strictProxy: proxyConfig.strictProxy,
   };
 }
 
@@ -691,7 +693,9 @@ function buildProviderModelsRequest(connection, config) {
       return { error: "No valid token found", status: 401 };
     }
   } else if (config.authQuery) {
-    url += `?${config.authQuery}=${token}`;
+    // Send the API key via the Google-documented header instead of the URL
+    // query string so the secret never lands in request/proxy/error logs.
+    headers["x-goog-api-key"] = token;
   } else if (config.authHeader) {
     headers[config.authHeader] = (config.authPrefix || "") + token;
   }
@@ -791,7 +795,13 @@ export async function fetchModelsForConnection(connection) {
     if (!baseUrl) {
       return { error: "No base URL configured for OpenAI compatible provider", status: 400 };
     }
-    const url = `${baseUrl.replace(/\/$/, "")}/models`;
+    let normalizedBaseUrl;
+    try {
+      normalizedBaseUrl = validateProviderBaseUrl(baseUrl);
+    } catch {
+      return { error: "Invalid base URL configured for OpenAI compatible provider", status: 400 };
+    }
+    const url = `${normalizedBaseUrl}/models`;
     return fetchOpenAICompatibleModels(connection, url, proxyOptions);
   }
 
@@ -804,6 +814,12 @@ export async function fetchModelsForConnection(connection) {
     baseUrl = baseUrl.replace(/\/$/, "");
     if (baseUrl.endsWith("/messages")) {
       baseUrl = baseUrl.slice(0, -9);
+    }
+
+    try {
+      baseUrl = validateProviderBaseUrl(baseUrl);
+    } catch {
+      return { error: "Invalid base URL configured for Anthropic compatible provider", status: 400 };
     }
 
     const url = `${baseUrl}/models`;

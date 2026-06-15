@@ -168,4 +168,29 @@ describe("openai-responses translator think-tag split", () => {
     expect(reasoningDelta?.data.output_index).toBe(1);
     expect(reasoningAdded?.data.output_index).not.toBe(0);
   });
+
+  it("strips every <think> in a delta, not just the first (no literal leak)", () => {
+    // A single delta carrying two opening tags: the non-global replace() used
+    // to strip only the first, leaking a literal "<think>" into output text.
+    const state = responsesState();
+    const all = [];
+    for (const d of [
+      chatChunk("<think>a<think>b</think>visible"),
+      chatChunk(null, "stop"),
+    ]) {
+      all.push(...openaiToOpenAIResponsesResponse(d, state));
+    }
+    const reasoning = all
+      .filter((e) => e.event === "response.reasoning_summary_text.delta")
+      .map((e) => e.data.delta)
+      .join("");
+    const text = all
+      .filter((e) => e.event === "response.output_text.delta")
+      .map((e) => e.data.delta)
+      .join("");
+    // No literal tag survives anywhere; reasoning captured, visible text clean.
+    expect(reasoning).not.toContain("<think>");
+    expect(text).not.toContain("<think>");
+    expect(text).toContain("visible");
+  });
 });

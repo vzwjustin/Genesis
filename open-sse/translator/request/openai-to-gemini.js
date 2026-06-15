@@ -243,6 +243,19 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
           parameters: cleanedSchema
         });
       }
+      // Fallback for edge-shaped tools that match neither strict branch above:
+      // OpenAI function tool missing the nested .function object, Anthropic
+      // built-in tools ({type, name} with no input_schema), or bare {name}
+      // tools. Without this they were silently dropped from functionDeclarations.
+      else if (t.name) {
+        const schemaSource = t.input_schema || t.parameters || { type: "object", properties: {} };
+        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(schemaSource));
+        functionDeclarations.push({
+          name: resolveGeminiToolName(t.name),
+          description: t.description || "",
+          parameters: cleanedSchema
+        });
+      }
     }
 
     if (functionDeclarations.length > 0) {

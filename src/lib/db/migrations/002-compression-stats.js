@@ -2,7 +2,7 @@
 // Stores individual compression records (RTK, Headroom, Caveman) per request.
 import { TABLES, buildCreateTableSql } from "../schema.js";
 
-export default {
+const compressionStatsMigration = {
   version: 2,
   name: "compression-stats",
   up(db) {
@@ -12,3 +12,5 @@ export default {
     }
   },
 };
+
+export default compressionStatsMigration;

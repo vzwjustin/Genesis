@@ -24,7 +24,7 @@ function normalizeFormData(data = {}) {
     proxyUrl: data.proxyUrl || "",
     noProxy: data.noProxy || "",
     isActive: data.isActive !== false,
-    strictProxy: data.strictProxy === true,
+    strictProxy: data.strictProxy !== false,
   };
 }
 

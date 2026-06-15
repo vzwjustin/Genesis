@@ -3,7 +3,6 @@ import { getConsistentMachineId } from "@/shared/utils/machineId";
 import {
   isVerifiableLoopbackRequest,
   isPrivateLanAccessRequest,
-  isCliLoopbackClient,
 } from "@/shared/utils/loopbackRequest.js";
 
 export const CLI_TOKEN_HEADER = "x-9r-cli-token";
@@ -35,6 +34,5 @@ export async function hasValidLocalCliToken(request) {
   if (!(await hasValidCliToken(request))) return false;
   if (isVerifiableLoopbackRequest(request)) return true;
   if (isPrivateLanAccessRequest(request)) return true;
-  if (isCliLoopbackClient(request)) return true;
   return false;
 }

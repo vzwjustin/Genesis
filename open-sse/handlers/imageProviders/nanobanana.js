@@ -5,7 +5,7 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 const SUBMIT_URL = "https://api.nanobananaapi.ai/api/v1/nanobanana/generate";
 const POLL_BASE = "https://api.nanobananaapi.ai/api/v1/nanobanana/record-info";
 
-export default {
+const nanobananaAdapter = {
   async: true,
   buildUrl: () => SUBMIT_URL,
   buildHeaders: (creds) => {
@@ -57,3 +57,5 @@ export default {
     return { created: nowSec(), data: [] };
   },
 };
+
+export default nanobananaAdapter;

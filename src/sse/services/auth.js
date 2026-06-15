@@ -13,7 +13,7 @@ import {
   getGatewayApiKeyCandidates,
   allowsStaleGatewayBypass,
 } from "@/shared/utils/apiKey.js";
-import { isLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
+import { isVerifiableLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidLocalCliToken } from "@/shared/auth/cliToken.js";
 import { strictProxyFieldFromResolved } from "open-sse/utils/proxyFetch.js";
 import * as log from "../utils/logger.js";
@@ -393,7 +393,7 @@ export async function authenticateRequest(request, log) {
     if (!apiKey) {
       if (
         settings?.requireApiKey !== true
-        && isLoopbackRequest(request)
+        && isVerifiableLoopbackRequest(request)
         && allowsStaleGatewayBypass(request)
       ) {
         log?.debug?.("AUTH", "Ignoring stale gateway header; provider bearer on loopback");
@@ -419,7 +419,7 @@ export async function authenticateRequest(request, log) {
     };
   }
 
-  if (!isLoopbackRequest(request)) {
+  if (!isVerifiableLoopbackRequest(request)) {
     log?.warn?.("AUTH", "Missing API key (remote access requires key)");
     return {
       ok: false,
@@ -439,7 +439,7 @@ export { extractApiKey } from "@/shared/utils/apiKey.js";
 export async function isValidApiKey(apiKey, request = null) {
   if (!apiKey) return false;
   if (isLocalhostSentinelKey(apiKey)) {
-    return request ? isLoopbackRequest(request) : false;
+    return request ? isVerifiableLoopbackRequest(request) : false;
   }
   if (!verifyApiKeyCrc(apiKey)) return false;
   return await validateApiKey(apiKey);
