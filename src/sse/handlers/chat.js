@@ -4,6 +4,7 @@ import {
   getProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
+  rollbackStickyUseCount,
   authenticateRequest,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
@@ -237,6 +238,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       excludeConnectionIds.add(credentials.connectionId);
       lastError = "Antigravity requires projectId (Cloud Code Assist fetch failed)";
       lastStatus = 400;
+      await rollbackStickyUseCount(credentials.connectionId);
       continue;
     }
 
@@ -261,6 +263,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       },
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
+      },
+      onRequestFailed: async () => {
+        await rollbackStickyUseCount(credentials.connectionId);
       },
     });
 
@@ -305,6 +310,7 @@ async function dispatchChatCore({
   connectionId,
   onCredentialsRefreshed,
   onRequestSuccess,
+  onRequestFailed,
 }) {
   const userAgent = request?.headers?.get("user-agent") || "";
   const chatSettings = await getSettingsSafe();
@@ -329,5 +335,6 @@ async function dispatchChatCore({
     sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
     onCredentialsRefreshed,
     onRequestSuccess,
+    onRequestFailed,
   });
 }

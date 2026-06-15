@@ -47,13 +47,20 @@ describe("proxy deploy routes proxy migration", () => {
 
 describe("getBrokenComboErrorFromData", () => {
   const combos = [
-    { name: "good", models: ["openai/gpt-4o"] },
+    { name: "good", models: ["openai/gpt-4o", "anthropic/claude-sonnet"] },
+    { name: "single", models: ["openai/gpt-4o"] },
     { name: "empty-combo", models: ["", "  "] },
   ];
 
   it("returns error for registered combo with no valid targets", () => {
     expect(getBrokenComboErrorFromData("empty-combo", combos)).toBe(
       'Combo "empty-combo" has no valid model targets configured.'
+    );
+  });
+
+  it("returns error for single-model combo", () => {
+    expect(getBrokenComboErrorFromData("single", combos)).toBe(
+      'Combo "single" must include at least 2 models for failover.'
     );
   });
 

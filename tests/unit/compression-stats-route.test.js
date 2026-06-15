@@ -22,11 +22,15 @@ vi.mock("open-sse/rtk/headroom.js", () => ({
   getHeadroomProxyStats: mocks.getHeadroomProxyStats,
 }));
 
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
+
 describe("compression stats API", () => {
   it("returns aggregate compression stats merged with headroom proxy stats", async () => {
     const { GET } = await import("../../src/app/api/compression/stats/route.js");
 
-    const response = await GET();
+    const response = await GET({ headers: new Headers() });
 
     expect(response.status).toBe(200);
     expect(response.body.tools.rtk.hits).toBe(3);

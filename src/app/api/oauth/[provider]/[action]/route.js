@@ -24,7 +24,14 @@ import {
   clearXaiSession,
 } from "@/lib/oauth/utils/server";
 
-// Upstream OAuth provider errors can embed raw response bodies containing
+function sanitizeOAuthPollSession(session) {
+  const payload = { status: session.status };
+  if (session.tokens) payload.tokens = session.tokens;
+  if (session.error) payload.error = session.error;
+  if (session.errorDescription) payload.errorDescription = session.errorDescription;
+  return payload;
+}
+
 // client_secret / code / code_verifier / tokens. Log the full diagnostic
 // server-side, but only return a redacted, generic message to the browser.
 function sanitizeOAuthError(error) {
@@ -114,7 +121,7 @@ export async function GET(request, { params }) {
       const session = provider === "xai" ? getXaiSessionStatus(state) : getCodexSessionStatus(state);
       if (!session) return NextResponse.json({ status: "unknown" });
       if (session.status === "done" || session.status === "error") {
-        const payload = { ...session };
+        const payload = sanitizeOAuthPollSession(session);
         if (provider === "xai") consumeXaiSession(state);
         else consumeCodexSession(state);
         return NextResponse.json(payload);

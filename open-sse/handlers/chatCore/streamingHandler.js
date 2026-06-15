@@ -98,7 +98,7 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
 /**
  * Build onStreamComplete callback for streaming usage tracking.
  */
-export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, onRequestSuccess }) {
+export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, onRequestSuccess, onRequestFailed }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
   // Fire accounting/rotation at most once — only on clean stream completion.
@@ -110,6 +110,15 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     if (onRequestSuccess) {
       Promise.resolve(onRequestSuccess()).catch((err) => {
         console.error("[Streaming] onRequestSuccess failed:", err.message);
+      });
+    }
+  };
+  const fireRequestFailed = () => {
+    if (accountingFired) return;
+    accountingFired = true;
+    if (onRequestFailed) {
+      Promise.resolve(onRequestFailed()).catch((err) => {
+        console.error("[Streaming] onRequestFailed failed:", err.message);
       });
     }
   };
@@ -139,6 +148,8 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     if (clean) {
       saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE", idempotencyKey: streamDetailId });
       fireRequestSuccess();
+    } else {
+      fireRequestFailed();
     }
   };
 

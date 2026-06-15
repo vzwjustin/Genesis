@@ -133,11 +133,10 @@ describe("codebase health audit fixes", () => {
     });
   });
 
-  describe("stream.js — translated usage fallback without terminal", () => {
-    it("source includes translate-mode usage fallback when onStreamComplete lacks terminal", () => {
+  describe("stream.js — incomplete streams skip usage persistence", () => {
+    it("does not log usage fallback when onStreamComplete lacks terminal", () => {
       const src = fs.readFileSync(path.join(process.cwd(), "open-sse/utils/stream.js"), "utf8");
-      expect(src).toContain("logStreamUsageFallback");
-      expect(src).toMatch(/hasValidUsage\(state\?\.usage\).*onStreamComplete.*!sawTerminal/s);
+      expect(src).not.toMatch(/hasValidUsage\(usage\).*onStreamComplete.*!sawTerminal[\s\S]*logStreamUsageFallback/);
     });
   });
 
