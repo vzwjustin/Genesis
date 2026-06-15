@@ -88,3 +88,7 @@ gitbook/README.md
 # packaged CLI tarballs (local build artifacts)
 genesis-*.tgz
 .serena/
+
+# UI verification artifacts (screenshots + Playwright MCP logs)
+/*.png
+.playwright-mcp/
