@@ -2,10 +2,25 @@ import { NextResponse } from "next/server";
 import { exportDb, getSettings, importDb } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
+import { hasValidLocalCliToken } from "@/shared/auth/cliToken";
+
+const PASSWORD_HEADER = "x-9r-password";
+
+// Re-auth gate for sensitive DB export/import: a valid session alone isn't enough —
+// require the current password too, so a left-open dashboard can't exfil the DB.
+// Local CLI-token requests (loopback, already trusted) are exempt.
+async function requirePasswordReauth(request, password) {
+  if (await hasValidLocalCliToken(request)) return true;
+  return verifyDashboardPassword(password);
+}
 
 export async function GET(request) {
   const auth = await requireSpawnRouteAuth(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  if (!(await requirePasswordReauth(request, request.headers.get(PASSWORD_HEADER)))) {
+    return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+  }
   try {
     const payload = await exportDb();
     return NextResponse.json(payload);
@@ -19,7 +34,10 @@ export async function POST(request) {
   const auth = await requireSpawnRouteAuth(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
-    const payload = await request.json();
+    const { password, ...payload } = await request.json();
+    if (!(await requirePasswordReauth(request, password))) {
+      return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+    }
     await importDb(payload);
 
     // Ensure proxy settings take effect immediately after a DB import.

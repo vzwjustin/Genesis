@@ -22,9 +22,14 @@ export class DefaultExecutor extends BaseExecutor {
 
   transformRequest(model, body) {
     const withReasoning = injectReasoningContent({ provider: this.provider, model, body });
-    if (hasAnthropicCacheBreakpoints(body)) return withReasoning;
-    const transformed = this.applyJsonSchemaFallback(withReasoning);
-    return transformed;
+    const result = hasAnthropicCacheBreakpoints(body)
+      ? withReasoning
+      : this.applyJsonSchemaFallback(withReasoning);
+    // Cerebras 400 (wrong_api_format) / Mistral 422 (extra_forbidden) on client_metadata.
+    if (result && typeof result === "object" && (this.provider === "cerebras" || this.provider === "mistral")) {
+      delete result.client_metadata;
+    }
+    return result;
   }
 
   // Fallback json_schema → json_object for openai-compatible providers without native Structured Output.

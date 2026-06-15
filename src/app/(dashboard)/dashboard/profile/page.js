@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button, Toggle, Input, SecurityWarning } from "@/shared/components";
+import { Card, Button, Toggle, Input, SecurityWarning, Modal } from "@/shared/components";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
@@ -18,6 +18,8 @@ export default function ProfilePage() {
   const [passLoading, setPassLoading] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
   const [dbStatus, setDbStatus] = useState({ type: "", message: "" });
+  // Re-auth modal before DB export/import (route now requires current password).
+  const [dbAuth, setDbAuth] = useState({ open: false, mode: "", password: "", file: null });
   const [oidcForm, setOidcForm] = useState({
     authMode: "password",
     oidcIssuerUrl: "",
@@ -499,11 +501,13 @@ export default function ProfilePage() {
     }
   };
 
-  const handleExportDatabase = async () => {
+  const handleExportDatabase = async (password) => {
     setDbLoading(true);
     setDbStatus({ type: "", message: "" });
     try {
-      const res = await fetch("/api/settings/database");
+      const res = await fetch("/api/settings/database", {
+        headers: { "x-9r-password": password || "" },
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to export database");
@@ -530,10 +534,14 @@ export default function ProfilePage() {
     }
   };
 
-  const handleImportDatabase = async (event) => {
+  // File picked → stash it and prompt for the password before importing.
+  const handleImportFileSelected = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    setDbAuth({ open: true, mode: "import", password: "", file });
+  };
 
+  const runImportDatabase = async (file, password) => {
     setDbLoading(true);
     setDbStatus({ type: "", message: "" });
 
@@ -544,7 +552,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings/database", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, password }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -562,6 +570,14 @@ export default function ProfilePage() {
       }
       setDbLoading(false);
     }
+  };
+
+  // Confirm-password modal handler: dispatch to export or import.
+  const handleDbAuthConfirm = async () => {
+    const { mode, password, file } = dbAuth;
+    setDbAuth({ open: false, mode: "", password: "", file: null });
+    if (mode === "export") await handleExportDatabase(password);
+    else if (mode === "import" && file) await runImportDatabase(file, password);
   };
 
   const observabilityEnabled = settings.enableObservability === true;
@@ -638,7 +654,7 @@ export default function ProfilePage() {
               <Button
                 variant="secondary"
                 icon="download"
-                onClick={handleExportDatabase}
+                onClick={() => setDbAuth({ open: true, mode: "export", password: "", file: null })}
                 loading={dbLoading}
                 className="w-full sm:w-auto"
               >
@@ -658,7 +674,7 @@ export default function ProfilePage() {
                 type="file"
                 accept="application/json,.json"
                 className="hidden"
-                onChange={handleImportDatabase}
+                onChange={handleImportFileSelected}
               />
             </div>
             {dbStatus.message && (
@@ -1190,6 +1206,46 @@ export default function ProfilePage() {
           <p className="mt-1">Local Mode - All data stored on your machine</p>
         </div>
       </div>
+
+      {/* Re-auth before DB export/import */}
+      <Modal
+        isOpen={dbAuth.open}
+        onClose={() => setDbAuth({ open: false, mode: "", password: "", file: null })}
+        title="Confirm Password"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-text-muted">
+            Enter your dashboard password to {dbAuth.mode === "export" ? "export" : "import"} the database.
+          </p>
+          <Input
+            type="password"
+            value={dbAuth.password}
+            onChange={(e) => setDbAuth((prev) => ({ ...prev, password: e.target.value }))}
+            placeholder="Current password"
+            autoFocus
+            onKeyDown={(e) => { if (e.key === "Enter" && dbAuth.password) handleDbAuthConfirm(); }}
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              onClick={handleDbAuthConfirm}
+              loading={dbLoading}
+              disabled={!dbAuth.password}
+              fullWidth
+            >
+              Confirm
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setDbAuth({ open: false, mode: "", password: "", file: null })}
+              disabled={dbLoading}
+              fullWidth
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
