@@ -18,8 +18,28 @@ const COLORS = {
   dim: "\x1b[2m"
 };
 
-// Provider models - static config (synced from open-sse/config/providerModels.js)
-const PROVIDER_MODELS = {
+// Provider models loaded from the single source of truth (open-sse/config/providerModels.js).
+let providerModelsCache = null;
+let providerModelsPromise = null;
+
+function loadProviderModels() {
+  if (providerModelsCache) return Promise.resolve(providerModelsCache);
+  if (!providerModelsPromise) {
+    providerModelsPromise = import("../../../../open-sse/config/providerModels.js")
+      .then((mod) => {
+        providerModelsCache = mod.PROVIDER_MODELS || {};
+        return providerModelsCache;
+      })
+      .catch(() => {
+        providerModelsCache = PROVIDER_MODELS_FALLBACK;
+        return providerModelsCache;
+      });
+  }
+  return providerModelsPromise;
+}
+
+// Legacy fallback when dynamic import is unavailable (e.g. packaged CLI without open-sse).
+const PROVIDER_MODELS_FALLBACK = {
   cc: [
     { id: "claude-opus-4-5-20251101" },
     { id: "claude-sonnet-4-5-20250929" },
@@ -245,17 +265,17 @@ async function showProvidersMenu(breadcrumb = []) {
 /**
  * Build provider header with alias and models
  * @param {string} providerId - Provider ID
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function buildProviderHeader(providerId) {
+async function buildProviderHeader(providerId) {
   const provider = ALL_PROVIDERS[providerId];
   const alias = provider.alias || providerId;
   
   const lines = [];
   lines.push(`Alias: ${COLORS.cyan}${alias}${COLORS.reset}`);
   
-  // Get models from static config
-  const models = PROVIDER_MODELS[alias] || [];
+  const providerModels = await loadProviderModels();
+  const models = providerModels[alias] || PROVIDER_MODELS_FALLBACK[alias] || [];
   if (models.length > 0) {
     const modelList = models
       .slice(0, 5)
@@ -285,7 +305,7 @@ async function showProviderDetail(providerId, authType, allConnections, breadcru
     title: `🔌 ${provider.name} (${authType.toUpperCase()})`,
     breadcrumb,
     backLabel: "← Back to Providers",
-    headerContent: buildProviderHeader(providerId),
+    headerContent: await buildProviderHeader(providerId),
     fetchItems: async () => {
       const response = await api.getProviders();
       if (response.success) {

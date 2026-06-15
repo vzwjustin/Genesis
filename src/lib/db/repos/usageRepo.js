@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
@@ -27,6 +28,27 @@ const recentRing = global._recentRing;
 const connCache = global._connectionMapCache;
 
 export const statsEmitter = global._statsEmitter;
+
+if (global._nextPendingRequestId == null) global._nextPendingRequestId = 1;
+const nextPendingRequestId = () => global._nextPendingRequestId++;
+
+/** Opaque storage ref for usage rows — never persist the raw API key string. */
+async function resolveApiKeyStorageRef(apiKey) {
+  if (!apiKey || typeof apiKey !== "string") return "local-no-key";
+  try {
+    const { getApiKeys } = await import("./apiKeysRepo.js");
+    const keys = await getApiKeys();
+    const match = keys.find((k) => k.key === apiKey);
+    if (match?.id) return `key:${match.id}`;
+  } catch { /* fall through */ }
+  return `keyhash:${createHash("sha256").update(apiKey).digest("hex").slice(0, 16)}`;
+}
+
+function parseApiKeyRefFromAkKey(akKey) {
+  const pipeIdx = akKey.indexOf("|");
+  if (pipeIdx < 0) return "local-no-key";
+  return akKey.slice(0, pipeIdx) || "local-no-key";
+}
 
 function getLocalDateKey(timestamp) {
   const d = timestamp ? new Date(timestamp) : new Date();
@@ -69,9 +91,9 @@ function aggregateEntryToDay(day, entry) {
     addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
   }
 
-  const apiKeyVal = entry.apiKey && typeof entry.apiKey === "string" ? entry.apiKey : "local-no-key";
-  const akModelKey = `${apiKeyVal}|${entry.model}|${entry.provider || "unknown"}`;
-  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: entry.apiKey || null } });
+  const apiKeyRef = entry._apiKeyRef || "local-no-key";
+  const akModelKey = `${apiKeyRef}|${entry.model}|${entry.provider || "unknown"}`;
+  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
 
   const endpoint = entry.endpoint || "Unknown";
   const epKey = `${endpoint}|${entry.model}|${entry.provider || "unknown"}`;
@@ -165,9 +187,8 @@ export function getPendingRequestTotal() {
   return total;
 }
 
-export function trackPendingRequest(model, provider, connectionId, started, error = false) {
+export function trackPendingRequest(model, provider, connectionId, started, error = false, pendingHandle = null) {
   const modelKey = provider ? `${model} (${provider})` : model;
-  const timerKey = `${connectionId}|${modelKey}`;
 
   if (!pendingRequests.byModel[modelKey]) pendingRequests.byModel[modelKey] = 0;
   pendingRequests.byModel[modelKey] = Math.max(0, pendingRequests.byModel[modelKey] + (started ? 1 : -1));
@@ -186,7 +207,8 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
   }
 
   if (started) {
-    clearTimeout(pendingTimers[timerKey]);
+    const handle = pendingHandle ?? `p${nextPendingRequestId()}`;
+    const timerKey = `${connectionId}|${modelKey}|${handle}`;
     pendingTimers[timerKey] = setTimeout(() => {
       delete pendingTimers[timerKey];
       if (pendingRequests.byModel[modelKey] > 0) {
@@ -207,7 +229,15 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
       }
       statsEmitter.emit("pending");
     }, PENDING_TIMEOUT_MS);
-  } else {
+
+    const t = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    console.log(`[${t}] [PENDING] START | provider=${provider} | model=${model}`);
+    statsEmitter.emit("pending");
+    return handle;
+  }
+
+  if (pendingHandle) {
+    const timerKey = `${connectionId}|${modelKey}|${pendingHandle}`;
     clearTimeout(pendingTimers[timerKey]);
     delete pendingTimers[timerKey];
   }
@@ -218,8 +248,9 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
   }
 
   const t = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  console.log(`[${t}] [PENDING] ${started ? "START" : "END"}${error ? " (ERROR)" : ""} | provider=${provider} | model=${model}`);
+  console.log(`[${t}] [PENDING] END${error ? " (ERROR)" : ""} | provider=${provider} | model=${model}`);
   statsEmitter.emit("pending");
+  return null;
 }
 
 export async function getActiveRequests() {
@@ -267,68 +298,82 @@ export async function getActiveRequests() {
   return { activeRequests, recentRequests, errorProvider };
 }
 
+async function writeRequestUsageOnce(entry) {
+  const db = await getAdapter();
+
+  if (!entry.timestamp) entry.timestamp = new Date().toISOString();
+  entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
+  entry._apiKeyRef = await resolveApiKeyStorageRef(entry.apiKey);
+
+  const tokens = entry.tokens || {};
+  const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
+  const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
+  const storedApiKeyRef = entry._apiKeyRef === "local-no-key" ? null : entry._apiKeyRef;
+
+  // Idempotency: when the caller supplies a stable per-request key, a true
+  // double-write (retry replay, stream+handler firing for one request) is
+  // collapsed so tokens/cost/lifetime aren't counted twice. A NULL key keeps
+  // legacy always-insert behavior (SQLite UNIQUE treats NULLs as distinct),
+  // so this never under-counts genuinely distinct requests.
+  const idempotencyKey = entry.idempotencyKey || null;
+
+  // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
+  // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
+  let historyInserted = true;
+  db.transaction(() => {
+    const insertResult = db.run(
+      `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, idempotencyKey) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        entry.timestamp, entry.provider || null, entry.model || null,
+        entry.connectionId || null, storedApiKeyRef, entry.endpoint || null,
+        promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
+        stringifyJson(tokens), stringifyJson({}), idempotencyKey,
+      ]
+    );
+
+    // A duplicate key → 0 rows inserted → skip aggregate + lifetime bump so
+    // the day rollup and lifetime counter stay consistent with history.
+    const inserted = insertResult?.changes ?? 1;
+    if (idempotencyKey && inserted === 0) {
+      historyInserted = false;
+      return;
+    }
+
+    const dateKey = getLocalDateKey(entry.timestamp);
+    const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
+    const day = row ? parseJson(row.data, {}) : {
+      requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
+      byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
+    };
+    aggregateEntryToDay(day, entry);
+    db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
+
+    // Atomic counter increment in same transaction
+    const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
+    const prev = cur ? parseInt(cur.value, 10) : 0;
+    const next = (Number.isFinite(prev) ? prev : 0) + 1;
+    db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
+  });
+
+  return historyInserted;
+}
+
 export async function saveRequestUsage(entry) {
-  try {
-    const db = await getAdapter();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const historyInserted = await writeRequestUsageOnce(entry);
+      if (!historyInserted) return;
 
-    if (!entry.timestamp) entry.timestamp = new Date().toISOString();
-    entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
-
-    const tokens = entry.tokens || {};
-    const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
-    const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
-
-    // Idempotency: when the caller supplies a stable per-request key, a true
-    // double-write (retry replay, stream+handler firing for one request) is
-    // collapsed so tokens/cost/lifetime aren't counted twice. A NULL key keeps
-    // legacy always-insert behavior (SQLite UNIQUE treats NULLs as distinct),
-    // so this never under-counts genuinely distinct requests.
-    const idempotencyKey = entry.idempotencyKey || null;
-
-    // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
-    // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
-    let historyInserted = true;
-    db.transaction(() => {
-      const insertResult = db.run(
-        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, idempotencyKey) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          entry.timestamp, entry.provider || null, entry.model || null,
-          entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
-          promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-          stringifyJson(tokens), stringifyJson({}), idempotencyKey,
-        ]
-      );
-
-      // A duplicate key → 0 rows inserted → skip aggregate + lifetime bump so
-      // the day rollup and lifetime counter stay consistent with history.
-      const inserted = insertResult?.changes ?? 1;
-      if (idempotencyKey && inserted === 0) {
-        historyInserted = false;
-        return;
+      pushToRing(entry);
+      statsEmitter.emit("update");
+      return;
+    } catch (e) {
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 25));
+        continue;
       }
-
-      const dateKey = getLocalDateKey(entry.timestamp);
-      const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
-      const day = row ? parseJson(row.data, {}) : {
-        requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
-        byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
-      };
-      aggregateEntryToDay(day, entry);
-      db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
-
-      // Atomic counter increment in same transaction
-      const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
-      const prev = cur ? parseInt(cur.value, 10) : 0;
-      const next = (Number.isFinite(prev) ? prev : 0) + 1;
-      db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
-    });
-
-    if (!historyInserted) return;
-
-    pushToRing(entry);
-    statsEmitter.emit("update");
-  } catch (e) {
-    console.error("Failed to save usage stats:", e);
+      console.error("Failed to save usage stats:", e);
+    }
   }
 }
 
@@ -416,10 +461,31 @@ export async function getUsageStats(period = "all") {
   let allApiKeys = [];
   try { allApiKeys = await getApiKeys(); } catch {}
   const apiKeyMap = {};
-  for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
-  const safeApiKeyInfo = (apiKey) => {
-    if (!apiKey || typeof apiKey !== "string") return { keyName: "Local (No API Key)", apiKeyKey: "local-no-key" };
-    const keyInfo = apiKeyMap[apiKey];
+  const apiKeyById = {};
+  for (const k of allApiKeys) {
+    apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
+    if (k.id) apiKeyById[k.id] = { name: k.name, id: k.id, createdAt: k.createdAt };
+  }
+  const safeApiKeyInfo = (apiKeyRef) => {
+    if (!apiKeyRef || typeof apiKeyRef !== "string") {
+      return { keyName: "Local (No API Key)", apiKeyKey: "local-no-key" };
+    }
+    if (apiKeyRef === "local-no-key") {
+      return { keyName: "Local (No API Key)", apiKeyKey: "local-no-key" };
+    }
+    if (apiKeyRef.startsWith("key:")) {
+      const id = apiKeyRef.slice(4);
+      const keyInfo = apiKeyById[id];
+      return {
+        keyName: keyInfo?.name || "Unknown Key",
+        apiKeyKey: apiKeyRef,
+      };
+    }
+    if (apiKeyRef.startsWith("keyhash:")) {
+      return { keyName: "Unknown Key", apiKeyKey: apiKeyRef };
+    }
+    // Legacy rows may still hold the raw key string — never expose it outward.
+    const keyInfo = apiKeyMap[apiKeyRef];
     return {
       keyName: keyInfo?.name || "Unknown Key",
       apiKeyKey: `key:${keyInfo?.id || keyInfo?.name || "unknown"}`,
@@ -558,7 +624,7 @@ export async function getUsageStats(period = "all") {
         const rawModel = ak.rawModel || "";
         const provider = ak.provider || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
-        const { keyName, apiKeyKey } = safeApiKeyInfo(ak.apiKey);
+        const { keyName, apiKeyKey } = safeApiKeyInfo(ak.apiKey || parseApiKeyRefFromAkKey(akKey));
         const safeAkKey = `${apiKeyKey}|${rawModel}|${provider || "unknown"}`;
         if (!stats.byApiKey[safeAkKey]) {
           stats.byApiKey[safeAkKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKey: null, keyName, apiKeyKey, lastUsed: dateKey };

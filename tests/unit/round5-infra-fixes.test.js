@@ -70,6 +70,7 @@ describe("Round 5 — usageRepo pending timeout decrement", () => {
     vi.useFakeTimers();
     global._pendingRequests = { byModel: {}, byAccount: {} };
     global._pendingTimers = {};
+    global._nextPendingRequestId = 1;
   });
 
   afterEach(() => {
@@ -78,18 +79,22 @@ describe("Round 5 — usageRepo pending timeout decrement", () => {
     global._pendingTimers = {};
   });
 
-  it("decrements pending count on timeout instead of zeroing the whole bucket", async () => {
+  it("decrements one pending slot per timed-out request handle", async () => {
     const { trackPendingRequest } = await import("../../src/lib/db/repos/usageRepo.js");
 
-    trackPendingRequest("gpt-4", "openai", "c1", true);
+    const h1 = trackPendingRequest("gpt-4", "openai", "c1", true);
     trackPendingRequest("gpt-4", "openai", "c1", true);
     expect(global._pendingRequests.byModel["gpt-4 (openai)"]).toBe(2);
     expect(global._pendingRequests.byAccount.c1["gpt-4 (openai)"]).toBe(2);
 
-    vi.advanceTimersByTime(60_000);
-
+    trackPendingRequest("gpt-4", "openai", "c1", false, false, h1);
     expect(global._pendingRequests.byModel["gpt-4 (openai)"]).toBe(1);
     expect(global._pendingRequests.byAccount.c1["gpt-4 (openai)"]).toBe(1);
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(global._pendingRequests.byModel["gpt-4 (openai)"]).toBeUndefined();
+    expect(global._pendingRequests.byAccount.c1?.["gpt-4 (openai)"]).toBeUndefined();
   });
 });
 

@@ -493,12 +493,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const executor = getExecutor(provider);
   let pendingReleased = false;
+  let pendingHandle = null;
   const releasePending = () => {
     if (pendingReleased) return;
     pendingReleased = true;
-    trackPendingRequest(model, provider, connectionId, false);
+    trackPendingRequest(model, provider, connectionId, false, false, pendingHandle);
   };
-  trackPendingRequest(model, provider, connectionId, true);
+  pendingHandle = trackPendingRequest(model, provider, connectionId, true);
   appendRequestLog({ model, provider, connectionId, status: "PENDING" }).catch(() => { });
 
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
@@ -506,7 +507,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const finalizeFailedRequest = (message, status = HTTP_STATUS.BAD_GATEWAY) => {
     try {
-      trackPendingRequest(model, provider, connectionId, false, true);
+      trackPendingRequest(model, provider, connectionId, false, true, pendingHandle);
       appendRequestLog({ model, provider, connectionId, status: `FAILED ${status}` }).catch(() => { });
       saveRequestDetail(buildRequestDetail({
         provider, model, connectionId,

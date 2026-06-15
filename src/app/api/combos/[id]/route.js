@@ -57,6 +57,12 @@ export async function PUT(request, { params }) {
       }
     }
     
+    if (body.models != null) {
+      if (!Array.isArray(body.models) || body.models.length < 2) {
+        return NextResponse.json({ error: "Combo must include at least 2 models" }, { status: 400 });
+      }
+    }
+
     // Capture previous name to invalidate rotation state on rename
     const prev = await getComboById(id);
     const combo = await updateCombo(id, body);
