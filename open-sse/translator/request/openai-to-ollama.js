@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 
 // Tool-call arguments arrive as a JSON string. Malformed/partial JSON must not

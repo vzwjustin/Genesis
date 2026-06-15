@@ -1,4 +1,4 @@
-import { createRequire } from "module";
+import "./loadTranslators.js";
 import { FORMATS } from "./formats.js";
 import { ensureToolCallIds, fixMissingToolResponses } from "./helpers/toolCallHelper.js";
 import { prepareClaudeRequest, hasAnthropicCacheBreakpoints } from "./helpers/claudeHelper.js";
@@ -7,57 +7,13 @@ import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./helpers/openaiHelper.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
+import {
+  register,
+  getRequestTranslator,
+  getResponseTranslator,
+} from "./registry.js";
 
-const require = createRequire(import.meta.url);
-
-// Registry for translators
-const requestRegistry = new Map();
-const responseRegistry = new Map();
-
-// Track initialization state
-let initialized = false;
-
-// Register translator
-export function register(from, to, requestFn, responseFn) {
-  const key = `${from}:${to}`;
-  if (requestFn) {
-    requestRegistry.set(key, requestFn);
-  }
-  if (responseFn) {
-    responseRegistry.set(key, responseFn);
-  }
-}
-
-// Lazy load translators (called once on first use)
-function ensureInitialized() {
-  if (initialized) return;
-  initialized = true;
-
-  // Request translators - sync require pattern for bundler
-  require("./request/claude-to-openai.js");
-  require("./request/openai-to-claude.js");
-  require("./request/gemini-to-openai.js");
-  require("./request/openai-to-gemini.js");
-  require("./request/openai-to-vertex.js");
-  require("./request/antigravity-to-openai.js");
-  require("./request/openai-responses.js");
-  require("./request/openai-to-kiro.js");
-  require("./request/openai-to-cursor.js");
-  require("./request/openai-to-ollama.js");
-  require("./request/openai-to-commandcode.js");
-
-  // Response translators
-  require("./response/claude-to-openai.js");
-  require("./response/openai-to-claude.js");
-  require("./response/gemini-to-openai.js");
-  require("./response/openai-to-gemini.js");
-  require("./response/openai-to-antigravity.js");
-  require("./response/openai-responses.js");
-  require("./response/kiro-to-openai.js");
-  require("./response/cursor-to-openai.js");
-  require("./response/ollama-to-openai.js");
-  require("./response/commandcode-to-openai.js");
-}
+export { register };
 
 // Strip specific content types from messages (explicit opt-in via strip[] in PROVIDER_MODELS)
 function stripContentTypes(body, stripList = []) {
@@ -78,7 +34,6 @@ function stripContentTypes(body, stripList = []) {
 
 // Translate request: source -> openai -> target
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null) {
-  ensureInitialized();
   let result = structuredClone(body);
   let clientOwnsCacheLayout = hasAnthropicCacheBreakpoints(body);
 
@@ -117,7 +72,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // Step 1: source -> openai (if source is not openai)
     if (sourceFormat !== FORMATS.OPENAI) {
       const toOpenAIKey = `${sourceFormat}:${FORMATS.OPENAI}`;
-      const toOpenAI = requestRegistry.get(toOpenAIKey);
+      const toOpenAI = getRequestTranslator(sourceFormat, FORMATS.OPENAI);
       if (!toOpenAI) {
         throw new Error(`No request translator registered for ${toOpenAIKey}`);
       }
@@ -128,7 +83,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // Step 2: openai -> target (if target is not openai)
     if (targetFormat !== FORMATS.OPENAI) {
       const fromOpenAIKey = `${FORMATS.OPENAI}:${targetFormat}`;
-      const fromOpenAI = requestRegistry.get(fromOpenAIKey);
+      const fromOpenAI = getRequestTranslator(FORMATS.OPENAI, targetFormat);
       if (!fromOpenAI) {
         throw new Error(`No request translator registered for ${fromOpenAIKey}`);
       }
@@ -177,7 +132,6 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
 // Translate response chunk: target -> openai -> source
 export function translateResponse(targetFormat, sourceFormat, chunk, state) {
-  ensureInitialized();
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
     return [chunk];
@@ -188,7 +142,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
 
   // Step 1: target -> openai (if target is not openai)
   if (targetFormat !== FORMATS.OPENAI) {
-    const toOpenAI = responseRegistry.get(`${targetFormat}:${FORMATS.OPENAI}`);
+    const toOpenAI = getResponseTranslator(targetFormat, FORMATS.OPENAI);
     if (toOpenAI) {
       results = [];
       const converted = toOpenAI(chunk, state);
@@ -201,7 +155,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
 
   // Step 2: openai -> source (if source is not openai)
   if (sourceFormat !== FORMATS.OPENAI) {
-    const fromOpenAI = responseRegistry.get(`${FORMATS.OPENAI}:${sourceFormat}`);
+    const fromOpenAI = getResponseTranslator(FORMATS.OPENAI, sourceFormat);
     if (fromOpenAI) {
       const finalResults = [];
       for (const r of results) {
@@ -283,7 +237,5 @@ export function initState(sourceFormat) {
   return base;
 }
 
-// Initialize all translators (kept for backward compatibility)
-export function initTranslators() {
-  ensureInitialized();
-}
+// Initialize all translators (kept for backward compatibility — eager via loadTranslators.js)
+export function initTranslators() {}
