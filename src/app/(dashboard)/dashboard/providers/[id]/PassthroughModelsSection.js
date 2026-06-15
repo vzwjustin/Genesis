@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button } from "@/shared/components";
+import { Button, CopyButton } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import { resolveModelAlias } from "@/lib/models/resolveModelAlias.js";
 
-function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+function PassthroughModelRow({ modelId, fullModel, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
     ? "border-success/40"
     : testStatus === "error"
@@ -34,16 +34,9 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
         <div className="flex items-center gap-1 mt-1">
         <code className="rounded bg-surface-2/80 px-1.5 py-0.5 font-mono text-xs text-text-muted">{fullModel}</code>
           <div className="relative group/btn">
-            <button
-              onClick={() => onCopy(fullModel, `model-${modelId}`)}
-              className="rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
-            >
-              <span className="material-symbols-outlined text-sm">
-                {copied === `model-${modelId}` ? "check" : "content_copy"}
-              </span>
-            </button>
+            <CopyButton value={fullModel} size="sm" ariaLabel="Copy model name" className="hover:text-brand-500" />
             <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-              {copied === `model-${modelId}` ? "Copied!" : "Copy"}
+              Copy
             </span>
           </div>
           {onTest && (
@@ -51,6 +44,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
               <button
                 onClick={onTest}
                 disabled={isTesting}
+                aria-label="Test model"
                 className="rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
               >
                 <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
@@ -70,6 +64,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
         onClick={onDeleteAlias}
         className="p-1 hover:bg-danger/10 rounded text-danger"
         title="Remove model"
+        aria-label="Remove model"
       >
         <span className="material-symbols-outlined text-sm">delete</span>
       </button>
@@ -80,15 +75,13 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
 PassthroughModelRow.propTypes = {
   modelId: PropTypes.string.isRequired,
   fullModel: PropTypes.string.isRequired,
-  copied: PropTypes.string,
-  onCopy: PropTypes.func.isRequired,
   onDeleteAlias: PropTypes.func.isRequired,
   onTest: PropTypes.func,
   testStatus: PropTypes.oneOf(["ok", "error"]),
   isTesting: PropTypes.bool,
 };
 
-export default function PassthroughModelsSection({ providerAlias, modelAliases, copied, onCopy, onSetAlias, onDeleteAlias }) {
+export default function PassthroughModelsSection({ providerAlias, modelAliases, onSetAlias, onDeleteAlias }) {
   const notify = useNotificationStore();
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
@@ -157,8 +150,6 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
               key={fullModel}
               modelId={modelId}
               fullModel={fullModel}
-              copied={copied}
-              onCopy={onCopy}
               onDeleteAlias={() => onDeleteAlias(alias)}
             />
           ))}
@@ -171,8 +162,6 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
 PassthroughModelsSection.propTypes = {
   providerAlias: PropTypes.string.isRequired,
   modelAliases: PropTypes.object.isRequired,
-  copied: PropTypes.string,
-  onCopy: PropTypes.func.isRequired,
   onSetAlias: PropTypes.func.isRequired,
   onDeleteAlias: PropTypes.func.isRequired,
 };

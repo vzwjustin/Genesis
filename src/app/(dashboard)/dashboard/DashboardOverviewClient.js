@@ -51,17 +51,17 @@ function HealthPill({ icon, label, value, href, status, tint = "neutral" }) {
   };
   const valueColor = status === "ok" ? "text-success" : status === "error" ? "text-danger" : "text-text-main";
   const inner = (
-    <div className={`glass-stat ${tintMap[tint] || tintMap.neutral} flex min-w-0 flex-col gap-1 p-4 transition-shadow`}>
-      <div className="flex items-center gap-1.5 text-xs text-text-muted">
-        <span className={`material-symbols-outlined text-[14px] ${colorMap[status] || "text-text-muted"}`}>{icon}</span>
+    <div className={`glass-stat glass-stat-lift ${tintMap[tint] || tintMap.neutral} flex min-w-0 flex-col gap-1.5 rounded-2xl p-4`}>
+      <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
+        <span className={`material-symbols-outlined text-[15px] ${colorMap[status] || "text-text-muted"}`}>{icon}</span>
         <span>{label}</span>
       </div>
-      <span className={`text-lg font-semibold tracking-tight ${valueColor}`}>
+      <span className={`text-xl font-semibold tracking-tight ${valueColor}`}>
         {value}
       </span>
     </div>
   );
-  return href ? <Link href={href} className="block min-w-[140px] flex-1">{inner}</Link> : inner;
+  return href ? <Link href={href} className="block min-w-0">{inner}</Link> : inner;
 }
 
 function SkeletonStat() {
@@ -70,13 +70,25 @@ function SkeletonStat() {
 
 function SetupStepper({ steps }) {
   const doneCount = steps.filter((s) => s.done).length;
+  const progress = Math.round((doneCount / steps.length) * 100);
   return (
     <div className="glass-panel p-5 sm:p-6">
-      <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm font-medium text-text-main">Setup checklist</p>
-        <p className="text-xs text-text-muted">
-          {doneCount}/{steps.length} complete · Security provider and recommended
-        </p>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold tracking-tight text-text-main">Setup checklist</p>
+          <p className="mt-0.5 text-xs text-text-muted">
+            {doneCount}/{steps.length} complete · Security provider and recommended
+          </p>
+        </div>
+        <div className="flex min-w-[140px] flex-col gap-1.5 sm:items-end">
+          <span className="text-xs font-medium text-brand-500">{progress}%</span>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/60 sm:w-36">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-brand-500 to-primary transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 sm:gap-2">
         {steps.map((step, index) => {
@@ -124,14 +136,16 @@ function SetupStepper({ steps }) {
 function PanelCard({ title, icon, actionHref, actionLabel, children }) {
   return (
     <div className="glass-panel p-4 sm:p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-sm font-medium text-text-main">
-          <span className="material-symbols-outlined text-[16px] text-text-muted">{icon}</span>
+      <div className="mb-4 flex items-center justify-between gap-2 border-b border-border/50 pb-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-text-main">
+          <span className="flex size-7 items-center justify-center rounded-lg glass-stat border-0 text-brand-500">
+            <span className="material-symbols-outlined text-[16px]">{icon}</span>
+          </span>
           {title}
         </h2>
         {actionHref ? (
           <Link href={actionHref} className="text-xs font-medium text-brand-500 hover:text-brand-600 transition-colors">
-            {actionLabel}
+            {actionLabel} →
           </Link>
         ) : null}
       </div>
@@ -209,6 +223,38 @@ export default function DashboardOverviewClient() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+
+      {!loading && (
+        <div className="page-hero-strip px-5 py-4 sm:px-6 sm:py-5">
+          <div className="relative z-[1] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-text-main sm:text-xl">
+                {setupComplete === setupSteps.length
+                  ? "Your gateway is ready"
+                  : "Finish setup to unlock the full gateway"}
+              </h2>
+              <p className="mt-1 text-sm text-text-muted">
+                {activeConns.length > 0
+                  ? `${activeConns.length} provider${activeConns.length === 1 ? "" : "s"} connected`
+                  : "Connect a provider to start routing requests"}
+                {requestsToday != null && requestsToday > 0
+                  ? ` · ${new Intl.NumberFormat().format(requestsToday)} requests today`
+                  : ""}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/dashboard/providers">
+                <Button size="sm" variant={activeConns.length === 0 ? "primary" : "outline"}>
+                  {activeConns.length === 0 ? "Add provider" : "Providers"}
+                </Button>
+              </Link>
+              <Link href="/dashboard/endpoint">
+                <Button size="sm" variant="outline">Endpoint</Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!loading && setupComplete < setupSteps.length && (
         <SetupStepper steps={setupSteps} />

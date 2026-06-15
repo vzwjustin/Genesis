@@ -1,8 +1,10 @@
 import { SignJWT, jwtVerify } from "jose";
+import bcrypt from "bcryptjs";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { DATA_DIR } from "@/lib/dataDir";
+import { getSettings } from "@/lib/localDb";
 
 function loadJwtSecret() {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
@@ -69,4 +71,15 @@ export async function setDashboardAuthCookie(cookieStore, request, claims = {}) 
 
 export function clearDashboardAuthCookie(cookieStore) {
   cookieStore.delete("auth_token");
+}
+
+// Verify the current dashboard password (re-auth for sensitive actions like DB export/import).
+// Mirrors the login route's bcrypt check + INITIAL_PASSWORD fallback.
+export async function verifyDashboardPassword(password) {
+  if (typeof password !== "string" || !password) return false;
+  const settings = await getSettings();
+  const storedHash = settings?.password;
+  if (storedHash) return bcrypt.compare(password, storedHash);
+  const initialPassword = process.env.INITIAL_PASSWORD || "123456";
+  return password === initialPassword;
 }

@@ -246,7 +246,7 @@ export default function TranslatorPage() {
                     {isExpanded ? "expand_more" : "chevron_right"}
                   </span>
                   <span className="text-xs font-mono text-text-muted/60 w-4">{step.id}</span>
-                  <h3 className="text-sm font-semibold text-text-main">{step.label}</h3>
+                  <h3 className="text-sm font-semibold tracking-tight text-text-main">{step.label}</h3>
                   <span className="text-xs text-text-muted/60 font-mono">{step.file}</span>
                   {content && <span className="text-xs text-success">({content.length} chars)</span>}
                 </button>

@@ -279,7 +279,14 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     } else {
       ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel, meta));
     }
-    if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
+    if (!shouldFallback) {
+      const conn = connections.find((c) => c.id === connectionId);
+      const rolledBackUseCount = Math.max(0, (conn?.consecutiveUseCount || 0) - 1);
+      if (conn && rolledBackUseCount !== conn.consecutiveUseCount) {
+        await updateProviderConnection(connectionId, { consecutiveUseCount: rolledBackUseCount });
+      }
+      return { shouldFallback: false, cooldownMs: 0 };
+    }
 
     const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
     const lockUpdate = buildModelLockUpdate(model, cooldownMs);
@@ -326,6 +333,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 export async function clearAccountError(connectionId, currentConnection, model = null) {
   if (!connectionId || connectionId === "noauth") return;
 
+  const currentMutex = accountStateMutex;
+  let resolveMutex;
+  accountStateMutex = new Promise((resolve) => { resolveMutex = resolve; });
+
+  try {
+    await currentMutex;
+
   const freshConn = (await getProviderConnectionById(connectionId))
     || currentConnection._connection
     || currentConnection;
@@ -363,6 +377,31 @@ export async function clearAccountError(connectionId, currentConnection, model =
   clearObj.lastUsedAt = new Date().toISOString();
 
   await updateProviderConnection(connectionId, clearObj);
+  } finally {
+    if (resolveMutex) resolveMutex();
+  }
+}
+
+/**
+ * Roll back a selection-time sticky round-robin bump after a failed/incomplete attempt.
+ */
+export async function rollbackStickyUseCount(connectionId) {
+  if (!connectionId || connectionId === "noauth") return;
+
+  const currentMutex = accountStateMutex;
+  let resolveMutex;
+  accountStateMutex = new Promise((resolve) => { resolveMutex = resolve; });
+
+  try {
+    await currentMutex;
+    const conn = await getProviderConnectionById(connectionId);
+    if (!conn) return;
+    const current = conn.consecutiveUseCount || 0;
+    if (current <= 0) return;
+    await updateProviderConnection(connectionId, { consecutiveUseCount: Math.max(0, current - 1) });
+  } finally {
+    if (resolveMutex) resolveMutex();
+  }
 }
 
 /**

@@ -279,7 +279,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 glass-overlay" aria-hidden="true" />
           <div className="relative glass-panel mx-4 flex w-full max-w-sm flex-col gap-4 p-5 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
+            <h3 className="font-semibold tracking-tight text-text-main">Sudo Password Required</h3>
             <InlineAlert variant="caution" compact message="Required for SSL certificate and server startup." />
             <Input
               type="password"
@@ -311,7 +311,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 glass-overlay" aria-hidden="true" />
           <div className="relative glass-panel mx-4 flex w-full max-w-md flex-col gap-4 p-5 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-text-main">Port 443 Already In Use</h3>
+            <h3 className="font-semibold tracking-tight text-text-main">Port 443 Already In Use</h3>
             <InlineAlert variant="caution" compact>
               <div className="flex flex-col gap-1 text-xs">
                 <p>Port 443 is currently used by another process:</p>

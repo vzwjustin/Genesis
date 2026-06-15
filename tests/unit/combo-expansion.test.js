@@ -66,9 +66,9 @@ describe("combo expansion into ordered provider/model list", () => {
       expect(result).toEqual(["cc/opus", "openai/gpt-4o"]);
     });
 
-    it("returns valid models even when surrounded by invalid entries", () => {
+    it("returns null when only one valid model remains after filtering", () => {
       const result = getComboModelsFromData("single-valid", combosData);
-      expect(result).toEqual(["openai/gpt-4o"]);
+      expect(result).toBeNull();
     });
 
     it("returns null when combo has no models field", () => {

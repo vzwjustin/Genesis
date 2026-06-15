@@ -8,7 +8,6 @@ import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthW
 import InlineAlert from "@/shared/components/InlineAlert";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS, THINKING_CONFIG } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
-import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
@@ -76,7 +75,6 @@ export default function ProviderDetailPage() {
   const [importingModels, setImportingModels] = useState(false);
   const stopOneByOneRef = useRef(false);
   const stickyLimitDebounceRef = useRef(null);
-  const { copied, copy } = useCopyToClipboard();
   const notify = useNotificationStore();
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
@@ -937,8 +935,6 @@ export default function ProviderDetailPage() {
           providerStorageAlias={providerStorageAlias}
           providerDisplayAlias={providerDisplayAlias}
           modelAliases={modelAliases}
-          copied={copied}
-          onCopy={copy}
           onSetAlias={handleSetAlias}
           onDeleteAlias={handleDeleteAlias}
           connections={connections}
@@ -951,7 +947,7 @@ export default function ProviderDetailPage() {
     const allModels = [
       ...models,
       ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-    ].filter((m) => !m.type || m.type === "llm");
+    ].filter((m) => { const k = m.kind || m.type; return !k || k === "llm"; });
     const disabledSet = new Set(disabledModelIds);
     const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
     const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
@@ -981,8 +977,6 @@ export default function ProviderDetailPage() {
             model={{ id: model.id }}
             fullModel={`${providerDisplayAlias}/${model.id}`}
             alias={model.alias}
-            copied={copied}
-            onCopy={copy}
             onSetAlias={() => {}}
             onDeleteAlias={() => handleDeleteAlias(model.alias)}
             testStatus={modelTestResults[model.id]}
@@ -1005,8 +999,6 @@ export default function ProviderDetailPage() {
               model={model}
               fullModel={`${providerDisplayAlias}/${model.id}`}
               alias={existingAlias}
-              copied={copied}
-              onCopy={copy}
               onSetAlias={(alias) => handleSetAlias(model.id, alias, providerStorageAlias)}
               onDeleteAlias={() => handleDeleteAlias(existingAlias)}
               testStatus={modelTestResults[model.id]}
@@ -1192,7 +1184,7 @@ export default function ProviderDetailPage() {
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold">{isAnthropicCompatible ? "Anthropic Compatible Details" : "OpenAI Compatible Details"}</h2>
+              <h2 className="text-lg font-semibold tracking-tight">{isAnthropicCompatible ? "Anthropic Compatible Details" : "OpenAI Compatible Details"}</h2>
               <p className="break-all text-sm text-text-muted">
                 {isAnthropicCompatible ? "Messages API" : (providerNode.apiType === "responses" ? "Responses API" : "Chat Completions")} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/
                 {isAnthropicCompatible ? "messages" : (providerNode.apiType === "responses" ? "responses" : "chat/completions")}
@@ -1255,7 +1247,7 @@ export default function ProviderDetailPage() {
       ) : (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-semibold">Connections</h2>
+            <h2 className="text-lg font-semibold tracking-tight">Connections</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
               {connections.length > 0 && proxyPools.length > 0 && (
                 <Button
@@ -1462,7 +1454,7 @@ export default function ProviderDetailPage() {
       {/* Models */}
       <Card>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-lg font-semibold tracking-tight">
             {"Available Models"}
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -1481,7 +1473,7 @@ export default function ProviderDetailPage() {
               const allIds = [
                 ...models,
                 ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-              ].filter((m) => !m.type || m.type === "llm").map((m) => m.id);
+              ].filter((m) => { const k = m.kind || m.type; return !k || k === "llm"; }).map((m) => m.id);
               const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
               return (
                 <>

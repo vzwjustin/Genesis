@@ -54,7 +54,7 @@ function isClientAbortError(error, signal) {
  * @param {boolean} options.passthroughCompression - Whether to allow compression in passthrough mode
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, rtkFilterConfig, cavemanEnabled, cavemanLevel, headroomEnabled, passthroughCompression, sourceFormatOverride, providerThinking }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onRequestFailed, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, rtkFilterConfig, cavemanEnabled, cavemanLevel, headroomEnabled, passthroughCompression, sourceFormatOverride, providerThinking }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -274,7 +274,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     translatedBody.tools = cleanAnthropicToolDefinitions(translatedBody.tools, provider, {
       preserveClientCache: clientHasCacheBreakpoints,
     });
-    if (translatedBody.tools.length === 0 && !clientHasCacheBreakpoints) {
+    if (translatedBody.tools.length === 0 && !clientHasCacheBreakpoints && !passthrough) {
       delete translatedBody.tools;
       delete translatedBody.tool_choice;
     }
@@ -800,7 +800,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     return createErrorResult(statusCode, errMsg, resetsAtMs, { errorCode: upstreamErrorCode });
   }
 
-  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, passthrough };
+  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, onRequestFailed, passthrough };
   const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
   const trackDone = releasePending;
 
@@ -831,7 +831,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Streaming response
   // Destructure streamDetailId so both the initial placeholder save and the
   // onStreamComplete update reference the same DB record.
-  const { onStreamComplete, streamDetailId, fireRequestSuccess } = buildOnStreamComplete({ ...sharedCtx, onRequestSuccess });
+  const { onStreamComplete, streamDetailId, fireRequestSuccess } = buildOnStreamComplete({ ...sharedCtx, onRequestSuccess, onRequestFailed });
   return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId, fireRequestSuccess, onPendingRelease: releasePending });
 }
 

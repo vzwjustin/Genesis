@@ -5,8 +5,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
-import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, Toggle, ConfirmModal, EmptyState, MobileStickyActionBar } from "@/shared/components";
-import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, Toggle, ConfirmModal, EmptyState, MobileStickyActionBar, CopyButton } from "@/shared/components";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { useNotificationStore } from "@/store/notificationStore";
 
@@ -22,7 +21,6 @@ export default function CombosPage() {
   const [activeProviders, setActiveProviders] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
   const [confirmState, setConfirmState] = useState(null);
-  const { copied, copy } = useCopyToClipboard();
 
   const fetchData = async () => {
     try {
@@ -164,8 +162,6 @@ export default function CombosPage() {
             <ComboCard
               key={combo.id}
               combo={combo}
-              copied={copied}
-              onCopy={copy}
               onEdit={() => setEditingCombo(combo)}
               onDelete={() => handleDelete(combo.id)}
               roundRobinEnabled={comboStrategies[combo.name]?.fallbackStrategy === "round-robin"}
@@ -213,16 +209,16 @@ export default function CombosPage() {
   );
 }
 
-function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled, onToggleRoundRobin }) {
+function ComboCard({ combo, onEdit, onDelete, roundRobinEnabled, onToggleRoundRobin }) {
   return (
-    <Card padding="sm" className="group">
+    <Card padding="sm" className="group glass-stat-lift">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
-          <div className="size-8 glass-stat flex shrink-0 items-center justify-center rounded-lg border-0">
-            <span className="material-symbols-outlined text-text-muted text-[18px]">layers</span>
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl glass-stat border-0 text-brand-500">
+            <span className="material-symbols-outlined text-[20px]">layers</span>
           </div>
           <div className="min-w-0 flex-1">
-            <code className="block truncate font-mono text-sm font-medium">{combo.name}</code>
+            <code className="block truncate font-mono text-sm font-semibold tracking-tight">{combo.name}</code>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
               {combo.models.length === 0 ? (
                 <span className="text-xs text-text-muted italic">No models</span>
@@ -255,20 +251,19 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-1 sm:flex">
-            <button
-              onClick={(e) => { e.stopPropagation(); onCopy(combo.name, `combo-${combo.id}`); }}
-              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors dashboard-row-hover hover:text-primary"
+          <div className="grid grid-cols-3 gap-1 sm:flex sm:rounded-xl sm:glass-stat sm:border-0 sm:p-0.5">
+            <CopyButton
+              value={combo.name}
+              size="md"
+              label="Copy"
+              stopPropagation
+              ariaLabel="Copy combo name"
               title="Copy combo name"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                {copied === `combo-${combo.id}` ? "check" : "content_copy"}
-              </span>
-              <span className="text-[10px] leading-tight">Copy</span>
-            </button>
+              className="flex-col rounded-lg px-2 py-1.5 text-[10px] leading-tight text-text-muted transition-colors dashboard-row-hover hover:text-primary sm:flex-row sm:gap-1 sm:px-2.5"
+            />
             <button
               onClick={onEdit}
-              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors dashboard-row-hover hover:text-primary"
+              className="flex flex-col items-center rounded-lg px-2 py-1.5 text-text-muted transition-colors dashboard-row-hover hover:text-primary sm:flex-row sm:gap-1 sm:px-2.5"
               title="Edit"
             >
               <span className="material-symbols-outlined text-[18px]">edit</span>
@@ -276,7 +271,7 @@ function ComboCard({ combo, copied, onCopy, onEdit, onDelete, roundRobinEnabled,
             </button>
             <button
               onClick={onDelete}
-              className="flex flex-col items-center rounded px-2 py-1 text-danger transition-colors hover:bg-danger/10"
+              className="flex flex-col items-center rounded-lg px-2 py-1.5 text-danger transition-colors hover:bg-danger/10 sm:flex-row sm:gap-1 sm:px-2.5"
               title="Delete"
             >
               <span className="material-symbols-outlined text-[18px]">delete</span>

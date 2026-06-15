@@ -14,7 +14,40 @@ const sharedEncoder = new TextEncoder();
 // Upper bound on the partial-line buffer to prevent unbounded heap growth when
 // an upstream streams a large body containing no "\n" byte. Mirrors the
 // MAX_BLOCK_CHARS guard in sseToJsonHandler.js.
-const MAX_SSE_BUFFER_CHARS = 1024 * 1024;
+export const MAX_SSE_BUFFER_CHARS = 1024 * 1024;
+
+/**
+ * Read a fetch Response body as text with a hard byte cap (fail closed).
+ * @returns {Promise<string|null>} null when the cap is exceeded
+ */
+export async function readCappedResponseText(response, maxBytes = MAX_SSE_BUFFER_CHARS) {
+  if (!response?.body?.getReader) {
+    const text = await response.text();
+    return text.length <= maxBytes ? text : null;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text.length <= maxBytes ? text : null;
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 /**
  * Stream modes
@@ -357,12 +390,6 @@ export function createSSEStream(options = {}) {
 
           if (hasValidUsage(usage) && !onStreamComplete) {
             logUsage(provider, usage, model, connectionId, apiKey);
-          } else if (hasValidUsage(usage) && onStreamComplete && !sawTerminal) {
-            // onStreamComplete (streamingHandler) only saves usage when the
-            // stream ended clean (sawTerminal). A complete-but-unmarked passthrough
-            // response (content delivered, no terminal frame) would otherwise have
-            // its tokens dropped — quota leak. Log it here since the handler won't.
-            logStreamUsageFallback(usage, provider);
           } else if (!hasValidUsage(usage)) {
             appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
           }

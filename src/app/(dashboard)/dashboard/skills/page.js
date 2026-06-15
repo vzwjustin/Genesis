@@ -1,29 +1,12 @@
 "use client";
 
-import { Card, Badge } from "@/shared/components";
-import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { Card, Badge, CopyButton } from "@/shared/components";
 import {
   SKILLS,
   SKILLS_REPO_URL,
   getSkillRawUrl,
   getSkillBlobUrl,
 } from "@/shared/constants/skills";
-
-function CopyButton({ value, label = "Copy link" }) {
-  const { copied, copy } = useCopyToClipboard(2000);
-  return (
-    <button
-      onClick={() => copy(value)}
-      className="dashboard-chip-active shrink-0 inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors"
-      title={value}
-    >
-      <span className="material-symbols-outlined text-[12px]">
-        {copied ? "check" : "content_copy"}
-      </span>
-      {copied ? "Copied!" : label}
-    </button>
-  );
-}
 
 function SkillRow({ skill }) {
   const url = getSkillRawUrl(skill.id);
@@ -43,7 +26,7 @@ function SkillRow({ skill }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="font-semibold text-sm text-text-main">{skill.name}</h3>
+          <h3 className="font-semibold tracking-tight text-sm text-text-main">{skill.name}</h3>
           {skill.isEntry && (
             <Badge variant="primary" size="sm">Primary skill</Badge>
           )}
@@ -65,7 +48,13 @@ function SkillRow({ skill }) {
         </a>
       </div>
 
-      <CopyButton value={url} />
+      <CopyButton
+        value={url}
+        label="Copy link"
+        size="xs"
+        title={url}
+        className="dashboard-chip-active shrink-0 cursor-pointer rounded-md border px-2 py-1 text-[11px] font-medium"
+      />
     </div>
   );
 }
@@ -89,7 +78,7 @@ export default function SkillsPage() {
       <Card padding="md">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-sm font-semibold text-text-main">Source and examples</h2>
+            <h2 className="text-sm font-semibold tracking-tight text-text-main">Source and examples</h2>
             <p className="text-xs text-text-muted mt-0.5">
               Review source files, README, and examples.
             </p>

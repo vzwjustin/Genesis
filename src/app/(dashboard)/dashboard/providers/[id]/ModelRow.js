@@ -1,6 +1,7 @@
 import PropTypes from "prop-types";
+import { CopyButton } from "@/shared/components";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable }) {
+export default function ModelRow({ model, fullModel, alias, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable }) {
   const borderColor = testStatus === "ok"
     ? "border-success/40"
     : testStatus === "error"
@@ -31,6 +32,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             <button
               onClick={onTest}
               disabled={isTesting}
+              aria-label="Test model"
               className={`rounded p-0.5 text-text-muted transition-opacity dashboard-row-hover hover:text-brand-500 ${isTesting ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"}`}
             >
               <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
@@ -43,16 +45,9 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
           </div>
         )}
         <div className="relative shrink-0 group/btn">
-          <button
-            onClick={() => onCopy(fullModel, `model-${model.id}`)}
-            className="rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
-          >
-            <span className="material-symbols-outlined text-sm">
-              {copied === `model-${model.id}` ? "check" : "content_copy"}
-            </span>
-          </button>
+          <CopyButton value={fullModel} size="sm" ariaLabel="Copy model name" className="hover:text-brand-500" />
           <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-            {copied === `model-${model.id}` ? "Copied!" : "Copy"}
+            Copy
           </span>
         </div>
         {isCustom ? (
@@ -60,6 +55,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             onClick={onDeleteAlias}
             className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-danger/10 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
             title="Remove custom model"
+            aria-label="Remove custom model"
           >
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
@@ -68,6 +64,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             onClick={onDisable}
             className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-danger/10 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
             title="Disable this model"
+            aria-label="Disable this model"
           >
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
@@ -83,8 +80,6 @@ ModelRow.propTypes = {
   }).isRequired,
   fullModel: PropTypes.string.isRequired,
   alias: PropTypes.string,
-  copied: PropTypes.string,
-  onCopy: PropTypes.func.isRequired,
   testStatus: PropTypes.oneOf(["ok", "error"]),
   isCustom: PropTypes.bool,
   isFree: PropTypes.bool,

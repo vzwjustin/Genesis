@@ -529,7 +529,28 @@ describe("buildOnStreamComplete — clean flag gates success side effects", () =
 
   it("calls onRequestSuccess only when clean=true", async () => {
     const onRequestSuccess = vi.fn();
-    const { onStreamComplete } = buildOnStreamComplete({
+    const onRequestFailed = vi.fn();
+    const { onStreamComplete: incomplete } = buildOnStreamComplete({
+      provider: "claude",
+      model: "claude-3-5",
+      connectionId: "conn-1",
+      apiKey: "key",
+      requestStartTime: Date.now(),
+      body: { messages: [] },
+      stream: true,
+      finalBody: null,
+      translatedBody: null,
+      clientRawRequest: null,
+      onRequestSuccess,
+      onRequestFailed,
+    });
+
+    incomplete({ content: "partial", thinking: null, clean: false }, null, Date.now());
+    expect(onRequestSuccess).not.toHaveBeenCalled();
+    expect(onRequestFailed).toHaveBeenCalledTimes(1);
+    expect(saveUsageStats).not.toHaveBeenCalled();
+
+    const { onStreamComplete: complete } = buildOnStreamComplete({
       provider: "claude",
       model: "claude-3-5",
       connectionId: "conn-1",
@@ -543,11 +564,7 @@ describe("buildOnStreamComplete — clean flag gates success side effects", () =
       onRequestSuccess,
     });
 
-    onStreamComplete({ content: "partial", thinking: null, clean: false }, null, Date.now());
-    expect(onRequestSuccess).not.toHaveBeenCalled();
-    expect(saveUsageStats).not.toHaveBeenCalled();
-
-    onStreamComplete({ content: "done", thinking: null, clean: true }, { prompt_tokens: 1, completion_tokens: 1 }, Date.now());
+    complete({ content: "done", thinking: null, clean: true }, { prompt_tokens: 1, completion_tokens: 1 }, Date.now());
     expect(onRequestSuccess).toHaveBeenCalledTimes(1);
     expect(saveUsageStats).toHaveBeenCalledTimes(1);
   });

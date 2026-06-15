@@ -4,6 +4,7 @@ import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.j
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult, PROXY_INTERNAL_ERROR_CODES } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+import { readCappedResponseText } from "../../utils/stream.js";
 import { parseSSEToOpenAIResponse, parseSSEToNativeResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -357,7 +358,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   let parsedFromSSE = false;
 
   if (contentType.includes("text/event-stream")) {
-    const sseText = await providerResponse.text();
+    const sseText = await readCappedResponseText(providerResponse);
+    if (sseText === null) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "SSE response exceeds size limit for non-streaming request", undefined, {
+        errorCode: PROXY_INTERNAL_ERROR_CODES.SSE_ASSEMBLY_FAILED,
+        proxyInternal: true,
+      });
+    }
     const parsed = passthrough
       ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
       : parseSSEToOpenAIResponse(sseText, model);

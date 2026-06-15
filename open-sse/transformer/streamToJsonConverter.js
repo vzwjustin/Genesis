@@ -4,6 +4,8 @@
  * Used when client requests non-streaming but provider forces streaming (e.g., Codex)
  */
 
+import { MAX_SSE_BUFFER_CHARS } from "../utils/stream.js";
+
 /**
  * Infer Responses API event type when upstream omits the event: line.
  */
@@ -111,6 +113,12 @@ export async function convertResponsesStreamToJson(stream) {
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > MAX_SSE_BUFFER_CHARS) {
+        state.status = "failed";
+        state.parseError = true;
+        await reader.cancel().catch(() => {});
+        break;
+      }
       const messages = buffer.split("\n\n");
       buffer = messages.pop() || "";
 

@@ -142,7 +142,7 @@ export function getComboModelsFromData(modelStr, combosData) {
   // Filter to only valid actionable targets — a combo match succeeds only when
   // it resolves to at least one valid actionable provider/model target.
   const validModels = combo.models.filter(isValidComboModelTarget);
-  if (validModels.length === 0) return null;
+  if (validModels.length < 2) return null;
 
   return validModels;
 }
@@ -158,8 +158,11 @@ export function getBrokenComboErrorFromData(modelStr, combosData) {
   const combos = Array.isArray(combosData) ? combosData : (combosData?.combos || []);
   const combo = combos.find((c) => c.name === modelStr);
   if (!combo) return null;
-  const models = getComboModelsFromData(modelStr, combosData);
-  if (models) return null;
+  const validModels = (combo.models || []).filter(isValidComboModelTarget);
+  if (validModels.length >= 2) return null;
+  if (validModels.length === 1) {
+    return `Combo "${modelStr}" must include at least 2 models for failover.`;
+  }
   return `Combo "${modelStr}" has no valid model targets configured.`;
 }
 

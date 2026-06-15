@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button } from "@/shared/components";
+import { Button, CopyButton } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+function CompatibleModelRow({ modelId, fullModel, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
     ? "border-success/40"
     : testStatus === "error"
@@ -30,16 +30,9 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
         <div className="flex items-center gap-1 mt-1">
           <code className="rounded bg-surface-2/80 px-1.5 py-0.5 font-mono text-xs text-text-muted">{fullModel}</code>
           <div className="relative group/btn">
-            <button
-              onClick={() => onCopy(fullModel, `model-${modelId}`)}
-              className="rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
-            >
-              <span className="material-symbols-outlined text-sm">
-                {copied === `model-${modelId}` ? "check" : "content_copy"}
-              </span>
-            </button>
+            <CopyButton value={fullModel} size="sm" ariaLabel="Copy model name" className="hover:text-brand-500" />
             <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-              {copied === `model-${modelId}` ? "Copied!" : "Copy"}
+              Copy
             </span>
           </div>
           {onTest && (
@@ -47,6 +40,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
               <button
                 onClick={onTest}
                 disabled={isTesting}
+                aria-label="Test model"
                 className="rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500"
               >
                 <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
@@ -64,6 +58,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
         onClick={onDeleteAlias}
         className="p-1 hover:bg-danger/10 rounded text-danger"
         title="Remove model"
+        aria-label="Remove model"
       >
         <span className="material-symbols-outlined text-sm">delete</span>
       </button>
@@ -75,8 +70,6 @@ export default function CompatibleModelsSection({
   providerStorageAlias,
   providerDisplayAlias,
   modelAliases,
-  copied,
-  onCopy,
   onSetAlias,
   onDeleteAlias,
   connections,
@@ -195,8 +188,6 @@ export default function CompatibleModelsSection({
               key={fullModel}
               modelId={modelId}
               fullModel={`${providerDisplayAlias}/${modelId}`}
-              copied={copied}
-              onCopy={onCopy}
               onDeleteAlias={() => onDeleteAlias(alias)}
               onTest={connections.length > 0 ? () => handleTestModel(modelId) : undefined}
               testStatus={modelTestResults[modelId]}
@@ -213,8 +204,6 @@ CompatibleModelsSection.propTypes = {
   providerStorageAlias: PropTypes.string.isRequired,
   providerDisplayAlias: PropTypes.string.isRequired,
   modelAliases: PropTypes.object.isRequired,
-  copied: PropTypes.string,
-  onCopy: PropTypes.func.isRequired,
   onSetAlias: PropTypes.func.isRequired,
   onDeleteAlias: PropTypes.func.isRequired,
   connections: PropTypes.arrayOf(PropTypes.shape({
