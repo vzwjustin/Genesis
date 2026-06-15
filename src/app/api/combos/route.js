@@ -32,6 +32,10 @@ export async function POST(request) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
+    if (!Array.isArray(models) || models.length < 2) {
+      return NextResponse.json({ error: "Combo must include at least 2 models" }, { status: 400 });
+    }
+
     // Validate name format
     if (!VALID_NAME_REGEX.test(name)) {
       return NextResponse.json({ error: "Name can only contain letters, numbers, -, _ and ." }, { status: 400 });

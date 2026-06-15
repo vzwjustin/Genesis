@@ -475,6 +475,11 @@ async function createBypassRequest(parsedUrl, realIP, options) {
       options.signal.addEventListener("abort", onAbort);
     }
 
+    const BYPASS_CONNECT_TIMEOUT_MS = 60_000;
+    socket.setTimeout(BYPASS_CONNECT_TIMEOUT_MS, () => {
+      fail(new Error(`[ProxyFetch] Bypass connect timeout after ${BYPASS_CONNECT_TIMEOUT_MS}ms`));
+    });
+
     socket.connect(port, realIP, () => {
       const reqOptions = {
         socket,
@@ -1063,11 +1068,15 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
 
 async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
+  let originHost = "";
+  try {
+    originHost = new URL(targetUrl).hostname.toLowerCase();
+  } catch { /* unparseable */ }
 
   let directIsLoopback = false;
   if (!shouldBypassMitmDns(targetUrl)) {
     try {
-      const hostname = new URL(targetUrl).hostname;
+      const hostname = originHost || new URL(targetUrl).hostname;
       const allowLoopback = ["localhost", "127.0.0.1", "::1"].includes(hostname.toLowerCase());
       directIsLoopback = allowLoopback;
       await assertSafeResolvedHostname(hostname, { allowLoopback });
@@ -1075,6 +1084,11 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
       throw new Error(`[ProxyFetch] DNS safety check failed: ${dnsError.message}`);
     }
   }
+
+  const guardedFetch = async (u, o) => {
+    const dispatcher = await getGuardedDispatcher();
+    return originalFetch(u, { ...o, dispatcher });
+  };
 
   // For direct (non-proxy) egress to a non-loopback host, attach the
   // connect-time guarded dispatcher so the IP actually dialed is re-checked —
@@ -1089,7 +1103,12 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     let hopIsLoopback = false;
     try {
       const hopHost = new URL(typeof u === "string" ? u : u.toString()).hostname.toLowerCase();
-      hopIsLoopback = directIsLoopback && ["localhost", "127.0.0.1", "::1"].includes(hopHost);
+      // Only skip the guarded dispatcher for the original loopback host — not
+      // arbitrary localhost ports reached via redirect (loopback port pivot).
+      hopIsLoopback = directIsLoopback
+        && originHost
+        && hopHost === originHost
+        && ["localhost", "127.0.0.1", "::1"].includes(hopHost);
     } catch { /* unparseable URL — fall through to guarded path */ }
     if (hopIsLoopback) return originalFetch(u, o);
     let dispatcher;
@@ -1161,7 +1180,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
     if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
     await assertSafeResolvedHostname(new URL(vercelRelayUrl).hostname, { allowLoopback: false });
-    return safeRedirectFetch(vercelRelayUrl, { ...options, headers: relayHeaders }, originalFetch);
+    return safeRedirectFetch(vercelRelayUrl, { ...options, headers: relayHeaders, ssrfAllowLoopback: false }, guardedFetch);
   }
 
   if (proxyUrl) {

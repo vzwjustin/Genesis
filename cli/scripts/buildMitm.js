@@ -29,6 +29,16 @@ async function buildEntry(entry) {
       // Stub .git file scanned by esbuild
       build.onResolve({ filter: /\.git/ }, args => ({ path: args.path, namespace: "git-stub" }));
       build.onLoad({ filter: /.*/, namespace: "git-stub" }, () => ({ contents: "module.exports={}", loader: "js" }));
+
+      // Runtime-only drivers pulled transitively via proxyFetch → settingsRepo → driver.
+      // MITM always runs under Node; stub Bun/Node native drivers so the bundle builds.
+      build.onResolve({ filter: /^bun:sqlite$/ }, () => ({ path: "bun:sqlite", namespace: "runtime-driver-stub" }));
+      build.onResolve({ filter: /^better-sqlite3$/ }, () => ({ path: "better-sqlite3", namespace: "runtime-driver-stub" }));
+      build.onResolve({ filter: /^node:sqlite$/ }, () => ({ path: "node:sqlite", namespace: "runtime-driver-stub" }));
+      build.onLoad({ filter: /.*/, namespace: "runtime-driver-stub" }, () => ({
+        contents: `throw new Error("Native SQLite driver unavailable in MITM bundle");`,
+        loader: "js",
+      }));
     },
   };
 

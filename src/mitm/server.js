@@ -8,6 +8,7 @@ const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
 const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, getToolForHost } = require("./config");
+const { isKiroMitmHost } = require("../shared/constants/mitmToolHosts.js");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
 const { extractModel, getMappedModel } = require("./modelMapping");
@@ -58,8 +59,18 @@ function cacheSet(map, key, value) {
   map.set(key, value);
 }
 
+function isAllowedMitmSniHost(servername) {
+  const h = (servername || "").split(":")[0].toLowerCase();
+  if (!h) return false;
+  if (TARGET_HOSTS.some((t) => t.toLowerCase() === h)) return true;
+  return isKiroMitmHost(h);
+}
+
 function sniCallback(servername, cb) {
   try {
+    if (!isAllowedMitmSniHost(servername)) {
+      return cb(new Error(`SNI host not allowed for MITM: ${servername}`));
+    }
     if (certCache.has(servername)) return cb(null, certCache.get(servername));
     const certData = getCertForDomain(servername);
     if (!certData) return cb(new Error(`Failed to generate cert for ${servername}`));
@@ -94,8 +105,15 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 async function resolveTargetIP(hostname) {
   const cached = cachedTargetIPs[hostname];
   if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.ip;
+
+  let servers = ["8.8.8.8"];
+  try {
+    const { getMitmDnsServers } = await import("../../open-sse/utils/proxyFetch.js");
+    servers = await getMitmDnsServers();
+  } catch { /* keep default */ }
+
   const resolver = new dns.Resolver();
-  resolver.setServers(["8.8.8.8"]);
+  resolver.setServers(servers);
   const resolve4 = promisify(resolver.resolve4.bind(resolver));
   const addresses = await resolve4(hostname);
   // Guard empty result: don't cache an undefined IP (poisons cache + crashes downstream tls.connect)
@@ -180,7 +198,7 @@ async function negotiateAlpn(host) {
   return new Promise((resolve, reject) => {
     const socket = tls.connect({
       host: ip, port: 443, servername: host,
-      ALPNProtocols: ["h2", "http/1.1"], rejectUnauthorized: false,
+      ALPNProtocols: ["h2", "http/1.1"], rejectUnauthorized: TLS_REJECT_UNAUTHORIZED,
     }, () => {
       const proto = socket.alpnProtocol || "http/1.1";
       cacheSet(alpnCache, host, proto);
@@ -213,7 +231,7 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
     const client = http2.connect(`https://${targetHost}`, {
       createConnection: () => tls.connect({
         host: targetIP, port: 443, servername: targetHost,
-        ALPNProtocols: ["h2"], rejectUnauthorized: false,
+        ALPNProtocols: ["h2"], rejectUnauthorized: TLS_REJECT_UNAUTHORIZED,
       }),
     });
     client.once("error", (e) => {
@@ -307,7 +325,7 @@ async function passthroughHttps(req, res, bodyBuffer, headers, targetHost, onRes
     method: req.method,
     headers,
     servername: targetHost,
-    rejectUnauthorized: false
+    rejectUnauthorized: TLS_REJECT_UNAUTHORIZED
   }, (forwardRes) => {
     // Without this, a mid-stream upstream error rejects unhandled → crashes server
     forwardRes.on("error", (e) => {
@@ -442,7 +460,7 @@ try {
   process.exit(1);
 }
 
-server.listen(LOCAL_PORT, () => log(`🚀 Server ready on :${LOCAL_PORT}`));
+server.listen(LOCAL_PORT, "127.0.0.1", () => log(`🚀 Server ready on 127.0.0.1:${LOCAL_PORT}`));
 
 server.on("error", (e) => {
   if (e.code === "EADDRINUSE") err(`Port ${LOCAL_PORT} already in use`);
