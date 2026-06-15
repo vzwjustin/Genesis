@@ -297,7 +297,7 @@ export default function ProvidersPage() {
       {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 id="oauth-providers" className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+          <h2 id="oauth-providers" className="text-lg sm:text-xl font-semibold tracking-tight flex items-center gap-2 leading-tight">
             Custom Providers (OpenAI/Anthropic Compatible){" "}
           </h2>
           <div className="grid grid-cols-1 gap-2 sm:flex sm:w-auto">
@@ -350,7 +350,7 @@ export default function ProvidersPage() {
       {oauthEntries.length > 0 && (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight flex items-center gap-2 leading-tight">
             OAuth Providers
           </h2>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -389,7 +389,7 @@ export default function ProvidersPage() {
       {(freeEntries.length > 0 || freeTierEntries.length > 0) && (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight flex items-center gap-2 leading-tight">
             Free Tier Providers
           </h2>
           <Button
@@ -435,7 +435,7 @@ export default function ProvidersPage() {
       {apikeyEntries.length > 0 && (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight flex items-center gap-2 leading-tight">
             API Key Providers{" "}
           </h2>
           <Button
@@ -479,7 +479,7 @@ export default function ProvidersPage() {
       {/* Web Cookie Providers — use browser subscription cookie instead of API key */}
       {/* <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h2 className="text-xl font-semibold tracking-tight flex items-center gap-2">
             Web Cookie Providers{" "}
           </h2>
         </div>
@@ -526,7 +526,7 @@ export default function ProvidersPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 border-b border-border rounded-t-xl">
-              <h3 className="font-semibold">Test Results</h3>
+              <h3 className="font-semibold tracking-tight">Test Results</h3>
               <button
                 onClick={() => setTestResults(null)}
                 className="p-1 rounded-lg dashboard-row-hover text-text-muted hover:text-text-main transition-colors"
@@ -577,7 +577,7 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
               />
             </div>
             <div className="min-w-0">
-              <h3 className="truncate font-semibold">{provider.name}</h3>
+              <h3 className="truncate font-semibold tracking-tight">{provider.name}</h3>
               <div className="flex min-w-0 items-center gap-1.5 text-xs flex-wrap">
                 {allDisabled ? (
                   <Badge variant="default" size="sm">
@@ -694,7 +694,7 @@ function ApiKeyProviderCard({
               />
             </div>
             <div className="min-w-0">
-              <h3 className="truncate font-semibold">{provider.name}</h3>
+              <h3 className="truncate font-semibold tracking-tight">{provider.name}</h3>
               <div className="flex min-w-0 items-center gap-1.5 text-xs flex-wrap">
                 {allDisabled ? (
                   <Badge variant="default" size="sm">

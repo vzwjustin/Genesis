@@ -136,7 +136,7 @@ export default function MitmToolCard({
   return (
     <>
       <Card padding="xs" className="overflow-hidden">
-        <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle}>
+        <button type="button" className="dashboard-row-hover -mx-3 flex w-full text-left cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle} aria-expanded={isExpanded}>
           <div className="flex min-w-0 items-center gap-3">
             <div className="size-8 flex items-center justify-center shrink-0">
               <Image
@@ -166,7 +166,7 @@ export default function MitmToolCard({
           <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>
             expand_more
           </span>
-        </div>
+        </button>
 
         {isExpanded && (
           <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
@@ -286,7 +286,7 @@ export default function MitmToolCard({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 glass-overlay" aria-hidden="true" />
           <div className="relative glass-panel mx-4 flex w-full max-w-sm flex-col gap-4 p-5 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
+            <h3 className="font-semibold tracking-tight text-text-main">Sudo Password Required</h3>
             <InlineAlert variant="caution" compact message="Required to modify /etc/hosts and flush DNS cache." />
             <Input
               type="password"

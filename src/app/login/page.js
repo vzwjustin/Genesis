@@ -100,9 +100,10 @@ export default function LoginPage() {
     return (
       <div className="min-h-screen flex items-center justify-center dashboard-main-shell p-4 relative overflow-hidden">
         <div className="landing-grid absolute inset-0 pointer-events-none opacity-50 dark:opacity-100" aria-hidden="true" />
+        <div className="login-brand-orb left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2" aria-hidden="true" />
         <div className="glass-panel relative z-10 text-center p-8 max-w-md w-full">
-          <div className="size-16 mx-auto mb-4 rounded-full glass-stat border-0 flex items-center justify-center">
-            <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
+          <div className="glass-icon-ring mx-auto mb-4 text-brand-500">
+            <span className="material-symbols-outlined text-3xl animate-spin">progress_activity</span>
           </div>
           <p className="text-text-muted">Loading...</p>
         </div>
@@ -113,10 +114,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center dashboard-main-shell p-4 relative overflow-hidden">
       <div className="landing-grid absolute inset-0 pointer-events-none opacity-50 dark:opacity-100" aria-hidden="true" />
+      <div className="login-brand-orb left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2" aria-hidden="true" />
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">Genesis</h1>
-          <p className="text-text-muted">
+          <div className="glass-icon-ring mx-auto mb-5 text-brand-500">
+            <span className="material-symbols-outlined text-[32px]">hub</span>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-br from-brand-500 via-primary to-text-main bg-clip-text text-transparent mb-2">
+            Genesis
+          </h1>
+          <p className="text-sm leading-relaxed text-text-muted max-w-sm mx-auto">
             {authMode === "oidc" && oidcConfigured
               ? "Sign in with your OIDC provider to access the dashboard"
               : "Enter your password to access the dashboard"}

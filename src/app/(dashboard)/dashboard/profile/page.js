@@ -604,7 +604,7 @@ export default function ProfilePage() {
                 <span className="material-symbols-outlined text-xl sm:text-2xl">computer</span>
               </div>
               <div>
-                <h2 className="text-lg sm:text-xl font-semibold">Local Mode</h2>
+                <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Local Mode</h2>
                 <p className="text-sm text-text-muted">Running on your machine</p>
               </div>
             </div>
@@ -675,7 +675,7 @@ export default function ProfilePage() {
             <div className="glass-stat p-2 rounded-lg border-0 text-text-muted shrink-0">
               <span className="material-symbols-outlined text-[20px]">shield</span>
             </div>
-            <h3 className="text-base sm:text-lg font-semibold">Security</h3>
+            <h3 className="text-base sm:text-lg font-semibold tracking-tight">Security</h3>
           </div>
           <div className="flex flex-col gap-4">
             <div id="require-login-toggle" className="flex items-start sm:items-center justify-between gap-4">
@@ -786,7 +786,7 @@ export default function ProfilePage() {
               <span className="material-symbols-outlined text-[20px]">lock_open</span>
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-base sm:text-lg font-semibold">OIDC Dashboard Login</h3>
+              <h3 className="text-base sm:text-lg font-semibold tracking-tight">OIDC Dashboard Login</h3>
               <p className="text-xs text-text-muted">
                 {settings.authMode === "oidc" ? "OIDC active" : settings.authMode === "both" ? "Password + OIDC active" : "Optional SSO via Authentik/Keycloak/Google"}
               </p>
@@ -944,7 +944,7 @@ export default function ProfilePage() {
             <div className="p-2 rounded-lg bg-info/10 text-info shrink-0">
               <span className="material-symbols-outlined text-[20px]">route</span>
             </div>
-            <h3 className="text-base sm:text-lg font-semibold">Routing Strategy</h3>
+            <h3 className="text-base sm:text-lg font-semibold tracking-tight">Routing Strategy</h3>
           </div>
           <div className="flex flex-col gap-4">
             <div className="flex items-start sm:items-center justify-between gap-4">
@@ -1035,7 +1035,7 @@ export default function ProfilePage() {
             <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500 shrink-0">
               <span className="material-symbols-outlined text-[20px]">wifi</span>
             </div>
-            <h3 className="text-base sm:text-lg font-semibold">Network</h3>
+            <h3 className="text-base sm:text-lg font-semibold tracking-tight">Network</h3>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -1107,7 +1107,7 @@ export default function ProfilePage() {
             <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500 shrink-0">
               <span className="material-symbols-outlined text-[20px]">monitoring</span>
             </div>
-            <h3 className="text-base sm:text-lg font-semibold">Observability</h3>
+            <h3 className="text-base sm:text-lg font-semibold tracking-tight">Observability</h3>
           </div>
           <div className="flex items-start sm:items-center justify-between gap-4">
             <div className="flex-1 min-w-0">

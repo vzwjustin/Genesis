@@ -1,15 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import PropTypes from "prop-types";
-import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, SecurityWarning } from "@/shared/components";
-import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { Card, Button, Input, Modal, Toggle, SecurityWarning, CopyButton } from "@/shared/components";
 import { SECURITY_COPY } from "@/shared/constants/securityCopy";
 import InlineAlert from "@/shared/components/InlineAlert";
-import CompressionSummaryCard from "@/shared/components/CompressionSummaryCard";
 import { useNotificationStore } from "@/store/notificationStore";
-import { revealApiKey } from "@/shared/utils/revealApiKey";
-import { maskApiKeyForDisplay } from "@/shared/utils/apiKeyDisplay";
 import { getExposureErrorAction } from "@/shared/utils/exposureErrorAction";
 
 function exposureStatus(type, message) {
@@ -62,24 +59,11 @@ async function clientPingAny(...urls) {
 
 export default function APIPageClient({ machineId }) {
   const notify = useNotificationStore();
-  const [keys, setKeys] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newKeyName, setNewKeyName] = useState("");
-  const [createdKey, setCreatedKey] = useState(null);
-  const [confirmState, setConfirmState] = useState(null);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [requireLogin, setRequireLogin] = useState(true);
   const [hasPassword, setHasPassword] = useState(true);
   const [tunnelDashboardAccess, setTunnelDashboardAccess] = useState(false);
-  const [rtkEnabled, setRtkEnabledState] = useState(true);
-  const [cavemanEnabled, setCavemanEnabled] = useState(false);
-  const [cavemanLevel, setCavemanLevel] = useState("full");
-  const [headroomEnabled, setHeadroomEnabled] = useState(false);
-  const [headroomStatus, setHeadroomStatus] = useState(null);
-  const [passthroughCompression, setPassthroughCompression] = useState(false);
-  const [compressionStats, setCompressionStats] = useState(null);
 
   // Cloud endpoint (public URL for remote CLI tools)
   const [cloudEnabled, setCloudEnabled] = useState(false);
@@ -131,11 +115,6 @@ export default function APIPageClient({ machineId }) {
   const [tunnelEverReachable, setTunnelEverReachable] = useState(false);
   const [tsEverReachable, setTsEverReachable] = useState(false);
 
-  // API key visibility toggle state
-  const [visibleKeys, setVisibleKeys] = useState(new Set());
-
-  const { copied, copy } = useCopyToClipboard();
-
   // Security gate: block remote exposure while dashboard uses default password or login is off.
   const isLoginUnsafe = !requireLogin || !hasPassword;
   const unsafeReason = !requireLogin
@@ -148,8 +127,6 @@ export default function APIPageClient({ machineId }) {
   }, [tsInstallLog]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/immutability
-    fetchData();
     // eslint-disable-next-line react-hooks/immutability
     loadSettings();
   }, []);
@@ -258,15 +235,9 @@ export default function APIPageClient({ machineId }) {
         setRequireLogin(data.requireLogin !== false);
         setHasPassword(data.hasPassword || false);
         setTunnelDashboardAccess(data.tunnelDashboardAccess || false);
-        setRtkEnabledState(data.rtkEnabled !== false);
-        setCavemanEnabled(!!data.cavemanEnabled);
-        setCavemanLevel(data.cavemanLevel || "full");
-        setHeadroomEnabled(!!data.headroomEnabled);
-        setPassthroughCompression(!!data.passthroughCompression);
         setCloudEnabled(!!data.cloudEnabled);
         setCloudUrl(data.cloudUrl || "");
         setCloudUrlDraft(data.cloudUrl || "");
-        fetchHeadroomStatus();
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
@@ -287,7 +258,6 @@ export default function APIPageClient({ machineId }) {
       notify.error(error.message || "Failed to load endpoint settings");
     } finally {
       setTunnelChecking(false);
-      fetchCompressionStats();
     }
   };
 
@@ -364,102 +334,6 @@ export default function APIPageClient({ machineId }) {
       }
     } catch (error) {
       notify.error(error.message || "Failed to update API key requirement");
-    }
-  };
-
-  const handleRtkEnabled = async (value) => {
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rtkEnabled: value }),
-      });
-      if (res.ok) setRtkEnabledState(value);
-      else notify.error("Failed to update RTK setting");
-    } catch (error) {
-      notify.error(error.message || "Failed to update RTK setting");
-    }
-  };
-
-  const patchSetting = async (patch) => {
-    try {
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-    } catch (error) {
-      notify.error(error.message || "Failed to update setting");
-    }
-  };
-
-  const handleCavemanEnabled = (value) => {
-    setCavemanEnabled(value);
-    patchSetting({ cavemanEnabled: value });
-  };
-
-  const handleCavemanLevel = (level) => {
-    setCavemanLevel(level);
-    patchSetting({ cavemanLevel: level });
-  };
-
-  const handleHeadroomEnabled = (value) => {
-    setHeadroomEnabled(value);
-    patchSetting({ headroomEnabled: value });
-    if (value) fetchHeadroomStatus();
-    fetchCompressionStats();
-  };
-
-  const fetchHeadroomStatus = async () => {
-    try {
-      const res = await fetch("/api/headroom/status");
-      if (!res.ok) return;
-      const status = await res.json();
-      setHeadroomStatus(status);
-    } catch { /* ignore */ }
-  };
-
-  const handlePassthroughCompression = async (value) => {
-    setPassthroughCompression(value);
-    patchSetting({ passthroughCompression: value });
-    fetchCompressionStats();
-  };
-
-  const fetchCompressionStats = useCallback(async () => {
-    try {
-      const res = await fetch("/api/compression/stats", { cache: "no-store" });
-      if (res.ok) setCompressionStats(await res.json());
-    } catch { /* ignore */ }
-  }, []);
-
-  // Refresh compression stats while features are enabled (dashboard does not live-update on chat traffic otherwise).
-  useEffect(() => {
-    const anyCompression = headroomEnabled || rtkEnabled || cavemanEnabled;
-    if (!anyCompression) return;
-    const timer = setInterval(() => {
-      if (!document.hidden) fetchCompressionStats();
-    }, 30000);
-    const onVisible = () => {
-      if (!document.hidden) fetchCompressionStats();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [headroomEnabled, rtkEnabled, cavemanEnabled, fetchCompressionStats]);
-
-  const fetchData = async () => {
-    try {
-      const keysRes = await fetch("/api/keys");
-      const keysData = await keysRes.json();
-      if (keysRes.ok) {
-        setKeys(keysData.keys || []);
-      }
-    } catch (error) {
-      notify.error(error.message || "Failed to load API keys");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -803,113 +677,6 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
-  const handleCreateKey = async () => {
-    if (!newKeyName.trim()) return;
-
-    try {
-      const res = await fetch("/api/keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName }),
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        setCreatedKey(data.key);
-        await fetchData();
-        setNewKeyName("");
-        setShowAddModal(false);
-        notify.success("API key created");
-      } else {
-        notify.error(data.error || "Failed to create API key");
-      }
-    } catch (error) {
-      notify.error(error.message || "Failed to create API key");
-    }
-  };
-
-  const handleDeleteKey = async (id) => {
-    setConfirmState({
-      title: "Delete API Key",
-      message: "Delete this API key?",
-      onConfirm: async () => {
-        setConfirmState(null);
-        try {
-          const res = await fetch(`/api/keys/${id}`, { method: "DELETE" });
-          if (res.ok) {
-            setKeys(keys.filter((k) => k.id !== id));
-            setVisibleKeys(prev => {
-              const next = new Set(prev);
-              next.delete(id);
-              return next;
-            });
-            notify.success("API key deleted");
-          } else {
-            const data = await res.json().catch(() => ({}));
-            notify.error(data.error || "Failed to delete API key");
-          }
-        } catch (error) {
-          notify.error(error.message || "Failed to delete API key");
-        }
-      }
-    });
-  };
-
-  const handleToggleKey = async (id, isActive) => {
-    try {
-      const res = await fetch(`/api/keys/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive }),
-      });
-      if (res.ok) {
-        setKeys(prev => prev.map(k => k.id === id ? { ...k, isActive } : k));
-      } else {
-        const data = await res.json().catch(() => ({}));
-        notify.error(data.error || "Failed to update API key");
-      }
-    } catch (error) {
-      notify.error(error.message || "Failed to update API key");
-    }
-  };
-
-  const [revealedKeys, setRevealedKeys] = useState({});
-
-  const displayKey = (key) => {
-    if (visibleKeys.has(key.id) && revealedKeys[key.id]) return revealedKeys[key.id];
-    return key.key?.includes("…") ? key.key : maskApiKeyForDisplay(key.key);
-  };
-
-  const toggleKeyVisibility = async (keyId) => {
-    if (visibleKeys.has(keyId)) {
-      setVisibleKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(keyId);
-        return next;
-      });
-      return;
-    }
-    const full = revealedKeys[keyId] || await revealApiKey(keyId);
-    if (!full) return;
-    setRevealedKeys((prev) => ({ ...prev, [keyId]: full }));
-    setVisibleKeys((prev) => new Set(prev).add(keyId));
-    setTimeout(() => {
-      setVisibleKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(keyId);
-        return next;
-      });
-    }, 30000);
-  };
-
-  const copyKey = async (key) => {
-    const full = revealedKeys[key.id] || await revealApiKey(key.id);
-    if (full) {
-      setRevealedKeys((prev) => ({ ...prev, [key.id]: full }));
-      copy(full, key.id);
-    }
-  };
-
   const [baseUrl, setBaseUrl] = useState("/v1");
 
   // Hydration fix: Only access window on client side
@@ -920,22 +687,13 @@ export default function APIPageClient({ machineId }) {
     }
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-8">
-        <CardSkeleton />
-        <CardSkeleton />
-      </div>
-    );
-  }
-
   const currentEndpoint = baseUrl;
 
   return (
     <div className="flex flex-col gap-8">
       {/* Endpoint Card */}
       <Card>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <h2 className="text-lg font-semibold tracking-tight mb-4 flex items-center gap-2">
           <span className="material-symbols-outlined text-text-muted">api</span>
           API Endpoint
         </h2>
@@ -946,21 +704,18 @@ export default function APIPageClient({ machineId }) {
           <EndpointRow
             label="Local"
             url={currentEndpoint}
-            copyId="local_url"
-            copied={copied}
-            onCopy={copy}
           />
           {/* Cloud endpoint — static public URL for remote CLI tools */}
-          <div className="glass-stat flex flex-col gap-2 rounded-xl p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">Cloud endpoint</p>
-                <p className="text-xs text-text-muted">Use a stable public URL for Cursor and other remote-only CLI tools.</p>
-              </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
+                cloudEnabled ? "dashboard-filter-active" : "glass-stat border-0 text-text-muted"
+              }`}>Cloud</span>
+              <p className="flex-1 min-w-0 text-xs text-text-muted">Use a stable public URL for Cursor and other remote-only CLI tools.</p>
               <Toggle checked={cloudEnabled} onChange={handleCloudEnabled} />
             </div>
             {cloudEnabled && (
-              <>
+              <div className="flex flex-col gap-2 sm:pl-[96px]">
                 <div className="flex flex-col sm:flex-row gap-2">
                   <Input
                     value={cloudUrlDraft}
@@ -978,17 +733,14 @@ export default function APIPageClient({ machineId }) {
                   </Button>
                 </div>
                 {cloudUrl ? (
-                  <EndpointRow
-                    label="Cloud"
-                    url={`${cloudUrl.replace(/\/$/, "")}/v1`}
-                    copyId="cloud_url"
-                    copied={copied}
-                    onCopy={copy}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input value={`${cloudUrl.replace(/\/$/, "")}/v1`} readOnly className="flex-1 font-mono text-sm" />
+                    <CopyButton value={`${cloudUrl.replace(/\/$/, "")}/v1`} size="md" ariaLabel="Copy endpoint URL" className="p-2 hover:text-text-main shrink-0" />
+                  </div>
                 ) : (
                   <p className="text-xs text-warning">Set and save a cloud URL so CLI tools can use it as base URL.</p>
                 )}
-              </>
+              </div>
             )}
           </div>
           {/* Cloudflare Tunnel */}
@@ -999,12 +751,7 @@ export default function APIPageClient({ machineId }) {
             {tunnelEnabled && !tunnelLoading && tunnelReachable ? (
               <>
                 <Input value={`${tunnelPublicUrl || tunnelUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
-                <button
-                  onClick={() => copy(`${tunnelPublicUrl || tunnelUrl}/v1`, "tunnel_url")}
-                  className="p-2 dashboard-row-hover rounded p-2 text-text-muted transition-colors hover:text-text-main shrink-0"
-                >
-                  <span className="material-symbols-outlined text-[18px]">{copied === "tunnel_url" ? "check" : "content_copy"}</span>
-                </button>
+                <CopyButton value={`${tunnelPublicUrl || tunnelUrl}/v1`} size="md" ariaLabel="Copy endpoint URL" className="p-2 hover:text-text-main shrink-0" />
                 <button
                   onClick={() => setShowDisableTunnelModal(true)}
                   className="p-2 hover:bg-danger/10 rounded text-danger transition-colors shrink-0"
@@ -1090,12 +837,7 @@ export default function APIPageClient({ machineId }) {
             {tsEnabled && !tsLoading && tsReachable ? (
               <>
                 <Input value={`${tsUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
-                <button
-                  onClick={() => copy(`${tsUrl}/v1`, "ts_url")}
-                  className="p-2 dashboard-row-hover rounded p-2 text-text-muted transition-colors hover:text-text-main shrink-0"
-                >
-                  <span className="material-symbols-outlined text-[18px]">{copied === "ts_url" ? "check" : "content_copy"}</span>
-                </button>
+                <CopyButton value={`${tsUrl}/v1`} size="md" ariaLabel="Copy endpoint URL" className="p-2 hover:text-text-main shrink-0" />
                 <button
                   onClick={() => setShowDisableTsModal(true)}
                   className="p-2 hover:bg-danger/10 rounded text-danger transition-colors shrink-0"
@@ -1222,28 +964,10 @@ export default function APIPageClient({ machineId }) {
         )}
       </Card>
 
-      <CompressionSummaryCard
-        compressionStats={compressionStats}
-        headroomStatus={headroomStatus}
-        rtkEnabled={rtkEnabled}
-        cavemanEnabled={cavemanEnabled}
-        headroomEnabled={headroomEnabled}
-      />
-
-      {/* API Keys */}
+      {/* API key requirement — gates tunnel/tailscale exposure */}
       <Card id="require-api-key">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-text-muted">vpn_key</span>
-            API Keys
-          </h2>
-          <Button icon="add" onClick={() => setShowAddModal(true)}>
-            Create Key
-          </Button>
-        </div>
-
-        <div className="flex items-center justify-between pb-4 mb-4 border-b border-border">
-          <div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
             <p className="font-medium">Require API key</p>
             <p className="text-sm text-text-muted">{SECURITY_COPY.requireApiKeyHelp}</p>
           </div>
@@ -1252,155 +976,13 @@ export default function APIPageClient({ machineId }) {
             onChange={() => handleRequireApiKey(!requireApiKey)}
           />
         </div>
-
-        <p className="text-xs text-text-muted mb-3">{SECURITY_COPY.apiKeysMasked}</p>
-        {keys.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="glass-stat mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl border-0 text-text-muted">
-              <span className="material-symbols-outlined text-[32px]">vpn_key</span>
-            </div>
-            <p className="text-text-main font-medium mb-1">No API keys yet</p>
-            <p className="text-sm text-text-muted mb-4">Create your first API key to get started</p>
-            <Button icon="add" onClick={() => setShowAddModal(true)}>
-              Create Key
-            </Button>
-          </div>
-        ) : (
-          <div className="flex flex-col">
-            {keys.map((key) => (
-              <div
-                key={key.id}
-                className={`group flex items-center justify-between py-3 border-b border-border-subtle last:border-b-0 dashboard-row-hover transition-colors ${key.isActive === false ? "opacity-60" : ""}`}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{key.name}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs text-text-muted font-mono">
-                      {displayKey(key)}
-                    </code>
-                    <button
-                      onClick={() => toggleKeyVisibility(key.id)}
-                      className="rounded p-1 text-text-muted opacity-100 transition-all dashboard-row-hover hover:text-text-main sm:group-hover:opacity-100 sm:opacity-0"
-                      title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">
-                        {visibleKeys.has(key.id) ? "visibility_off" : "visibility"}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => copyKey(key)}
-                      className="rounded p-1 text-text-muted opacity-100 transition-all dashboard-row-hover hover:text-text-main sm:group-hover:opacity-100 sm:opacity-0"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">
-                        {copied === key.id ? "check" : "content_copy"}
-                      </span>
-                    </button>
-                  </div>
-                  <p className="text-xs text-text-muted mt-1">
-                    Created {new Date(key.createdAt).toLocaleDateString()}
-                  </p>
-                  {key.isActive === false && (
-                    <p className="text-xs text-warning mt-1">Paused</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Toggle
-                    size="sm"
-                    checked={key.isActive ?? true}
-                    onChange={(checked) => {
-                      if (key.isActive && !checked) {
-                        setConfirmState({
-                          title: "Pause API Key",
-                          message: `Pause API key "${key.name}"?\n\nThis key will stop working immediately but can be resumed later.`,
-                          onConfirm: async () => {
-                            setConfirmState(null);
-                            handleToggleKey(key.id, checked);
-                          }
-                        });
-                      } else {
-                        handleToggleKey(key.id, checked);
-                      }
-                    }}
-                    title={key.isActive ? "Pause key" : "Resume key"}
-                  />
-                  <button
-                    onClick={() => handleDeleteKey(key.id)}
-                    className="p-2 hover:bg-danger/10 rounded text-danger opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="mt-3 pt-3 border-t border-border">
+          <Link href="/dashboard/api-keys" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+            <span className="material-symbols-outlined text-[16px]">vpn_key</span>
+            Manage API keys
+          </Link>
+        </div>
       </Card>
-
-      {/* Add Key Modal */}
-      <Modal
-        isOpen={showAddModal}
-        title="Create API Key"
-        onClose={() => {
-          setShowAddModal(false);
-          setNewKeyName("");
-        }}
-      >
-        <div className="flex flex-col gap-4">
-          <Input
-            label="Key Name"
-            value={newKeyName}
-            onChange={(e) => setNewKeyName(e.target.value)}
-            placeholder="Production Key"
-          />
-          <div className="flex gap-2">
-            <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
-              Create
-            </Button>
-            <Button
-              onClick={() => {
-                setShowAddModal(false);
-                setNewKeyName("");
-              }}
-              variant="ghost"
-              fullWidth
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Created Key Modal */}
-      <Modal
-        isOpen={!!createdKey}
-        title="API Key Created"
-        onClose={() => setCreatedKey(null)}
-      >
-        <div className="flex flex-col gap-4">
-          <InlineAlert
-            variant="caution"
-            title="Save this key now!"
-            message="This is the only time you will see this key. Store it securely."
-          />
-          <div className="flex gap-2">
-            <Input
-              value={createdKey || ""}
-              readOnly
-              className="flex-1 font-mono text-sm"
-            />
-            <Button
-              variant="secondary"
-              icon={copied === "created_key" ? "check" : "content_copy"}
-              onClick={() => copy(createdKey, "created_key")}
-            >
-              {copied === "created_key" ? "Copied!" : "Copy"}
-            </Button>
-          </div>
-          <Button onClick={() => setCreatedKey(null)} fullWidth>
-            Done
-          </Button>
-        </div>
-      </Modal>
 
       {/* Enable Tunnel Modal */}
       <Modal
@@ -1547,34 +1129,19 @@ export default function APIPageClient({ machineId }) {
           </div>
         </div>
       </Modal>
-
-      {/* Confirm Modal */}
-      <ConfirmModal
-        isOpen={!!confirmState}
-        onClose={() => setConfirmState(null)}
-        onConfirm={confirmState?.onConfirm}
-        title={confirmState?.title || "Confirm"}
-        message={confirmState?.message}
-        variant="danger"
-      />
     </div>
   );
 }
 
 /** Reusable endpoint row component */
-function EndpointRow({ label, url, copyId, copied, onCopy, badge, actions }) {
+function EndpointRow({ label, url, badge, actions }) {
   return (
     <div className="flex items-center gap-2">
       <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
           (badge === "CF" || badge === "TS") ? "dashboard-filter-active" : "glass-stat border-0 text-text-muted"
         }`}>{label}</span>
       <Input value={url} readOnly className="flex-1 font-mono text-sm" />
-      <button
-        onClick={() => onCopy(url, copyId)}
-        className="p-2 dashboard-row-hover rounded p-2 text-text-muted transition-colors hover:text-text-main shrink-0"
-      >
-        <span className="material-symbols-outlined text-[18px]">{copied === copyId ? "check" : "content_copy"}</span>
-      </button>
+      <CopyButton value={url} size="md" ariaLabel="Copy endpoint URL" className="p-2 hover:text-text-main shrink-0" />
       {actions}
     </div>
   );

@@ -55,7 +55,7 @@ function ProviderCard({ provider, kind, connections }) {
             />
           </div>
           <div>
-            <h3 className="font-semibold text-sm">{provider.name}</h3>
+            <h3 className="font-semibold tracking-tight text-sm">{provider.name}</h3>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">{renderStatus()}</div>
           </div>
         </div>
@@ -115,7 +115,7 @@ function Section({ title, icon, kind, providers, connections, combos, onCreateCo
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="material-symbols-outlined text-primary">{icon}</span>
-          <h2 className="text-base font-semibold">{title}</h2>
+          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
           <span className="text-xs text-text-muted">({providers.length} providers · {combos.length} combos)</span>
         </div>
         <Button size="sm" icon="add" onClick={onCreateCombo}>Create Combo</Button>

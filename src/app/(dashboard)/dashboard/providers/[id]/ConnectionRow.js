@@ -154,6 +154,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
           <button
             onClick={onMoveUp}
             disabled={isFirst}
+            aria-label="Move up"
             className={`rounded p-0.5 ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}
           >
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
@@ -161,6 +162,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
           <button
             onClick={onMoveDown}
             disabled={isLast}
+            aria-label="Move down"
             className={`rounded p-0.5 ${isLast ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}
           >
             <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>

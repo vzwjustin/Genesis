@@ -56,7 +56,7 @@ function StatCard({ title, icon, color, stats, kind, proxyStats, dashboardUrl, e
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`material-symbols-outlined text-[22px] ${color}`}>{icon}</span>
-          <h3 className="font-semibold text-sm truncate">{title}</h3>
+          <h3 className="font-semibold tracking-tight text-sm truncate">{title}</h3>
         </div>
         {(s.hits > 0 || s.requests > 0) && (
           <Badge variant="success" size="sm">{s.hits || s.requests} hits</Badge>
@@ -327,7 +327,7 @@ export default function CachingPageClient() {
     <div className="flex w-full flex-col gap-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text-main">Caching & Compression</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-text-main">Caching & Compression</h1>
           <p className="text-sm text-text-muted mt-1">
             Token savers, compression history, and upstream provider prompt-cache behavior.
           </p>
@@ -406,7 +406,7 @@ export default function CachingPageClient() {
           <Card padding="sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-2 pt-2">
               <div>
-                <h2 className="text-lg font-semibold">Compression by provider</h2>
+                <h2 className="text-lg font-semibold tracking-tight">Compression by provider</h2>
                 <p className="text-sm text-text-muted mt-0.5">
                   RTK, Headroom, and Caveman activity grouped by upstream provider.
                 </p>
@@ -425,7 +425,7 @@ export default function CachingPageClient() {
           </Card>
 
           <Card>
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-text-muted">tune</span>
               Controls
             </h2>
@@ -542,7 +542,7 @@ export default function CachingPageClient() {
           </Card>
 
           <Card>
-            <h2 className="text-lg font-semibold mb-3">RTK filter leaderboard</h2>
+            <h2 className="text-lg font-semibold tracking-tight mb-3">RTK filter leaderboard</h2>
             {filterLeaderboard.length === 0 ? (
               <p className="text-sm text-text-muted">No RTK filter hits yet — compression stats appear after chat traffic.</p>
             ) : (
@@ -574,7 +574,7 @@ export default function CachingPageClient() {
             message={
               <>
                 Tunnel and endpoint settings live on the{" "}
-                <Link href="/dashboard/endpoint#rtk" className="text-primary underline">Endpoint</Link> page.
+                <Link href="/dashboard/endpoint" className="text-primary underline">Endpoint</Link> page.
                 Compression chain order: RTK → Headroom → Caveman.
                 Claude Code topic-naming bypass (not compression) is under{" "}
                 <Link href="/dashboard/cli-tools" className="text-primary underline">CLI Tools → Claude Code</Link>.
@@ -587,7 +587,7 @@ export default function CachingPageClient() {
       {activeTab === "history" && (
         <Card padding="sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-2 pt-2">
-            <h2 className="text-lg font-semibold">Per-request compression log</h2>
+            <h2 className="text-lg font-semibold tracking-tight">Per-request compression log</h2>
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
@@ -688,7 +688,7 @@ export default function CachingPageClient() {
           </div>
 
           <Card padding="sm">
-            <h3 className="font-semibold px-2 pt-2 mb-2">RTK / Headroom / Caveman by provider</h3>
+            <h3 className="font-semibold tracking-tight px-2 pt-2 mb-2">RTK / Headroom / Caveman by provider</h3>
             <ProviderCompressionTable
               rows={providerCompression?.providers}
               emptyMessage="No compression events recorded for this period."
@@ -721,7 +721,7 @@ export default function CachingPageClient() {
 
           {providerCache?.providerCache?.byProvider?.length > 0 && (
             <Card padding="sm">
-              <h3 className="font-semibold px-2 pt-2 mb-2">By provider</h3>
+              <h3 className="font-semibold tracking-tight px-2 pt-2 mb-2">By provider</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -751,7 +751,7 @@ export default function CachingPageClient() {
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Card>
-              <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <h3 className="font-semibold tracking-tight mb-2 flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-[20px]">memory</span>
                 Anthropic KV cache
               </h3>
@@ -762,7 +762,7 @@ export default function CachingPageClient() {
               </p>
             </Card>
             <Card>
-              <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <h3 className="font-semibold tracking-tight mb-2 flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-[20px]">memory</span>
                 OpenAI prefix cache
               </h3>
@@ -772,7 +772,7 @@ export default function CachingPageClient() {
               </p>
             </Card>
             <Card>
-              <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <h3 className="font-semibold tracking-tight mb-2 flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-[20px]">memory</span>
                 Antigravity / Gemini
               </h3>
@@ -783,7 +783,7 @@ export default function CachingPageClient() {
               </p>
             </Card>
             <Card>
-              <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <h3 className="font-semibold tracking-tight mb-2 flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-[20px]">shield</span>
                 Safety rules
               </h3>
@@ -808,7 +808,7 @@ export default function CachingPageClient() {
       {activeTab === "logs" && (
         <div className="flex flex-col gap-4">
           <Card>
-            <h2 className="text-lg font-semibold mb-2">Usage request log (SQLite)</h2>
+            <h2 className="text-lg font-semibold tracking-tight mb-2">Usage request log (SQLite)</h2>
             <p className="text-sm text-text-muted mb-3">
               Live usage rows from the dashboard database. View formatted entries on the Usage page.
             </p>
@@ -820,7 +820,7 @@ export default function CachingPageClient() {
           <Card>
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
-                <h2 className="text-lg font-semibold">File request logs</h2>
+                <h2 className="text-lg font-semibold tracking-tight">File request logs</h2>
                 <p className="text-sm text-text-muted">
                   Raw translator dumps when <code className="text-xs">ENABLE_REQUEST_LOGS=true</code>
                   {enableRequestLogs ? " (enabled)" : " (disabled — set env var and restart)"}

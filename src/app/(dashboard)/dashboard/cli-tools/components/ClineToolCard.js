@@ -158,7 +158,7 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
 
   return (
     <Card padding="xs" className="overflow-hidden">
-        <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle}>
+        <button type="button" className="dashboard-row-hover -mx-3 flex w-full text-left cursor-pointer items-start justify-between gap-3 rounded-lg px-3 transition-colors sm:items-center" onClick={onToggle} aria-expanded={isExpanded}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
             <Image src="/providers/cline.png" alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
@@ -172,7 +172,7 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
           </div>
         </div>
         <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
-      </div>
+      </button>
 
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">

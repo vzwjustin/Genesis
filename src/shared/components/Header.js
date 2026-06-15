@@ -145,6 +145,13 @@ const getPageInfo = (pathname) => {
       icon: "api",
       breadcrumbs: [],
     };
+  if (pathname.includes("/api-keys"))
+    return {
+      title: "API Keys",
+      description: "Create and manage API keys for authenticating requests",
+      icon: "vpn_key",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/profile"))
     return {
       title: "Settings",
@@ -280,18 +287,18 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
           </div>
         ) : title ? (
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               {icon && (
-                <span className="material-symbols-outlined text-primary text-xl lg:text-2xl">
-                  {icon}
-                </span>
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl glass-stat border-0 text-brand-500">
+                  <span className="material-symbols-outlined text-[20px]">{icon}</span>
+                </div>
               )}
-              <h1 className="text-base lg:text-xl font-medium text-text-main tracking-tight truncate">
+              <h1 className="text-lg lg:text-2xl font-semibold text-text-main tracking-tight truncate">
                 {translate(title)}
               </h1>
             </div>
             {description && (
-              <p className="mt-0.5 text-xs sm:text-sm text-text-muted truncate max-w-2xl">
+              <p className="mt-1 text-xs sm:text-sm leading-relaxed text-text-muted truncate max-w-2xl pl-0 sm:pl-[2.875rem]">
                 {translate(description)}
               </p>
             )}

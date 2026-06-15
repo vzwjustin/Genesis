@@ -1,7 +1,8 @@
 /** Shared dashboard navigation entries for Sidebar and command palette. */
 export const DASHBOARD_NAV_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: "home", keywords: "home start" },
-  { href: "/dashboard/endpoint", label: "Endpoint", icon: "api", keywords: "api url tunnel cloud keys" },
+  { href: "/dashboard/endpoint", label: "Endpoint", icon: "api", keywords: "api url tunnel cloud" },
+  { href: "/dashboard/api-keys", label: "API Keys", icon: "vpn_key", keywords: "api key token auth secret" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns", keywords: "connections oauth models" },
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat", keywords: "chat test" },
   { href: "/dashboard/caching", label: "Caching", icon: "cached", keywords: "rtk compression token saver logs" },

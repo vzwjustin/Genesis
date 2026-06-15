@@ -924,7 +924,7 @@ export default function BasicChatPageClient() {
                     <span className="material-symbols-outlined text-[30px]">chat</span>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-semibold text-white">Start a conversation</h2>
+                    <h2 className="text-2xl font-semibold tracking-tight text-white">Start a conversation</h2>
                     <p className="text-sm leading-6 text-white/60">
                       Chat with any AI model from your connected providers. Pick a model above and start typing.
                     </p>

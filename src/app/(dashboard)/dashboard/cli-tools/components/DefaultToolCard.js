@@ -231,7 +231,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
 
   return (
     <Card padding="xs" className="overflow-hidden overflow-x-hidden">
-      <div className="dashboard-row-hover -mx-3 flex cursor-pointer items-center justify-between rounded-lg px-3 transition-colors" onClick={onToggle}>
+      <button type="button" className="dashboard-row-hover -mx-3 flex w-full text-left cursor-pointer items-center justify-between rounded-lg px-3 transition-colors" onClick={onToggle} aria-expanded={isExpanded}>
         <div className="flex items-center gap-3">
           <div className="size-8 rounded-lg flex items-center justify-center shrink-0">
             {renderIcon()}
@@ -242,7 +242,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           </div>
         </div>
         <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
-      </div>
+      </button>
 
       {isExpanded && (
         <div className="mt-6 pt-6 border-t border-border">

@@ -109,10 +109,10 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
     <div className={`group dashboard-row-hover flex flex-col gap-3 p-2 rounded-lg sm:flex-row sm:items-center sm:justify-between transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}>
       <div className="flex w-full min-w-0 flex-1 items-start gap-3 sm:items-center">
         <div className="flex flex-col">
-          <button onClick={onMoveUp} disabled={isFirst} className={`rounded p-0.5 ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}>
+          <button onClick={onMoveUp} disabled={isFirst} aria-label="Move up" className={`rounded p-0.5 ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}>
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
           </button>
-          <button onClick={onMoveDown} disabled={isLast} className={`rounded p-0.5 ${isLast ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}>
+          <button onClick={onMoveDown} disabled={isLast} aria-label="Move down" className={`rounded p-0.5 ${isLast ? "text-text-muted/30 cursor-not-allowed" : "dashboard-row-hover text-text-muted hover:text-brand-500"}`}>
             <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
           </button>
         </div>
@@ -145,6 +145,7 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
             <div className="relative" ref={proxyDropdownRef}>
               <button
                 onClick={() => setShowProxyDropdown((v) => !v)}
+                aria-label="Bind proxy pool"
                 className={`flex flex-col items-center rounded px-2 py-1 dashboard-row-hover transition-colors ${hasAnyProxy ? "text-brand-500" : "text-text-muted hover:text-brand-500"}`}
                 disabled={updatingProxy}
               >
@@ -456,7 +457,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
     <>
       <Card>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-          <h2 className="text-lg font-semibold">Connections</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Connections</h2>
           <div className="flex flex-wrap items-center gap-2">
             <span
               className="text-xs text-text-muted font-medium"

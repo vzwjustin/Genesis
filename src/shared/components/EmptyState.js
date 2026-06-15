@@ -18,14 +18,18 @@ export default function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center px-6 py-10 text-center",
-        !borderless && "glass-panel border border-dashed border-border",
+        "relative flex flex-col items-center justify-center px-6 py-12 text-center",
+        !borderless && "glass-panel border border-dashed border-border/80",
         className,
       )}
     >
-      <span className="material-symbols-outlined text-[32px] text-text-muted mb-3" aria-hidden="true">{icon}</span>
-      <h3 className="text-sm font-semibold text-text-main">{title}</h3>
-      {description ? <p className="text-xs text-text-muted mt-1 max-w-sm">{description}</p> : null}
+      <div className="glass-icon-ring mb-4 text-brand-500" aria-hidden="true">
+        <span className="material-symbols-outlined text-[28px]">{icon}</span>
+      </div>
+      <h3 className="text-base font-semibold tracking-tight text-text-main">{title}</h3>
+      {description ? (
+        <p className="text-sm leading-relaxed text-text-muted mt-2 max-w-md">{description}</p>
+      ) : null}
       {action ? (
         <div className="mt-4">
           {action.href ? (

@@ -26,7 +26,7 @@ export default function Card({
     <div
       className={cn(
         "glass-panel",
-        hover && "transition-all duration-200 cursor-pointer",
+        hover && "glass-stat-lift cursor-pointer",
         paddings[padding],
         className
       )}
@@ -36,16 +36,16 @@ export default function Card({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             {icon && (
-              <div className="p-2 rounded-xl glass-stat border-0 text-text-muted">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl glass-stat border-0 text-brand-500">
                 <span className="material-symbols-outlined text-[20px]">{icon}</span>
               </div>
             )}
             <div>
               {title && (
-                <h3 className="text-text-main font-semibold">{title}</h3>
+                <h3 className="text-text-main font-semibold tracking-tight">{title}</h3>
               )}
               {subtitle && (
-                <p className="text-sm text-text-muted">{subtitle}</p>
+                <p className="text-sm leading-relaxed text-text-muted">{subtitle}</p>
               )}
             </div>
           </div>

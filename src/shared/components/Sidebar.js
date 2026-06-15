@@ -36,6 +36,7 @@ function sidebarIconClass(active, nested = false) {
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: "home" },
   { href: "/dashboard/endpoint", label: "Endpoint", icon: "api" },
+  { href: "/dashboard/api-keys", label: "API Keys", icon: "vpn_key" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
   { href: "/dashboard/caching", label: "Caching", icon: "cached" },

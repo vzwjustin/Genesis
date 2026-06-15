@@ -146,7 +146,7 @@ export default function CLIToolsPageClient({ machineId }) {
         <div className="flex flex-col gap-0.5 px-1">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px] text-primary">security</span>
-            <h2 className="text-sm font-semibold text-text-main">MITM Tools</h2>
+            <h2 className="text-sm font-semibold tracking-tight text-text-main">MITM Tools</h2>
           </div>
           <p className="text-xs text-text-muted">
             IDE tools that need traffic interception (MITM) to route their requests through genesis.

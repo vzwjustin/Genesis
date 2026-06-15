@@ -2,13 +2,12 @@
 
 import { useState, useCallback, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Modal } from "@/shared/components";
+import { Card, Button, Modal, CopyButton } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
-import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 // ── ModelRow ───────────────────────────────────────────────────
-export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting }) {
+export function ModelRow({ model, fullModel, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting }) {
   const borderColor = testStatus === "ok" ? "border-success/40" : testStatus === "error" ? "border-danger/40" : "border-border";
   const iconColor = testStatus === "ok" ? "var(--color-success)" : testStatus === "error" ? "var(--color-danger)" : undefined;
 
@@ -24,7 +23,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
         </div>
         {onTest && (
           <div className="relative group/btn">
-            <button onClick={onTest} disabled={isTesting} className={`rounded p-0.5 text-text-muted dashboard-row-hover transition-opacity hover:text-brand-500 ${isTesting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+            <button onClick={onTest} disabled={isTesting} aria-label="Test model" className={`rounded p-0.5 text-text-muted dashboard-row-hover transition-opacity hover:text-brand-500 ${isTesting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
               <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
                 {isTesting ? "progress_activity" : "science"}
               </span>
@@ -35,16 +34,14 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
           </div>
         )}
         <div className="relative group/btn">
-          <button onClick={() => onCopy(fullModel, `model-${model.id}`)} className="rounded p-0.5 text-text-muted dashboard-row-hover transition-colors hover:text-brand-500">
-            <span className="material-symbols-outlined text-sm">{copied === `model-${model.id}` ? "check" : "content_copy"}</span>
-          </button>
+          <CopyButton value={fullModel} size="sm" ariaLabel="Copy model name" className="hover:text-brand-500" />
           <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-            {copied === `model-${model.id}` ? "Copied!" : "Copy"}
+            Copy
           </span>
         </div>
         {isFree && <span className="text-[10px] font-medium text-success bg-success/10 px-1.5 py-0.5 rounded">FREE</span>}
         {isCustom && (
-          <button onClick={onDeleteAlias} className="p-0.5 hover:bg-danger/10 rounded text-text-muted hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity ml-auto" title="Remove custom model">
+          <button onClick={onDeleteAlias} className="p-0.5 hover:bg-danger/10 rounded text-text-muted hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity ml-auto" title="Remove custom model" aria-label="Remove custom model">
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         )}
@@ -56,8 +53,6 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
 ModelRow.propTypes = {
   model: PropTypes.shape({ id: PropTypes.string.isRequired }).isRequired,
   fullModel: PropTypes.string.isRequired,
-  copied: PropTypes.string,
-  onCopy: PropTypes.func.isRequired,
   testStatus: PropTypes.oneOf(["ok", "error"]),
   isCustom: PropTypes.bool,
   isFree: PropTypes.bool,
@@ -109,7 +104,6 @@ AddCustomModelModal.propTypes = {
 // Self-contained card: shows models for a provider, filtered by optional `kindFilter`.
 // kindFilter: if provided, only shows models with matching type/kinds field.
 export default function ModelsCard({ providerId, kindFilter, providerAliasOverride }) {
-  const { copied, copy } = useCopyToClipboard();
   const [modelAliases, setModelAliases] = useState({});
   const [customModels, setCustomModels] = useState([]);
   const [modelTestResults, setModelTestResults] = useState({});
@@ -224,7 +218,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     <>
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
         </div>
         {testError && <p className="text-xs text-danger mb-3 break-words">{testError}</p>}
 
@@ -238,8 +232,6 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
                 model={model}
                 fullModel={`${providerAlias}/${model.id}`}
                 alias={existingAlias}
-                copied={copied}
-                onCopy={copy}
                 onSetAlias={(alias) => handleSetAlias(model.id, alias)}
                 onDeleteAlias={() => handleDeleteAlias(existingAlias)}
                 testStatus={modelTestResults[model.id]}
@@ -255,8 +247,6 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
               key={`${model.id}-${model.type}`}
               model={{ id: model.id, name: model.name }}
               fullModel={`${providerAlias}/${model.id}`}
-              copied={copied}
-              onCopy={copy}
               onSetAlias={() => {}}
               onDeleteAlias={() => handleDeleteCustomModel(model.id)}
               testStatus={modelTestResults[model.id]}

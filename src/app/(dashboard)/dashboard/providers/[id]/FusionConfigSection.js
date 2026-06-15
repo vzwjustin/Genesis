@@ -102,7 +102,7 @@ export default function FusionConfigSection({ connections, onSaved }) {
   if (!selected) {
     return (
       <Card>
-        <h2 className="mb-2 text-lg font-semibold">Fusion Configuration</h2>
+        <h2 className="mb-2 text-lg font-semibold tracking-tight">Fusion Configuration</h2>
         <p className="text-sm text-text-muted">
           Add a connection with your OpenRouter API key to configure the Fusion panel and judge.
         </p>
@@ -155,7 +155,7 @@ export default function FusionConfigSection({ connections, onSaved }) {
     <Card>
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Fusion Configuration</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Fusion Configuration</h2>
           <p className="mt-0.5 text-xs text-text-muted">
             Customize the expert panel and judge. Applied to requests unless the client sends its own{" "}
             <code className="font-mono">plugins</code> field.
