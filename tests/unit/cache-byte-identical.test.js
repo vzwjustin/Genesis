@@ -147,15 +147,21 @@ describe("cross-format translation — cache_control handling", () => {
     expect(result.tools?.[0]?.name).toBe("Read");
   });
 
-  it("still refuses Claude→Gemini when client owns cache breakpoints (markers must survive)", async () => {
+  it("strips cache_control on Claude→Gemini (no Gemini upstream honors inline markers) and translates", async () => {
     const { translateRequest } = await import("../../open-sse/translator/index.js");
     const { FORMATS } = await import("../../open-sse/translator/formats.js");
+    await import("../../open-sse/translator/request/claude-to-openai.js");
+    await import("../../open-sse/translator/request/openai-to-gemini.js");
     const body = {
       model: "claude-sonnet-4-5",
       messages: [{ role: "user", content: "hi", cache_control: { type: "ephemeral" } }],
     };
-    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.GEMINI, "claude-sonnet-4-5", body, false, null, "gemini"))
-      .toThrow(/cache_control breakpoints/);
+    // Gemini (and antigravity, which shares the openai→gemini wire shape) cannot
+    // honor Anthropic inline cache_control — translation always rewrites structure
+    // and drops the markers. Throwing here would only 400 a request that the user
+    // legitimately routed to a Gemini-family model; strip + translate instead.
+    const result = translateRequest(FORMATS.CLAUDE, FORMATS.GEMINI, "claude-sonnet-4-5", body, false, null, "gemini");
+    expect(JSON.stringify(result)).not.toContain("cache_control");
   });
 });
 
