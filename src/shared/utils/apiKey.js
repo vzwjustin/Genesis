@@ -208,41 +208,8 @@ export function hasNonGatewayBearer(request) {
   return !!token && !looksLikegenesisApiKey(token);
 }
 
-/** Vendor-specific API key headers (non-gateway credential signals for stale-gateway bypass). */
+/** Vendor-specific API key headers that may need stale gateway credential stripping. */
 export const PROVIDER_API_KEY_HEADER_NAMES = ["api-key", "x-goog-api-key", "xi-api-key"];
-
-/** True when a provider credential is present in x-api-key or vendor-specific headers. */
-export function hasProviderApiKeyHeader(request) {
-  const xApiKey = request.headers.get("x-api-key")?.trim();
-  if (xApiKey) {
-    if (isProviderApiKeyPrefix(xApiKey)) return true;
-    if (!looksLikegenesisApiKey(xApiKey)) return true;
-  }
-  for (const name of PROVIDER_API_KEY_HEADER_NAMES) {
-    if (request.headers.get(name)?.trim()) return true;
-  }
-  const authToken = extractAuthorizationCredentialToken(request);
-  return !!authToken && isProviderApiKeyPrefix(authToken);
-}
-
-/** Loopback may ignore stale gateway headers when a provider credential is also present. */
-export function allowsStaleGatewayBypass(request) {
-  if (hasProviderApiKeyHeader(request)) return true;
-  const token = extractAuthorizationCredentialToken(request);
-  if (!token || looksLikegenesisApiKey(token)) return false;
-  const auth = request.headers.get("Authorization")?.trim() || "";
-  if (/^Bearer\s+/i.test(auth)) {
-    if (token.includes(".")) return true;
-    if (isProviderApiKeyPrefix(token)) return true;
-    if (/^AIza[A-Za-z0-9_-]{20,}/.test(token)) return true;
-    return false;
-  }
-  if (/^Token\s+/i.test(auth)) {
-    return isProviderApiKeyPrefix(token) || token.includes(".") || token.length >= 8;
-  }
-  if (/^Api-?Key\s+/i.test(auth) && isProviderApiKeyPrefix(token)) return true;
-  return false;
-}
 
 /** Ordered gateway credential candidates (x-api-key before Authorization; verifiable before stale). */
 export function getGatewayApiKeyCandidates(request) {
@@ -255,7 +222,7 @@ export function getGatewayApiKeyCandidates(request) {
     if (!looksLikegenesisApiKey(token)) continue;
     if (isVerifiableGatewayToken(token)) {
       if (!verifiable.includes(token)) verifiable.push(token);
-    } else if (!allowsStaleGatewayBypass(request) && !stale.includes(token)) {
+    } else if (!stale.includes(token)) {
       stale.push(token);
     }
   }
@@ -274,10 +241,10 @@ export function extractGatewayApiKey(request) {
     }
   }
 
-  if (xApiKey && looksLikegenesisApiKey(xApiKey) && !allowsStaleGatewayBypass(request)) {
+  if (xApiKey && looksLikegenesisApiKey(xApiKey)) {
     return xApiKey;
   }
-  if (authToken && looksLikegenesisApiKey(authToken) && !allowsStaleGatewayBypass(request)) {
+  if (authToken && looksLikegenesisApiKey(authToken)) {
     return authToken;
   }
 
@@ -304,23 +271,16 @@ export function looksLikegenesisApiKey(token) {
 
 /**
  * True when the request presents a genesis API key credential attempt.
- * Gateway-shaped Bearer, ApiKey/Api-Key, raw sk-, and x-api-key count; Basic and
- * provider OAuth/JWT do not block loopback no-auth bypass.
+ * Any gateway-shaped Bearer, ApiKey/Api-Key, raw sk-, or x-api-key counts.
+ * No-auth mode allows missing gateway credentials, not stale or invalid ones.
  */
 export function hasgenesisCredentialAttempt(request) {
   const xApiKey = request.headers.get("x-api-key")?.trim();
-  if (xApiKey && looksLikegenesisApiKey(xApiKey)) {
-    if (isVerifiableGatewayToken(xApiKey)) return true;
-    // Stale shaped x-api-key must not block loopback when a provider credential is also present.
-    if (!allowsStaleGatewayBypass(request)) return true;
-  }
+  if (xApiKey && looksLikegenesisApiKey(xApiKey)) return true;
 
   const authToken = extractAuthorizationCredentialToken(request);
   if (!authToken || !looksLikegenesisApiKey(authToken)) return false;
-  if (isVerifiableGatewayToken(authToken)) return true;
-  if (!allowsStaleGatewayBypass(request)) return true;
-  return false;
+  return true;
 }
 
 export { maskApiKeyForDisplay } from "./apiKeyDisplay.js";
-

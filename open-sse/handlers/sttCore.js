@@ -85,7 +85,24 @@ async function transcribeAssemblyAI(cfg, file, model, token, proxyOptions, signa
   const MAX_CONSECUTIVE_POLL_ERRORS = 3;
   let consecutivePollErrors = 0;
   while (Date.now() - start < 120_000) {
-    await new Promise((r) => setTimeout(r, 2000));
+    if (signal?.aborted) {
+      const err = new Error("Request aborted");
+      err.name = "AbortError";
+      throw err;
+    }
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, 2000);
+      function onAbort() {
+        clearTimeout(timer);
+        const err = new Error("Request aborted");
+        err.name = "AbortError";
+        reject(err);
+      }
+      signal?.addEventListener("abort", onAbort);
+    });
     let poll;
     try {
       poll = await sttFetch(`${cfg.baseUrl}/${id}`, { headers: auth }, proxyOptions, signal);

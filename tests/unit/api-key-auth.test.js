@@ -86,7 +86,7 @@ describe("authenticateRequest (Task 18)", () => {
     );
   });
 
-  it("bypasses stale gateway x-api-key on loopback when provider key is raw Authorization", async () => {
+  it("rejects stale gateway x-api-key on loopback even when provider key is raw Authorization", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
@@ -96,8 +96,8 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -190,7 +190,7 @@ describe("authenticateRequest (Task 18)", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("bypasses stale gateway ApiKey Authorization when provider x-api-key is present", async () => {
+  it("rejects stale gateway ApiKey Authorization when provider x-api-key is present", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
@@ -200,8 +200,8 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -435,7 +435,7 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.response?.status).toBe(401);
   });
 
-  it("ignores revoked gateway x-api-key when OAuth bearer is present on loopback", async () => {
+  it("rejects revoked gateway x-api-key when OAuth bearer is present on loopback", async () => {
     mocks.validateApiKey.mockResolvedValue(false);
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
@@ -445,12 +445,12 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
-  it("ignores revoked gateway Bearer when provider x-api-key is present on loopback", async () => {
+  it("rejects revoked gateway Bearer when provider x-api-key is present on loopback", async () => {
     mocks.validateApiKey.mockResolvedValue(false);
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
@@ -460,12 +460,12 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
-  it("ignores stale gateway Bearer when provider x-api-key is present on loopback", async () => {
+  it("rejects stale gateway Bearer when provider x-api-key is present on loopback", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
       makeLoopbackRequest({
@@ -474,12 +474,12 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("ignores stale gateway Bearer when Azure api-key header is present on loopback", async () => {
+  it("rejects stale gateway Bearer when Azure api-key header is present on loopback", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
       makeLoopbackRequest({
@@ -488,12 +488,12 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("ignores stale gateway Bearer when x-goog-api-key is present on loopback", async () => {
+  it("rejects stale gateway Bearer when x-goog-api-key is present on loopback", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
       makeLoopbackRequest({
@@ -502,12 +502,12 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("ignores stale gateway x-api-key when OAuth bearer is present on loopback", async () => {
+  it("rejects stale gateway x-api-key when OAuth bearer is present on loopback", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
       makeLoopbackRequest({
@@ -516,8 +516,8 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -547,13 +547,15 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.response?.status).toBe(401);
   });
 
-  it("allows loopback bypass when settings are unavailable (default requireApiKey off)", async () => {
+  it("fails CLOSED on loopback when the settings DB read throws (no silent bypass)", async () => {
+    // Finding #10: getSettingsSafe() reports requireApiKey:false on a DB error,
+    // which would silently DROP key enforcement. authenticateRequest must instead
+    // force requireApiKey=true and reject a no-credential request, even on loopback.
     mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(makeLoopbackRequest({}), log);
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
-    expect(result.settings.requireApiKey).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
   });
 
   it("rejects remote access when settings are unavailable", async () => {
@@ -580,7 +582,7 @@ describe("authenticateRequest (Task 18)", () => {
     expect(result.response?.status).toBe(401);
   });
 
-  it("ignores stale gateway Bearer when Deepgram Token authorization is present on loopback", async () => {
+  it("rejects stale gateway x-api-key when Deepgram Token authorization is present on loopback", async () => {
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
       makeLoopbackRequest({
@@ -589,12 +591,12 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("allows loopback stale gateway bypass when settings are unavailable", async () => {
+  it("rejects stale gateway x-api-key on loopback when settings are unavailable", async () => {
     mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
     const { authenticateRequest } = await import("../../src/sse/services/auth.js");
     const result = await authenticateRequest(
@@ -604,7 +606,7 @@ describe("authenticateRequest (Task 18)", () => {
       }),
       log
     );
-    expect(result.ok).toBe(true);
-    expect(result.bypassed).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.response?.status).toBe(401);
   });
 });

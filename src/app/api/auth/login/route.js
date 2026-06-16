@@ -50,6 +50,19 @@ export async function POST(request) {
       return NextResponse.json({ error: "Password login is disabled. Use OIDC sign in." }, { status: 403 });
     }
 
+    // Reserve this attempt and re-check the lock BEFORE the (deliberately slow)
+    // password comparison, with NO await between record + check, so a burst of
+    // concurrent requests can't all slip past the single top-of-handler lock
+    // check during the compare window (TOCTOU brute-force amplification).
+    const { remainingBeforeLock } = recordFail(ip);
+    const reservedLock = checkLock(ip);
+    if (reservedLock.locked) {
+      return NextResponse.json(
+        { error: `Too many failed attempts. Try again in ${reservedLock.retryAfter}s. ${RESET_HINT}`, retryAfter: reservedLock.retryAfter, resetHint: RESET_HINT },
+        { status: 429, headers: { "Retry-After": String(reservedLock.retryAfter) } }
+      );
+    }
+
     let isValid = false;
     if (storedHash) {
       isValid = await bcrypt.compare(password, storedHash);
@@ -61,6 +74,7 @@ export async function POST(request) {
     }
 
     if (isValid) {
+      // Clear the reserved attempt on success.
       recordSuccess(ip);
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
@@ -68,14 +82,7 @@ export async function POST(request) {
       return NextResponse.json({ success: true });
     }
 
-    const { remainingBeforeLock } = recordFail(ip);
-    const postLock = checkLock(ip);
-    if (postLock.locked) {
-      return NextResponse.json(
-        { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
-        { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
-      );
-    }
+    // The failed attempt was already recorded above; do not double-count.
     return NextResponse.json(
       { error: `Invalid password. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock },
       { status: 401 }

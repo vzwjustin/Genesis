@@ -247,8 +247,12 @@ export async function verifyOidcIdToken({
   const { payload } = await jwtVerify(idToken, jwks, {
     issuer,
     audience,
-    nonce,
   });
+  // jose does not verify `nonce` itself — enforce the OIDC nonce binding
+  // explicitly to prevent id_token replay/injection across login sessions.
+  if (nonce && payload.nonce !== nonce) {
+    throw new Error("OIDC nonce mismatch");
+  }
   return payload;
 }
 

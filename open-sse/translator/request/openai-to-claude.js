@@ -23,9 +23,11 @@ export function openaiToClaudeRequest(model, body, stream) {
     stream: stream
   };
 
-  // Temperature
+  // Temperature — OpenAI allows 0–2 but Anthropic rejects > 1; clamp to the
+  // Claude range so a valid OpenAI request never produces a 400 upstream.
   if (body.temperature !== undefined) {
-    result.temperature = body.temperature;
+    const t = Number(body.temperature);
+    if (Number.isFinite(t)) result.temperature = Math.max(0, Math.min(1, t));
   }
 
   // Messages
@@ -196,10 +198,11 @@ Respond ONLY with the JSON object, no other text.`);
 
   // Thinking configuration
   if (body.thinking) {
+    // Anthropic's thinking schema only accepts `type` and `budget_tokens`;
+    // forwarding a non-standard `max_tokens` field triggers a 400.
     result.thinking = {
       type: body.thinking.type || "enabled",
-      ...(body.thinking.budget_tokens != null && { budget_tokens: body.thinking.budget_tokens }),
-      ...(body.thinking.max_tokens != null && { max_tokens: body.thinking.max_tokens })
+      ...(body.thinking.budget_tokens != null && { budget_tokens: body.thinking.budget_tokens })
     };
   }
 
@@ -226,6 +229,14 @@ Respond ONLY with the JSON object, no other text.`);
       console.warn(`[openai-to-claude] unknown reasoning_effort "${body.reasoning_effort}", defaulting to medium budget`);
       result.thinking = { type: "enabled", budget_tokens: effortToBudget.medium };
     }
+  }
+
+  // Claude requires max_tokens strictly greater than thinking.budget_tokens.
+  // max_tokens was computed (above) BEFORE reasoning_effort was mapped to a
+  // budget, so re-assert the invariant here to avoid emitting an invalid body
+  // (e.g. max_tokens:4096 + reasoning_effort:"high" → budget 16384).
+  if (result.thinking?.budget_tokens && result.max_tokens <= result.thinking.budget_tokens) {
+    result.max_tokens = result.thinking.budget_tokens + 1024;
   }
 
   // Attach toolNameMap to result for response translation

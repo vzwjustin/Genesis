@@ -45,12 +45,13 @@ export function generateCursorChecksum(machineId) {
   const timestamp = Math.floor(Date.now() / 1000000);
 
   // Create byte array from timestamp (6 bytes, big-endian)
+  // Using division to avoid 32-bit shift wrap-around in JavaScript bitwise operations
   const byteArray = new Uint8Array([
-    (timestamp >> 40) & 0xFF,
-    (timestamp >> 32) & 0xFF,
-    (timestamp >> 24) & 0xFF,
-    (timestamp >> 16) & 0xFF,
-    (timestamp >> 8) & 0xFF,
+    Math.floor(timestamp / 0x10000000000) & 0xFF,
+    Math.floor(timestamp / 0x100000000) & 0xFF,
+    Math.floor(timestamp / 0x1000000) & 0xFF,
+    Math.floor(timestamp / 0x10000) & 0xFF,
+    Math.floor(timestamp / 0x100) & 0xFF,
     timestamp & 0xFF
   ]);
 

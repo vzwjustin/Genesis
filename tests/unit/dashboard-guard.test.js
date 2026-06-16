@@ -240,7 +240,7 @@ describe("dashboard guard public LLM API access", () => {
     expect(response.body.error).toBe("API key required for remote API access");
   });
 
-  it("allows loopback stale gateway bypass when settings are unavailable", async () => {
+  it("rejects stale gateway credentials on loopback when settings are unavailable", async () => {
     mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
 
     const response = await proxy(request("/v1/models", {
@@ -249,7 +249,8 @@ describe("dashboard guard public LLM API access", () => {
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
     }, "127.0.0.1"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -300,7 +301,7 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("allows loopback public LLM API when revoked gateway Bearer accompanies provider x-api-key", async () => {
+  it("rejects revoked gateway Bearer when provider x-api-key is present", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     mocks.validateApiKey.mockResolvedValue(false);
 
@@ -310,11 +311,12 @@ describe("dashboard guard public LLM API access", () => {
       "x-api-key": "sk-ant-api03-provider-key",
     }, "127.0.0.1"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
-  it("allows loopback public LLM API when revoked gateway x-api-key accompanies OAuth bearer", async () => {
+  it("rejects revoked gateway x-api-key when OAuth bearer is present", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     mocks.validateApiKey.mockResolvedValue(false);
 
@@ -324,11 +326,12 @@ describe("dashboard guard public LLM API access", () => {
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
     }, "127.0.0.1"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
-  it("allows loopback public LLM API when stale gateway x-api-key accompanies raw provider Authorization", async () => {
+  it("rejects stale gateway x-api-key when raw provider Authorization is present", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
 
     const response = await proxy(request("/v1/models", {
@@ -337,7 +340,8 @@ describe("dashboard guard public LLM API access", () => {
       authorization: "sk-ant-api03-provider-key",
     }, "127.0.0.1"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -369,7 +373,7 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).toHaveBeenCalledWith(VALID_TEST_KEY);
   });
 
-  it("allows loopback public LLM API when stale gateway Bearer accompanies provider x-api-key", async () => {
+  it("rejects stale gateway Bearer when provider x-api-key is present", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
 
     const response = await proxy(request("/v1/models", {
@@ -378,11 +382,12 @@ describe("dashboard guard public LLM API access", () => {
       authorization: "Bearer sk-badkeyyy",
     }, "127.0.0.1"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("allows loopback public LLM API when stale gateway Bearer accompanies x-goog-api-key", async () => {
+  it("rejects stale gateway Bearer when x-goog-api-key is present", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
 
     const response = await proxy(request("/v1/models", {
@@ -391,11 +396,12 @@ describe("dashboard guard public LLM API access", () => {
       authorization: "Bearer sk-badkeyyy",
     }, "127.0.0.1"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("allows loopback public LLM API when stale gateway x-api-key accompanies OAuth bearer", async () => {
+  it("rejects stale gateway x-api-key when OAuth bearer is present", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
 
     const response = await proxy(request("/v1/models", {
@@ -404,7 +410,8 @@ describe("dashboard guard public LLM API access", () => {
       authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
     }, "127.0.0.1"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid API key");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
