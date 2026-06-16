@@ -9,6 +9,31 @@ import { detectFormatByEndpoint, FORMATS } from "../translator/formats.js";
  * NOTE: Use both spellings in comments/searches: passthrough and passthru.
  */
 
+// MITM surfaces the Gemini endpoint verb (:streamGenerateContent vs :generateContent)
+// as this header. Gemini-family native bodies carry no `stream` field, so the verb is
+// the only authoritative stream-intent signal — without it the router cannot tell a
+// non-streaming :generateContent client apart from a streaming one. Keep this string in
+// sync with the literal used in src/mitm/handlers/antigravity.js (CommonJS, cannot import).
+export const STREAM_INTENT_HEADER = "x-genesis-stream-intent";
+
+/**
+ * Interpret the x-genesis-stream-intent header.
+ * @returns {boolean|null} true for "1"/"true", false for "0"/"false", null when the
+ *   header is absent or unrecognized (caller applies its own default). Case-insensitive
+ *   on both key and value.
+ */
+export function parseStreamIntentHeader(headers = {}) {
+  if (!headers || typeof headers !== "object") return null;
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() !== STREAM_INTENT_HEADER) continue;
+    const val = String(v).trim().toLowerCase();
+    if (val === "1" || val === "true") return true;
+    if (val === "0" || val === "false") return false;
+    return null;
+  }
+  return null;
+}
+
 // Map of CLI tool identifiers to provider IDs they are "native" to.
 // When clientTool matches a provider in this list, passthrough (passthru) mode
 // is activated — translation is skipped, only model name + auth are swapped.

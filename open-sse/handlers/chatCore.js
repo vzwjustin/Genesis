@@ -16,7 +16,7 @@ import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDeta
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
-import { detectClientTool, shouldUseNativePassthrough } from "../utils/clientDetector.js";
+import { detectClientTool, shouldUseNativePassthrough, parseStreamIntentHeader } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { cleanAnthropicToolDefinitions, fixToolUseOrdering, usesAnthropicToolCleaning } from "../translator/helpers/claudeHelper.js";
 import { applyCloaking } from "../utils/claudeCloaking.js";
@@ -169,13 +169,22 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
+  // Gemini-family native formats (Antigravity / Gemini / Gemini-CLI) encode stream intent
+  // in the endpoint verb (:streamGenerateContent = SSE, :generateContent = single JSON),
+  // not in body.stream — the native body has no `stream` field. The MITM layer surfaces
+  // that verb as the x-genesis-stream-intent header. When the signal is absent (legacy
+  // callers / direct API), default to streaming so existing clients never regress.
+  const geminiFamilyFormat = sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
+  const geminiWantsStream = geminiFamilyFormat ? (parseStreamIntentHeader(clientHeaders) ?? true) : false;
+  const clientRequestedStreaming = body.stream === true || geminiWantsStream;
   const providerRequiresStreaming = provider === "openai" || provider === "codex" || provider === "commandcode";
   let stream = providerRequiresStreaming ? true : (body.stream !== false);
 
   // Passthrough preserves the client contract: omitted stream is non-streaming,
   // explicit stream:true streams, and native streaming formats keep their stream.
-  if (passthrough && !providerRequiresStreaming) stream = clientRequestedStreaming;
+  // Gemini-family formats also resolve `stream` from the verb here (translated mode
+  // included) so a :generateContent client receives assembled JSON, never raw SSE.
+  if ((passthrough || geminiFamilyFormat) && !providerRequiresStreaming) stream = clientRequestedStreaming;
 
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.

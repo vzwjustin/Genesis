@@ -38,6 +38,8 @@ vi.mock("open-sse/handlers/chatCore/requestDetail.js", () => ({
 // ===========================================================================
 
 const { parseSSEToOpenAIResponse, handleForcedSSEToJson } = await import("../../open-sse/handlers/chatCore/sseToJsonHandler.js");
+const { parseStreamIntentHeader } = await import("../../open-sse/utils/clientDetector.js");
+const { MAX_SSE_BUFFER_CHARS } = await import("../../open-sse/utils/stream.js");
 
 describe("SSE→JSON assembly for always-streaming providers (Requirements 6.3, 6.6)", () => {
   describe("parseSSEToOpenAIResponse — successful assembly", () => {
@@ -180,6 +182,40 @@ describe("handleForcedSSEToJson — SSE assembly error handling (Requirements 6.
     });
 
     // Must return an error, NOT partial data
+    expect(result).not.toBeNull();
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(502);
+  });
+
+  // #13 — the standard Chat SSE branch must cap the buffered read and fail closed,
+  // never accumulate an unbounded upstream body into memory.
+  it("fails closed (502) when the SSE body exceeds the read cap instead of buffering unbounded", async () => {
+    const oversize = "x".repeat(MAX_SSE_BUFFER_CHARS + 1);
+    const providerResponse = {
+      headers: new Map([["content-type", "text/event-stream"]]),
+      // No streaming body → readCappedResponseText falls back to .text() and rejects on length.
+      text: () => Promise.resolve(oversize),
+    };
+
+    const result = await handleForcedSSEToJson({
+      providerResponse,
+      sourceFormat: "openai",
+      provider: "openai",
+      model: "gpt-4",
+      body: { messages: [{ role: "user", content: "Hi" }], stream: false },
+      stream: true,
+      translatedBody: {},
+      finalBody: null,
+      requestStartTime: Date.now(),
+      connectionId: "conn-1",
+      apiKey: "test-key",
+      clientRawRequest: { headers: {}, body: "{}", endpoint: "/v1/chat/completions" },
+      onRequestSuccess: null,
+      trackDone: vi.fn(),
+      appendLog: vi.fn(),
+      passthrough: false,
+    });
+
     expect(result).not.toBeNull();
     expect(result.success).toBe(false);
     expect(result.status).toBe(502);
@@ -394,18 +430,23 @@ describe("providerRequiresStreaming logic (Requirements 6.3, 1.2)", () => {
   const ALWAYS_STREAMING_PROVIDERS = ["openai", "codex", "commandcode"];
   const NON_STREAMING_PROVIDERS = ["claude", "gemini", "cursor", "kiro"];
 
-  function computeStreamDecision(provider, bodyStreamValue, passthrough = false, sourceFormat = "openai") {
+  function computeStreamDecision(provider, bodyStreamValue, passthrough = false, sourceFormat = "openai", headers = {}) {
     // Mirrors chatCore.js stream decision.
     const providerRequiresStreaming = ALWAYS_STREAMING_PROVIDERS.includes(provider);
-    const clientRequestedStreaming = computeClientRequestedStreaming(bodyStreamValue, sourceFormat);
+    const geminiFamily = sourceFormat === "antigravity" || sourceFormat === "gemini" || sourceFormat === "gemini-cli";
+    const clientRequestedStreaming = computeClientRequestedStreaming(bodyStreamValue, sourceFormat, headers);
     let stream = providerRequiresStreaming ? true : (bodyStreamValue !== false);
-    if (passthrough && !providerRequiresStreaming) stream = clientRequestedStreaming;
+    // Gemini-family formats resolve `stream` from the verb in translated mode too.
+    if ((passthrough || geminiFamily) && !providerRequiresStreaming) stream = clientRequestedStreaming;
     return stream;
   }
 
-  function computeClientRequestedStreaming(bodyStream, sourceFormat) {
-    // Mirrors chatCore.js: body.stream === true || sourceFormat === "antigravity" || "gemini" || "gemini-cli"
-    return bodyStream === true || sourceFormat === "antigravity" || sourceFormat === "gemini" || sourceFormat === "gemini-cli";
+  function computeClientRequestedStreaming(bodyStream, sourceFormat, headers = {}) {
+    // Mirrors chatCore.js: Gemini-family stream intent comes from the endpoint verb
+    // (surfaced as x-genesis-stream-intent), defaulting to stream when the signal is absent.
+    const geminiFamily = sourceFormat === "antigravity" || sourceFormat === "gemini" || sourceFormat === "gemini-cli";
+    const geminiWantsStream = geminiFamily ? (parseStreamIntentHeader(headers) ?? true) : false;
+    return bodyStream === true || geminiWantsStream;
   }
 
   it("always-streaming providers force stream=true even when client sets stream=false", () => {
@@ -450,7 +491,7 @@ describe("providerRequiresStreaming logic (Requirements 6.3, 1.2)", () => {
     expect(!clientRequestedStreaming && providerRequiresStreaming).toBe(false);
   });
 
-  it("streaming-native formats (Gemini, Antigravity) count as client-requested streaming", () => {
+  it("streaming-native formats (Gemini, Antigravity) default to streaming when no verb signal is present", () => {
     expect(computeClientRequestedStreaming(false, "antigravity")).toBe(true);
     expect(computeClientRequestedStreaming(false, "gemini")).toBe(true);
     expect(computeClientRequestedStreaming(false, "gemini-cli")).toBe(true);
@@ -475,5 +516,29 @@ describe("providerRequiresStreaming logic (Requirements 6.3, 1.2)", () => {
     expect(computeStreamDecision("gemini", undefined, true, "gemini")).toBe(true);
     expect(computeStreamDecision("gemini-cli", undefined, true, "gemini-cli")).toBe(true);
     expect(computeStreamDecision("antigravity", undefined, true, "antigravity")).toBe(true);
+  });
+
+  // ── #12: the Gemini verb (x-genesis-stream-intent) is authoritative ──────────
+  it("Gemini-family honors a :generateContent verb → non-streaming (single JSON, not raw SSE)", () => {
+    const nonStream = { "x-genesis-stream-intent": "0" };
+    expect(computeClientRequestedStreaming(false, "antigravity", nonStream)).toBe(false);
+    // passthrough antigravity (real path) and translated mode both resolve to non-streaming
+    expect(computeStreamDecision("antigravity", undefined, true, "antigravity", nonStream)).toBe(false);
+    expect(computeStreamDecision("antigravity", undefined, false, "antigravity", nonStream)).toBe(false);
+    expect(computeStreamDecision("gemini", undefined, false, "gemini", nonStream)).toBe(false);
+  });
+
+  it("Gemini-family honors a :streamGenerateContent verb → streaming (no regression)", () => {
+    const doStream = { "x-genesis-stream-intent": "1" };
+    expect(computeClientRequestedStreaming(false, "antigravity", doStream)).toBe(true);
+    expect(computeStreamDecision("antigravity", undefined, true, "antigravity", doStream)).toBe(true);
+    expect(computeStreamDecision("gemini-cli", undefined, false, "gemini-cli", doStream)).toBe(true);
+  });
+
+  it("non-Gemini formats ignore the stream-intent header entirely", () => {
+    const nonStream = { "x-genesis-stream-intent": "0" };
+    // claude with stream:true stays streaming; the Gemini-only header has no effect
+    expect(computeStreamDecision("claude", true, true, "claude", nonStream)).toBe(true);
+    expect(computeClientRequestedStreaming(true, "openai", nonStream)).toBe(true);
   });
 });
