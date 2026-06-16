@@ -14,6 +14,7 @@ import {
   normalizeAnthropicBuiltinToolModel,
   stripProviderModelPrefix,
 } from "./anthropicToolModel.js";
+import { isKimiProvider, prepareKimiRequest } from "./kimiHelper.js";
 
 export { stripProviderModelPrefix, normalizeAnthropicBuiltinToolModel } from "./anthropicToolModel.js";
 export { hasAnthropicCacheBreakpoints };
@@ -195,7 +196,13 @@ export function fixToolUseOrdering(messages) {
   return merged;
 }
 
-const CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG = new Set(["minimax", "minimax-cn"]);
+const CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG = new Set(["minimax", "minimax-cn", "kimi", "kimi-coding"]);
+
+function usesClaudeThinkingCompat(provider) {
+  return provider === "claude"
+    || provider?.startsWith("anthropic-compatible")
+    || isKimiProvider(provider);
+}
 
 // Prepare request for Claude format endpoints
 // - Optionally normalize cache_control (skipped when client already set breakpoints)
@@ -232,6 +239,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
         delete body.tool_choice;
       }
     }
+    prepareKimiRequest(body, provider, body.model);
     return body;
   }
 
@@ -303,8 +311,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           lastAssistantProcessed = true;
         }
 
-        // Handle thinking blocks for Anthropic endpoint only
-        if (provider === "claude" || provider?.startsWith("anthropic-compatible")) {
+        // Handle thinking blocks for Anthropic and Kimi Coding endpoints
+        if (usesClaudeThinkingCompat(provider)) {
           let hasToolUse = false;
           let hasThinking = false;
 
@@ -365,6 +373,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     const sessionId = headerSessionId || (connectionId ? deriveSessionId(connectionId) : null);
     body = applyCloaking(body, apiKey, sessionId);
   }
+
+  prepareKimiRequest(body, provider, body.model);
 
   return body;
 }
