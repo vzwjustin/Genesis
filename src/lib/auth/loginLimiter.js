@@ -119,8 +119,14 @@ export function getClientIp(request) {
   if (process.env.TRUST_PROXY_HEADERS === "true") {
     const xff = request.headers.get("x-forwarded-for");
     if (xff) {
-      // Leftmost entry is the originating client (trusted because TRUST_PROXY_HEADERS gates this).
-      const ip = xff.split(",").map((s) => s.trim()).filter(Boolean)[0];
+      // Use the RIGHTMOST entry: with a trusted reverse proxy that appends
+      // (nginx $proxy_add_x_forwarded_for, Cloudflare), the last hop is the
+      // address our proxy actually observed. Earlier entries are client-supplied
+      // and spoofable — keying the lockout off the leftmost value lets an
+      // attacker rotate X-Forwarded-For to land in a fresh bucket every request
+      // and bypass the brute-force lockout entirely.
+      const parts = xff.split(",").map((s) => s.trim()).filter(Boolean);
+      const ip = parts[parts.length - 1];
       if (ip) return ip;
     }
     const realIp = request.headers.get("x-real-ip");

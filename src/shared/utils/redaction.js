@@ -75,16 +75,29 @@ export function redactSensitiveText(value) {
  * Recursively drop sensitive keys and redact string values from a structured object.
  * Sensitive keys are removed entirely (stronger than masking).
  */
-export function sanitizeValue(value) {
+export function sanitizeValue(value, seen = new WeakSet(), depth = 0) {
   if (value == null) return value;
   if (typeof value === "string") return redactSensitiveText(value);
-  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item));
   if (typeof value !== "object") return value;
+
+  // Guard against cycles and pathological nesting depth. Redaction is an
+  // optional logging side-effect and must NEVER throw (e.g. a stack-overflow
+  // RangeError) into the request path — fail open with a marker instead.
+  // NOTE: entries are intentionally NEVER removed from `seen` (no per-subtree
+  // delete). This visits each distinct object at most once → O(distinct nodes),
+  // which resists a hostile "diamond" DAG that would otherwise expand to 2^depth
+  // paths. The only cost is that a legitimately shared (non-cyclic) reference is
+  // rendered as "[circular]" in the LOG copy — harmless, the real body is untouched.
+  if (seen.has(value)) return Array.isArray(value) ? ["[circular]"] : "[circular]";
+  if (depth > 200) return Array.isArray(value) ? ["[max-depth]"] : "[max-depth]";
+  seen.add(value);
+
+  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item, seen, depth + 1));
 
   const sanitized = {};
   for (const [key, item] of Object.entries(value)) {
     if (isSensitiveKey(key)) continue;
-    sanitized[key] = sanitizeValue(item);
+    sanitized[key] = sanitizeValue(item, seen, depth + 1);
   }
   return sanitized;
 }
