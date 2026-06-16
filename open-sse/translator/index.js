@@ -38,13 +38,19 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   let clientOwnsCacheLayout = hasAnthropicCacheBreakpoints(body);
 
   if (clientOwnsCacheLayout && sourceFormat !== targetFormat) {
-    // OpenAI-compatible clients (e.g. OpenCode) may embed cache_control on an OpenAI-shaped
-    // body. Translation mutates structure, so markers cannot survive byte-for-byte.
-    // Anthropic→OpenAI: OpenAI endpoints cannot honor cache_control anyway.
-    if (targetFormat === FORMATS.OPENAI || sourceFormat === FORMATS.OPENAI) {
+    // Translation mutates structure, so cache_control markers cannot survive
+    // byte-for-byte. Anthropic cache_control is only honorable by a Claude-format
+    // upstream, so stripping is the correct, lossless-of-intent call whenever the
+    // target isn't Claude (openai, openai-responses, antigravity, gemini, ...).
+    // OpenAI-compatible clients (e.g. OpenCode) may also embed markers on an
+    // OpenAI-shaped body; strip those regardless of target.
+    if (targetFormat !== FORMATS.CLAUDE || sourceFormat === FORMATS.OPENAI) {
       stripAnthropicCacheBreakpoints(result);
       clientOwnsCacheLayout = false;
     } else {
+      // Cross-format INTO Claude from a non-OpenAI source: breakpoints can't be
+      // reconstructed on the translated body, so fail closed rather than silently
+      // dropping the client's intended cache layout.
       const err = new Error(
         "Cannot translate across formats when the client placed Anthropic cache_control breakpoints"
       );
