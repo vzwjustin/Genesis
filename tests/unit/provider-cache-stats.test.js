@@ -3,17 +3,26 @@ import { normalizeCacheTokens } from "../../src/lib/cacheTokenUtils.js";
 
 const mocks = vi.hoisted(() => ({
   rows: [],
+  sinceArgs: [],
 }));
 
 vi.mock("../../src/lib/db/driver.js", () => ({
   getAdapter: vi.fn(async () => ({
-    all: vi.fn(() => mocks.rows),
+    // Record the `timestamp >= since` cutoff each read uses. params layout is
+    // [...conds, since, LIMIT], so the cutoff is the second-to-last param.
+    all: vi.fn((_sql, params) => {
+      const since = params?.[params.length - 2];
+      if (since) mocks.sinceArgs.push(since);
+      return mocks.rows;
+    }),
   })),
 }));
 
 describe("getProviderCacheStats", () => {
   beforeEach(() => {
     mocks.rows = [];
+    mocks.sinceArgs = [];
+    vi.useRealTimers();
   });
 
   it("normalizeCacheTokens reads anthropic and openai cache fields", () => {
@@ -99,5 +108,26 @@ describe("getProviderCacheStats", () => {
     expect(stats.requestsWithTelemetry).toBe(1);
     expect(stats.cacheReadTokens).toBe(50_000);
     expect(stats.hitRate).toBeGreaterThan(95);
+  });
+
+  it("uses an identical window cutoff for refreshes within the same hour", async () => {
+    // The "measured requests counts down on refresh" bug: an unquantized
+    // now-cutoff slides the trailing edge forward every read, dropping the
+    // oldest rows. Quantizing to the hour makes back-to-back reads idempotent.
+    const { getProviderCacheStats } = await import("../../src/lib/db/repos/usageRepo.js");
+
+    const base = Date.UTC(2026, 5, 8, 9, 0, 0); // on the hour
+    vi.useFakeTimers();
+
+    vi.setSystemTime(base + 2 * 60 * 1000);  // 09:02
+    await getProviderCacheStats("7d");
+
+    vi.setSystemTime(base + 57 * 60 * 1000); // 09:57, same hour, 55 min later
+    await getProviderCacheStats("7d");
+
+    expect(mocks.sinceArgs).toHaveLength(2);
+    expect(mocks.sinceArgs[0]).toBe(mocks.sinceArgs[1]);
+
+    vi.useRealTimers();
   });
 });
