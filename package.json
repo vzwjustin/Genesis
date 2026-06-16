@@ -63,6 +63,7 @@
     "@tailwindcss/postcss": "^4.1.18",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "fast-check": "^4.8.0",
     "postcss": "^8.5.15",
     "tailwindcss": "^4",
     "typescript-eslint": "^8.60.1",

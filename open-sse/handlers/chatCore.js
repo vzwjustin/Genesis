@@ -17,6 +17,7 @@ import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, shouldUseNativePassthrough, parseStreamIntentHeader } from "../utils/clientDetector.js";
+import { stripTrailingAssistantPrefill } from "../translator/helpers/openaiHelper.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { cleanAnthropicToolDefinitions, fixToolUseOrdering, usesAnthropicToolCleaning } from "../translator/helpers/claudeHelper.js";
 import { applyCloaking } from "../utils/claudeCloaking.js";
@@ -291,6 +292,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       if (extras && typeof extras === "object") {
         Object.assign(translatedBody, extras);
       }
+    }
+  }
+
+  // Fusion fans out to Anthropic 4.6+ panel members that reject assistant prefill.
+  // Allowed in passthrough: upstream rejects trailing assistant turns (compatibility fix).
+  if (provider === "fusion" && Array.isArray(translatedBody.messages)) {
+    translatedBody.messages = stripTrailingAssistantPrefill(translatedBody.messages);
+    if (translatedBody.messages.length === 0) {
+      return createErrorResult(
+        HTTP_STATUS.BAD_REQUEST,
+        "Request has no messages after removing trailing assistant prefill; Fusion requires the conversation to end on a user turn",
+        undefined,
+        { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED }
+      );
     }
   }
 

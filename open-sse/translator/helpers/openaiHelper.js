@@ -206,3 +206,20 @@ export function filterToOpenAIFormat(body) {
 
   return body;
 }
+
+/**
+ * Remove trailing assistant turns that would trigger Anthropic prefill rejection.
+ * Claude 4.6+ (and Fusion's panel/judge) require the conversation to end on a user turn.
+ * Stops at the first non-assistant message or assistant message with tool_calls.
+ */
+export function stripTrailingAssistantPrefill(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+  const result = [...messages];
+  while (result.length > 0) {
+    const last = result[result.length - 1];
+    if (last?.role !== "assistant") break;
+    if (Array.isArray(last.tool_calls) && last.tool_calls.length > 0) break;
+    result.pop();
+  }
+  return result;
+}

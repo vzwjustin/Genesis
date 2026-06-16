@@ -104,6 +104,12 @@ describe("Round 25 — getModelInfoCore fail-closed", () => {
     const result = await getModelInfoCore("claude-sonnet-4-20250514", {});
     expect(result.provider).toBeNull();
   });
+
+  it("resolves bare Codex catalog ids without a registered alias", async () => {
+    const result = await getModelInfoCore("gpt-5.4", {});
+    expect(result.provider).toBe("codex");
+    expect(result.model).toBe("gpt-5.4");
+  });
 });
 
 describe("Round 25 — nested built-in tool model prefix strip", () => {

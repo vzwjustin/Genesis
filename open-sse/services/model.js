@@ -1,3 +1,5 @@
+import { resolveBareCodexModel } from "../utils/codexModel.js";
+
 // Provider alias to ID mapping
 const ALIAS_TO_PROVIDER_ID = {
   cc: "claude",
@@ -92,7 +94,7 @@ const ALIAS_TO_PROVIDER_ID = {
   // TTS
   polly: "aws-polly",
   "aws-polly": "aws-polly",
-  // Free-tier providers (synced from OmniRoute)
+  // Free-tier providers
   agentrouter: "agentrouter",
   aimlapi: "aimlapi",
   aiml: "aimlapi",
@@ -247,27 +249,14 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
     return resolved;
   }
 
+  const codexResolved = resolveBareCodexModel(parsed.model);
+  if (codexResolved) {
+    return codexResolved;
+  }
+
   // Unresolved alias — fail closed (do not infer provider; callers must return HTTP 400)
   return {
     provider: null,
     model: parsed.model,
   };
-}
-
-/**
- * Infer provider from model name prefix
- * Used as fallback when no provider prefix or alias is given
- */
-function inferProviderFromModelName(modelName) {
-  if (!modelName) return "openai";
-  const m = modelName.toLowerCase();
-  if (m.startsWith("claude-")) return "anthropic";
-  if (m.startsWith("gemini-")) return "gemini";
-  if (m.startsWith("gpt-5")) return "codex";
-  if (m.startsWith("gpt-")) return "openai";
-  if (m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4"))
-    return "openai";
-  if (m.startsWith("deepseek-")) return "openrouter";
-  // Default fallback
-  return "openai";
 }
