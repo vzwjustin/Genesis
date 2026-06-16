@@ -50,6 +50,17 @@ function extractIdentityHeaders(headers) {
 }
 
 /**
+ * Extract Anthropic identity headers for passthrough forwarding.
+ * Unlike cacheClaudeHeaders, does not require Claude Code user-agent — any client
+ * sending anthropic-version/beta on /v1/messages should have headers forwarded as-is.
+ * @param {object} headers - Lowercase header key/value object
+ * @returns {object|null}
+ */
+export function extractPassthroughAnthropicHeaders(headers) {
+  return extractIdentityHeaders(headers);
+}
+
+/**
  * Store Claude Code identity headers scoped to a connection.
  * @param {object} headers - Lowercase header key/value object
  * @param {string} [connectionId]

@@ -36,10 +36,13 @@ import { saveCompressionStats } from "@/lib/compressionStats.js";
 import { buildProxyOptionsFromCredentials } from "../utils/proxyFetch.js";
 import { checkCircuitBreaker, recordUpstreamTelemetry } from "../utils/upstreamTelemetry.js";
 
-function buildExecCredentials(credentials, clientHasCacheBreakpoints) {
-  return clientHasCacheBreakpoints
-    ? { ...credentials, _preserveClientCache: true }
-    : credentials;
+function buildExecCredentials(credentials, { clientHasCacheBreakpoints = false, passthrough = false } = {}) {
+  if (!clientHasCacheBreakpoints && !passthrough) return credentials;
+  return {
+    ...credentials,
+    ...(clientHasCacheBreakpoints ? { _preserveClientCache: true } : {}),
+    ...(passthrough ? { _passthrough: true } : {}),
+  };
 }
 
 function isClientAbortError(error, signal) {
@@ -94,13 +97,37 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Early passthrough detection: needed before any body mutations to enforce
   // "passthrough means passthrough — only model + auth are swapped" (Requirement 1.2)
   const clientHeaders = clientRawRequest?.headers || {};
+  const requestPathname = (() => {
+    const endpoint = clientRawRequest?.endpoint;
+    if (!endpoint) return "";
+    try {
+      return new URL(endpoint, "http://localhost").pathname;
+    } catch {
+      return String(endpoint).split("?")[0] || "";
+    }
+  })();
   const clientTool = detectClientTool(clientHeaders, body);
   const passthrough = shouldUseNativePassthrough(clientTool, provider, {
     body,
     headers: Object.fromEntries(
       Object.entries(clientHeaders).map(([k, v]) => [k.toLowerCase(), String(v)])
     ),
+    pathname: requestPathname,
   });
+
+  if (
+    !passthrough
+    && provider === "claude"
+    && sourceFormat === FORMATS.OPENAI
+    && requestPathname.includes("/v1/chat/completions")
+    && typeof body?.model === "string"
+    && /^(cc\/|claude[-/])/i.test(body.model)
+  ) {
+    log?.warn?.(
+      "PASSTHROUGH",
+      `${body.model} hit /v1/chat/completions (openai wire). cc/claude needs @ai-sdk/anthropic → /v1/messages for passthrough. Reapply OpenCode settings from genesis dashboard.`
+    );
+  }
 
   let originalClientBody;
   try {
@@ -206,14 +233,16 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  // The translator strips Anthropic cache_control markers when translating to an
-  // OpenAI-format target (they can't be honored upstream), so the cache layout is
-  // no longer client-owned in that path. Mirror that here or model-id resolution,
-  // snapshotting, and compression gating would all misfire on the stale markers.
-  const cacheStrippedForOpenAITarget =
-    !passthrough && targetFormat === FORMATS.OPENAI && sourceFormat !== targetFormat;
+  // The translator strips Anthropic cache_control markers when translating across
+  // formats involving OpenAI (source or target) — markers cannot be honored or
+  // preserved byte-for-byte after translation. Mirror that here or model-id resolution,
+  // snapshotting, and compression gating would all misfire on stale markers.
+  const cacheStrippedForCrossFormatTranslation =
+    !passthrough
+    && sourceFormat !== targetFormat
+    && (targetFormat === FORMATS.OPENAI || sourceFormat === FORMATS.OPENAI);
   const clientHasCacheBreakpoints =
-    !cacheStrippedForOpenAITarget && hasAnthropicCacheBreakpoints(originalClientBody);
+    !cacheStrippedForCrossFormatTranslation && hasAnthropicCacheBreakpoints(originalClientBody);
 
   // Pristine client snapshot — before model swap, OAuth metadata, tool cleaning, dedupe, or compression.
   const cacheProtectedSnapshot = clientHasCacheBreakpoints
@@ -256,8 +285,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  // OAuth metadata alignment for passthrough (translated path uses prepareClaudeRequest).
-  if (passthrough && (provider === "claude" || provider?.startsWith("anthropic-compatible"))) {
+  // OAuth metadata alignment for native Claude CLI passthrough only (translated path uses prepareClaudeRequest).
+  // Format-aligned clients (e.g. OpenCode on /v1/messages) own body + HTTP headers — do not inject cloaking.
+  if (
+    passthrough
+    && clientTool === "claude"
+    && (provider === "claude" || provider?.startsWith("anthropic-compatible"))
+  ) {
     const bearerKey = credentials?.accessToken || credentials?.apiKey;
     if (bearerKey?.includes("sk-ant-oat")) {
       const cached = getCachedClaudeHeaders(connectionId, credentials?._requestHeaders);
@@ -598,7 +632,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       model,
       body: translatedBody,
       stream,
-      credentials: buildExecCredentials(credentials, clientHasCacheBreakpoints),
+      credentials: buildExecCredentials(credentials, { clientHasCacheBreakpoints, passthrough }),
       signal: upstreamSignal,
       log,
       proxyOptions,
@@ -681,7 +715,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
             model,
             body: translatedBody,
             stream,
-            credentials: buildExecCredentials(credentials, clientHasCacheBreakpoints),
+            credentials: buildExecCredentials(credentials, { clientHasCacheBreakpoints, passthrough }),
             signal: upstreamSignal,
             log,
             proxyOptions,
@@ -723,9 +757,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (!providerResponse.ok) {
     releasePending();
 
-    // PASSTHROUGH GUARD: In passthrough mode, preserve the upstream error response shape.
-    // Do NOT reformat into a generic proxy error — relay the provider's native error body.
-    if (passthrough) {
+    // Relay native upstream error bodies for passthrough and Claude-target routes
+    // (OpenCode on /v1/messages, Claude Code, etc.) — avoid OpenAI-shaped rewrites.
+    if (passthrough || targetFormat === FORMATS.CLAUDE) {
       let errorBody;
       let errorBodyText;
       let resetsAtMs;

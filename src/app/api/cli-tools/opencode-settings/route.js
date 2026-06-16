@@ -48,6 +48,114 @@ const hasGenesisConfig = (config) => {
   return !!config.provider["genesis"];
 };
 
+function genesisProviderUsesClaudeWire(providerConfig) {
+  const models = providerConfig?.models || {};
+  const keys = Object.keys(models);
+  return keys.length > 0 && keys.every((m) => typeof m === "string" && /^(cc\/|claude[-/])/i.test(m));
+}
+
+/** True when provider has any cc/claude model (may be mixed with cx/cu). */
+function genesisProviderHasClaudeModels(providerConfig) {
+  const models = providerConfig?.models || {};
+  return Object.keys(models).some((m) => typeof m === "string" && /^(cc\/|claude[-/])/i.test(m));
+}
+
+function splitGenesisModelsByWire(models = {}) {
+  const claude = {};
+  const openai = {};
+  for (const [id, meta] of Object.entries(models)) {
+    if (typeof id === "string" && /^(cc\/|claude[-/])/i.test(id)) claude[id] = meta;
+    else openai[id] = meta;
+  }
+  return { claude, openai };
+}
+
+function modelEntry(id) {
+  return { name: id, modalities: { input: ["text", "image"], output: ["text"] } };
+}
+
+function providerPrefixForModel(id) {
+  return /^(cc\/|claude[-/])/i.test(id) ? "genesis-cc" : "genesis";
+}
+
+function applyGenesisProviders(config, { modelsMap, normalizedBaseUrl, apiKey }) {
+  if (!config.provider) config.provider = {};
+  const { claude, openai } = splitGenesisModelsByWire(modelsMap);
+  const keyToUse = apiKey || "sk_genesis";
+  const hostBase = normalizedBaseUrl.replace(/\/v1\/?$/, "").replace(/\/$/, "");
+
+  if (Object.keys(openai).length > 0) {
+    config.provider.genesis = {
+      npm: "@ai-sdk/openai-compatible",
+      options: { baseURL: `${hostBase}/v1`, apiKey: keyToUse },
+      models: openai,
+    };
+  } else {
+    delete config.provider.genesis;
+  }
+
+  if (Object.keys(claude).length > 0) {
+    config.provider["genesis-cc"] = {
+      npm: "@ai-sdk/anthropic",
+      options: { baseURL: hostBase, apiKey: keyToUse },
+      models: claude,
+    };
+  } else {
+    delete config.provider["genesis-cc"];
+  }
+}
+
+function repairGenesisProviderSplit(config) {
+  const merged = {
+    ...(config.provider?.genesis?.models || {}),
+    ...(config.provider?.["genesis-cc"]?.models || {}),
+  };
+  if (Object.keys(merged).length === 0) return config;
+  const apiKey = config.provider?.genesis?.options?.apiKey
+    || config.provider?.["genesis-cc"]?.options?.apiKey;
+  const baseURL = config.provider?.genesis?.options?.baseURL
+    || config.provider?.["genesis-cc"]?.options?.baseURL
+    || "http://127.0.0.1:20128";
+  const normalizedBaseUrl = String(baseURL).replace(/\/v1\/?$/, "").replace(/\/$/, "");
+  applyGenesisProviders(config, { modelsMap: merged, normalizedBaseUrl, apiKey });
+
+  if (typeof config.model === "string" && config.model.startsWith("genesis/")) {
+    const id = config.model.replace(/^genesis\//, "");
+    if (/^(cc\/|claude[-/])/i.test(id)) config.model = `genesis-cc/${id}`;
+  }
+  return config;
+}
+
+function diagnoseGenesisOpenCodeConfig(config) {
+  const providerConfig = config?.provider?.["genesis"];
+  if (!providerConfig) {
+    return { hasGenesis: false, needsAnthropicWire: false, misconfigured: false };
+  }
+  const needsAnthropicWire = genesisProviderUsesClaudeWire(providerConfig);
+  const hasClaudeModels = genesisProviderHasClaudeModels(providerConfig);
+  const npm = providerConfig.npm || "";
+  const baseURL = providerConfig.options?.baseURL || "";
+  const misconfigured = hasClaudeModels && (
+    (needsAnthropicWire && (npm !== "@ai-sdk/anthropic" || /\/v1\/?$/.test(String(baseURL).replace(/\/$/, ""))))
+    || (!needsAnthropicWire && npm === "@ai-sdk/openai-compatible" && hasClaudeModels)
+  );
+  return {
+    hasGenesis: true,
+    needsAnthropicWire,
+    hasClaudeModels,
+    misconfigured,
+    npm,
+    baseURL,
+    expectedNpm: needsAnthropicWire ? "@ai-sdk/anthropic" : "@ai-sdk/openai-compatible",
+    expectedBaseURL: needsAnthropicWire
+      ? String(baseURL).replace(/\/v1\/?$/, "").replace(/\/$/, "")
+      : (baseURL.endsWith("/v1") ? baseURL : `${String(baseURL).replace(/\/$/, "")}/v1`),
+    hint: !needsAnthropicWire && hasClaudeModels
+      ? "Mixed cc/ + cx/cu models: use separate genesis-cc provider (@ai-sdk/anthropic, baseURL without /v1) for cc/claude models"
+      : null,
+  };
+}
+
 // GET - Check opencode CLI and read current settings
 export async function GET(request) {
   const auth = await requireSpawnRouteAuth(request);
@@ -66,16 +174,19 @@ export async function GET(request) {
     const config = await readConfig();
     const providerConfig = config?.provider?.["genesis"];
     const modelMap = providerConfig?.models || {};
+    const diagnostics = diagnoseGenesisOpenCodeConfig(config);
 
     return NextResponse.json({
       installed: true,
       config,
       hasGenesis: hasGenesisConfig(config),
       configPath: getConfigPath(),
+      diagnostics,
         opencode: {
           models: Object.keys(modelMap),
           activeModel: config?.model?.startsWith("genesis/") ? config.model.replace(/^genesis\//, "") : null,
           baseURL: providerConfig?.options?.baseURL || null,
+          npm: providerConfig?.npm || null,
         },
     });
   } catch (error) {
@@ -110,43 +221,34 @@ export async function POST(request) {
       config = JSON.parse(existing);
     } catch { /* No existing config */ }
 
-    const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+    const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
     const keyToUse = apiKey || "sk_genesis";
     const effectiveSubagentModel = subagentModel || modelsArray[0];
 
     // Ensure provider object
     if (!config.provider) config.provider = {};
 
-    // Preserve any existing genesis provider entry and its models
-    const existingProvider = config.provider["genesis"] || { npm: "@ai-sdk/openai-compatible", options: {}, models: {} };
-
-    // Merge options (overwrite baseURL/apiKey)
-    existingProvider.options = {
-      ...existingProvider.options,
-      baseURL: normalizedBaseUrl,
-      apiKey: keyToUse,
+    const existingModels = {
+      ...(config.provider.genesis?.models || {}),
+      ...(config.provider["genesis-cc"]?.models || {}),
     };
-
-    // Ensure models map exists
-    existingProvider.models = existingProvider.models || {};
-
-    // Add or update entries for all requested models
     for (const m of modelsArray) {
       if (!m || typeof m !== "string") continue;
-      existingProvider.models[m] = { name: m, modalities: { input: ["text", "image"], output: ["text"] } };
+      existingModels[m] = modelEntry(m);
     }
-
-    // Save merged provider back
-    config.provider["genesis"] = existingProvider;
+    applyGenesisProviders(config, {
+      modelsMap: existingModels,
+      normalizedBaseUrl,
+      apiKey: keyToUse,
+    });
 
     // Set the active model: prefer explicit activeModel, else first of modelsArray
-    // If activeModel is explicitly empty string, clear the model
     if (activeModel === "") {
       config.model = "";
     } else {
       const finalActive = activeModel || modelsArray[0];
       if (finalActive) {
-        config.model = `genesis/${finalActive}`;
+        config.model = `${providerPrefixForModel(finalActive)}/${finalActive}`;
       }
     }
 
@@ -155,7 +257,7 @@ export async function POST(request) {
     config.agent.explorer = {
       description: "Fast explorer subagent for codebase exploration",
       mode: "subagent",
-      model: `genesis/${effectiveSubagentModel}`,
+      model: `${providerPrefixForModel(effectiveSubagentModel)}/${effectiveSubagentModel}`,
     };
 
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
@@ -176,7 +278,7 @@ export async function PATCH(request) {
   const auth = await requireSpawnRouteAuth(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
-    const { clearActiveModel } = await request.json();
+    const { clearActiveModel, repairClaudeWire } = await request.json();
     const configPath = getConfigPath();
 
     let config = {};
@@ -188,6 +290,23 @@ export async function PATCH(request) {
         return NextResponse.json({ success: true, message: "No config file found" });
       }
       throw error;
+    }
+
+    if (repairClaudeWire === true) {
+      const before = diagnoseGenesisOpenCodeConfig(config);
+      repairGenesisProviderSplit(config);
+      await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+      const after = {
+        ...diagnoseGenesisOpenCodeConfig(config),
+        hasGenesisCc: !!config.provider?.["genesis-cc"],
+      };
+      return NextResponse.json({
+        success: true,
+        message: before.misconfigured || before.hint
+          ? "Split genesis providers: genesis (openai wire) + genesis-cc (anthropic wire)"
+          : "OpenCode genesis providers already configured",
+        diagnostics: after,
+      });
     }
 
     if (clearActiveModel === true) {

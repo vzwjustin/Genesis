@@ -205,4 +205,27 @@ describe("shouldUseNativePassthrough", () => {
       headers: { "content-type": "application/connect+proto" },
     })).toBe(true);
   });
+
+  it("enables format-aligned passthrough for /v1/messages → claude provider", () => {
+    expect(shouldUseNativePassthrough(null, "claude", {
+      body: {
+        model: "claude-opus-4-8",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      },
+      headers: { "anthropic-version": "2023-06-01" },
+      pathname: "/v1/messages",
+    })).toBe(true);
+  });
+
+  it("does not enable format-aligned passthrough for openai chat endpoint", () => {
+    expect(shouldUseNativePassthrough(null, "claude", {
+      body: {
+        model: "cc/claude-opus-4-8",
+        messages: [{ role: "user", content: "hi", cache_control: { type: "ephemeral" } }],
+      },
+      headers: { "user-agent": "opencode/1.0" },
+      pathname: "/v1/chat/completions",
+    })).toBe(false);
+  });
 });

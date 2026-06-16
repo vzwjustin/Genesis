@@ -1,4 +1,6 @@
 import { MITM_PROXY_HEADER } from "../config/appConstants.js";
+import { detectFormat, getTargetFormat } from "../services/provider.js";
+import { detectFormatByEndpoint, FORMATS } from "../translator/formats.js";
 
 /**
  * Detect CLI tool identity from request headers/body.
@@ -89,23 +91,43 @@ export function isNativePassthrough(clientTool, provider) {
   if (!clientTool) return false;
   const nativeProviders = NATIVE_PAIRS[clientTool];
   if (!nativeProviders) return false;
-  // Support anthropic-compatible-* variants
-  const normalizedProvider = provider.startsWith("anthropic-compatible")
+  // Support anthropic-compatible-* variants. Use optional chaining: a null/undefined
+  // provider must fail closed (no passthrough) rather than throw a TypeError here.
+  const normalizedProvider = provider?.startsWith("anthropic-compatible")
     ? "anthropic"
     : provider;
   return nativeProviders.includes(normalizedProvider);
+}
+
+function isClaudeProvider(provider) {
+  return provider === "claude" || provider?.startsWith("anthropic-compatible");
+}
+
+/**
+ * Claude-shaped request to a Claude provider on /v1/messages — skip translation so
+ * OAuth billing headers and client cache_control breakpoints stay byte-identical.
+ */
+function isFormatAlignedClaudePassthrough(provider, { body, headers = {}, pathname = "" } = {}) {
+  if (!isClaudeProvider(provider)) return false;
+  const sourceFormat =
+    (pathname && detectFormatByEndpoint(pathname, body))
+    || detectFormat(body, headers);
+  const targetFormat = getTargetFormat(provider);
+  return sourceFormat === FORMATS.CLAUDE && targetFormat === FORMATS.CLAUDE;
 }
 
 /**
  * Native passthrough only when the request body matches the provider wire format.
  * Cursor MITM and /v1/chat/completions submit OpenAI JSON — must use transformRequest.
  */
-export function shouldUseNativePassthrough(clientTool, provider, { body, headers = {} } = {}) {
-  if (!isNativePassthrough(clientTool, provider)) return false;
-  if (provider === "cursor") {
-    const contentType = String(headers["content-type"] || headers["Content-Type"] || "").toLowerCase();
-    const isConnectProto = contentType.includes("application/connect");
-    if (!isConnectProto && !Buffer.isBuffer(body)) return false;
+export function shouldUseNativePassthrough(clientTool, provider, { body, headers = {}, pathname = "" } = {}) {
+  if (isNativePassthrough(clientTool, provider)) {
+    if (provider === "cursor") {
+      const contentType = String(headers["content-type"] || headers["Content-Type"] || "").toLowerCase();
+      const isConnectProto = contentType.includes("application/connect");
+      if (!isConnectProto && !Buffer.isBuffer(body)) return false;
+    }
+    return true;
   }
-  return true;
+  return isFormatAlignedClaudePassthrough(provider, { body, headers, pathname });
 }

@@ -2,7 +2,7 @@
  * Composer/Cursor/Kimi redacted tool-call text tokens (see src/mitm/handlers/composerRedactedTools.js).
  */
 
-function normalizeRedactedMarkers(text) {
+export function normalizeRedactedMarkers(text) {
   return String(text || "").replace(/\uFF5C/g, "|").replace(/\u2581/g, "_");
 }
 
@@ -14,10 +14,14 @@ const BLOCK_RES = [
 const CALL_RES = [
   /<\|redacted_tool_call_begin\|>\s*([\s\S]*?)<\|redacted_tool_call_end\|>/g,
   /<\|redacted_tool_call_begin_kimi\|>\s*([\s\S]*?)<\|redacted_tool_call_end_kimi\|>/g,
+  /<\|tool_call_begin\|>\s*([\s\S]*?)<\|tool_call_end\|>/g,
 ];
 
 const TOOL_SEP_RE = /<\|(?:redacted_)?tool_sep\|>/g;
 const PARTIAL_MARKER_RE = /<\|(?:redacted_tool(?:_calls?|_sep)?|tool_calls(?:_begin|_end)?|tool_sep)[\s\S]*$/i;
+const FINAL_MARKER = "<|final|>";
+/** Composer tool-trace lines in visible thinking (before <|final|>). */
+const TOOL_ACTIVITY_LINE_RE = /^(?:✱\s*\w+|→\s*\w+)/;
 
 function parseToolCallBody(body) {
   const trimmed = String(body || "").trim();
@@ -88,7 +92,110 @@ export function stripRedactedToolCalls(text) {
   return removeToolBlocks(normalized).replace(PARTIAL_MARKER_RE, "").trimEnd();
 }
 
-export function parseRedactedToolArgs(argsStr) {
-  const parsed = parseToolCallBody(`x <|tool_sep|>${argsStr}`);
-  return parsed ? parsed.arguments : "{}";
+/** Strip Composer's visible-answer prefix (ASCII or fullwidth pipes). */
+export function stripComposerFinalPrefix(text) {
+  const normalized = normalizeRedactedMarkers(String(text || ""));
+  return normalized
+    .replace(/^<\|final\|>\s*/i, "")
+    .replace(/^<\|final/i, "")
+    .trimStart();
+}
+
+/** Remove Composer tool-activity trace lines (✱Glob, →Read, etc.) from visible thinking. */
+export function stripComposerToolActivity(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .filter((line) => !TOOL_ACTIVITY_LINE_RE.test(line.trim()))
+    .join("\n");
+}
+
+/**
+ * Raw post-</think> visible text after <|final|> (markers preserved for parsing).
+ */
+export function extractComposerThinkingRawVisible(thinking, { allowPreFinalFallback = false } = {}) {
+  const normalized = normalizeRedactedMarkers(String(thinking || ""));
+  const endTag = "</think>";
+  const endIdx = normalized.lastIndexOf(endTag);
+  if (endIdx < 0) return "";
+
+  let visible = normalized.slice(endIdx + endTag.length);
+  const lower = visible.toLowerCase();
+  const lastFinalIdx = lower.lastIndexOf(FINAL_MARKER);
+  if (lastFinalIdx >= 0) {
+    visible = visible.slice(lastFinalIdx + FINAL_MARKER.length);
+  } else {
+    const partialIdx = lower.indexOf("<|final");
+    if (partialIdx >= 0 && allowPreFinalFallback) {
+      visible = visible.slice(partialIdx + "<|final".length);
+    } else if (!allowPreFinalFallback) {
+      return "";
+    }
+  }
+  return visible;
+}
+
+/**
+ * Extract user-facing answer from Composer thinking. Tool traces appear after
+ * </think> but before <|final|>; only post-final text is emitted
+ * unless allowPreFinalFallback is set (end-of-stream).
+ */
+export function extractComposerThinkingAnswer(thinking, options) {
+  return sanitizeComposerVisibleText(extractComposerThinkingRawVisible(thinking, options));
+}
+
+export function sanitizeComposerVisibleText(text) {
+  const stripped = stripRedactedToolCalls(String(text || ""));
+  const noTraces = stripComposerToolActivity(stripped);
+  return stripComposerFinalPrefix(noTraces);
+}
+
+/**
+ * Incremental processor for streaming assistant text that may contain redacted
+ * tool-call markers split across chunks.
+ */
+export class RedactedToolContentProcessor {
+  constructor() {
+    this.buffer = "";
+  }
+
+  processChunk(chunk) {
+    this.buffer += chunk;
+    const normalized = normalizeRedactedMarkers(this.buffer);
+    const toolCalls = extractRedactedToolCalls(normalized);
+
+    const splitIdx = this._pendingStart(normalized);
+    const consumed = splitIdx >= 0 ? normalized.slice(0, splitIdx) : normalized;
+    this.buffer = splitIdx >= 0 ? normalized.slice(splitIdx) : "";
+
+    const emitText = removeToolBlocks(consumed);
+
+    return { text: emitText, toolCalls };
+  }
+
+  _pendingStart(s) {
+    const OPEN_RE = /<\|(?:redacted_)?tool_calls_begin\|>/gi;
+    const opens = [];
+    let m;
+    while ((m = OPEN_RE.exec(s)) !== null) opens.push(m.index);
+    const closeCount = (s.match(/<\|(?:redacted_)?tool_calls_end\|>/gi) || []).length;
+    if (opens.length > closeCount) return opens[closeCount];
+
+    const idx = s.lastIndexOf("<|");
+    if (idx >= 0) {
+      const suf = s.slice(idx);
+      const incomplete =
+        /^<\|[a-z_]*$/i.test(suf) ||
+        (/^<\|(?:redacted|tool)/i.test(suf) && !suf.slice(2).includes("|>")) ||
+        (/^<\|final/i.test(suf) && !suf.includes("|>"));
+      if (incomplete) return idx;
+    }
+    return -1;
+  }
+
+  flush() {
+    const toolCalls = extractRedactedToolCalls(this.buffer);
+    const text = stripRedactedToolCalls(this.buffer);
+    this.buffer = "";
+    return { text, toolCalls };
+  }
 }
