@@ -6,7 +6,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { refreshWithRetry, isUnrecoverableRefreshError } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getModelRequestExtras, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getModelTargetFormat, getModelStrip, getModelUpstreamId, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, VALIDATION_ERROR_TYPES, PROXY_INTERNAL_ERROR_CODES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
@@ -18,6 +18,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, shouldUseNativePassthrough, parseStreamIntentHeader } from "../utils/clientDetector.js";
 import { stripTrailingAssistantPrefill } from "../translator/helpers/openaiHelper.js";
+import { isFusionProvider, resolveFusionPlugins } from "../utils/fusionPlugin.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { cleanAnthropicToolDefinitions, fixToolUseOrdering, usesAnthropicToolCleaning } from "../translator/helpers/claudeHelper.js";
 import { applyCloaking } from "../utils/claudeCloaking.js";
@@ -269,28 +270,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     translatedBody.model = getModelUpstreamId(alias, model);
   }
 
-  // OpenRouter Fusion: apply the connection's saved plugin config (panel/judge/limits)
-  // unless the client already supplied its own `plugins`. The OpenRouter Fusion endpoint
-  // reads this top-level field; passthrough/openai translation preserves it untouched.
-  if (provider === "fusion" && !passthrough) {
-    const savedFusion = credentials?.providerSpecificData?.fusion;
+  // OpenRouter Fusion: inject panel/judge plugins unless the client sent its own.
+  // Required even in passthrough — clients rarely include the plugins field.
+  if (isFusionProvider(provider)) {
     const clientSentPlugins = Array.isArray(body.plugins) && body.plugins.length > 0;
-    if (!clientSentPlugins && savedFusion && typeof savedFusion === "object" && savedFusion.enabled !== false) {
-      const fusionPlugin = { id: "fusion" };
-      if (Array.isArray(savedFusion.analysis_models) && savedFusion.analysis_models.length > 0) {
-        fusionPlugin.analysis_models = savedFusion.analysis_models;
-      }
-      if (typeof savedFusion.model === "string" && savedFusion.model.trim()) {
-        fusionPlugin.model = savedFusion.model.trim();
-      }
-      if (Number.isFinite(savedFusion.max_tool_calls)) {
-        fusionPlugin.max_tool_calls = savedFusion.max_tool_calls;
-      }
-      translatedBody.plugins = [fusionPlugin];
-    } else if (!clientSentPlugins && !savedFusion) {
-      const extras = getModelRequestExtras(alias, model);
-      if (extras && typeof extras === "object") {
-        Object.assign(translatedBody, extras);
+    if (!clientSentPlugins) {
+      const plugins = resolveFusionPlugins({
+        savedFusion: credentials?.providerSpecificData?.fusion,
+        alias,
+        model,
+      });
+      if (plugins) {
+        translatedBody.plugins = plugins;
       }
     }
   }
