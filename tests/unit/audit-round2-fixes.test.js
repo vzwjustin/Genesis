@@ -16,6 +16,22 @@ describe("MITM resolveTargetIP — blocked IP rejection", () => {
     expect(src).toContain("isBlockedHostname");
     expect(src).toMatch(/returned blocked IP/);
   });
+
+  it("server.js does not kill unrelated port 443 listeners on startup", () => {
+    const src = readFileSync(join(root, "../../src/mitm/server.js"), "utf8");
+    expect(src).not.toMatch(/function\s+killPort\s*\(/);
+    expect(src).not.toMatch(/killPort\(LOCAL_PORT\)/);
+    expect(src).not.toMatch(/process\.kill\(Number\(pid\),\s*["']SIGKILL["']\)/);
+    expect(src).toContain("server.listen(LOCAL_PORT, \"127.0.0.1\"");
+  });
+
+  it("root CA startup repairs existing private storage permissions before early return", () => {
+    const src = readFileSync(join(root, "../../src/mitm/cert/rootCA.js"), "utf8");
+    expect(src).toContain("function ensurePrivateMitmStorage()");
+    expect(src).toMatch(/fs\.chmodSync\(MITM_DIR,\s*0o700\)/);
+    expect(src).toMatch(/fs\.chmodSync\(ROOT_CA_KEY_PATH,\s*0o600\)/);
+    expect(src.indexOf("ensurePrivateMitmStorage();")).toBeLessThan(src.indexOf("Root CA already exists"));
+  });
 });
 
 describe("refreshIflowToken — unrecoverable OAuth errors", () => {

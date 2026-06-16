@@ -119,6 +119,13 @@ export function generateProjectId() {
   return `${adj}-${noun}-${crypto.randomUUID().slice(0, 5)}`;
 }
 
+// Keys whose VALUE is a map of user-defined property-name → subschema. The
+// names inside these maps are NOT schema keywords, so traversals must descend
+// into the subschema VALUES without treating the property names as keywords
+// (otherwise a tool parameter literally named "format"/"title"/"default" would
+// be silently stripped or mangled).
+const SCHEMA_PROPERTY_MAPS = new Set(["properties", "patternProperties", "$defs", "definitions"]);
+
 // Helper: Remove unsupported keywords recursively from object/array
 // Also strips all vendor extension fields (x- prefixed) not supported by Gemini
 function removeUnsupportedKeywords(obj, keywords) {
@@ -139,7 +146,14 @@ function removeUnsupportedKeywords(obj, keywords) {
 
     const value = obj[key];
     if (value && typeof value === "object") {
-      removeUnsupportedKeywords(value, keywords);
+      if (SCHEMA_PROPERTY_MAPS.has(key)) {
+        // Recurse into each subschema value; never treat property NAMES as keywords.
+        for (const sub of Object.values(value)) {
+          removeUnsupportedKeywords(sub, keywords);
+        }
+      } else {
+        removeUnsupportedKeywords(value, keywords);
+      }
     }
   }
 }
@@ -153,8 +167,15 @@ function convertConstToEnum(obj) {
     delete obj.const;
   }
 
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
+  for (const [key, value] of Object.entries(obj)) {
+    if (!value || typeof value !== "object") continue;
+    if (SCHEMA_PROPERTY_MAPS.has(key)) {
+      // Descend into subschemas without treating a property named "const" as a
+      // schema-level const constraint.
+      for (const sub of Object.values(value)) {
+        convertConstToEnum(sub);
+      }
+    } else {
       convertConstToEnum(value);
     }
   }

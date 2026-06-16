@@ -179,56 +179,66 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
     await streamFlushQueue.catch(() => {});
   };
   
+  const safeWrite = (label, build) => {
+    try {
+      build();
+    } catch (err) {
+      // Redaction/serialization of a hostile or pathological body must never
+      // fail the request path — log and swallow (optional system).
+      console.log(`[LOG] ${label} failed (ignored):`, err?.message || err);
+    }
+  };
+
   return {
     get sessionPath() { return sessionPath; },
     
     // 1. Log client raw request (before any conversion)
     logClientRawRequest(endpoint, body, headers = {}) {
-      writeJsonFile(sessionPath, "1_req_client.json", {
+      safeWrite("logClientRawRequest", () => writeJsonFile(sessionPath, "1_req_client.json", {
         timestamp: new Date().toISOString(),
         endpoint,
         headers: maskSensitiveHeaders(headers),
         body: sanitizeLogValue(body)
-      });
+      }));
     },
     
     // 2. Log raw request from client (after initial conversion like responsesApi)
     logRawRequest(body, headers = {}) {
-      writeJsonFile(sessionPath, "2_req_source.json", {
+      safeWrite("logRawRequest", () => writeJsonFile(sessionPath, "2_req_source.json", {
         timestamp: new Date().toISOString(),
         headers: maskSensitiveHeaders(headers),
         body: sanitizeLogValue(body)
-      });
+      }));
     },
     
     // 3. Log OpenAI intermediate format (source → openai)
     logOpenAIRequest(body) {
-      writeJsonFile(sessionPath, "3_req_openai.json", {
+      safeWrite("logOpenAIRequest", () => writeJsonFile(sessionPath, "3_req_openai.json", {
         timestamp: new Date().toISOString(),
         body: sanitizeLogValue(body)
-      });
+      }));
     },
     
     // 4. Log target format request (openai → target)
     logTargetRequest(url, headers, body) {
-      writeJsonFile(sessionPath, "4_req_target.json", {
+      safeWrite("logTargetRequest", () => writeJsonFile(sessionPath, "4_req_target.json", {
         timestamp: new Date().toISOString(),
         url,
         headers: maskSensitiveHeaders(headers),
         body: sanitizeLogValue(body)
-      });
+      }));
     },
     
     // 5. Log provider response (for non-streaming or error)
     logProviderResponse(status, statusText, headers, body) {
       const filename = "5_res_provider.json";
-      writeJsonFile(sessionPath, filename, {
+      safeWrite("logProviderResponse", () => writeJsonFile(sessionPath, filename, {
         timestamp: new Date().toISOString(),
         status,
         statusText,
         headers: maskSensitiveHeaders(headers ? (typeof headers.entries === "function" ? Object.fromEntries(headers.entries()) : headers) : {}),
         body: sanitizeLogValue(body)
-      });
+      }));
     },
     
     // 5. Append streaming chunk to provider response
@@ -243,10 +253,10 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
     
     // 7. Log converted response to client (for non-streaming)
     logConvertedResponse(body) {
-      writeJsonFile(sessionPath, "7_res_client.json", {
+      safeWrite("logConvertedResponse", () => writeJsonFile(sessionPath, "7_res_client.json", {
         timestamp: new Date().toISOString(),
         body: sanitizeLogValue(body)
-      });
+      }));
     },
     
     // 7. Append streaming chunk to converted response
@@ -258,7 +268,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
     
     // 8. Log error (failed or incomplete request)
     logError(error, requestBody = null, logOptions = {}) {
-      writeJsonFile(sessionPath, "8_error.json", {
+      safeWrite("logError", () => writeJsonFile(sessionPath, "8_error.json", {
         timestamp: new Date().toISOString(),
         failed: true,
         incomplete: logOptions.incomplete === true,
@@ -267,7 +277,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
         error: redactSensitiveText(error?.message || String(error)),
         stack: error?.stack ? redactSensitiveText(error.stack) : undefined,
         requestBody: sanitizeLogValue(requestBody)
-      });
+      }));
     }
   };
 }

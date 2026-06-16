@@ -1,12 +1,9 @@
 import { Readable } from "stream";
-import { createRequire } from "module";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import { assertSafeResolvedHostname, isBlockedHostname } from "./ssrfGuard.js";
 import { mergeAbortSignals } from "./abortSignal.js";
-
-const require = createRequire(import.meta.url);
-const { isKiroMitmHost, isHttp2Required } = require("../../src/shared/constants/mitmToolHosts.js");
+import { isKiroMitmHost, isHttp2Required } from "../../src/shared/constants/mitmToolHosts.js";
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
