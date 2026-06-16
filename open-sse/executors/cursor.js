@@ -10,14 +10,16 @@ import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { FORMATS } from "../translator/formats.js";
 import { proxyAwareFetch, shouldBypassMitmDns, resolveRealIP, hasApplicableEnvProxy, getEnvProxyUrl } from "../utils/proxyFetch.js";
-import { stripRedactedToolCalls, extractRedactedToolCalls } from "../utils/composerRedactedTools.js";
+import {
+  sanitizeComposerVisibleText,
+  extractComposerThinkingAnswer,
+  extractComposerThinkingRawVisible,
+  RedactedToolContentProcessor,
+} from "../utils/composerRedactedTools.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
-import { createRequire } from "module";
+import { isHttp2Required } from "../../src/shared/constants/mitmToolHosts.js";
 import zlib from "zlib";
 import net from "net";
-
-const require = createRequire(import.meta.url);
-const { isHttp2Required } = require("../../src/shared/constants/mitmToolHosts.js");
 
 /** Cap Cursor upstream bodies before protobuf transform (memory safety). */
 const CURSOR_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
@@ -80,16 +82,60 @@ function isComposerModel(model) {
   return /^composer(?:-|$)/i.test(modelId);
 }
 
-function visibleComposerContentFromThinking(thinking) {
-  if (!thinking) return "";
-  const endTag = "</think>";
-  const endIdx = thinking.lastIndexOf(endTag);
-  if (endIdx < 0) return "";
-  return thinking.slice(endIdx + endTag.length).trimStart();
+function visibleComposerContentFromThinking(thinking, options) {
+  return extractComposerThinkingRawVisible(thinking, options);
 }
 
-function emitRedactedToolCallChunks(chunks, responseId, created, model, sourceText, toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds) {
-  for (const tc of extractRedactedToolCalls(sourceText)) {
+function appendParsedRedactedTools(toolCalls, parsedToolCalls) {
+  for (const tc of parsedToolCalls || []) {
+    toolCalls.push({
+      id: `call_redacted_${toolCalls.length}`,
+      type: "function",
+      function: { name: tc.name, arguments: tc.arguments },
+    });
+  }
+}
+
+function pushAssistantContentChunk(chunks, responseId, created, model, rawText, roleState) {
+  const cleanText = sanitizeComposerVisibleText(rawText);
+  if (!cleanText) return "";
+  chunks.push(
+    `data: ${JSON.stringify({
+      id: responseId,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [
+        {
+          index: 0,
+          delta:
+            !roleState.emitted
+              ? ((roleState.emitted = true), { role: "assistant", content: cleanText })
+              : { content: cleanText },
+          finish_reason: null,
+        },
+      ],
+    })}\n\n`
+  );
+  return cleanText;
+}
+
+function processComposerThinkingDelta(thinkingProcessor, totalThinking, emittedVisibleLen, options) {
+  const visible = visibleComposerContentFromThinking(totalThinking, options);
+  if (visible.length <= emittedVisibleLen) {
+    return { emittedVisibleLen, text: "", toolCalls: [] };
+  }
+  const delta = visible.slice(emittedVisibleLen);
+  const { text, toolCalls } = thinkingProcessor.processChunk(delta);
+  return { emittedVisibleLen: visible.length, text, toolCalls };
+}
+
+function emitRedactedToolCallChunks(chunks, responseId, created, model, parsedToolCalls, toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds) {
+  const seen = new Set();
+  for (const tc of parsedToolCalls || []) {
+    const sig = `${tc.name}\0${tc.arguments}`;
+    if (seen.has(sig)) continue;
+    seen.add(sig);
     const id = `call_redacted_${Date.now()}_${toolCalls.length}`;
     const toolCallIndex = toolCalls.length;
     const entry = {
@@ -662,6 +708,11 @@ export class CursorExecutor extends BaseExecutor {
     const toolCallsMap = new Map(); // Track streaming tool calls by ID
     const finalizedIds = new Set();
     let frameCount = 0;
+    const textProcessor = new RedactedToolContentProcessor();
+    const thinkingVisibleProcessor = new RedactedToolContentProcessor();
+    let accumulatedText = "";
+    let accumulatedThinkingText = "";
+    let emittedThinkingVisibleLen = 0;
 
     debugLog(`[CURSOR BUFFER] Total length: ${buffer.length} bytes`);
 
@@ -766,14 +817,39 @@ export class CursorExecutor extends BaseExecutor {
         }
       }
 
-      if (result.text) totalContent += result.text;
-      if (result.thinking) totalThinking += result.thinking;
+      if (result.text) {
+        const { text, toolCalls: chunkTools } = textProcessor.processChunk(result.text);
+        accumulatedText += text;
+        appendParsedRedactedTools(toolCalls, chunkTools);
+      }
+      if (result.thinking) {
+        totalThinking += result.thinking;
+        if (isComposerModel(model)) {
+          const thinkingDelta = processComposerThinkingDelta(
+            thinkingVisibleProcessor,
+            totalThinking,
+            emittedThinkingVisibleLen
+          );
+          emittedThinkingVisibleLen = thinkingDelta.emittedVisibleLen;
+          accumulatedThinkingText += thinkingDelta.text;
+          appendParsedRedactedTools(toolCalls, thinkingDelta.toolCalls);
+        }
+      }
     }
 
-    const visibleComposerContent = isComposerModel(model)
-      ? visibleComposerContentFromThinking(totalThinking)
-      : "";
-    const finalContent = totalContent || visibleComposerContent;
+    const flushedText = textProcessor.flush();
+    accumulatedText += flushedText.text;
+    appendParsedRedactedTools(toolCalls, flushedText.toolCalls);
+
+    const thinkingFlush = thinkingVisibleProcessor.flush();
+    accumulatedThinkingText += thinkingFlush.text;
+    appendParsedRedactedTools(toolCalls, thinkingFlush.toolCalls);
+
+    const finalContent = sanitizeComposerVisibleText(
+      accumulatedText.trimEnd()
+        || accumulatedThinkingText.trimEnd()
+        || (isComposerModel(model) ? extractComposerThinkingAnswer(totalThinking, { allowPreFinalFallback: true }) : "")
+    );
 
     debugLog(
       `[CURSOR BUFFER] Parsed ${frameCount} frames, toolCallsMap size: ${toolCallsMap.size}, finalized toolCalls: ${toolCalls.length}`
@@ -836,17 +912,15 @@ export class CursorExecutor extends BaseExecutor {
     let offset = 0;
     let totalContent = "";
     let totalThinking = "";
-    let emittedComposerThinkingContentLength = 0;
-    // Track whether the opening role:"assistant" delta has been emitted. The prior
-    // `chunks.length === 0` guard was unreliable — a leading/tool-call chunk is usually
-    // already pushed by the first content delta, so role was silently omitted and strict
-    // OpenAI clients rejected the stream.
-    let roleEmitted = false;
+    let emittedComposerThinkingVisibleLen = 0;
+    const roleState = { emitted: false };
     const toolCalls = [];
     const toolCallsMap = new Map(); // Track streaming tool calls by ID
     const finalizedIds = new Set();
     const emittedToolCallIds = new Set();
     let frameCount = 0;
+    const contentProcessor = new RedactedToolContentProcessor();
+    const thinkingVisibleProcessor = new RedactedToolContentProcessor();
 
     debugLog(`[CURSOR BUFFER SSE] Total length: ${buffer.length} bytes`);
 
@@ -926,8 +1000,8 @@ export class CursorExecutor extends BaseExecutor {
       if (result.toolCall) {
         const tc = result.toolCall;
 
-        if (!roleEmitted) {
-          roleEmitted = true;
+        if (!roleState.emitted) {
+          roleState.emitted = true;
           chunks.push(
             `data: ${JSON.stringify({
               id: responseId,
@@ -1027,11 +1101,12 @@ export class CursorExecutor extends BaseExecutor {
       }
 
       if (result.text) {
+        const { text: procText, toolCalls: textToolCalls } = contentProcessor.processChunk(result.text);
         emitRedactedToolCallChunks(
-          chunks, responseId, created, model, result.text,
+          chunks, responseId, created, model, textToolCalls,
           toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
         );
-        const cleanText = stripRedactedToolCalls(result.text);
+        const cleanText = sanitizeComposerVisibleText(procText);
         if (cleanText) {
           totalContent += cleanText;
           chunks.push(
@@ -1044,8 +1119,8 @@ export class CursorExecutor extends BaseExecutor {
                 {
                   index: 0,
                   delta:
-                    !roleEmitted
-                      ? ((roleEmitted = true), { role: "assistant", content: cleanText })
+                    !roleState.emitted
+                      ? ((roleState.emitted = true), { role: "assistant", content: cleanText })
                       : { content: cleanText },
                   finish_reason: null
                 }
@@ -1058,30 +1133,20 @@ export class CursorExecutor extends BaseExecutor {
       if (result.thinking) {
         totalThinking += result.thinking;
         if (isComposerModel(model)) {
-          const visibleContent = visibleComposerContentFromThinking(totalThinking);
-          if (visibleContent.length > emittedComposerThinkingContentLength) {
-            const deltaContent = visibleContent.slice(emittedComposerThinkingContentLength);
-            emittedComposerThinkingContentLength = visibleContent.length;
-            totalContent += deltaContent;
-            chunks.push(
-              `data: ${JSON.stringify({
-                id: responseId,
-                object: "chat.completion.chunk",
-                created,
-                model,
-                choices: [
-                  {
-                    index: 0,
-                    delta:
-                      !roleEmitted
-                        ? ((roleEmitted = true), { role: "assistant", content: deltaContent })
-                        : { content: deltaContent },
-                    finish_reason: null
-                  }
-                ]
-              })}\n\n`
-            );
-          }
+          const thinkingDelta = processComposerThinkingDelta(
+            thinkingVisibleProcessor,
+            totalThinking,
+            emittedComposerThinkingVisibleLen
+          );
+          emittedComposerThinkingVisibleLen = thinkingDelta.emittedVisibleLen;
+          emitRedactedToolCallChunks(
+            chunks, responseId, created, model, thinkingDelta.toolCalls,
+            toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
+          );
+          const added = pushAssistantContentChunk(
+            chunks, responseId, created, model, thinkingDelta.text, roleState
+          );
+          totalContent += added;
         } else {
           chunks.push(
             `data: ${JSON.stringify({
@@ -1093,8 +1158,8 @@ export class CursorExecutor extends BaseExecutor {
                 {
                   index: 0,
                   delta:
-                    !roleEmitted
-                      ? ((roleEmitted = true), { role: "assistant", reasoning_content: result.thinking })
+                    !roleState.emitted
+                      ? ((roleState.emitted = true), { role: "assistant", reasoning_content: result.thinking })
                       : { reasoning_content: result.thinking },
                   finish_reason: null
                 }
@@ -1108,6 +1173,64 @@ export class CursorExecutor extends BaseExecutor {
     debugLog(
       `[CURSOR BUFFER SSE] Parsed ${frameCount} frames, toolCallsMap size: ${toolCallsMap.size}, toolCalls array: ${toolCalls.length}`
     );
+
+    const tail = contentProcessor.flush();
+    emitRedactedToolCallChunks(
+      chunks, responseId, created, model, tail.toolCalls,
+      toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
+    );
+    const tailText = sanitizeComposerVisibleText(tail.text);
+    if (tailText) {
+      totalContent += tailText;
+      chunks.push(
+        `data: ${JSON.stringify({
+          id: responseId,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta:
+                !roleState.emitted
+                  ? ((roleState.emitted = true), { role: "assistant", content: tailText })
+                  : { content: tailText },
+              finish_reason: null
+            }
+          ]
+        })}\n\n`
+      );
+    }
+
+    const thinkingTail = thinkingVisibleProcessor.flush();
+    emitRedactedToolCallChunks(
+      chunks, responseId, created, model, thinkingTail.toolCalls,
+      toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
+    );
+    const thinkingTailText = pushAssistantContentChunk(
+      chunks, responseId, created, model, thinkingTail.text, roleState
+    );
+    totalContent += thinkingTailText;
+
+    if (isComposerModel(model) && totalThinking) {
+      const fallbackAnswer = extractComposerThinkingAnswer(totalThinking, { allowPreFinalFallback: true });
+      if (fallbackAnswer.length > emittedComposerThinkingVisibleLen) {
+        const fallbackDelta = processComposerThinkingDelta(
+          thinkingVisibleProcessor,
+          totalThinking,
+          emittedComposerThinkingVisibleLen,
+          { allowPreFinalFallback: true }
+        );
+        emittedComposerThinkingVisibleLen = fallbackDelta.emittedVisibleLen;
+        emitRedactedToolCallChunks(
+          chunks, responseId, created, model, fallbackDelta.toolCalls,
+          toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
+        );
+        totalContent += pushAssistantContentChunk(
+          chunks, responseId, created, model, fallbackDelta.text, roleState
+        );
+      }
+    }
 
     // Finalize remaining tool calls where isLast=true never arrived (stream terminated early).
     // Tool calls already pushed to toolCalls on first encounter must not be pushed again.

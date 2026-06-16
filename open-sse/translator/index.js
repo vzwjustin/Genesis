@@ -38,10 +38,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   let clientOwnsCacheLayout = hasAnthropicCacheBreakpoints(body);
 
   if (clientOwnsCacheLayout && sourceFormat !== targetFormat) {
-    // OpenAI-format endpoints cannot honor Anthropic cache_control markers, so
-    // preserving them byte-for-byte is meaningless — strip and translate normally.
-    // For Claude/Gemini targets the markers are expected to survive, so refuse.
-    if (targetFormat === FORMATS.OPENAI) {
+    // OpenAI-compatible clients (e.g. OpenCode) may embed cache_control on an OpenAI-shaped
+    // body. Translation mutates structure, so markers cannot survive byte-for-byte.
+    // Anthropic→OpenAI: OpenAI endpoints cannot honor cache_control anyway.
+    if (targetFormat === FORMATS.OPENAI || sourceFormat === FORMATS.OPENAI) {
       stripAnthropicCacheBreakpoints(result);
       clientOwnsCacheLayout = false;
     } else {

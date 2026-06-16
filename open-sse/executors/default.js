@@ -3,7 +3,7 @@ import { PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "../config/providers.js
 import { validateProviderBaseUrl } from "../utils/ssrfGuard.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
-import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
+import { getCachedClaudeHeaders, extractPassthroughAnthropicHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
@@ -108,9 +108,11 @@ export class DefaultExecutor extends BaseExecutor {
         }
         break;
       case "claude": {
-        // Overlay live cached headers from real Claude Code client over static defaults.
-        // Static headers (Title-Case) remain as cold-start fallback.
-        const cached = getCachedClaudeHeaders(credentials?.connectionId, credentials?._requestHeaders);
+        // Passthrough: forward client Anthropic identity headers as-is (OpenCode, SDK, etc.).
+        // Native Claude CLI: overlay live cached headers over static defaults.
+        const cached = credentials?._passthrough
+          ? extractPassthroughAnthropicHeaders(credentials?._requestHeaders)
+          : getCachedClaudeHeaders(credentials?.connectionId, credentials?._requestHeaders);
         if (cached) {
           // Remove Title-Case static keys that conflict with incoming lowercase cached keys
           for (const lcKey of Object.keys(cached)) {
@@ -118,7 +120,11 @@ export class DefaultExecutor extends BaseExecutor {
             const titleKey = lcKey.replace(/(^|-)([a-z])/g, (_, sep, c) => sep + c.toUpperCase());
 
             // Special handling for Anthropic-Beta to preserve required flags like OAuth
-            if (lcKey === "anthropic-beta" && !credentials?._preserveClientCache) {
+            if (
+              lcKey === "anthropic-beta"
+              && !credentials?._preserveClientCache
+              && !credentials?._passthrough
+            ) {
               const staticBetaStr = headers[titleKey] || headers[lcKey] || "";
               const staticFlags = new Set(staticBetaStr.split(",").map(f => f.trim()).filter(Boolean));
               const cachedFlags = new Set(cached[lcKey].split(",").map(f => f.trim()).filter(Boolean));
@@ -213,7 +219,11 @@ export class DefaultExecutor extends BaseExecutor {
       }
     }
 
-    if (stream) headers["Accept"] = "text/event-stream";
+    if (credentials?._passthrough && credentials?._requestHeaders?.accept) {
+      headers["Accept"] = credentials._requestHeaders.accept;
+    } else if (stream) {
+      headers["Accept"] = "text/event-stream";
+    }
     return headers;
   }
 

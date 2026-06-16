@@ -132,6 +132,21 @@ describe("cross-format translation — cache_control handling", () => {
     expect(result.messages?.[0]?.content).toBe("hi");
   });
 
+  it("strips cache_control on OpenAI→Claude (OpenCode hybrid) and translates", async () => {
+    const { translateRequest } = await import("../../open-sse/translator/index.js");
+    const { FORMATS } = await import("../../open-sse/translator/formats.js");
+    await import("../../open-sse/translator/request/openai-to-claude.js");
+    const body = {
+      model: "cc/claude-opus-4-8",
+      messages: [{ role: "user", content: "audit this codebase", cache_control: { type: "ephemeral" } }],
+      tools: [{ type: "function", name: "Read", input_schema: { type: "object", properties: {} }, cache_control: { type: "ephemeral" } }],
+    };
+    const result = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "claude-opus-4-8", body, false, null, "claude");
+    expect(result.messages?.[0]?.content?.[0]?.text).toBe("audit this codebase");
+    expect(result.messages?.[0]?.cache_control).toBeUndefined();
+    expect(result.tools?.[0]?.name).toBe("Read");
+  });
+
   it("still refuses Claude→Gemini when client owns cache breakpoints (markers must survive)", async () => {
     const { translateRequest } = await import("../../open-sse/translator/index.js");
     const { FORMATS } = await import("../../open-sse/translator/formats.js");

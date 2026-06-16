@@ -135,6 +135,18 @@ describe("claudeHeaderCache", () => {
     expect(cached["x-stainless-os"]).toBeUndefined();
     expect(cached["user-agent"]).toBe("claude-code/2.1.63");
   });
+
+  it("extractPassthroughAnthropicHeaders forwards OpenCode identity headers without Claude Code UA", () => {
+    const headers = cacheModule.extractPassthroughAnthropicHeaders({
+      "user-agent": "opencode/1.2.3",
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14",
+      "content-type": "application/json",
+    });
+    expect(headers["user-agent"]).toBe("opencode/1.2.3");
+    expect(headers["anthropic-beta"]).toContain("oauth-2025-04-20");
+    expect(headers["content-type"]).toBeUndefined();
+  });
 });
 
 // ─── DefaultExecutor.buildHeaders() ──────────────────────────────────────────
@@ -219,6 +231,26 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
     const executor = new DefaultExecutor("claude");
     const headers = executor.buildHeaders({ apiKey: "k", connectionId: "test-conn" }, false);
     expect(headers["Accept"]).toBeUndefined();
+  });
+
+  it("forwards client headers in passthrough mode without merging static anthropic-beta", () => {
+    const executor = new DefaultExecutor("claude");
+    const headers = executor.buildHeaders({
+      accessToken: "sk-ant-oat-test",
+      _passthrough: true,
+      _requestHeaders: {
+        "user-agent": "opencode/1.2.3",
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "oauth-2025-04-20",
+        accept: "text/event-stream",
+      },
+    }, true);
+
+    expect(headers["user-agent"]).toBe("opencode/1.2.3");
+    expect(headers["anthropic-beta"]).toBe("oauth-2025-04-20");
+    expect(headers["anthropic-beta"]).not.toContain("claude-code-20250219");
+    expect(headers["Accept"]).toBe("text/event-stream");
+    expect(headers["Authorization"]).toBe("Bearer sk-ant-oat-test");
   });
 });
 

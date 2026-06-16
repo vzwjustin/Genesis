@@ -596,8 +596,8 @@ describe("chatCore — token refresh uses fresh exec credentials", () => {
     const root = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(join(root, "../../open-sse/handlers/chatCore.js"), "utf8");
 
-    expect(src).toContain("function buildExecCredentials(credentials, clientHasCacheBreakpoints)");
-    expect(src).toContain("credentials: buildExecCredentials(credentials, clientHasCacheBreakpoints)");
+    expect(src).toContain("function buildExecCredentials(credentials, { clientHasCacheBreakpoints = false, passthrough = false } = {})");
+    expect(src).toContain("credentials: buildExecCredentials(credentials, { clientHasCacheBreakpoints, passthrough })");
     expect(src).not.toMatch(/const execCredentials\s*=/);
   });
 });
