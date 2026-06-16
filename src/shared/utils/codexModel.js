@@ -1,7 +1,4 @@
-/** Codex config.toml stores bare OpenAI Codex ids (gpt-5.5). Genesis maps them via cx/ aliases. */
-export function isCodexNativeModelId(model) {
-  return typeof model === "string" && model.length > 0 && !model.includes("/");
-}
+export { isCodexNativeModelId, resolveBareCodexModel } from "open-sse/utils/codexModel.js";
 
 /** Strip cx/ or codex/ routing prefix only — other prefixes are invalid for Codex config. */
 export function toCodexNativeModel(model) {

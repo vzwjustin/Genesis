@@ -45,8 +45,33 @@ const readConfig = async () => {
 
 const hasGenesisConfig = (config) => {
   if (!config?.provider) return false;
-  return !!config.provider["genesis"];
+  return !!(config.provider.genesis || config.provider["genesis-cc"]);
 };
+
+function getMergedGenesisModels(config) {
+  const merged = {};
+  for (const key of ["genesis", "genesis-cc"]) {
+    Object.assign(merged, config?.provider?.[key]?.models || {});
+  }
+  return merged;
+}
+
+/** @param {object|null|undefined} config */
+export function listGenesisModelIds(config) {
+  return Object.keys(getMergedGenesisModels(config));
+}
+
+/** @param {string|undefined|null} value */
+export function parseGenesisPrefixedModel(value) {
+  if (typeof value !== "string") return null;
+  if (value.startsWith("genesis-cc/")) return value.slice("genesis-cc/".length);
+  if (value.startsWith("genesis/")) return value.slice("genesis/".length);
+  return null;
+}
+
+function isGenesisPrefixedModel(value) {
+  return typeof value === "string" && (value.startsWith("genesis/") || value.startsWith("genesis-cc/"));
+}
 
 function genesisProviderUsesClaudeWire(providerConfig) {
   const models = providerConfig?.models || {};
@@ -179,8 +204,9 @@ export async function GET(request) {
     }
 
     const config = await readConfig();
-    const providerConfig = config?.provider?.["genesis"];
-    const modelMap = providerConfig?.models || {};
+    const modelMap = getMergedGenesisModels(config);
+    const genesisProvider = config?.provider?.genesis;
+    const genesisCcProvider = config?.provider?.["genesis-cc"];
     const diagnostics = diagnoseGenesisOpenCodeConfig(config);
 
     return NextResponse.json({
@@ -190,10 +216,10 @@ export async function GET(request) {
       configPath: getConfigPath(),
       diagnostics,
         opencode: {
-          models: Object.keys(modelMap),
-          activeModel: config?.model?.startsWith("genesis/") ? config.model.replace(/^genesis\//, "") : null,
-          baseURL: providerConfig?.options?.baseURL || null,
-          npm: providerConfig?.npm || null,
+          models: listGenesisModelIds(config),
+          activeModel: parseGenesisPrefixedModel(config?.model),
+          baseURL: genesisProvider?.options?.baseURL || genesisCcProvider?.options?.baseURL || null,
+          npm: genesisProvider?.npm || genesisCcProvider?.npm || null,
         },
     });
   } catch (error) {
@@ -317,8 +343,7 @@ export async function PATCH(request) {
     }
 
     if (clearActiveModel === true) {
-      // Clear active model but keep models in the list
-      if (config.model?.startsWith("genesis/")) {
+      if (isGenesisPrefixedModel(config.model)) {
         config.model = "";
       }
     }
@@ -355,27 +380,34 @@ export async function DELETE(request) {
       throw error;
     }
 
-    // If specific model provided, remove just that model
-    if (modelToRemove && config.provider?.["genesis"]?.models) {
-      delete config.provider["genesis"].models[modelToRemove];
-      
-      // If no models left, remove the provider
-      if (Object.keys(config.provider["genesis"].models).length === 0) {
-        delete config.provider["genesis"];
-        if (config.model?.startsWith("genesis/")) delete config.model;
-      } else if (config.model === `genesis/${modelToRemove}`) {
-        // If removed model was active, switch to first remaining model
-        const remainingModels = Object.keys(config.provider["genesis"].models);
-        config.model = `genesis/${remainingModels[0]}`;
+    // If specific model provided, remove just that model from the correct provider
+    if (modelToRemove) {
+      const providerKey = providerPrefixForModel(modelToRemove);
+      if (config.provider?.[providerKey]?.models?.[modelToRemove]) {
+        delete config.provider[providerKey].models[modelToRemove];
+        if (Object.keys(config.provider[providerKey].models).length === 0) {
+          delete config.provider[providerKey];
+        }
+        if (parseGenesisPrefixedModel(config.model) === modelToRemove) {
+          const remaining = listGenesisModelIds(config);
+          if (remaining.length > 0) {
+            config.model = `${providerPrefixForModel(remaining[0])}/${remaining[0]}`;
+          } else {
+            delete config.model;
+          }
+        }
       }
     } else {
-      // No specific model - remove entire genesis provider
-      if (config.provider) delete config.provider["genesis"];
-      if (config.model?.startsWith("genesis/")) delete config.model;
+      // No specific model - remove entire genesis provider set
+      if (config.provider) {
+        delete config.provider.genesis;
+        delete config.provider["genesis-cc"];
+      }
+      if (isGenesisPrefixedModel(config.model)) delete config.model;
     }
 
     // Remove subagent configuration
-    if (config.agent?.explorer?.model?.startsWith("genesis/")) {
+    if (isGenesisPrefixedModel(config.agent?.explorer?.model)) {
       delete config.agent.explorer;
       // Clean up empty agent object
       if (Object.keys(config.agent).length === 0) delete config.agent;

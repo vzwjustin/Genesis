@@ -48,6 +48,7 @@ vi.mock("open-sse/config/providerModels.js", () => ({
   getModelStrip: () => [],
   getModelUpstreamId: (_alias, modelId) => modelId,
   getModelRequestExtras: () => null,
+  getModelsByProviderId: () => [],
   PROVIDER_ID_TO_ALIAS: {},
 }));
 vi.mock("open-sse/utils/error.js", () => ({

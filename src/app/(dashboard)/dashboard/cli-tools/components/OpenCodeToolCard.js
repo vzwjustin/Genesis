@@ -9,6 +9,13 @@ import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import CliNotDetectedPanel from "./CliNotDetectedPanel";
 
+function parseGenesisPrefixedModel(value) {
+  if (typeof value !== "string") return null;
+  if (value.startsWith("genesis-cc/")) return value.slice("genesis-cc/".length);
+  if (value.startsWith("genesis/")) return value.slice("genesis/".length);
+  return null;
+}
+
 export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [status, setStatus] = useState(initialStatus || null);
   const [checking, setChecking] = useState(false);
@@ -77,9 +84,9 @@ useEffect(() => {
     }
 
     // Parse subagent settings from agent.explorer if exists
-    if (status?.config?.agent?.explorer?.model?.startsWith("genesis/")) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSubagentModel(status.config.agent.explorer.model.replace("genesis/", ""));
+    if (status?.config?.agent?.explorer?.model) {
+      const parsed = parseGenesisPrefixedModel(status.config.agent.explorer.model);
+      if (parsed) queueMicrotask(() => setSubagentModel(parsed));
     }
   }, [status]);
 
@@ -90,7 +97,7 @@ useEffect(() => {
         ? selectedApiKey
         : (!cloudEnabled ? "sk_genesis" : selectedApiKey);
       const validActiveModel = models.includes(activeModel) ? activeModel : (models[0] || "");
-      await fetch("/api/cli-tools/opencode-settings", {
+      const res = await fetch("/api/cli-tools/opencode-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -101,8 +108,15 @@ useEffect(() => {
           subagentModel,
         }),
       });
+      if (res.ok) {
+        await checkStatus();
+      } else {
+        const data = await res.json();
+        setMessage({ type: "error", text: data.error || "Failed to save models" });
+      }
     } catch (error) {
       console.log("Error saving models:", error);
+      setMessage({ type: "error", text: error.message });
     }
   };
 
@@ -110,7 +124,9 @@ useEffect(() => {
     if (!status?.installed) return null;
     if (!status.config) return "not_configured";
     if (!status.hasGenesis) return "not_configured";
-    const url = status.config?.provider?.["genesis"]?.options?.baseURL || "";
+    const url = status.config?.provider?.genesis?.options?.baseURL
+      || status.config?.provider?.["genesis-cc"]?.options?.baseURL
+      || "";
     return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl }) ? "configured" : "other";
   };
 
@@ -286,12 +302,12 @@ useEffect(() => {
                 </div>
 
                 {/* Current configured */}
-                {status?.config?.provider?.["genesis"]?.options?.baseURL && (
+                {status?.config?.provider && (status.config.provider.genesis?.options?.baseURL || status.config.provider["genesis-cc"]?.options?.baseURL) && (
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
-                      {status.config.provider["genesis"].options.baseURL}
+                      {status.config.provider.genesis?.options?.baseURL || status.config.provider["genesis-cc"]?.options?.baseURL}
                     </span>
                   </div>
                 )}

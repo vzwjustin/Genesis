@@ -53,6 +53,7 @@ vi.mock("../../open-sse/config/providerModels.js", () => ({
   getModelStrip: () => [],
   getModelUpstreamId: (_alias, modelId) => modelId,
   getModelRequestExtras: () => null,
+  getModelsByProviderId: () => [],
   PROVIDER_ID_TO_ALIAS: {},
 }));
 vi.mock("../../open-sse/utils/toolDeduper.js", () => ({
@@ -236,6 +237,24 @@ describe("handleChatCore pre-dispatch validation", () => {
       const json = await result.response.json();
       expect(json.error.type).toBe("translation_invalid_body");
       expect(json.error.code).toBe("translation_invalid_body");
+    });
+  });
+
+  describe("fusion assistant prefill (validation_failed)", () => {
+    it("returns HTTP 400 when stripping trailing assistant prefill leaves no messages", async () => {
+      const result = await handleChatCore({
+        body: {
+          messages: [{ role: "assistant", content: "partial prefill" }],
+        },
+        modelInfo: { provider: "fusion", model: "openrouter/fusion" },
+        credentials: { apiKey: "test" },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(400);
+      const json = await result.response.json();
+      expect(json.error.type).toBe("validation_failed");
+      expect(json.error.message).toContain("assistant prefill");
     });
   });
 

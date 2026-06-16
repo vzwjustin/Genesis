@@ -87,6 +87,15 @@ describe("getModelInfo — resolution failure returns null provider (Requirement
       expect(result.model).toBe("claude-opus-4-6");
     });
 
+    it("resolves bare Codex catalog ids for Codex CLI /v1/responses requests", async () => {
+      getModelAliases.mockResolvedValue({});
+      getComboByName.mockResolvedValue(null);
+
+      const result = await getModelInfo("gpt-5.4");
+      expect(result.provider).toBe("codex");
+      expect(result.model).toBe("gpt-5.4");
+    });
+
     it("returns null provider for combo names (signals combo handling)", async () => {
       getComboByName.mockResolvedValue({ name: "primary-fallback", models: ["cc/opus", "openai/gpt-4o"] });
 

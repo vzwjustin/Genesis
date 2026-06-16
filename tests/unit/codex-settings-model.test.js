@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { toCodexNativeModel, isCodexNativeModelId } from "../../src/shared/utils/codexModel.js";
+import {
+  toCodexNativeModel,
+  isCodexNativeModelId,
+  resolveBareCodexModel,
+} from "../../src/shared/utils/codexModel.js";
 
 describe("toCodexNativeModel", () => {
   it("strips cx/ prefix for Codex config", () => {
@@ -31,5 +35,21 @@ describe("isCodexNativeModelId", () => {
   it("rejects routing ids", () => {
     expect(isCodexNativeModelId("openrouter/foo")).toBe(false);
     expect(isCodexNativeModelId("cc/claude-opus")).toBe(false);
+  });
+});
+
+describe("resolveBareCodexModel", () => {
+  it("routes catalog Codex ids to cx/codex without a registered alias", () => {
+    expect(resolveBareCodexModel("gpt-5.5")).toEqual({ provider: "codex", model: "gpt-5.5" });
+    expect(resolveBareCodexModel("gpt-5.4")).toEqual({ provider: "codex", model: "gpt-5.4" });
+  });
+
+  it("does not guess unknown bare strings", () => {
+    expect(resolveBareCodexModel("completely-unknown")).toBeNull();
+    expect(resolveBareCodexModel("openai/gpt-4o")).toBeNull();
+  });
+
+  it("does not route bare image catalog ids to chat codex", () => {
+    expect(resolveBareCodexModel("gpt-5.5-image")).toBeNull();
   });
 });
