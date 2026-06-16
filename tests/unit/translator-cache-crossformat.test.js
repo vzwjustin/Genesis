@@ -64,6 +64,40 @@ describe("translateRequest — cross-format cache_control", () => {
     expect(hasCacheControl(out)).toBe(false);
   });
 
+  it("strips client cache breakpoints for openai-responses → claude (OpenCode path)", () => {
+    const openaiResponsesBody = {
+      model: "claude-sonnet-4-5",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "hi", cache_control: { type: "ephemeral" } },
+          ],
+        },
+      ],
+    };
+    expect(() =>
+      translateRequest(
+        FORMATS.OPENAI_RESPONSES,
+        FORMATS.CLAUDE,
+        "claude-sonnet-4-5",
+        openaiResponsesBody,
+      ),
+    ).not.toThrow();
+    const out = translateRequest(
+      FORMATS.OPENAI_RESPONSES,
+      FORMATS.CLAUDE,
+      "claude-sonnet-4-5",
+      openaiResponsesBody,
+    );
+    const blocks = (out.messages || []).flatMap((m) =>
+      Array.isArray(m.content) ? m.content : [],
+    );
+    expect(
+      blocks.some((b) => b?.cache_control && !b?.cache_control?._proxyInjected),
+    ).toBe(false);
+  });
+
   it("still fails closed for gemini → claude (markers unreconstructable)", () => {
     const geminiBody = {
       model: "claude-sonnet-4-5",

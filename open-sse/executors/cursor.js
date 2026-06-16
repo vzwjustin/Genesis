@@ -12,6 +12,7 @@ import { FORMATS } from "../translator/formats.js";
 import { proxyAwareFetch, shouldBypassMitmDns, resolveRealIP, hasApplicableEnvProxy, getEnvProxyUrl } from "../utils/proxyFetch.js";
 import {
   sanitizeComposerVisibleText,
+  createStreamingComposerSanitizer,
   extractComposerThinkingAnswer,
   extractComposerThinkingRawVisible,
   RedactedToolContentProcessor,
@@ -921,6 +922,7 @@ export class CursorExecutor extends BaseExecutor {
     let frameCount = 0;
     const contentProcessor = new RedactedToolContentProcessor();
     const thinkingVisibleProcessor = new RedactedToolContentProcessor();
+    const visibleSanitizer = createStreamingComposerSanitizer();
 
     debugLog(`[CURSOR BUFFER SSE] Total length: ${buffer.length} bytes`);
 
@@ -1106,7 +1108,7 @@ export class CursorExecutor extends BaseExecutor {
           chunks, responseId, created, model, textToolCalls,
           toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
         );
-        const cleanText = sanitizeComposerVisibleText(procText);
+        const cleanText = visibleSanitizer.sanitizeChunk(procText);
         if (cleanText) {
           totalContent += cleanText;
           chunks.push(
@@ -1144,7 +1146,7 @@ export class CursorExecutor extends BaseExecutor {
             toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
           );
           const added = pushAssistantContentChunk(
-            chunks, responseId, created, model, thinkingDelta.text, roleState
+            chunks, responseId, created, model, visibleSanitizer.sanitizeChunk(thinkingDelta.text), roleState
           );
           totalContent += added;
         } else {
@@ -1179,7 +1181,7 @@ export class CursorExecutor extends BaseExecutor {
       chunks, responseId, created, model, tail.toolCalls,
       toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
     );
-    const tailText = sanitizeComposerVisibleText(tail.text);
+    const tailText = visibleSanitizer.sanitizeChunk(tail.text);
     if (tailText) {
       totalContent += tailText;
       chunks.push(
@@ -1208,7 +1210,7 @@ export class CursorExecutor extends BaseExecutor {
       toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
     );
     const thinkingTailText = pushAssistantContentChunk(
-      chunks, responseId, created, model, thinkingTail.text, roleState
+      chunks, responseId, created, model, visibleSanitizer.sanitizeChunk(thinkingTail.text), roleState
     );
     totalContent += thinkingTailText;
 
@@ -1227,9 +1229,16 @@ export class CursorExecutor extends BaseExecutor {
           toolCalls, toolCallsMap, emittedToolCallIds, finalizedIds
         );
         totalContent += pushAssistantContentChunk(
-          chunks, responseId, created, model, fallbackDelta.text, roleState
+          chunks, responseId, created, model, visibleSanitizer.sanitizeChunk(fallbackDelta.text), roleState
         );
       }
+    }
+
+    const pendingVisible = visibleSanitizer.flush();
+    if (pendingVisible) {
+      totalContent += pushAssistantContentChunk(
+        chunks, responseId, created, model, pendingVisible, roleState
+      );
     }
 
     // Finalize remaining tool calls where isLast=true never arrived (stream terminated early).

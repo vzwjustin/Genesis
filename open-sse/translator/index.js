@@ -44,7 +44,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // target isn't Claude (openai, openai-responses, antigravity, gemini, ...).
     // OpenAI-compatible clients (e.g. OpenCode) may also embed markers on an
     // OpenAI-shaped body; strip those regardless of target.
-    if (targetFormat !== FORMATS.CLAUDE || sourceFormat === FORMATS.OPENAI) {
+    if (targetFormat !== FORMATS.CLAUDE || String(sourceFormat).startsWith("openai")) {
       stripAnthropicCacheBreakpoints(result);
       clientOwnsCacheLayout = false;
     } else {

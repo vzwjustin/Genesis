@@ -8,10 +8,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../src/lib/db/driver.js", () => ({
   getAdapter: vi.fn(async () => ({
-    // Record the `timestamp >= since` cutoff each read uses. params layout is
-    // [...conds, since, LIMIT], so the cutoff is the second-to-last param.
+    // Record the `timestamp >= since` cutoff each read uses. since is always params[0].
     all: vi.fn((_sql, params) => {
-      const since = params?.[params.length - 2];
+      const since = params?.[0];
       if (since) mocks.sinceArgs.push(since);
       return mocks.rows;
     }),

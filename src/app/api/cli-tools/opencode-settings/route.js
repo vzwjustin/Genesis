@@ -123,6 +123,13 @@ function repairGenesisProviderSplit(config) {
     const id = config.model.replace(/^genesis\//, "");
     if (/^(cc\/|claude[-/])/i.test(id)) config.model = `genesis-cc/${id}`;
   }
+  const explorerModel = config.agent?.explorer?.model;
+  if (typeof explorerModel === "string" && explorerModel.startsWith("genesis/")) {
+    const id = explorerModel.replace(/^genesis\//, "");
+    if (/^(cc\/|claude[-/])/i.test(id)) {
+      config.agent.explorer.model = `genesis-cc/${id}`;
+    }
+  }
   return config;
 }
 
