@@ -883,11 +883,15 @@ export async function getRecentLogs(limit = 200) {
   }
 }
 
+const HOUR_MS = 3600000;
+
 function periodToSince(period) {
-  if (period === "all") return new Date(Date.now() - PERIOD_MS["60d"]).toISOString();
-  const ms = PERIOD_MS[period];
-  if (!ms) return new Date(Date.now() - PERIOD_MS["7d"]).toISOString();
-  return new Date(Date.now() - ms).toISOString();
+  // Quantize "now" to the hour so back-to-back reads return a stable window.
+  // An unquantized Date.now() slides the trailing edge forward every call, so a
+  // static DB appears to lose rows on each refresh (measured requests counts down).
+  const now = Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+  const ms = period === "all" ? PERIOD_MS["60d"] : (PERIOD_MS[period] || PERIOD_MS["7d"]);
+  return new Date(now - ms).toISOString();
 }
 
 const CACHE_STATS_ROW_LIMIT = 50000;
