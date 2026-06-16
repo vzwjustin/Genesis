@@ -1282,13 +1282,6 @@ OPENAI_API_KEY="your-cloud-key" bash tester/security/test-cloud-openai-compatibl
 详细指南请参阅 [Pull Requests](https://github.com/decolua/genesis/pulls)。
 
 ---
-
-## 🔀 分支
-
-**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — Genesis 的全功能 TypeScript 分支。添加了 36+ 提供商、4 层自动回退、多模态 API（图像、嵌入、音频、TTS）、熔断器、语义缓存、LLM 评估和精美的仪表板。8+ 单元测试。通过 npm 和 Docker 可用。
-
----
-
 ## 🙏 致谢
 
 特别感谢 **CLIProxyAPI** - 启发这个 JavaScript 移植的原始 Go 实现。

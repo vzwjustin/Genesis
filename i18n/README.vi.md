@@ -1286,13 +1286,6 @@ Cảm ơn tất cả những người đã đóng góp giúp Genesis tốt hơn!
 Xem [Pull Requests](https://github.com/decolua/genesis/pulls) để biết hướng dẫn chi tiết.
 
 ---
-
-## 🔀 Forks
-
-**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — Một fork TypeScript đầy đủ tính năng của Genesis. Thêm 36+ nhà cung cấp, tự động dự phòng 4 tầng, API đa phương thức (hình ảnh, embedding, âm thanh, TTS), circuit breaker, bộ nhớ đệm ngữ nghĩa, đánh giá LLM và bảng điều khiển được tinh chỉnh. 368+ bài kiểm tra đơn vị. Có sẵn qua npm và.
-
----
-
 ## 🙏 Lời cảm ơn
 
 Cảm ơn đặc biệt đến **CLIProxyAPI** - bản triển khai Go gốc đã truyền cảm hứng cho bản chuyển đổi JavaScript này.

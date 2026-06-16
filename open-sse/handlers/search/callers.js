@@ -1,7 +1,7 @@
 /**
  * Search Provider Request Builders
  *
- * Ported from OmniRoute open-sse/handlers/search.ts (lines 223-610).
+ * Ported from open-sse/handlers/search.ts (lines 223-610).
  * Builds HTTP request `{ url, init }` for 10 search providers.
  *
  * @typedef {Object} SearchProviderConfig
