@@ -7,6 +7,7 @@ const PROXY_INTERNAL_SSE = {
 };
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
+import { readCappedResponseText } from "../../utils/stream.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 
@@ -391,7 +392,17 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     if (!payload) continue;
     if (payload === "[DONE]") { sawTerminal = true; continue; }
     try {
-      chunks.push(JSON.parse(payload));
+      const parsed = JSON.parse(payload);
+      // Fail closed on an upstream error frame: a mid-stream `data: {error}`
+      // (valid JSON, no `choices`) would otherwise be silently ignored and the
+      // partial/empty content returned as success. Mirrors the Claude parser's
+      // `case "error"` handling.
+      if (parsed && parsed.error) {
+        console.warn("[SSE] parseSSEToOpenAIResponse: upstream error event received:",
+          parsed.error?.type || parsed.error?.code || "unknown", "|", parsed.error?.message || "(no message)");
+        return null;
+      }
+      chunks.push(parsed);
     } catch {
       // Fail closed: a malformed frame means the assembled message would be
       // incomplete. Discard the whole response rather than return a silently
@@ -451,12 +462,24 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   if (reasoningJoined.length > 0) message.reasoning_content = reasoningJoined;
   if (toolCallMap.size > 0) {
     message.tool_calls = [...toolCallMap.entries()].sort((a, b) => a[0] - b[0]).map(([, tc]) => tc);
+    // Fail closed if any accumulated tool-call arguments are not complete JSON:
+    // a truncated tool call must not be delivered as success (mirrors the Claude
+    // parser's invalid-tool-JSON handling).
+    for (const tc of message.tool_calls) {
+      const args = tc.function?.arguments;
+      if (args === undefined || args === "") continue; // no-argument call
+      try { JSON.parse(args); } catch { return null; }
+    }
     // Correct finish_reason for tool_calls: a provider may accumulate tool_call
     // deltas and terminate via a bare [DONE] sentinel without ever setting a
     // choice.finish_reason, leaving the default "stop". Clients that gate tool
     // execution on finish_reason === "tool_calls" would otherwise drop the call.
     // Mirrors nonStreamingHandler.js's tool_calls finish_reason correction.
-    if (finishReason !== "tool_calls") finishReason = "tool_calls";
+    // Preserve a provider-signalled truncation reason (length / content_filter)
+    // so a cut-off tool call stays visible to the client.
+    if (finishReason !== "tool_calls" && finishReason !== "length" && finishReason !== "content_filter") {
+      finishReason = "tool_calls";
+    }
   }
 
   const result = {
@@ -687,7 +710,14 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
   // Standard Chat Completions SSE path
   try {
-    const sseText = await providerResponse.text();
+    // Cap the read: an unbounded upstream (or a malicious MITM) could otherwise stream
+    // an arbitrarily large body into memory before assembly. Mirrors the sibling guard in
+    // nonStreamingHandler.js. Fail closed (BAD_GATEWAY) rather than buffer without limit.
+    const sseText = await readCappedResponseText(providerResponse);
+    if (sseText === null) {
+      finalizeFailure("SSE response exceeds size limit for non-streaming request");
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "SSE response exceeds size limit for non-streaming request", undefined, PROXY_INTERNAL_SSE);
+    }
     let parsed = passthrough
       ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
       : parseSSEToOpenAIResponse(sseText, model);

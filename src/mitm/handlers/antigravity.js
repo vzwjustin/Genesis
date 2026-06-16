@@ -14,7 +14,15 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
     const body = JSON.parse(bodyBuffer.toString());
     if (body.model) body.model = mappedModel;
 
-    const routerRes = await fetchRouter(body, "/v1/chat/completions", req.headers);
+    // Propagate the Gemini verb as stream intent: native Gemini bodies carry no `stream`
+    // field, so without this the router force-streams every request and a :generateContent
+    // client receives raw SSE instead of a single JSON. Header name mirrors STREAM_INTENT_HEADER
+    // in open-sse/utils/clientDetector.js (kept in sync manually — CommonJS cannot import ESM).
+    const routerRes = await fetchRouter(
+      body,
+      "/v1/chat/completions",
+      { ...req.headers, "x-genesis-stream-intent": isStream ? "1" : "0" }
+    );
     await pipeSSE(routerRes, res, dumper);
   } catch (error) {
     err(`[antigravity] ${error.message}`);
