@@ -25,7 +25,7 @@ export function openaiToClaudeRequest(model, body, stream) {
 
   // Temperature — OpenAI allows 0–2 but Anthropic rejects > 1; clamp to the
   // Claude range so a valid OpenAI request never produces a 400 upstream.
-  if (body.temperature !== undefined) {
+  if (body.temperature != null) {
     const t = Number(body.temperature);
     if (Number.isFinite(t)) result.temperature = Math.max(0, Math.min(1, t));
   }

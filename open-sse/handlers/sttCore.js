@@ -97,6 +97,7 @@ async function transcribeAssemblyAI(cfg, file, model, token, proxyOptions, signa
       }, 2000);
       function onAbort() {
         clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
         const err = new Error("Request aborted");
         err.name = "AbortError";
         reject(err);

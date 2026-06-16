@@ -110,6 +110,32 @@ export function stripComposerToolActivity(text) {
 }
 
 /**
+ * Incremental line buffer for stripComposerToolActivity — tool-trace lines may
+ * arrive split across streaming chunks (e.g. "→Re" + "ad file\\n").
+ */
+export class ComposerToolActivityLineProcessor {
+  constructor() {
+    this.pendingLine = "";
+  }
+
+  processChunk(chunk) {
+    const combined = this.pendingLine + String(chunk || "");
+    const lines = combined.split(/\r?\n/);
+    this.pendingLine = lines.pop() ?? "";
+    return lines
+      .filter((line) => !TOOL_ACTIVITY_LINE_RE.test(line.trim()))
+      .join("\n");
+  }
+
+  flush() {
+    const line = this.pendingLine;
+    this.pendingLine = "";
+    if (!line) return "";
+    return TOOL_ACTIVITY_LINE_RE.test(line.trim()) ? "" : line;
+  }
+}
+
+/**
  * Raw post-</think> visible text after <|final|> (markers preserved for parsing).
  */
 export function extractComposerThinkingRawVisible(thinking, { allowPreFinalFallback = false } = {}) {
@@ -147,6 +173,23 @@ export function sanitizeComposerVisibleText(text) {
   const stripped = stripRedactedToolCalls(String(text || ""));
   const noTraces = stripComposerToolActivity(stripped);
   return stripComposerFinalPrefix(noTraces);
+}
+
+/** Stateful sanitizer for streaming chunks (line-buffered tool-activity stripping). */
+export function createStreamingComposerSanitizer() {
+  const activityLines = new ComposerToolActivityLineProcessor();
+  return {
+    sanitizeChunk(text) {
+      const stripped = stripRedactedToolCalls(String(text || ""));
+      const noTraces = activityLines.processChunk(stripped);
+      return stripComposerFinalPrefix(noTraces);
+    },
+    flush() {
+      const pending = activityLines.flush();
+      if (!pending) return "";
+      return stripComposerFinalPrefix(stripRedactedToolCalls(pending));
+    },
+  };
 }
 
 /**

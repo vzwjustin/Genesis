@@ -4,6 +4,7 @@ import { CursorExecutor } from "../../open-sse/executors/cursor.js";
 import { encodeField, wrapConnectRPCFrame } from "../../open-sse/utils/cursorProtobuf.js";
 import {
   RedactedToolContentProcessor,
+  ComposerToolActivityLineProcessor,
   stripComposerFinalPrefix,
   stripComposerToolActivity,
   extractComposerThinkingAnswer,
@@ -95,6 +96,13 @@ describe("open-sse composer redacted tools", () => {
     expect(b.text).toBe("");
     expect(b.toolCalls).toHaveLength(1);
     expect(b.toolCalls[0].name).toBe("list_dir");
+  });
+
+  it("buffers tool-activity lines split across streaming chunks", () => {
+    const proc = new ComposerToolActivityLineProcessor();
+    expect(proc.processChunk("hello\n→Re")).toBe("hello");
+    expect(proc.processChunk("ad package.json\nworld")).toBe("");
+    expect(proc.flush()).toBe("world");
   });
 });
 

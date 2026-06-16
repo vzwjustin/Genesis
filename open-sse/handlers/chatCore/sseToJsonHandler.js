@@ -468,6 +468,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     for (const tc of message.tool_calls) {
       const args = tc.function?.arguments;
       if (args === undefined || args === "") continue; // no-argument call
+      if (typeof args === "object") continue;
       try { JSON.parse(args); } catch { return null; }
     }
     // Correct finish_reason for tool_calls: a provider may accumulate tool_call
