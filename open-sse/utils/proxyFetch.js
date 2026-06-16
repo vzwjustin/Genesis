@@ -567,6 +567,33 @@ async function createBypassRequest(parsedUrl, realIP, options) {
             get body() {
               let offset = 0;
               streamConsumed = true;
+              // Once the controller is closed/errored/cancelled, late upstream
+              // events (a buffered "end" firing after a downstream cancel) must
+              // not touch it again — close()/error() on a closed controller throws
+              // "Invalid state: Controller is already closed" as an uncaught error.
+              let streamDone = false;
+              // Listeners the current pull() attached, tracked so cancel() can
+              // detach them when the consumer aborts before upstream end.
+              let activeListeners = null;
+              const detach = () => {
+                if (!activeListeners) return;
+                res.off("data", activeListeners.onData);
+                res.off("end", activeListeners.onEnd);
+                res.off("error", activeListeners.onErr);
+                activeListeners = null;
+              };
+              const safeClose = (controller) => {
+                if (streamDone) return;
+                streamDone = true;
+                detach();
+                controller.close();
+              };
+              const safeError = (controller, err) => {
+                if (streamDone) return;
+                streamDone = true;
+                detach();
+                controller.error(err);
+              };
               // Enqueue the chunk at `offset`, then release it so the buffered
               // backlog does not grow unbounded for the response's lifetime.
               const drain = (controller) => {
@@ -577,8 +604,9 @@ async function createBypassRequest(parsedUrl, realIP, options) {
               };
               return new ReadableStream({
                 pull(controller) {
+                  if (streamDone) return;
                   if (bodyError) {
-                    controller.error(bodyError);
+                    safeError(controller, bodyError);
                     return;
                   }
                   if (offset < bodyChunks.length) {
@@ -586,38 +614,37 @@ async function createBypassRequest(parsedUrl, realIP, options) {
                     return;
                   }
                   if (bodyEnded) {
-                    controller.close();
+                    safeClose(controller);
                     return;
                   }
                   const onData = () => {
-                    res.off("data", onData);
-                    res.off("end", onEnd);
-                    res.off("error", onErr);
+                    detach();
                     if (offset < bodyChunks.length) {
                       drain(controller);
                     } else if (bodyEnded) {
-                      controller.close();
+                      safeClose(controller);
                     }
                   };
                   const onEnd = () => {
-                    res.off("data", onData);
-                    res.off("end", onEnd);
-                    res.off("error", onErr);
+                    detach();
                     if (offset < bodyChunks.length) {
                       drain(controller);
                     } else {
-                      controller.close();
+                      safeClose(controller);
                     }
                   };
                   const onErr = (err) => {
-                    res.off("data", onData);
-                    res.off("end", onEnd);
-                    res.off("error", onErr);
-                    controller.error(err);
+                    detach();
+                    safeError(controller, err);
                   };
+                  activeListeners = { onData, onEnd, onErr };
                   res.on("data", onData);
                   res.on("end", onEnd);
                   res.on("error", onErr);
+                },
+                cancel() {
+                  streamDone = true;
+                  detach();
                 },
               });
             },
@@ -785,6 +812,29 @@ async function createHttp2BypassRequest(parsedUrl, realIP, options) {
         get body() {
           let offset = 0;
           streamConsumed = true;
+          // See the HTTP/1 bypass body getter above: guard against late upstream
+          // events touching a controller that was already closed/errored/cancelled.
+          let streamDone = false;
+          let activeListeners = null;
+          const detach = () => {
+            if (!activeListeners) return;
+            req.off("data", activeListeners.onData);
+            req.off("end", activeListeners.onEnd);
+            req.off("error", activeListeners.onErr);
+            activeListeners = null;
+          };
+          const safeClose = (controller) => {
+            if (streamDone) return;
+            streamDone = true;
+            detach();
+            controller.close();
+          };
+          const safeError = (controller, err) => {
+            if (streamDone) return;
+            streamDone = true;
+            detach();
+            controller.error(err);
+          };
           const drain = (controller) => {
             const chunk = bodyChunks[offset];
             bodyChunks[offset] = null;
@@ -793,8 +843,9 @@ async function createHttp2BypassRequest(parsedUrl, realIP, options) {
           };
           return new ReadableStream({
             pull(controller) {
+              if (streamDone) return;
               if (bodyError) {
-                controller.error(bodyError);
+                safeError(controller, bodyError);
                 return;
               }
               if (offset < bodyChunks.length) {
@@ -802,38 +853,37 @@ async function createHttp2BypassRequest(parsedUrl, realIP, options) {
                 return;
               }
               if (bodyEnded) {
-                controller.close();
+                safeClose(controller);
                 return;
               }
               const onData = () => {
-                req.off("data", onData);
-                req.off("end", onEnd);
-                req.off("error", onErr);
+                detach();
                 if (offset < bodyChunks.length) {
                   drain(controller);
                 } else if (bodyEnded) {
-                  controller.close();
+                  safeClose(controller);
                 }
               };
               const onEnd = () => {
-                req.off("data", onData);
-                req.off("end", onEnd);
-                req.off("error", onErr);
+                detach();
                 if (offset < bodyChunks.length) {
                   drain(controller);
                 } else {
-                  controller.close();
+                  safeClose(controller);
                 }
               };
               const onErr = (err) => {
-                req.off("data", onData);
-                req.off("end", onEnd);
-                req.off("error", onErr);
-                controller.error(err);
+                detach();
+                safeError(controller, err);
               };
+              activeListeners = { onData, onEnd, onErr };
               req.on("data", onData);
               req.on("end", onEnd);
               req.on("error", onErr);
+            },
+            cancel() {
+              streamDone = true;
+              detach();
             },
           });
         },
