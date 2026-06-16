@@ -414,7 +414,7 @@ export const PROVIDERS = {
   },
   // Region map for Xiaomi MiMo Token Plan (keys are cluster-specific)
   // Used by resolveXiaomiTokenplanBaseUrl below
-  // === Free-tier providers (synced from OmniRoute) ===
+  // === Free-tier providers ===
   // Claude-format with Claude CLI header spoofing (auth: x-api-key)
   agentrouter: { baseUrl: "https://agentrouter.org/v1/messages", format: "claude", headers: { ...CLAUDE_CLI_SPOOF_HEADERS } },
   // OpenAI-compatible (auth: bearer)

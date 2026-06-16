@@ -1281,13 +1281,6 @@ Authorization: Bearer your-api-key
 [![Star Chart](https://starchart.cc/decolua/genesis.svg?variant=adaptive)](https://starchart.cc/decolua/genesis)
 
 
-
-## 🔀 分支
-
-**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — Genesis 的全功能 TypeScript 分支。增加了 36+ 提供商、4 层自动切换、多模态 API（图像、嵌入、音频、TTS）、断路器、语义缓存、LLM 评估和精美的控制面板。368+ 单元测试。可通过 npm 和 Docker 使用。
-
----
-
 ## 🙏 致谢
 
 站在巨人的肩膀上构建：

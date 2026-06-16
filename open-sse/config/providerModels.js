@@ -778,7 +778,7 @@ export const PROVIDER_MODELS = {
     { id: "openai/whisper-small", name: "Whisper Small (HF)", type: "stt", params: ["language"] },
   ],
 
-  // === Free-tier providers (synced from OmniRoute) ===
+  // === Free-tier providers ===
   agentrouter: [
     { id: "claude-opus-4-6", name: "Claude 4.6 Opus" },
     { id: "claude-haiku-4-5-20251001", name: "Claude 4.5 Haiku" },
