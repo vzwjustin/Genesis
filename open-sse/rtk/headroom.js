@@ -62,10 +62,6 @@ export function invalidateHeadroomProbe() {
   probeCacheByUrl.clear();
 }
 
-function invalidateProbe() {
-  invalidateHeadroomProbe();
-}
-
 function tailHasToolHistory(messages) {
   for (const msg of messages) {
     if (msg?.role === "tool") return true;
@@ -203,8 +199,11 @@ async function compressMessagesBody(body, model, compress) {
     body.messages = [...head, ...r.compressed];
     return { before: r.before, after: r.after, saved: r.saved };
   } catch (err) {
+    // A compression failure (timeout, library error, bad input) does NOT mean the
+    // proxy is unreachable. Do not clear the reachability probe cache here — doing
+    // so would force a /health re-probe on the next request and defeat the mandated
+    // 30s minimum probe gap (PROBE_TTL_MS). Reachability is tracked only by probeProxy.
     console.warn("[HEADROOM] compressMessagesBody failed:", err?.message || err);
-    invalidateProbe();
     return null;
   }
 }
@@ -275,8 +274,9 @@ async function compressInputBody(body, model, compress) {
     body.input = [...headItems, ...newTail];
     return { before: r.before, after: r.after, saved: r.saved };
   } catch (err) {
+    // See compressMessagesBody: a compress failure is not a reachability signal, so
+    // we must not invalidate the probe cache (would defeat the 30s probe gap).
     console.warn("[HEADROOM] compressInputBody failed:", err?.message || err);
-    invalidateProbe();
     return null;
   }
 }

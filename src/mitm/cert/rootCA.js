@@ -20,11 +20,25 @@ function isCertExpired(certPath) {
   }
 }
 
+function ensurePrivateMitmStorage() {
+  if (!fs.existsSync(MITM_DIR)) {
+    fs.mkdirSync(MITM_DIR, { recursive: true, mode: 0o700 });
+  } else {
+    fs.chmodSync(MITM_DIR, 0o700);
+  }
+
+  if (fs.existsSync(ROOT_CA_KEY_PATH)) {
+    fs.chmodSync(ROOT_CA_KEY_PATH, 0o600);
+  }
+}
+
 /**
  * Generate Root CA certificate (only once, auto-regenerate if expired)
  * This Root CA will sign all dynamic leaf certificates
  */
 async function generateRootCA() {
+  ensurePrivateMitmStorage();
+
   const exists = fs.existsSync(ROOT_CA_KEY_PATH) && fs.existsSync(ROOT_CA_CERT_PATH);
   if (exists && !isCertExpired(ROOT_CA_CERT_PATH)) {
     console.log("✅ Root CA already exists");
@@ -34,10 +48,6 @@ async function generateRootCA() {
     console.log("🔐 Root CA expired or expiring soon — regenerating...");
     try { fs.unlinkSync(ROOT_CA_KEY_PATH); } catch { /* ignore */ }
     try { fs.unlinkSync(ROOT_CA_CERT_PATH); } catch { /* ignore */ }
-  }
-
-  if (!fs.existsSync(MITM_DIR)) {
-    fs.mkdirSync(MITM_DIR, { recursive: true, mode: 0o700 });
   }
 
   console.log("🔐 Generating Root CA certificate...");

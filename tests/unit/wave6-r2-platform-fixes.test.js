@@ -36,6 +36,16 @@ async function pipeSse(sse) {
   return collectStreamText(input.pipeThrough(createResponsesApiTransformStream()));
 }
 
+function parseResponseEvents(out) {
+  return out
+    .trim()
+    .split("\n\n")
+    .filter(Boolean)
+    .map((block) => block.split("\n").find((line) => line.startsWith("data:"))?.slice(5).trim())
+    .filter((data) => data && data !== "[DONE]")
+    .map((data) => JSON.parse(data));
+}
+
 describe("wave6-r2 — responsesTransformer event ordering", () => {
   it("emits function_call_arguments.done before response.completed", async () => {
     const sse = [
@@ -50,6 +60,35 @@ describe("wave6-r2 — responsesTransformer event ordering", () => {
     expect(argDoneIdx).toBeGreaterThan(-1);
     expect(completedIdx).toBeGreaterThan(-1);
     expect(argDoneIdx).toBeLessThan(completedIdx);
+  });
+
+  it("keeps allocated output_index consistent across item added/delta/done events", async () => {
+    const sse = [
+      'data: {"id":"c1","choices":[{"index":0,"delta":{"reasoning_content":"why"},"finish_reason":null}]}',
+      'data: {"id":"c1","choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":null}]}',
+      'data: {"id":"c1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}',
+      "",
+    ].join("\n\n");
+
+    const events = parseResponseEvents(await pipeSse(sse));
+    const byType = (type) => events.filter((e) => e.type === type);
+    const itemIndex = (itemType) => byType("response.output_item.added")
+      .find((e) => e.item?.type === itemType)?.output_index;
+
+    const reasoningIndex = itemIndex("reasoning");
+    const messageIndex = itemIndex("message");
+    const toolIndex = itemIndex("function_call");
+
+    expect(new Set([reasoningIndex, messageIndex, toolIndex]).size).toBe(3);
+    for (const event of events.filter((e) => e.item_id === "msg_resp_c1_0" || e.item?.id === "msg_resp_c1_0")) {
+      expect(event.output_index).toBe(messageIndex);
+    }
+    for (const event of events.filter((e) => e.item_id === "fc_call_abc" || e.item?.id === "fc_call_abc")) {
+      expect(event.output_index).toBe(toolIndex);
+    }
+    for (const event of events.filter((e) => e.item_id === "rs_resp_c1_0" || e.item?.id === "rs_resp_c1_0")) {
+      expect(event.output_index).toBe(reasoningIndex);
+    }
   });
 });
 
