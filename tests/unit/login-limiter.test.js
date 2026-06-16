@@ -63,6 +63,25 @@ describe("login limiter client identity", () => {
   it("can trust forwarding headers when explicitly configured", () => {
     vi.stubEnv("TRUST_PROXY_HEADERS", "true");
 
-    expect(getClientIp(request({ "x-forwarded-for": "203.0.113.9, 10.0.0.2" }))).toBe("203.0.113.9");
+    // A single observed hop is used as-is.
+    expect(getClientIp(request({ "x-forwarded-for": "203.0.113.9" }))).toBe("203.0.113.9");
+  });
+
+  it("uses the RIGHTMOST X-Forwarded-For hop to resist spoofing", () => {
+    vi.stubEnv("TRUST_PROXY_HEADERS", "true");
+
+    // With a trusted appending proxy the header is `<client-supplied>, <real>`.
+    // The leftmost value is attacker-controlled; keying the lockout off it would
+    // let an attacker rotate X-Forwarded-For to land in a fresh bucket every
+    // request and bypass the brute-force lockout. The rightmost (last) hop is
+    // the address our own proxy actually observed.
+    expect(getClientIp(request({ "x-forwarded-for": "203.0.113.9, 10.0.0.2" }))).toBe("10.0.0.2");
+    expect(
+      getClientIp(request({ "x-forwarded-for": "1.1.1.1, 2.2.2.2, 3.3.3.3" }))
+    ).toBe("3.3.3.3");
+    // Spoofed leading entries must NOT change the resolved identity.
+    expect(getClientIp(request({ "x-forwarded-for": "evil, 10.0.0.2" }))).toBe(
+      getClientIp(request({ "x-forwarded-for": "also-evil, 10.0.0.2" }))
+    );
   });
 });

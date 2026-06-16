@@ -16,7 +16,6 @@ import {
   verifyApiKeyCrc,
   isLocalhostSentinelKey,
   hasgenesisCredentialAttempt,
-  allowsStaleGatewayBypass,
   extractApiKey,
   getGatewayApiKeyCandidates,
 } from "@/shared/utils/apiKey";
@@ -110,9 +109,6 @@ async function canAccessPublicLlmApi(request) {
 
   if (hasgenesisCredentialAttempt(request)) {
     if (await hasValidApiKey(request)) return true;
-    if (!requireApiKey && isVerifiableLoopbackRequest(request) && allowsStaleGatewayBypass(request)) {
-      return true;
-    }
     return false;
   }
 

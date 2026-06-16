@@ -1,4 +1,4 @@
-import { getProviderConnections, getProviderConnectionById, validateApiKey, updateProviderConnection, getSettingsSafe } from "@/lib/localDb";
+import { getProviderConnections, getProviderConnectionById, validateApiKey, updateProviderConnection, getSettings, getSettingsSafe } from "@/lib/localDb";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -11,7 +11,6 @@ import {
   isLocalhostSentinelKey,
   hasgenesisCredentialAttempt,
   getGatewayApiKeyCandidates,
-  allowsStaleGatewayBypass,
 } from "@/shared/utils/apiKey.js";
 import { isVerifiableLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 import { hasValidLocalCliToken } from "@/shared/auth/cliToken.js";
@@ -406,12 +405,20 @@ export async function rollbackStickyUseCount(connectionId) {
 
 /**
  * Enforce API key rules for SSE handlers.
- * - Invalid gateway credentials are rejected (or bypassed on loopback when a provider
- *   credential is also present and requireApiKey=false)
+ * - Invalid gateway credentials are rejected
  * - No-auth bypass when no gateway credential attempt is present
  */
 export async function authenticateRequest(request, log) {
-  const settings = await getSettingsSafe();
+  // Fail CLOSED for the auth gate: getSettingsSafe() returns permissive defaults
+  // (requireApiKey:false) when the DB read throws, which would silently DROP key
+  // enforcement. Probe with the strict reader; if it throws, keep safe defaults
+  // for shape but force requireApiKey=true.
+  let settings;
+  try {
+    settings = await getSettings();
+  } catch {
+    settings = { ...(await getSettingsSafe()), requireApiKey: true };
+  }
 
   if (await hasValidLocalCliToken(request)) {
     log?.debug?.("AUTH", "Authenticated via local CLI token");
@@ -420,9 +427,12 @@ export async function authenticateRequest(request, log) {
 
   const hasCredentialHeader = hasgenesisCredentialAttempt(request);
   const candidates = hasCredentialHeader ? getGatewayApiKeyCandidates(request) : [];
+  // The localhost sentinel key represents "no configured key on loopback"; it
+  // must NOT override an explicit requireApiKey=true (which demands a real key).
+  const allowLocalhostSentinel = settings?.requireApiKey !== true;
   let apiKey = null;
   for (const candidate of candidates) {
-    if (await isValidApiKey(candidate, request)) {
+    if (await isValidApiKey(candidate, request, { allowLocalhostSentinel })) {
       apiKey = candidate;
       break;
     }
@@ -430,14 +440,6 @@ export async function authenticateRequest(request, log) {
 
   if (hasCredentialHeader) {
     if (!apiKey) {
-      if (
-        settings?.requireApiKey !== true
-        && isVerifiableLoopbackRequest(request)
-        && allowsStaleGatewayBypass(request)
-      ) {
-        log?.debug?.("AUTH", "Ignoring stale gateway header; provider bearer on loopback");
-        return { ok: true, apiKey: null, settings, bypassed: true };
-      }
       log?.warn?.("AUTH", "Invalid API key (credential header present)");
       return {
         ok: false,
@@ -475,9 +477,12 @@ export { extractApiKey } from "@/shared/utils/apiKey.js";
 /**
  * Validate API key (optional - for local use can skip)
  */
-export async function isValidApiKey(apiKey, request = null) {
+export async function isValidApiKey(apiKey, request = null, { allowLocalhostSentinel = true } = {}) {
   if (!apiKey) return false;
   if (isLocalhostSentinelKey(apiKey)) {
+    // Honor the loopback sentinel only when key enforcement is off; with
+    // requireApiKey=true a real provisioned key is required even on loopback.
+    if (!allowLocalhostSentinel) return false;
     return request ? isVerifiableLoopbackRequest(request) : false;
   }
   if (!verifyApiKeyCrc(apiKey)) return false;

@@ -57,7 +57,7 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({ Authorization: "Basic dXNlcjpwYXNz" }))).toBe(false);
   });
 
-  it("ignores stale gateway-shaped x-api-key when Bearer is a provider token", () => {
+  it("treats stale gateway-shaped x-api-key as a credential attempt even with provider Bearer", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },
     });
@@ -65,14 +65,14 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "Bearer eyJhbGciOiJSUzI1NiJ9.payload.sig",
-    }))).toBe(false);
+    }))).toBe(true);
     expect(extractGatewayApiKey(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "Bearer eyJhbGciOiJSUzI1NiJ9.payload.sig",
-    }))).toBe(null);
+    }))).toBe("sk-badkeyyy");
   });
 
-  it("ignores stale gateway Bearer when provider x-api-key is present", () => {
+  it("treats stale gateway Bearer as a credential attempt even with provider x-api-key", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },
     });
@@ -80,14 +80,14 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-ant-api03-provider-key",
       Authorization: "Bearer sk-badkeyyy",
-    }))).toBe(false);
+    }))).toBe(true);
     expect(extractGatewayApiKey(req({
       "x-api-key": "sk-ant-api03-provider-key",
       Authorization: "Bearer sk-badkeyyy",
-    }))).toBe(null);
+    }))).toBe("sk-badkeyyy");
   });
 
-  it("ignores stale gateway x-api-key when non-sk provider key is in x-api-key", () => {
+  it("treats stale gateway x-api-key as a credential attempt with non-sk provider bearer", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },
     });
@@ -95,10 +95,10 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "Bearer AIzaSyD-provider-google-key",
-    }))).toBe(false);
+    }))).toBe(true);
   });
 
-  it("ignores stale gateway Bearer when x-goog-api-key is present", () => {
+  it("treats stale gateway Bearer as a credential attempt when x-goog-api-key is present", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },
     });
@@ -106,14 +106,14 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       "x-goog-api-key": "AIzaSyD-provider-google-key",
       Authorization: "Bearer sk-badkeyyy",
-    }))).toBe(false);
+    }))).toBe(true);
     expect(extractGatewayApiKey(req({
       "x-goog-api-key": "AIzaSyD-provider-google-key",
       Authorization: "Bearer sk-badkeyyy",
-    }))).toBe(null);
+    }))).toBe("sk-badkeyyy");
   });
 
-  it("ignores stale gateway x-api-key when Azure api-key header is present", () => {
+  it("treats stale gateway x-api-key as a credential attempt when Azure api-key header is present", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },
     });
@@ -121,7 +121,7 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       "api-key": "azure-openai-provider-secret",
-    }))).toBe(false);
+    }))).toBe(true);
   });
 
   it("does not bypass stale gateway x-api-key when Authorization Token is garbage", () => {
@@ -150,7 +150,7 @@ describe("genesis API key shape detection", () => {
     }))).toBe(true);
   });
 
-  it("ignores stale gateway Bearer when Authorization uses Token scheme (Deepgram)", () => {
+  it("treats stale gateway x-api-key as a credential attempt when Authorization uses Token scheme", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },
     });
@@ -161,15 +161,15 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       Authorization: "Token deepgram-provider-secret",
       "x-api-key": "sk-badkeyyy",
-    }))).toBe(false);
+    }))).toBe(true);
     expect(extractGatewayApiKey(req({
       Authorization: "Token deepgram-provider-secret",
       "x-api-key": "sk-badkeyyy",
-    }))).toBe(null);
+    }))).toBe("sk-badkeyyy");
     expect(hasgenesisCredentialAttempt(req({
       Authorization: "token dg_live_provider_key",
       "x-api-key": "sk-badkeyyy",
-    }))).toBe(false);
+    }))).toBe(true);
   });
 
   it("still treats invalid gateway x-api-key alone as a credential attempt", () => {
@@ -192,7 +192,7 @@ describe("genesis API key shape detection", () => {
     expect(extractGatewayApiKey(req({ Authorization: "sk-badkeyyy" }))).toBe("sk-badkeyyy");
   });
 
-  it("ignores stale gateway x-api-key when provider key is raw Authorization without Bearer", () => {
+  it("treats stale gateway x-api-key as a credential attempt with raw provider Authorization", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },
     });
@@ -200,11 +200,11 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "sk-ant-api03-provider-key",
-    }))).toBe(false);
+    }))).toBe(true);
     expect(extractGatewayApiKey(req({
       "x-api-key": "sk-badkeyyy",
       Authorization: "sk-ant-api03-provider-key",
-    }))).toBe(null);
+    }))).toBe("sk-badkeyyy");
   });
 
   it("does not treat Basic Authorization as a provider credential for stale bypass", () => {
@@ -222,7 +222,7 @@ describe("genesis API key shape detection", () => {
     }))).toBe("sk-badkeyyy");
   });
 
-  it("ignores stale raw Authorization when provider x-api-key is present", () => {
+  it("treats stale raw Authorization as a credential attempt when provider x-api-key is present", () => {
     const req = (headers) => ({
       headers: { get: (name) => headers[name] ?? null },
     });
@@ -230,11 +230,11 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       Authorization: "sk-badkeyyy",
       "x-api-key": "sk-ant-api03-provider-key",
-    }))).toBe(false);
+    }))).toBe(true);
     expect(extractGatewayApiKey(req({
       Authorization: "sk-badkeyyy",
       "x-api-key": "sk-ant-api03-provider-key",
-    }))).toBe(null);
+    }))).toBe("sk-badkeyyy");
   });
 
   it("orders gateway candidates with x-api-key before Authorization when both are verifiable", () => {
@@ -294,7 +294,7 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       Authorization: "ApiKey sk-badkeyyy",
       "x-api-key": "sk-ant-api03-provider-key",
-    }))).toBe(false);
+    }))).toBe(true);
     expect(extractApiKey(req({ Authorization: `ApiKey ${gatewayKey}` }))).toBe(gatewayKey);
   });
 
@@ -310,7 +310,7 @@ describe("genesis API key shape detection", () => {
     expect(hasgenesisCredentialAttempt(req({
       Authorization: "Api-Key sk-badkeyyy",
       "x-api-key": "sk-ant-api03-provider-key",
-    }))).toBe(false);
+    }))).toBe(true);
     expect(extractApiKey(req({ Authorization: `Api-Key ${gatewayKey}` }))).toBe(gatewayKey);
   });
 
