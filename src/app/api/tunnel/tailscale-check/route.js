@@ -4,6 +4,7 @@ import { promisify } from "util";
 import { NextResponse } from "next/server";
 import { isTailscaleInstalled, isTailscaleLoggedIn, TAILSCALE_SOCKET } from "@/lib/tunnel";
 import { getCachedPassword, loadEncryptedPassword } from "@/mitm/manager";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 const execAsync = promisify(exec);
 const EXTENDED_PATH = `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${process.env.PATH || ""}`;
@@ -32,7 +33,10 @@ async function isDaemonRunning() {
   }
 }
 
-export async function GET() {
+export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const installed = isTailscaleInstalled();
     const platform = os.platform();

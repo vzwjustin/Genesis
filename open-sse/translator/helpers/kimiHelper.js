@@ -71,20 +71,28 @@ export function normalizeKimiSamplingParams(body) {
  * K2.7 Code errors when thinking is disabled.
  */
 export function ensureKimiThinkingEnabled(body, model) {
-  if (!isKimiCodeModel(model)) return;
-  if (/k2\.7/i.test(model) && body.thinking?.type === "disabled") {
-    body.thinking = { type: "enabled" };
-    return;
-  }
-  if (/k2\.7/i.test(model) && !body.thinking) {
+  if (!isKimiCodeModel(model) || !/k2\.7/i.test(model)) return;
+  if (!body.thinking || body.thinking.type === "disabled") {
     body.thinking = { type: "enabled" };
   }
+}
+
+/** First non-null member type of an anyOf/oneOf/allOf union, or null. */
+function inferTypeFromUnion(prop) {
+  const union = prop.anyOf || prop.oneOf || prop.allOf;
+  if (!Array.isArray(union)) return null;
+  for (const member of union) {
+    const t = member && typeof member === "object" ? member.type : null;
+    if (typeof t === "string" && t !== "null") return t;
+  }
+  return null;
 }
 
 function normalizePropertySchema(prop) {
   if (!prop || typeof prop !== "object" || Array.isArray(prop)) {
     return { type: "string" };
   }
+  const unionType = inferTypeFromUnion(prop);
   const out = { ...prop };
   for (const key of SCHEMA_META_KEYS) {
     delete out[key];
@@ -92,6 +100,8 @@ function normalizePropertySchema(prop) {
   if (!out.type) {
     if (Array.isArray(out.enum) && out.enum.length > 0) {
       out.type = typeof out.enum[0];
+    } else if (unionType) {
+      out.type = unionType;
     } else {
       out.type = "string";
     }

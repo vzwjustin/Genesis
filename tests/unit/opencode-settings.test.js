@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   listGenesisModelIds,
   parseGenesisPrefixedModel,
+  providerPrefixForModel,
 } from "../../src/app/api/cli-tools/opencode-settings/route.js";
 
 describe("opencode-settings genesis provider helpers", () => {
@@ -21,5 +22,13 @@ describe("opencode-settings genesis provider helpers", () => {
 
   it("parses active model ids from genesis prefix", () => {
     expect(parseGenesisPrefixedModel("genesis/openai/gpt-4o")).toBe("openai/gpt-4o");
+  });
+
+  it("uses genesis prefix for cc-only configs", () => {
+    expect(providerPrefixForModel("cc/claude-opus-4-8", ["cc/claude-opus-4-8"])).toBe("genesis");
+  });
+
+  it("uses genesis-cc prefix for cc models in mixed configs", () => {
+    expect(providerPrefixForModel("cc/claude-opus-4-8", ["cc/claude-opus-4-8", "cx/gpt-5.2"])).toBe("genesis-cc");
   });
 });

@@ -205,27 +205,54 @@ useEffect(() => {
     const activeModelToShow = activeModel || selectedModels[0] || modelsToShow[0];
     const effectiveSubagentModel = subagentModel || activeModelToShow;
 
-    const modelsObj = {};
+    // Mirror the server split (applyGenesisProviders): cc/claude-only configs can
+    // keep the familiar "genesis" prefix on Anthropic wire; mixed configs split
+    // cc/claude models to "genesis-cc" so OpenAI-compatible models still work.
+    const isClaudeWireModel = (id) => /^(cc\/|claude[-/])/i.test(id);
+    const modelEntry = (m) => ({ name: m, modalities: { input: ["text", "image"], output: ["text"] } });
+    const claudeModels = {};
+    const openaiModels = {};
     modelsToShow.forEach(m => {
-      modelsObj[m] = { name: m, modalities: { input: ["text", "image"], output: ["text"] } };
+      (isClaudeWireModel(m) ? claudeModels : openaiModels)[m] = modelEntry(m);
     });
+
+    const baseWithV1 = getEffectiveBaseUrl();
+    const baseNoV1 = baseWithV1.replace(/\/v1\/?$/, "").replace(/\/$/, "");
+    const provider = {};
+    const hasOpenAIModels = Object.keys(openaiModels).length > 0;
+    const hasClaudeModels = Object.keys(claudeModels).length > 0;
+    if (hasOpenAIModels) {
+      provider.genesis = {
+        npm: "@ai-sdk/openai-compatible",
+        options: { baseURL: baseWithV1, apiKey: keyToUse },
+        models: openaiModels,
+      };
+    }
+    if (!hasOpenAIModels && hasClaudeModels) {
+      provider.genesis = {
+        npm: "@ai-sdk/anthropic",
+        options: { baseURL: baseNoV1, apiKey: keyToUse },
+        models: claudeModels,
+      };
+    } else if (hasClaudeModels) {
+      provider["genesis-cc"] = {
+        npm: "@ai-sdk/anthropic",
+        options: { baseURL: baseNoV1, apiKey: keyToUse },
+        models: claudeModels,
+      };
+    }
+    const prefixFor = (id) => (isClaudeWireModel(id) && hasOpenAIModels ? "genesis-cc" : "genesis");
 
     return [{
       filename: "~/.config/opencode/opencode.json",
       content: JSON.stringify({
-        provider: {
-          "genesis": {
-            npm: "@ai-sdk/openai-compatible",
-            options: { baseURL: getEffectiveBaseUrl(), apiKey: keyToUse },
-            models: modelsObj,
-          },
-        },
-        model: `genesis/${activeModelToShow}`,
+        provider,
+        model: `${prefixFor(activeModelToShow)}/${activeModelToShow}`,
         agent: {
           explorer: {
             description: "Fast explorer subagent for codebase exploration",
             mode: "subagent",
-            model: `genesis/${effectiveSubagentModel}`
+            model: `${prefixFor(effectiveSubagentModel)}/${effectiveSubagentModel}`
           }
         }
       }, null, 2),

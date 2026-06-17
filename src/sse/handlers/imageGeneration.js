@@ -3,6 +3,7 @@ import {
   markAccountUnavailable,
   clearAccountError,
   authenticateRequest,
+  rollbackStickyUseCount,
 } from "../services/auth.js";
 import { getSettings, getSettingsSafe } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
@@ -162,6 +163,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
     // as unusable and proceed to Account_Fallback for the next available connection.
     if (refreshedCredentials._tokenRefreshFailed) {
       log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      await rollbackStickyUseCount(credentials.connectionId);
       excludeConnectionIds.add(credentials.connectionId);
       lastError = "Token refresh failed";
       lastStatus = 401;

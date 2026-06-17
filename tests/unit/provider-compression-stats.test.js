@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   rows: [],
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
 }));
 
 vi.mock("../../src/lib/db/driver.js", () => ({
@@ -10,6 +11,10 @@ vi.mock("../../src/lib/db/driver.js", () => ({
     run: vi.fn(),
     get: vi.fn(),
   })),
+}));
+
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: mocks.requireSpawnRouteAuth,
 }));
 
 describe("getProviderCompressionStats", () => {
@@ -84,6 +89,8 @@ describe("getProviderCompressionStats", () => {
 describe("GET /api/compression/by-provider", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: true });
   });
 
   it("returns provider compression stats", async () => {

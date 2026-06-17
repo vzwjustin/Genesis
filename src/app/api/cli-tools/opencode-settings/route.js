@@ -99,8 +99,20 @@ function modelEntry(id) {
   return { name: id, modalities: { input: ["text", "image"], output: ["text"] } };
 }
 
-function providerPrefixForModel(id) {
-  return /^(cc\/|claude[-/])/i.test(id) ? "genesis-cc" : "genesis";
+function isClaudeWireModel(id) {
+  return typeof id === "string" && /^(cc\/|claude[-/])/i.test(id);
+}
+
+export function providerPrefixForModel(id, modelIds = []) {
+  if (!isClaudeWireModel(id)) return "genesis";
+  const hasOpenAIModels = modelIds.some((m) => !isClaudeWireModel(m));
+  return hasOpenAIModels ? "genesis-cc" : "genesis";
+}
+
+function normalizeGenesisModelPrefix(value, modelIds) {
+  const id = parseGenesisPrefixedModel(value);
+  if (!id) return value;
+  return `${providerPrefixForModel(id, modelIds)}/${id}`;
 }
 
 function applyGenesisProviders(config, { modelsMap, normalizedBaseUrl, apiKey }) {
@@ -119,7 +131,14 @@ function applyGenesisProviders(config, { modelsMap, normalizedBaseUrl, apiKey })
     delete config.provider.genesis;
   }
 
-  if (Object.keys(claude).length > 0) {
+  if (Object.keys(openai).length === 0 && Object.keys(claude).length > 0) {
+    config.provider.genesis = {
+      npm: "@ai-sdk/anthropic",
+      options: { baseURL: hostBase, apiKey: keyToUse },
+      models: claude,
+    };
+    delete config.provider["genesis-cc"];
+  } else if (Object.keys(claude).length > 0) {
     config.provider["genesis-cc"] = {
       npm: "@ai-sdk/anthropic",
       options: { baseURL: hostBase, apiKey: keyToUse },
@@ -143,17 +162,14 @@ function repairGenesisProviderSplit(config) {
     || "http://127.0.0.1:20128";
   const normalizedBaseUrl = String(baseURL).replace(/\/v1\/?$/, "").replace(/\/$/, "");
   applyGenesisProviders(config, { modelsMap: merged, normalizedBaseUrl, apiKey });
+  const modelIds = Object.keys(merged);
 
-  if (typeof config.model === "string" && config.model.startsWith("genesis/")) {
-    const id = config.model.replace(/^genesis\//, "");
-    if (/^(cc\/|claude[-/])/i.test(id)) config.model = `genesis-cc/${id}`;
+  if (isGenesisPrefixedModel(config.model)) {
+    config.model = normalizeGenesisModelPrefix(config.model, modelIds);
   }
   const explorerModel = config.agent?.explorer?.model;
-  if (typeof explorerModel === "string" && explorerModel.startsWith("genesis/")) {
-    const id = explorerModel.replace(/^genesis\//, "");
-    if (/^(cc\/|claude[-/])/i.test(id)) {
-      config.agent.explorer.model = `genesis-cc/${id}`;
-    }
+  if (isGenesisPrefixedModel(explorerModel)) {
+    config.agent.explorer.model = normalizeGenesisModelPrefix(explorerModel, modelIds);
   }
   return config;
 }
@@ -274,6 +290,7 @@ export async function POST(request) {
       normalizedBaseUrl,
       apiKey: keyToUse,
     });
+    const modelIds = Object.keys(existingModels);
 
     // Set the active model: prefer explicit activeModel, else first of modelsArray
     if (activeModel === "") {
@@ -281,7 +298,7 @@ export async function POST(request) {
     } else {
       const finalActive = activeModel || modelsArray[0];
       if (finalActive) {
-        config.model = `${providerPrefixForModel(finalActive)}/${finalActive}`;
+        config.model = `${providerPrefixForModel(finalActive, modelIds)}/${finalActive}`;
       }
     }
 
@@ -290,7 +307,7 @@ export async function POST(request) {
     config.agent.explorer = {
       description: "Fast explorer subagent for codebase exploration",
       mode: "subagent",
-      model: `${providerPrefixForModel(effectiveSubagentModel)}/${effectiveSubagentModel}`,
+      model: `${providerPrefixForModel(effectiveSubagentModel, modelIds)}/${effectiveSubagentModel}`,
     };
 
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
@@ -382,16 +399,21 @@ export async function DELETE(request) {
 
     // If specific model provided, remove just that model from the correct provider
     if (modelToRemove) {
-      const providerKey = providerPrefixForModel(modelToRemove);
-      if (config.provider?.[providerKey]?.models?.[modelToRemove]) {
-        delete config.provider[providerKey].models[modelToRemove];
-        if (Object.keys(config.provider[providerKey].models).length === 0) {
-          delete config.provider[providerKey];
+      const modelIds = listGenesisModelIds(config);
+      const providerKey = providerPrefixForModel(modelToRemove, modelIds);
+      const fallbackProviderKey = providerKey === "genesis" ? "genesis-cc" : "genesis";
+      const actualProviderKey = config.provider?.[providerKey]?.models?.[modelToRemove]
+        ? providerKey
+        : fallbackProviderKey;
+      if (config.provider?.[actualProviderKey]?.models?.[modelToRemove]) {
+        delete config.provider[actualProviderKey].models[modelToRemove];
+        if (Object.keys(config.provider[actualProviderKey].models).length === 0) {
+          delete config.provider[actualProviderKey];
         }
         if (parseGenesisPrefixedModel(config.model) === modelToRemove) {
           const remaining = listGenesisModelIds(config);
           if (remaining.length > 0) {
-            config.model = `${providerPrefixForModel(remaining[0])}/${remaining[0]}`;
+            config.model = `${providerPrefixForModel(remaining[0], remaining)}/${remaining[0]}`;
           } else {
             delete config.model;
           }

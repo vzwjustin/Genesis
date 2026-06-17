@@ -68,26 +68,34 @@ export function claudeToOpenAIRequest(model, body, stream) {
   // Fix missing tool responses - OpenAI requires every tool_call to have a response
   fixMissingToolResponses(result.messages);
 
-  // Tools — preserve Anthropic built-ins; convert client function tools to OpenAI shape
+  // Tools — convert client function tools to OpenAI shape.
+  // Anthropic built-ins (web_search_20250305, bash_*, etc.) are not valid
+  // Chat Completions tools for OpenAI-compatible providers such as OpenRouter.
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map((tool) => {
+    const tools = body.tools.flatMap((tool) => {
       if (tool.type && tool.type !== "function") {
-        return { ...tool };
+        return [];
       }
-      return {
+      if (!tool.name) return [];
+      return [{
         type: "function",
         function: {
           name: tool.name,
           description: String(tool.description || ""),
           parameters: tool.input_schema || { type: "object", properties: {} },
         },
-      };
+      }];
     });
+    if (tools.length > 0) result.tools = tools;
   }
 
   // Tool choice
-  if (body.tool_choice) {
-    result.tool_choice = convertToolChoice(body.tool_choice);
+  if (body.tool_choice && (result.tools?.length || isToolChoiceNone(body.tool_choice))) {
+    const toolNames = result.tools
+      ? new Set(result.tools.map((tool) => tool.function?.name).filter(Boolean))
+      : null;
+    const toolChoice = convertToolChoice(body.tool_choice, toolNames);
+    if (toolChoice !== undefined) result.tool_choice = toolChoice;
   }
 
   return result;
@@ -249,7 +257,11 @@ function convertClaudeMessage(msg) {
 }
 
 // Convert tool choice
-function convertToolChoice(choice) {
+function isToolChoiceNone(choice) {
+  return choice === "none" || choice?.type === "none";
+}
+
+function convertToolChoice(choice, availableToolNames = null) {
   if (!choice) return "auto";
   if (typeof choice === "string") {
     if (choice === "none") return "none";
@@ -260,7 +272,10 @@ function convertToolChoice(choice) {
     case "none": return "none";
     case "auto": return "auto";
     case "any": return "required";
-    case "tool": return { type: "function", function: { name: choice.name } };
+    case "tool": {
+      if (!choice.name || (availableToolNames && !availableToolNames.has(choice.name))) return undefined;
+      return { type: "function", function: { name: choice.name } };
+    }
     default: return "auto";
   }
 }

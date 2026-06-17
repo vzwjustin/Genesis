@@ -74,6 +74,18 @@ describe("kimi K2.7 compatibility", () => {
     expect(out.required).toEqual([]);
   });
 
+  it("infers property type from anyOf/oneOf instead of forcing string", () => {
+    const out = normalizeKimiInputSchema({
+      type: "object",
+      properties: {
+        count: { anyOf: [{ type: "number" }, { type: "null" }] },
+        flag: { oneOf: [{ type: "boolean" }] },
+      },
+    });
+    expect(out.properties.count).toEqual({ type: "number" });
+    expect(out.properties.flag).toEqual({ type: "boolean" });
+  });
+
   it("forces thinking enabled for k2.7", () => {
     const body = { thinking: { type: "disabled" } };
     ensureKimiThinkingEnabled(body, "kimi-k2.7-code");

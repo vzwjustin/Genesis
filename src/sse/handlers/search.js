@@ -3,6 +3,7 @@ import {
   markAccountUnavailable,
   clearAccountError,
   authenticateRequest,
+  rollbackStickyUseCount,
 } from "../services/auth.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
@@ -183,6 +184,7 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
     // as unusable and proceed to Account_Fallback for the next available connection.
     if (refreshedCredentials._tokenRefreshFailed) {
       log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      await rollbackStickyUseCount(credentials.connectionId);
       excludeConnectionIds.add(credentials.connectionId);
       lastError = "Token refresh failed";
       lastStatus = 401;
