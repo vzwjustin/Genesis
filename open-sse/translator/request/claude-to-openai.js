@@ -13,7 +13,7 @@ function flattenTextOnlyParts(parts) {
 // prefix stays stable across turns (improves upstream prompt-cache hit rate).
 function stripAnthropicBillingHeader(text) {
   if (typeof text !== "string") return "";
-  return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
+  return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/gim, "");
 }
 
 // Convert Claude request to OpenAI format

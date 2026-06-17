@@ -48,6 +48,22 @@ describe("request normalization", () => {
     expect(Array.isArray(result.messages[0].content)).toBe(true);
   });
 
+  it("claudeToOpenAIRequest strips Anthropic billing headers on any system line", () => {
+    const body = {
+      system: [
+        { type: "text", text: "Keep this line\nx-anthropic-billing-header: first\nKeep this too" },
+        { type: "text", text: "x-anthropic-billing-header: second\nFinal line" },
+      ],
+      messages: [{ role: "user", content: "hi" }],
+    };
+
+    const result = claudeToOpenAIRequest("gpt-4o", body, false);
+    expect(result.messages[0]).toEqual({
+      role: "system",
+      content: "Keep this line\nKeep this too\nFinal line",
+    });
+  });
+
   it("filterToOpenAIFormat flattens text-only arrays to string", () => {
     const body = {
       messages: [
