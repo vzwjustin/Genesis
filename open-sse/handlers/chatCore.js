@@ -36,7 +36,7 @@ import {
 import { compressWithHeadroom } from "../rtk/headroom.js";
 import { saveCompressionStats } from "@/lib/compressionStats.js";
 import { buildProxyOptionsFromCredentials } from "../utils/proxyFetch.js";
-import { checkCircuitBreaker, recordUpstreamTelemetry } from "../utils/upstreamTelemetry.js";
+import { checkCircuitBreaker, recordUpstreamTelemetry, releaseCircuitProbe } from "../utils/upstreamTelemetry.js";
 
 function buildExecCredentials(credentials, { clientHasCacheBreakpoints = false, passthrough = false } = {}) {
   if (!clientHasCacheBreakpoints && !passthrough) return credentials;
@@ -665,6 +665,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const clientAbort = isClientAbortError(error, upstreamSignal);
     if (!clientAbort) {
       recordUpstreamTelemetry(provider, model, requestStartTime, null, { isNetworkError: true });
+    } else {
+      // Client aborted before any upstream outcome — release the circuit-breaker
+      // probe slot so an aborted half-open probe can't wedge the breaker.
+      releaseCircuitProbe(provider);
     }
     releasePending();
     reqLogger.logError(error, translatedBody);
@@ -855,7 +859,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, trackDone, appendLog });
+    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog });
     if (result) {
       streamController.handleComplete();
       return result;

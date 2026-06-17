@@ -176,12 +176,12 @@ describe("usesAnthropicToolCleaning", () => {
     expect(usesAnthropicToolCleaning("glm")).toBe(true);
   });
 
-  it("includes openai and gemini only when client owns cache breakpoints", () => {
+  it("does not include OpenAI/Gemini target schemas even when client owns cache breakpoints", () => {
     expect(usesAnthropicToolCleaning("openai", false)).toBe(false);
-    expect(usesAnthropicToolCleaning("openai", true)).toBe(true);
+    expect(usesAnthropicToolCleaning("openai", true)).toBe(false);
     expect(usesAnthropicToolCleaning("gemini", false)).toBe(false);
-    expect(usesAnthropicToolCleaning("gemini", true)).toBe(true);
-    expect(usesAnthropicToolCleaning("gemini-cli", true)).toBe(true);
+    expect(usesAnthropicToolCleaning("gemini", true)).toBe(false);
+    expect(usesAnthropicToolCleaning("gemini-cli", true)).toBe(false);
   });
 });
 

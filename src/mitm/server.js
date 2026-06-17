@@ -7,7 +7,7 @@ const dns = require("dns");
 const { promisify } = require("util");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
 const { IS_DEV, TARGET_HOSTS, URL_PATTERNS, getToolForHost } = require("./config");
-const { isKiroMitmHost } = require("../shared/constants/mitmToolHosts.js");
+const { isKiroMitmHost, isHttp2Required } = require("../shared/constants/mitmToolHosts.js");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
 const { extractModel, getMappedModel } = require("./modelMapping");
@@ -173,6 +173,13 @@ async function passthrough(req, res, bodyBuffer, onResponse) {
   const headersForForwarding = { ...versionOverride.headers, host: targetHost };
   if (bodyForForwarding !== bodyBuffer) {
     headersForForwarding["content-length"] = String(bodyForForwarding.length);
+  }
+
+  // Hosts that reject HTTP/1.1 (e.g. api2.cursor.sh) MUST use HTTP/2 — never fall
+  // back, or a transient ALPN failure permanently breaks them (and the negotiated
+  // "http/1.1" would get cached). Force the h2 path with no HTTP/1.1 fallback.
+  if (isHttp2Required(targetHost)) {
+    return await passthroughHttp2(req, res, bodyForForwarding, headersForForwarding, targetHost, onResponse, dumper);
   }
 
   // ALPN negotiate: try HTTP/2 first (like browsers/mitmweb), fallback HTTP/1.1

@@ -22,10 +22,25 @@ export function injectCaveman(body, format, level, provider = null) {
       // Antigravity wraps Gemini shape in body.request → injectGeminiSystem handles it
       injectGeminiSystem(body, prompt);
       return true;
+    case FORMATS.OPENAI_RESPONSES:
+      // Responses API: the system channel is the top-level `instructions` string.
+      // Never push a Chat-shaped {type:"text"} part into input[] — input content
+      // parts must be `input_text`, so a foreign type yields a 400 upstream.
+      return injectResponsesInstructions(body, prompt);
     default:
-      // OpenAI and OpenAI-shaped formats (responses/codex/cursor/kiro/ollama)
+      // OpenAI Chat and OpenAI-shaped formats (cursor/kiro/ollama)
       return injectMessagesSystem(body, prompt);
   }
+}
+
+// OpenAI Responses API: inject into the top-level `instructions` string. This is
+// the canonical system-prompt channel and avoids mutating input[] with an
+// invalid part type.
+function injectResponsesInstructions(body, prompt) {
+  body.instructions = typeof body.instructions === "string" && body.instructions
+    ? `${body.instructions}${SEP}${prompt}`
+    : prompt;
+  return true;
 }
 
 // OpenAI-shaped: messages[] (chat) or input[] (responses) or instructions (responses string)

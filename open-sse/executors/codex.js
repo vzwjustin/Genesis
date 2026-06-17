@@ -201,16 +201,15 @@ _assistantSessionCleanup?.unref?.();
 export class CodexExecutor extends BaseExecutor {
   constructor() {
     super("codex", PROVIDERS.codex);
-    this._currentSessionId = null;
   }
 
   /**
    * Override headers to add codex-specific identity headers.
-   * transformRequest runs BEFORE buildHeaders, sets this._currentSessionId.
+   * transformRequest runs BEFORE buildHeaders and attaches per-request session metadata.
    */
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, model = "", requestContext = {}) {
     const headers = super.buildHeaders(credentials, stream);
-    headers["session_id"] = this._currentSessionId || credentials?.connectionId || "default";
+    headers["session_id"] = requestContext.body?._codexSessionId || credentials?.connectionId || "default";
     // Identify client type to Codex backend (matches official codex CLI)
     if (!headers["originator"]) headers["originator"] = "codex_cli_rs";
     // Workspace binding header — improves account scope + cache affinity
@@ -286,7 +285,7 @@ export class CodexExecutor extends BaseExecutor {
   async execute(args) {
     const imgCount = Array.isArray(args.body?.input) ? args.body.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter(c => c.type === "image_url").length : 0), 0) : 0;
     const inputLen = Array.isArray(args.body?.input) ? args.body.input.length : 0;
-    dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount} | sessionId=${this._currentSessionId || "pending"}`);
+    dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount} | sessionId=${args.body?._codexSessionId || "pending"}`);
     // Remote image inlining is required even in passthrough — Codex upstream cannot fetch URLs.
     if (!args.passthrough || imgCount > 0) {
       const t0 = imgCount > 0 ? Date.now() : null;
@@ -412,7 +411,11 @@ export class CodexExecutor extends BaseExecutor {
     delete body._compact;
     const machineId = await getMachineId();
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
-    this._currentSessionId = resolveCacheSessionId(body, credentials, machineId);
+    Object.defineProperty(body, "_codexSessionId", {
+      value: resolveCacheSessionId(body, credentials, machineId),
+      enumerable: false,
+      configurable: true,
+    });
 
     const preserveClientCache = hasAnthropicCacheBreakpoints(body);
 
@@ -442,8 +445,8 @@ export class CodexExecutor extends BaseExecutor {
     body.store = false;
 
     // Inject prompt_cache_key for stable Codex prompt caching
-    if (!body.prompt_cache_key && this._currentSessionId) {
-      body.prompt_cache_key = this._currentSessionId;
+    if (!body.prompt_cache_key && body._codexSessionId) {
+      body.prompt_cache_key = body._codexSessionId;
     }
 
     // Map virtual Codex review models to the upstream Codex model before suffix parsing.

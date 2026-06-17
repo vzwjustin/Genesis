@@ -13,19 +13,17 @@ export class OpenCodeGoExecutor extends BaseExecutor {
     super("opencode-go", PROVIDERS["opencode-go"]);
   }
 
-  // buildUrl runs before buildHeaders in BaseExecutor.execute, cache model here
   buildUrl(model) {
-    this._lastModel = model;
     return CLAUDE_FORMAT_MODELS.has(model)
       ? `${BASE}/messages`
       : `${BASE}/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, model = "") {
     const key = credentials?.apiKey || credentials?.accessToken;
     const headers = { "Content-Type": "application/json" };
 
-    if (CLAUDE_FORMAT_MODELS.has(this._lastModel)) {
+    if (CLAUDE_FORMAT_MODELS.has(model)) {
       headers["x-api-key"] = key;
       headers["anthropic-version"] = "2023-06-01";
     } else {

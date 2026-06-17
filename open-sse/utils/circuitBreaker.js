@@ -29,6 +29,7 @@ function createProviderState() {
     consecutiveFailures: 0,
     lastFailureTime: null,
     probeInFlight: false,
+    probeStartedAt: null,
   };
 }
 
@@ -39,6 +40,10 @@ function createProviderState() {
 export function createCircuitBreaker(options = {}) {
   const failureThreshold = options.failureThreshold ?? parseEnvInt("CB_FAILURE_THRESHOLD", 5, 1, 100);
   const cooldownMs = options.cooldownMs ?? parseEnvInt("CB_COOLDOWN_MS", 30000, 1000, 300000);
+  // A half-open probe that never reports back (canRequest set probeInFlight=true,
+  // but the request was aborted before any success/failure was recorded) must not
+  // wedge the breaker forever. Treat an in-flight probe older than this as stale.
+  const probeTimeoutMs = options.probeTimeoutMs ?? parseEnvInt("CB_PROBE_TIMEOUT_MS", 120000, 1000, 600000);
 
   /** @type {Map<string, ReturnType<typeof createProviderState>>} */
   const providers = new Map();
@@ -65,6 +70,13 @@ export function createCircuitBreaker(options = {}) {
         return { allowed: true };
       }
 
+      // Release a stale probe slot so a fresh probe can run (self-heal for the
+      // abort-during-probe leak: a probe with no recorded outcome past timeout).
+      if (s.probeInFlight && s.probeStartedAt != null && (Date.now() - s.probeStartedAt) >= probeTimeoutMs) {
+        s.probeInFlight = false;
+        s.probeStartedAt = null;
+      }
+
       if (s.state === "open") {
         const elapsed = Date.now() - s.lastFailureTime;
         if (elapsed >= cooldownMs) {
@@ -74,6 +86,7 @@ export function createCircuitBreaker(options = {}) {
           }
           s.state = "half-open";
           s.probeInFlight = true;
+          s.probeStartedAt = Date.now();
           return { allowed: true };
         }
         const remainingSec = Math.ceil((cooldownMs - elapsed) / 1000);
@@ -83,6 +96,7 @@ export function createCircuitBreaker(options = {}) {
       // half-open — at most one probe in flight
       if (!s.probeInFlight) {
         s.probeInFlight = true;
+        s.probeStartedAt = Date.now();
         return { allowed: true };
       }
       return { allowed: false, retryAfter: 5 };
@@ -105,6 +119,7 @@ export function createCircuitBreaker(options = {}) {
         s.state = "closed";
         s.consecutiveFailures = 0;
         s.probeInFlight = false;
+        s.probeStartedAt = null;
         return;
       }
 
@@ -128,6 +143,7 @@ export function createCircuitBreaker(options = {}) {
         s.state = "open";
         s.lastFailureTime = Date.now();
         s.probeInFlight = false;
+        s.probeStartedAt = null;
         return;
       }
 
@@ -175,6 +191,26 @@ export function createCircuitBreaker(options = {}) {
   }
 
   /**
+   * Release a probe slot taken by canRequest when the request neither succeeded
+   * nor failed upstream (e.g. client abort before any response). Leaves the
+   * circuit state unchanged so the next request can probe again — without this,
+   * an aborted half-open probe would wedge the breaker until process restart.
+   * @param {string} provider
+   */
+  function recordProbeRelease(provider) {
+    try {
+      const s = providers.get(provider);
+      if (!s) return;
+      if (s.probeInFlight) {
+        s.probeInFlight = false;
+        s.probeStartedAt = null;
+      }
+    } catch {
+      // fail-open — swallow
+    }
+  }
+
+  /**
    * Get states for all tracked providers.
    * @returns {Record<string, 'closed'|'open'|'half-open'>}
    */
@@ -190,7 +226,7 @@ export function createCircuitBreaker(options = {}) {
     }
   }
 
-  return { canRequest, recordSuccess, recordFailure, getState, getAllStates };
+  return { canRequest, recordSuccess, recordFailure, recordProbeRelease, getState, getAllStates };
 }
 
 /** Singleton circuit breaker configured from environment variables */

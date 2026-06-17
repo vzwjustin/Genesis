@@ -21,6 +21,20 @@ export function checkCircuitBreaker(provider) {
 }
 
 /**
+ * Release a circuit-breaker probe slot taken by checkCircuitBreaker when the
+ * request was aborted before any upstream outcome (no success/failure recorded).
+ * Prevents an aborted half-open probe from wedging the breaker. Fail-open.
+ * @param {string} provider
+ */
+export function releaseCircuitProbe(provider) {
+  try {
+    circuitBreaker.recordProbeRelease(provider);
+  } catch {
+    // Fail open
+  }
+}
+
+/**
  * Record circuit-breaker state, provider reachability, and latency after an upstream attempt.
  * @param {string} provider
  * @param {string} model

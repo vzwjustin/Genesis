@@ -26,8 +26,17 @@ const CLAUDE_IDENTITY_HEADERS = [
   "arch",
 ];
 
-/** @type {Map<string, object>} */
+/** @type {Map<string, { headers: object, expiresAt: number }>} */
 const cacheByConnection = new Map();
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — identity headers are short-lived
+const CACHE_MAX_ENTRIES = 256;
+
+// Reject values that could poison forwarded upstream headers: non-strings,
+// header-injection payloads (CR/LF), or absurdly long values. Identity headers
+// are small, single-line tokens.
+function isSafeHeaderValue(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= 4096 && !/[\r\n]/.test(value);
+}
 
 /**
  * Detect if request headers look like a real Claude Code client.
@@ -42,8 +51,9 @@ function isClaudeCodeClient(headers) {
 function extractIdentityHeaders(headers) {
   const captured = {};
   for (const key of CLAUDE_IDENTITY_HEADERS) {
-    if (headers[key] !== undefined && headers[key] !== null) {
-      captured[key] = headers[key];
+    const value = headers[key];
+    if (value !== undefined && value !== null && isSafeHeaderValue(value)) {
+      captured[key] = value;
     }
   }
   return Object.keys(captured).length > 0 ? captured : null;
@@ -71,7 +81,13 @@ export function cacheClaudeHeaders(headers, connectionId) {
 
   const captured = extractIdentityHeaders(headers);
   if (captured) {
-    cacheByConnection.set(connectionId, captured);
+    // LRU: refresh recency on re-set; evict oldest when over the size cap.
+    cacheByConnection.delete(connectionId);
+    cacheByConnection.set(connectionId, { headers: captured, expiresAt: Date.now() + CACHE_TTL_MS });
+    if (cacheByConnection.size > CACHE_MAX_ENTRIES) {
+      const oldest = cacheByConnection.keys().next().value;
+      if (oldest !== undefined) cacheByConnection.delete(oldest);
+    }
     console.log(`[ClaudeHeaders] Cached ${Object.keys(captured).length} identity headers for connection ${connectionId}`);
   }
 }
@@ -87,7 +103,15 @@ export function getCachedClaudeHeaders(connectionId, requestHeaders) {
   let merged = null;
 
   if (connectionId && cacheByConnection.has(connectionId)) {
-    merged = { ...cacheByConnection.get(connectionId) };
+    const entry = cacheByConnection.get(connectionId);
+    if (entry.expiresAt <= Date.now()) {
+      cacheByConnection.delete(connectionId);
+    } else {
+      // Refresh recency (LRU) and read the cached headers.
+      cacheByConnection.delete(connectionId);
+      cacheByConnection.set(connectionId, entry);
+      merged = { ...entry.headers };
+    }
   }
 
   // Per-request headers win over the connection cache so volatile identity fields

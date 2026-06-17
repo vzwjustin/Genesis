@@ -111,14 +111,32 @@ async function flushDNS(sudoPassword) {
 }
 
 /**
+ * True if a single hosts-file line maps the given hostname as an exact token.
+ * Whole-file `String.includes(host)` is wrong: e.g. "cloudcode-pa.googleapis.com"
+ * is a substring of "daily-cloudcode-pa.googleapis.com" (both managed hosts), which
+ * caused false "active" status, blocked self-heal, and substring-based deletions.
+ */
+function hostsLineMatchesHost(line, host) {
+  const noComment = String(line || "").split("#")[0];
+  const tokens = noComment.trim().split(/\s+/).filter(Boolean);
+  // tokens[0] is the IP; the hostname must appear as a subsequent exact token.
+  return tokens.slice(1).includes(host);
+}
+
+/** True if any line in the hosts content maps the hostname as an exact token. */
+function hostsContentHasHost(content, host) {
+  return String(content || "").split(/\r?\n/).some(l => hostsLineMatchesHost(l, host));
+}
+
+/**
  * Check if DNS entry exists for a specific host
  */
 function checkDNSEntry(host = null) {
   try {
     const hostsContent = fs.readFileSync(HOSTS_FILE, "utf8");
-    if (host) return hostsContent.includes(host);
+    if (host) return hostsContentHasHost(hostsContent, host);
     // Legacy: check all antigravity hosts (backward compat)
-    return TOOL_HOSTS.antigravity.every(h => hostsContent.includes(h));
+    return TOOL_HOSTS.antigravity.every(h => hostsContentHasHost(hostsContent, h));
   } catch {
     return false;
   }
@@ -132,7 +150,7 @@ function checkAllDNSStatus() {
     const hostsContent = fs.readFileSync(HOSTS_FILE, "utf8");
     const result = {};
     for (const [tool, hosts] of Object.entries(TOOL_HOSTS)) {
-      result[tool] = hosts.every(h => hostsContent.includes(h));
+      result[tool] = hosts.every(h => hostsContentHasHost(hostsContent, h));
     }
     return result;
   } catch {
@@ -197,13 +215,13 @@ async function removeDNSEntry(tool, sudoPassword) {
   try {
     if (IS_WIN) {
       const current = fs.readFileSync(HOSTS_FILE, "utf8");
-      const filtered = current.split(/\r?\n/).filter(l => !entriesToRemove.some(h => l.includes(h))).join("\r\n");
+      const filtered = current.split(/\r?\n/).filter(l => !entriesToRemove.some(h => hostsLineMatchesHost(l, h))).join("\r\n");
       const next = filtered.replace(/[\r\n\s]+$/g, "") + "\r\n";
       atomicWriteHostsWin(HOSTS_FILE, current, next);
       await runElevatedPowerShell("ipconfig /flushdns | Out-Null");
     } else {
       const current = fs.readFileSync(HOSTS_FILE, "utf8");
-      const filtered = current.split(/\r?\n/).filter(l => !entriesToRemove.some(h => l.includes(h))).join("\n");
+      const filtered = current.split(/\r?\n/).filter(l => !entriesToRemove.some(h => hostsLineMatchesHost(l, h))).join("\n");
       const next = filtered.replace(/[\r\n\s]+$/g, "") + "\n";
       const escaped = next.replace(/'/g, "'\\''");
       // Write to a temp file then atomically rename — a `tee` straight onto
@@ -241,7 +259,7 @@ function removeAllDNSEntriesSync() {
     const allHosts = Object.values(TOOL_HOSTS).flat();
     const content = fs.readFileSync(HOSTS_FILE, "utf8");
     const eol = IS_WIN ? "\r\n" : "\n";
-    const filtered = content.split(/\r?\n/).filter(l => !allHosts.some(h => l.includes(h))).join(eol);
+    const filtered = content.split(/\r?\n/).filter(l => !allHosts.some(h => hostsLineMatchesHost(l, h))).join(eol);
     const next = filtered.replace(/[\r\n\s]+$/g, "") + eol;
     if (next === content) return;
     fs.writeFileSync(HOSTS_FILE, next, "utf8");

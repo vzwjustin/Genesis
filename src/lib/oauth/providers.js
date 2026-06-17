@@ -107,10 +107,12 @@ function extractEmailFromAccessToken(accessToken) {
 }
 
 // Resolve Kiro profileArn via CodeWhisperer (IDC/Builder-ID tokens omit it, causing 403)
-export async function fetchKiroProfileArn(accessToken) {
+export async function fetchKiroProfileArn(accessToken, proxyOptions = null) {
   if (!accessToken) return null;
   try {
     // Route through oauthFetch (proxy-aware) per fork convention — no bare fetch in oauth modules.
+    // codewhisperer.* is a MITM-bypass host: pass proxyOptions so it uses the
+    // connection's outbound proxy instead of direct external-DNS egress.
     const response = await oauthFetch("https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles", {
       method: "POST",
       headers: {
@@ -119,7 +121,7 @@ export async function fetchKiroProfileArn(accessToken) {
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ maxResults: 10 }),
-    });
+    }, proxyOptions);
     if (!response.ok) return null;
     const data = await response.json();
     return data.profiles?.find((p) => p.arn?.trim())?.arn?.trim() || null;

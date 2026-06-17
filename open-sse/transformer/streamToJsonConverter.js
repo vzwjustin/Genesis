@@ -119,7 +119,7 @@ export async function convertResponsesStreamToJson(stream) {
         await reader.cancel().catch(() => {});
         break;
       }
-      const messages = buffer.split("\n\n");
+      const messages = buffer.split(/\r?\n\r?\n/);
       buffer = messages.pop() || "";
 
       for (const msg of messages) {

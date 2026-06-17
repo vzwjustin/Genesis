@@ -1,6 +1,7 @@
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor, refreshTokenByProvider } from "open-sse/index.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
 import {
   hasAnthropicCacheBreakpoints,
   snapshotCacheProtectedBody,
@@ -34,6 +35,7 @@ export async function POST(request) {
     const executor = getExecutor(provider);
     const stream = body.stream !== false;
     const cacheProtectedSnapshot = snapshotCacheProtectedBody(body);
+    const proxyOptions = buildProxyOptionsFromCredentials(credentials);
     const execOpts = {
       model,
       body,
@@ -43,6 +45,7 @@ export async function POST(request) {
         : credentials,
       cacheProtectedSnapshot,
       passthrough: hasAnthropicCacheBreakpoints(body),
+      proxyOptions,
     };
 
     let { response } = await executor.execute(execOpts);

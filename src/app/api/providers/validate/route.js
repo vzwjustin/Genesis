@@ -230,7 +230,14 @@ export async function POST(request) {
 
       if (provider === "azure") {
         const { providerSpecificData } = body;
-        const endpoint = (providerSpecificData?.azureEndpoint || "").replace(/\/$/, "");
+        // SSRF guard: run the client-supplied endpoint through the same base-URL
+        // validator the other branches use (blocks private/metadata/loopback, forces https).
+        let endpoint;
+        try {
+          endpoint = validateProviderBaseUrl((providerSpecificData?.azureEndpoint || "").replace(/\/$/, ""));
+        } catch (e) {
+          return NextResponse.json({ valid: false, error: e?.message || "Invalid Azure endpoint" });
+        }
         const deployment = providerSpecificData?.deployment || "gpt-4";
         const apiVersion = providerSpecificData?.apiVersion || "2024-10-01-preview";
         const organization = providerSpecificData?.organization;
@@ -308,7 +315,8 @@ export async function POST(request) {
           break;
 
         case "gemini":
-          const geminiRes = await validateFetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`, proxyOptions);
+          // proxyOptions is the 3rd arg (init is 2nd) — passing it as init dropped proxy config.
+          const geminiRes = await validateFetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`, undefined, proxyOptions);
           isValid = geminiRes.ok;
           break;
 

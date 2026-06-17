@@ -315,34 +315,45 @@ export async function getProviderCompressionStats(period = "7d", filter = {}) {
       params.push(filter.provider);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    // Aggregate in SQL (GROUP BY provider, subsystem) instead of returning one JS
+    // object per row — for period="all" the old per-row scan materialized the whole
+    // compressionStats table. Result rows are bounded by providers × subsystems.
     const rows = db.all(
-      `SELECT timestamp, provider, subsystem, bytes_before, bytes_after, level FROM compressionStats ${where} ORDER BY id ASC`,
+      `SELECT provider, subsystem,
+              COUNT(*) AS events,
+              SUM(CASE WHEN bytes_before > bytes_after THEN bytes_before - bytes_after ELSE 0 END) AS bytesSaved,
+              MAX(timestamp) AS lastUsed
+       FROM compressionStats ${where}
+       GROUP BY provider, subsystem`,
       params
     );
 
     const byProvider = {};
+    let totalEvents = 0;
     for (const row of rows) {
       const provider = row.provider || "unknown";
       if (!byProvider[provider]) byProvider[provider] = emptyProviderBucket(provider);
 
       const bucket = byProvider[provider];
       const subsystem = row.subsystem;
-      const bytesSaved = Math.max(0, (Number(row.bytes_before) || 0) - (Number(row.bytes_after) || 0));
+      const events = Number(row.events) || 0;
+      const bytesSaved = Math.max(0, Number(row.bytesSaved) || 0);
       const isCaveman = subsystem === "caveman";
+      totalEvents += events;
 
-      bucket.events += 1;
+      bucket.events += events;
       if (!isCaveman) bucket.bytesSaved += bytesSaved;
-      bucket.lastUsed = row.timestamp || bucket.lastUsed;
+      if (row.lastUsed && row.lastUsed > (bucket.lastUsed || "")) bucket.lastUsed = row.lastUsed;
 
       if (subsystem === "rtk") {
-        bucket.rtk.events += 1;
+        bucket.rtk.events += events;
         bucket.rtk.bytesSaved += bytesSaved;
       } else if (subsystem === "headroom") {
-        bucket.headroom.events += 1;
+        bucket.headroom.events += events;
         bucket.headroom.bytesSaved += bytesSaved;
       } else if (subsystem === "caveman") {
-        bucket.caveman.events += 1;
-        bucket.caveman.injections += 1;
+        bucket.caveman.events += events;
+        bucket.caveman.injections += events;
       }
     }
 
@@ -351,7 +362,7 @@ export async function getProviderCompressionStats(period = "7d", filter = {}) {
 
     return {
       period,
-      requests: rows.length,
+      requests: totalEvents,
       providers,
     };
   } catch {
