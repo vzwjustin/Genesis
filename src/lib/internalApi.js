@@ -15,7 +15,10 @@ export async function buildInternalApiHeaders(extra = {}) {
     const keys = await getApiKeys();
     const apiKey = keys.find((k) => k.isActive !== false)?.key || null;
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-  } catch {}
+  } catch (err) {
+    console.error("[internalApi] Failed to load API keys:", err);
+    throw err;
+  }
   headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
   return headers;
 }

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getSettingsSafe } from "@/lib/localDb";
 import { isVerifiableLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
 
 /**
@@ -9,7 +9,12 @@ import { isVerifiableLoopbackRequest } from "@/shared/utils/loopbackRequest.js";
  * Matches PATCH /api/settings behavior.
  */
 export async function requireDashboardApiAuth(request) {
-  const settings = await getSettings();
+  let settings;
+  try {
+    settings = await getSettings();
+  } catch {
+    settings = { ...(await getSettingsSafe()), requireLogin: true };
+  }
   const loopbackNoLogin = settings.requireLogin === false && isVerifiableLoopbackRequest(request);
   if (loopbackNoLogin) return { ok: true };
 

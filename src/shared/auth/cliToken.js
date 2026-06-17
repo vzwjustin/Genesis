@@ -29,10 +29,12 @@ export async function hasValidCliToken(request) {
   }
 }
 
-/** CLI token valid only from verifiable loopback or private LAN socket. */
+/** CLI token valid only from verifiable loopback; opt-in LAN via GENESIS_CLI_TOKEN_ALLOW_LAN=1. */
 export async function hasValidLocalCliToken(request) {
   if (!(await hasValidCliToken(request))) return false;
   if (isVerifiableLoopbackRequest(request)) return true;
-  if (isPrivateLanAccessRequest(request)) return true;
+  if (process.env.GENESIS_CLI_TOKEN_ALLOW_LAN === "1" && isPrivateLanAccessRequest(request)) {
+    return true;
+  }
   return false;
 }

@@ -714,7 +714,18 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     providerRequestLooksLikeResponsesApi(providerRequest);
   if (isResponsesApiSSE) {
     try {
-      const jsonResponse = await convertResponsesStreamToJson(providerResponse.body);
+      const sseText = await readCappedResponseText(providerResponse);
+      if (sseText === null) {
+        finalizeFailure("SSE response exceeds size limit for non-streaming request");
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "SSE response exceeds size limit for non-streaming request", undefined, PROXY_INTERNAL_SSE);
+      }
+      const cappedBody = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(sseText));
+          controller.close();
+        },
+      });
+      const jsonResponse = await convertResponsesStreamToJson(cappedBody);
 
       // Fail closed: a stream that never reached "completed" is truncated or failed.
       // Discard the partial assembly and return an error — never emit partial JSON as success.

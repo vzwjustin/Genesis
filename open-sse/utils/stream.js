@@ -479,8 +479,10 @@ export function createSSEStream(options = {}) {
         }
       } catch (error) {
         console.error("Error in flush:", error);
-        if (error instanceof MalformedSSEDataError) {
+        try {
           controller.error(error);
+        } catch (e) {
+          // Stream already closed or cancelled
         }
       } finally {
         await reqLogger?.flushStreamLogs?.();

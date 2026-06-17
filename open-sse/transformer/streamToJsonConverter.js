@@ -98,6 +98,7 @@ export async function convertResponsesStreamToJson(stream) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let totalBytes = 0;
 
   const state = {
     responseId: "",
@@ -111,6 +112,14 @@ export async function convertResponsesStreamToJson(stream) {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_SSE_BUFFER_CHARS) {
+        state.status = "failed";
+        state.parseError = true;
+        await reader.cancel().catch(() => {});
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
       if (buffer.length > MAX_SSE_BUFFER_CHARS) {

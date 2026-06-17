@@ -35,6 +35,26 @@ describe("convertResponsesStreamToJson buffer cap", () => {
     const result = await convertResponsesStreamToJson(sseStream(padded));
     expect(result.status).toBe("failed");
   });
+
+  it("fails closed when total bytes read exceed cap across many small chunks", async () => {
+    const event = 'event: response.output_item.done\ndata: {"output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"x"}]}}\n\n';
+    const chunkSize = 256;
+    const chunkText = event.slice(0, chunkSize);
+    let emitted = 0;
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (emitted >= MAX_SSE_BUFFER_CHARS + chunkSize) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new TextEncoder().encode(chunkText));
+        emitted += chunkText.length;
+      },
+    });
+
+    const result = await convertResponsesStreamToJson(stream);
+    expect(result.status).toBe("failed");
+  });
 });
 
 describe("rollbackStickyUseCount", () => {

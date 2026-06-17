@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSettingsSafe, validateApiKey } from "@/lib/localDb";
+import { getSettings, getSettingsSafe, validateApiKey } from "@/lib/localDb";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { normalizeHostHeaderHostname, isLanDashboardHost, isPrivateLanIp } from "@/shared/utils/host";
 import {
@@ -151,9 +151,15 @@ async function hasValidToken(request) {
   return await verifyDashboardAuthToken(token);
 }
 
-// Read settings directly from DB to avoid self-fetch deadlock in proxy
+// Read settings directly from DB to avoid self-fetch deadlock in proxy.
+// Fail CLOSED: getSettingsSafe() returns permissive defaults (requireApiKey:false)
+// when the DB read throws — force strict auth gates instead.
 async function loadSettings() {
-  return await getSettingsSafe();
+  try {
+    return await getSettings();
+  } catch {
+    return { ...(await getSettingsSafe()), requireApiKey: true, requireLogin: true };
+  }
 }
 
 const TUNNEL_DASHBOARD_DISABLED_ERROR = "Dashboard access via tunnel is disabled";

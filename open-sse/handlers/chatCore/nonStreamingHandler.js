@@ -154,6 +154,20 @@ function translateTargetToOpenAI(responseBody, targetFormat) {
 }
 
 /**
+ * Parse tool-call arguments fail-closed (mirrors sseToJsonHandler.js).
+ * Returns null when a non-empty string is not valid JSON.
+ */
+function parseToolCallArguments(args) {
+  if (args === undefined || args === "") return {};
+  if (typeof args === "object") return args;
+  try {
+    return JSON.parse(args);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Step 2: Translate OpenAI format response to client's source format.
  * For non-streaming, this converts the complete OpenAI JSON into the source format.
  */
@@ -179,8 +193,8 @@ function translateOpenAIToSource(openaiResponse, sourceFormat) {
     // Add tool_use blocks
     if (msg.tool_calls) {
       for (const tc of msg.tool_calls) {
-        let input = {};
-        try { input = JSON.parse(tc.function?.arguments || "{}"); } catch { /* empty */ }
+        const input = parseToolCallArguments(tc.function?.arguments);
+        if (input === null) return null;
         content.push({
           type: "tool_use",
           id: tc.id || `toolu_${Date.now()}`,
@@ -244,8 +258,8 @@ function translateOpenAIToSource(openaiResponse, sourceFormat) {
     // Add tool calls as functionCall parts
     if (msg.tool_calls) {
       for (const tc of msg.tool_calls) {
-        let args = {};
-        try { args = JSON.parse(tc.function?.arguments || "{}"); } catch { /* empty */ }
+        const args = parseToolCallArguments(tc.function?.arguments);
+        if (args === null) return null;
         parts.push({
           functionCall: {
             name: tc.function?.name || "",
@@ -304,8 +318,8 @@ function translateOpenAIToSource(openaiResponse, sourceFormat) {
     }
     if (msg.tool_calls) {
       for (const tc of msg.tool_calls) {
-        let args = {};
-        try { args = JSON.parse(tc.function?.arguments || "{}"); } catch { /* empty */ }
+        const args = parseToolCallArguments(tc.function?.arguments);
+        if (args === null) return null;
         parts.push({ functionCall: { name: tc.function?.name || "", args } });
       }
     }
@@ -466,6 +480,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     : (needsTranslation(targetFormat, sourceFormat)
         ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
         : responseBody);
+
+  if (!translatedResponse) {
+    appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid tool arguments in completion response", undefined, {
+      errorCode: PROXY_INTERNAL_ERROR_CODES.RESPONSE_PARSE_FAILED,
+      proxyInternal: true,
+    });
+  }
 
   // Fix finish_reason for tool_calls: some providers return non-standard values (e.g. "other")
   if (translatedResponse?.choices?.[0]) {

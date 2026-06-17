@@ -26,7 +26,8 @@ const SECRET = new TextEncoder().encode(loadJwtSecret());
 
 export function shouldUseSecureCookie(request) {
   const forceSecureCookie = process.env.AUTH_COOKIE_SECURE === "true";
-  const forwardedProto = request?.headers?.get?.("x-forwarded-proto");
+  const trustProxyHeaders = process.env.TRUST_PROXY_HEADERS === "true";
+  const forwardedProto = trustProxyHeaders ? request?.headers?.get?.("x-forwarded-proto") : null;
   const isHttpsRequest = forwardedProto === "https";
   return forceSecureCookie || isHttpsRequest;
 }
