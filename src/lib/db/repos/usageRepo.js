@@ -359,17 +359,23 @@ async function writeRequestUsageOnce(entry) {
 }
 
 export async function saveRequestUsage(entry) {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const historyInserted = await writeRequestUsageOnce(entry);
       if (!historyInserted) return;
+
+      const db = await getAdapter();
+      if (typeof db.flushPendingSave === "function") {
+        db.flushPendingSave();
+      }
 
       pushToRing(entry);
       statsEmitter.emit("update");
       return;
     } catch (e) {
-      if (attempt === 0) {
-        await new Promise((r) => setTimeout(r, 25));
+      if (attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 25 * (attempt + 1)));
         continue;
       }
       console.error("Failed to save usage stats:", e);

@@ -1,5 +1,5 @@
 import { ProxyAgent, fetch as undiciFetch } from "undici";
-import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
+import { assertSafeFetchUrl, assertSafeResolvedHostname } from "open-sse/utils/ssrfGuard.js";
 
 const DEFAULT_TEST_URL = "https://google.com/";
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -61,6 +61,12 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
       status: 400,
       error: `Unsupported proxy scheme: ${parsedProxyUrl.protocol}`,
     };
+  }
+
+  try {
+    await assertSafeResolvedHostname(parsedProxyUrl.hostname, { allowLoopback: false });
+  } catch (err) {
+    return { ok: false, status: 400, error: err.message || "Proxy host is not allowed" };
   }
 
   let dispatcher;
