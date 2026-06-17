@@ -102,6 +102,9 @@ export const PROVIDERS = {
     baseUrl: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
     format: "openai",
     headers: {},
+    // Reasoning models emit no SSE output for long stretches while thinking;
+    // raise the stream stall window so the pipe doesn't false-abort at 30s.
+    stallTimeoutMs: 120000,
   },
   antigravity: {
     baseUrls: [
@@ -320,7 +323,7 @@ export const PROVIDERS = {
     format: "openai"
   },
   siliconflow: {
-    baseUrl: "https://api.siliconflow.cn/v1/chat/completions",
+    baseUrl: "https://api.siliconflow.com/v1/chat/completions",
     format: "openai"
   },
   hyperbolic: {

@@ -347,13 +347,10 @@ function convertOpenAIToolChoice(choice) {
   if (typeof choice === "object" && choice.type === "function" && choice.function?.name) {
     return { type: "tool", name: CLAUDE_OAUTH_TOOL_PREFIX + choice.function.name };
   }
-  if (typeof choice === "object" && choice.type === "tool" && choice.name) {
-    return { type: "tool", name: choice.name.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ? choice.name : CLAUDE_OAUTH_TOOL_PREFIX + choice.name };
-  }
-  if (typeof choice === "object" && choice.function?.name) {
-    return { type: "tool", name: CLAUDE_OAUTH_TOOL_PREFIX + choice.function.name };
-  }
-  if (typeof choice === "object" && choice.type) return choice;
+  // Claude only accepts tool_choice.type of auto|any|tool|none; passing an unknown
+  // type (e.g. a malformed { type: "function" } with no name) through verbatim
+  // triggers a 400 on the cc/ OAuth route. #1592
+  if (typeof choice === "object" && ["auto", "any", "tool", "none"].includes(choice.type)) return choice;
   return { type: "auto" };
 }
 
