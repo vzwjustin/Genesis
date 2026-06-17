@@ -9,6 +9,13 @@ function flattenTextOnlyParts(parts) {
   return parts.map((part) => part.text || "").join("\n");
 }
 
+// Strip dynamic Anthropic billing-header lines from system text so the prompt
+// prefix stays stable across turns (improves upstream prompt-cache hit rate).
+function stripAnthropicBillingHeader(text) {
+  if (typeof text !== "string") return "";
+  return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
+}
+
 // Convert Claude request to OpenAI format
 export function claudeToOpenAIRequest(model, body, stream) {
   const result = {
@@ -33,7 +40,8 @@ export function claudeToOpenAIRequest(model, body, stream) {
       const textParts = [];
       for (const block of body.system) {
         if (block?.text) {
-          textParts.push(block.text);
+          const cleaned = stripAnthropicBillingHeader(block.text);
+          if (cleaned) textParts.push(cleaned);
         } else if (block?.type && block.type !== "text") {
           console.warn(
             `[claude-to-openai] non-text system block type "${block.type}" cannot be represented in OpenAI format`
@@ -45,7 +53,8 @@ export function claudeToOpenAIRequest(model, body, stream) {
         result.messages.push({ role: "system", content: systemContent });
       }
     } else if (typeof body.system === "string" && body.system) {
-      result.messages.push({ role: "system", content: body.system });
+      const cleaned = stripAnthropicBillingHeader(body.system);
+      if (cleaned) result.messages.push({ role: "system", content: cleaned });
     }
   }
 

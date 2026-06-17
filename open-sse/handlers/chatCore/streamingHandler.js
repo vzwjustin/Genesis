@@ -2,6 +2,8 @@ import { FORMATS } from "../../translator/formats.js";
 import { needsTranslation } from "../../translator/index.js";
 import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
+import { PROVIDERS } from "../../config/providers.js";
+import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 
@@ -74,7 +76,10 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
   };
 
   const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete: safeOnStreamComplete, apiKey, passthrough, onPendingRelease, streamDetailId, clientEndpoint: clientRawRequest?.endpoint });
-  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, wiredStreamController, { onIncomplete: markIncomplete });
+  // Reasoning-heavy providers (e.g. qoder) can stay silent past the default
+  // stall window while thinking — honor a per-provider stall override.
+  const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
+  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, wiredStreamController, { onIncomplete: markIncomplete, stallTimeoutMs });
 
   saveRequestDetail(buildRequestDetail({
     provider, model, connectionId,

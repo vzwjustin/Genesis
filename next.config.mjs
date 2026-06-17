@@ -7,6 +7,10 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 const tracingRoot = process.env.NEXT_TRACING_ROOT_MODE === "workspace"
   ? join(projectRoot, "..")
   : projectRoot;
+// LLM clients can POST long context or base64 image payloads through the /v1
+// rewrites; raise the proxy body cap above Next's default so they aren't
+// truncated (#1529/#1572). Override with PROXY_CLIENT_MAX_BODY_SIZE.
+const proxyClientMaxBodySize = process.env.PROXY_CLIENT_MAX_BODY_SIZE || "128mb";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -24,6 +28,9 @@ const nextConfig = {
     unoptimized: true
   },
   env: {},
+  experimental: {
+    proxyClientMaxBodySize,
+  },
   webpack: (config, { isServer, webpack }) => {
     // Ignore node built-ins in browser bundle. Shared client+server utils import
     // node:fs/path/util/dns at module top-level (guarded so they're never *called*

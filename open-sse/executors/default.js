@@ -29,6 +29,10 @@ export class DefaultExecutor extends BaseExecutor {
     if (result && typeof result === "object" && (this.provider === "cerebras" || this.provider === "mistral")) {
       delete result.client_metadata;
     }
+    // claude-opus-4 series: temperature is deprecated upstream (Anthropic 400). #1748
+    if (result && typeof result === "object" && /claude-opus-4/i.test(model || "") && result.temperature !== undefined) {
+      delete result.temperature;
+    }
     return result;
   }
 
