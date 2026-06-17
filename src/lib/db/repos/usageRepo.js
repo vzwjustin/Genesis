@@ -387,8 +387,8 @@ export async function saveRequestUsage(entry) {
         continue;
       }
       global._usagePersistFailures = (global._usagePersistFailures ?? 0) + 1;
-      const provider = entry.provider ?? "unknown";
-      const model = entry.model ?? "unknown";
+      const provider = entry?.provider ?? "unknown";
+      const model = entry?.model ?? "unknown";
       try {
         console.warn(
           `[usage-persist-failed] provider=${provider} model=${model} attempts=${maxAttempts} error=${e?.message ?? e}`,

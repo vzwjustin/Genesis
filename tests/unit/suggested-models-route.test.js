@@ -24,9 +24,9 @@ describe("GET /api/providers/suggested-models", () => {
   it("returns 401 when unauthenticated and never fetches upstream", async () => {
     mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: false, error: "Login required", status: 401 });
     const { GET } = await import("../../src/app/api/providers/suggested-models/route.js");
-    const res = await GET({
-      url: `http://localhost/api/providers/suggested-models?url=${encodeURIComponent(OPENROUTER_MODELS_URL)}&type=openrouter-free`,
-    });
+    const res = await GET(
+      new Request(`http://localhost/api/providers/suggested-models?url=${encodeURIComponent(OPENROUTER_MODELS_URL)}&type=openrouter-free`),
+    );
 
     expect(res.status).toBe(401);
     expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
@@ -34,7 +34,7 @@ describe("GET /api/providers/suggested-models", () => {
 
   it("returns 400 when url or type is missing", async () => {
     const { GET } = await import("../../src/app/api/providers/suggested-models/route.js");
-    const res = await GET({ url: "http://localhost/api/providers/suggested-models?type=openrouter-free" });
+    const res = await GET(new Request("http://localhost/api/providers/suggested-models?type=openrouter-free"));
     const data = await res.json();
 
     expect(res.status).toBe(400);
@@ -64,9 +64,9 @@ describe("GET /api/providers/suggested-models", () => {
     });
 
     const { GET } = await import("../../src/app/api/providers/suggested-models/route.js");
-    const res = await GET({
-      url: `http://localhost/api/providers/suggested-models?url=${encodeURIComponent(OPENROUTER_MODELS_URL)}&type=openrouter-free`,
-    });
+    const res = await GET(
+      new Request(`http://localhost/api/providers/suggested-models?url=${encodeURIComponent(OPENROUTER_MODELS_URL)}&type=openrouter-free`),
+    );
     const data = await res.json();
 
     expect(res.status).toBe(200);
