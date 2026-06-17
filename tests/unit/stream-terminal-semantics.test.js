@@ -278,6 +278,31 @@ describe("stream.js — translated flush terminal semantics", () => {
     expect(onStreamComplete).not.toHaveBeenCalled();
   });
 
+  it("propagates non-malformed flush errors to the client stream", async () => {
+    const onStreamComplete = vi.fn(() => {
+      throw new Error("flush callback failed");
+    });
+    const sse = [
+      'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}',
+      'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+    ].join("\n");
+
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "openai",
+      null,
+      null,
+      "gpt-4",
+      null,
+      { messages: [] },
+      onStreamComplete,
+      null
+    );
+    await expect(pipeSseThroughTransform(sse, transform)).rejects.toThrow("flush callback failed");
+    expect(onStreamComplete).toHaveBeenCalledTimes(1);
+  });
+
   it("still ignores harmless blank comment and non-data SSE lines", async () => {
     const sse = [
       ": keepalive",
@@ -300,6 +325,27 @@ describe("stream.js — translated flush terminal semantics", () => {
 });
 
 describe("streamHandler — incomplete callback on error", () => {
+  it("errors the client stream when upstream resets while client is connected", async () => {
+    const controller = createStreamController({ provider: "openai", model: "gpt-4" });
+    const resetErr = Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+    const providerResponse = {
+      body: new ReadableStream({
+        start(ctrl) {
+          ctrl.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
+        },
+        pull() {
+          return Promise.reject(resetErr);
+        },
+      }),
+    };
+    const transform = new TransformStream({
+      transform(chunk, ctrl) { ctrl.enqueue(chunk); },
+    });
+
+    const readable = pipeWithDisconnect(providerResponse, transform, controller);
+    await expect(collectStreamText(readable)).rejects.toMatchObject({ code: "ECONNRESET" });
+  });
+
   it("invokes onIncomplete when reader errors before transform flush", async () => {
     const onIncomplete = vi.fn();
     const controller = createStreamController({ provider: "openai", model: "gpt-4" });

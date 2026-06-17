@@ -3,15 +3,11 @@ import { exportDb, getSettings, importDb } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
-import { hasValidLocalCliToken } from "@/shared/auth/cliToken";
-
 const PASSWORD_HEADER = "x-9r-password";
 
-// Re-auth gate for sensitive DB export/import: a valid session alone isn't enough —
-// require the current password too, so a left-open dashboard can't exfil the DB.
-// Local CLI-token requests (loopback, already trusted) are exempt.
-async function requirePasswordReauth(request, password) {
-  if (await hasValidLocalCliToken(request)) return true;
+// Re-auth gate for sensitive DB export/import: a valid session or CLI token alone
+// isn't enough — require the current password so a left-open dashboard can't exfil the DB.
+async function requirePasswordReauth(_request, password) {
   return verifyDashboardPassword(password);
 }
 

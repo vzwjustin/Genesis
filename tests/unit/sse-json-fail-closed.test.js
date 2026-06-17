@@ -32,6 +32,7 @@ vi.mock("open-sse/handlers/chatCore/requestDetail.js", () => ({
 
 const { convertResponsesStreamToJson } = await import("../../open-sse/transformer/streamToJsonConverter.js");
 const { parseSSEToOpenAIResponse, parseSSEToClaudeResponse, handleForcedSSEToJson } = await import("../../open-sse/handlers/chatCore/sseToJsonHandler.js");
+const { MAX_SSE_BUFFER_CHARS } = await import("../../open-sse/utils/stream.js");
 
 /** Build a ReadableStream emitting the given SSE text as one chunk. */
 function sseStream(text) {
@@ -169,6 +170,19 @@ describe("handleForcedSSEToJson — Codex branch fails closed (Bug B)", () => {
     expect(result.success).toBe(false);
     expect(result.status).toBe(502);
     expect(result.error).toBe("Incomplete streaming response");
+  });
+
+  it("returns 502 when Responses SSE body exceeds read cap (symmetric with chat path)", async () => {
+    const oversize = "x".repeat(MAX_SSE_BUFFER_CHARS + 1);
+    const providerResponse = {
+      headers: new Map([["content-type", "text/event-stream"]]),
+      body: sseStream(oversize),
+    };
+
+    const result = await handleForcedSSEToJson(codexArgs(providerResponse));
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(502);
+    expect(result.error).toBe("SSE response exceeds size limit for non-streaming request");
   });
 
   it("returns success with valid JSON for a completed stream (no regression)", async () => {

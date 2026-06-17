@@ -60,7 +60,7 @@ const APP_NAME = pkg.name; // Use from package.json
 const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
 const DEFAULT_PORT = 20128;
-const DEFAULT_HOST = "0.0.0.0";
+const DEFAULT_HOST = "127.0.0.1";
 // Identifiers for killAllAppProcesses - only kill genesis specifically
 const PROCESS_IDENTIFIERS = [
   'genesis'  // Only package name - avoid killing other apps

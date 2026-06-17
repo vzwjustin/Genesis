@@ -179,6 +179,7 @@ describe("internalApi shared helper", () => {
     const src = readFileSync(join(apiRoot, "lib/internalApi.js"), "utf8");
     expect(src).toContain("127.0.0.1");
     expect(src).toContain("x-9r-cli-token");
+    expect(src).toContain("[internalApi] Failed to load API keys:");
     expect(src).toContain('parseError = "Invalid JSON response"');
     expect(src).toContain('parseError = "Empty response body"');
   });

@@ -222,12 +222,13 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
-  it("allows loopback public LLM API when settings are unavailable (default requireApiKey off)", async () => {
+  it("rejects loopback public LLM API when settings are unavailable (fail closed)", async () => {
     mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
 
     const response = await proxy(request("/v1/models", { host: "localhost:20128" }, "127.0.0.1"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Missing API key");
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
@@ -459,6 +460,17 @@ describe("dashboard guard management API access", () => {
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  it("rejects management API on verifiable loopback when settings are unavailable", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("db unavailable"));
+
+    const response = await proxy(request("/api/keys", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }, "127.0.0.1"));
+
+    expect(response.status).toBe(401);
   });
 
   it("allows management API on verifiable loopback when requireLogin=false and no JWT/CLI token", async () => {
@@ -789,13 +801,29 @@ describe("dashboard guard CLI token timing-safe comparison", () => {
     expect(response.status).toBe(403);
   });
 
-  it("accepts CLI token with surrounding whitespace on private LAN socket", async () => {
+  it("rejects CLI token with surrounding whitespace on private LAN socket by default", async () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
       host: "192.168.8.201:20128",
       "x-9r-cli-token": `  ${CACHED_TOKEN}  `,
     }, "192.168.8.50"));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(403);
+  });
+
+  it("accepts CLI token with surrounding whitespace on private LAN socket when GENESIS_CLI_TOKEN_ALLOW_LAN=1", async () => {
+    const prev = process.env.GENESIS_CLI_TOKEN_ALLOW_LAN;
+    process.env.GENESIS_CLI_TOKEN_ALLOW_LAN = "1";
+    try {
+      const response = await proxy(request("/api/mcp/filesystem/sse", {
+        host: "192.168.8.201:20128",
+        "x-9r-cli-token": `  ${CACHED_TOKEN}  `,
+      }, "192.168.8.50"));
+
+      expect(response).toBe(mocks.nextResponse);
+    } finally {
+      if (prev === undefined) delete process.env.GENESIS_CLI_TOKEN_ALLOW_LAN;
+      else process.env.GENESIS_CLI_TOKEN_ALLOW_LAN = prev;
+    }
   });
 });
 

@@ -34,13 +34,29 @@ describe("hasValidLocalCliToken", () => {
     expect(await hasValidLocalCliToken(makeRequest({ cliToken: "cli-token" }))).toBe(false);
   });
 
-  it("accepts matching CLI token from private LAN socket", async () => {
+  it("rejects matching CLI token from private LAN socket by default", async () => {
     const { hasValidLocalCliToken } = await import("../../src/shared/auth/cliToken.js");
     expect(await hasValidLocalCliToken(makeRequest({
       host: "192.168.8.201:20128",
       cliToken: "cli-token",
       socketIp: "192.168.8.50",
-    }))).toBe(true);
+    }))).toBe(false);
+  });
+
+  it("accepts matching CLI token from private LAN socket when GENESIS_CLI_TOKEN_ALLOW_LAN=1", async () => {
+    const prev = process.env.GENESIS_CLI_TOKEN_ALLOW_LAN;
+    process.env.GENESIS_CLI_TOKEN_ALLOW_LAN = "1";
+    try {
+      const { hasValidLocalCliToken } = await import("../../src/shared/auth/cliToken.js");
+      expect(await hasValidLocalCliToken(makeRequest({
+        host: "192.168.8.201:20128",
+        cliToken: "cli-token",
+        socketIp: "192.168.8.50",
+      }))).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.GENESIS_CLI_TOKEN_ALLOW_LAN;
+      else process.env.GENESIS_CLI_TOKEN_ALLOW_LAN = prev;
+    }
   });
 
   it("rejects matching CLI token from public host", async () => {

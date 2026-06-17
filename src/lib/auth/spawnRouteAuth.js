@@ -3,7 +3,7 @@ import { hasValidLocalCliToken } from "@/shared/auth/cliToken";
 
 /**
  * Auth for routes that spawn processes or read host secrets.
- * Accepts local CLI token (loopback/LAN socket) or a valid dashboard JWT.
+ * Accepts local CLI token (loopback; LAN with GENESIS_CLI_TOKEN_ALLOW_LAN=1) or a valid dashboard JWT.
  */
 export async function requireSpawnRouteAuth(request) {
   if (await hasValidLocalCliToken(request)) return { ok: true };

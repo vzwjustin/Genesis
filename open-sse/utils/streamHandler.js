@@ -113,22 +113,10 @@ export function createDisconnectAwareStream(transformStream, streamController, {
         reader.cancel().catch(() => {});
         writer.abort().catch(() => {});
 
-        // Treat network resets / socket hang up / abort as graceful close
-        const msg = error?.message || "";
-        const code = error?.code || error?.cause?.code || "";
-        const isNetworkClose =
-          error.name === "AbortError" ||
-          msg.includes("aborted") ||
-          msg.includes("socket hang up") ||
-          msg.includes("ECONNRESET") ||
-          msg.includes("ETIMEDOUT") ||
-          msg.includes("EPIPE") ||
-          code === "ECONNRESET" ||
-          code === "ETIMEDOUT" ||
-          code === "EPIPE" ||
-          code === "UND_ERR_SOCKET";
-
-        if (!wasConnected || isNetworkClose) {
+        // Client already gone → close quietly. Upstream failure while the
+        // client is still connected must error so truncated streams are not
+        // treated as complete.
+        if (!wasConnected) {
           try {
             controller.close();
           } catch (e) {
