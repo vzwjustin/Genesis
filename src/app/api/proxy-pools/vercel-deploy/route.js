@@ -3,6 +3,7 @@ import { createProxyPool } from "@/models";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { buildVercelRelayCode, generateRelayAuthSecret } from "@/lib/network/relayDeploy.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { sanitizeProxyPoolForResponse } from "@/lib/network/proxyPoolResponse";
 
 const VERCEL_API = "https://api.vercel.com";
 
@@ -109,7 +110,7 @@ export async function POST(request) {
       relayAuthSecret,
     });
 
-    return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
+    return NextResponse.json({ proxyPool: sanitizeProxyPoolForResponse(proxyPool), deployUrl }, { status: 201 });
   } catch (error) {
     console.error("Error deploying Vercel relay:", error?.stack || error);
     return NextResponse.json({ error: "Vercel relay deployment failed" }, { status: 500 });

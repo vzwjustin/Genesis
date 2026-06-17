@@ -11,6 +11,7 @@ import {
   snapshotCacheProtectedBody,
   throwOnCacheViolation,
 } from "open-sse/rtk/cacheBoundary.js";
+import { maskSensitiveHeaders } from "@/shared/utils/redaction";
 
 export async function POST(request) {
   const auth = await requireSpawnRouteAuth(request);
@@ -103,7 +104,7 @@ export async function POST(request) {
           }, { status: 502 });
         }
 
-        return NextResponse.json({ success: true, result: { url, headers, body: finalBody } });
+        return NextResponse.json({ success: true, result: { url, headers: maskSensitiveHeaders(headers), body: finalBody } });
       }
 
       default:

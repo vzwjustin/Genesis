@@ -20,8 +20,15 @@ const getHermesEnvPath = () => path.join(getHermesDir(), ".env");
 // Match top-level "model:" block (until next non-indented, non-empty line)
 const MODEL_BLOCK_RE = /^model:[ \t]*\r?\n((?:[ \t]+.*\r?\n?|[ \t]*\r?\n)*)/m;
 
+const yamlString = (value) => JSON.stringify(String(value ?? ""));
+const quoteEnvValue = (value) => `"${String(value ?? "")
+  .replace(/\\/g, "\\\\")
+  .replace(/\r/g, "\\r")
+  .replace(/\n/g, "\\n")
+  .replace(/"/g, "\\\"")}"`;
+
 const buildModelBlock = (model, baseUrl) =>
-  `model:\n  default: "${model}"\n  provider: "custom"\n  base_url: "${baseUrl}"\n`;
+  `model:\n  default: ${yamlString(model)}\n  provider: "custom"\n  base_url: ${yamlString(baseUrl)}\n`;
 
 // Parse current model block back to fields (best-effort, simple key:value)
 const parseModelBlock = (yaml) => {
@@ -49,7 +56,7 @@ const removeModelBlock = (yaml) => yaml.replace(MODEL_BLOCK_RE, "").replace(/^\n
 // .env helpers — upsert/remove single KEY=VALUE line
 const upsertEnvVar = (envText, key, value) => {
   const re = new RegExp(`^${key}=.*$`, "m");
-  const line = `${key}=${value}`;
+  const line = `${key}=${quoteEnvValue(value)}`;
   if (re.test(envText)) return envText.replace(re, line);
   return envText.length > 0 && !envText.endsWith("\n") ? `${envText}\n${line}\n` : `${envText}${line}\n`;
 };

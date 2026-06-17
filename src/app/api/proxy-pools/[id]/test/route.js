@@ -4,7 +4,16 @@ import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
-async function testVercelRelay(relayUrl, timeoutMs = 10000) {
+async function testVercelRelay(relayUrl, relayAuthSecret, timeoutMs = 10000) {
+  const authSecret = typeof relayAuthSecret === "string" ? relayAuthSecret.trim() : "";
+  if (!authSecret) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Relay auth secret missing",
+    };
+  }
+
   const controller = new AbortController();
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -14,6 +23,7 @@ async function testVercelRelay(relayUrl, timeoutMs = 10000) {
       headers: {
         "x-relay-target": "https://httpbin.org",
         "x-relay-path": "/get",
+        "x-relay-auth": authSecret,
       },
       signal: controller.signal,
     });
@@ -48,7 +58,7 @@ export async function POST(request, { params }) {
     }
 
     const result = proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno"
-      ? await testVercelRelay(proxyPool.proxyUrl)
+      ? await testVercelRelay(proxyPool.proxyUrl, proxyPool.relayAuthSecret)
       : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
     const now = new Date().toISOString();
 

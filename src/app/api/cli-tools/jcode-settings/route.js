@@ -19,6 +19,13 @@ const getProviderEnvPath = () => {
   return path.join(configDir, "jcode", "provider-genesis.env");
 };
 
+const isEnvKey = (key) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key);
+const quoteEnvValue = (value) => `"${String(value ?? "")
+  .replace(/\\/g, "\\\\")
+  .replace(/\r/g, "\\r")
+  .replace(/\n/g, "\\n")
+  .replace(/"/g, "\\\"")}"`;
+
 const checkJcodeInstalled = async () => {
   try {
     const isWindows = os.platform() === "win32";
@@ -102,7 +109,8 @@ const writeProviderEnv = async (env) => {
   let content = "# jcode provider environment variables\n";
 
   for (const [key, value] of Object.entries(env)) {
-    content += `${key}="${value}"\n`;
+    if (!isEnvKey(key)) continue;
+    content += `${key}=${quoteEnvValue(value)}\n`;
   }
 
   await fs.writeFile(envPath, content, "utf-8");

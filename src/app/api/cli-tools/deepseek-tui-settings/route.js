@@ -53,14 +53,16 @@ const parseToml = (content) => {
 };
 
 // Build TOML config for Genesis (openai provider mode)
+const tomlString = (value) => JSON.stringify(String(value ?? ""));
+
 const buildGenesisConfig = (baseUrl, apiKey, model) => {
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
     return `provider = "openai"
 
 [providers.openai]
-base_url = "${normalizedBaseUrl}"
-api_key = "${apiKey}"
-model = "${model}"
+base_url = ${tomlString(normalizedBaseUrl)}
+api_key = ${tomlString(apiKey)}
+model = ${tomlString(model)}
 `;
 };
 
