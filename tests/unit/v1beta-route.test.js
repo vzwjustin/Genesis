@@ -162,6 +162,41 @@ describe("v1beta route — round-2 fixes", () => {
     expect(fnPart.functionCall.name).toBe("lookup");
     expect(fnPart.functionCall.args).toEqual({ q: "x" });
   }, 10000);
+
+  it("buffers OpenAI SSE data lines split across network chunks", async () => {
+    const encoder = new TextEncoder();
+    const chunks = [
+      'data: {"choices":[{"delta":{"content":"Hel',
+      'lo"},"finish_reason":null}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
+      "data: [DONE]\n\n",
+    ];
+
+    mockHandleChat.mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+            controller.close();
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }
+      )
+    );
+
+    const response = await POST(
+      geminiRequest(["gemini/gemini-2.0:streamGenerateContent"], minimalGeminiBody()),
+      { params: Promise.resolve({ path: ["gemini", "gemini-2.0:streamGenerateContent"] }) }
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readSseBody(response);
+    expect(body[0].candidates[0].content.parts[0].text).toBe("Hello");
+    expect(body.find((c) => c.candidates?.[0]?.finishReason).usageMetadata.totalTokenCount).toBe(2);
+  }, 10000);
 });
 
 describe("v1beta route source — round-2", () => {

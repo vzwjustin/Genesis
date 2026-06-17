@@ -111,6 +111,14 @@ describe("chat handler — pre-flight skips do not consume retry slots", () => {
     expect(retryIncIdx).toBeGreaterThan(projectIdIdx);
   });
 
+  it("rolls back sticky use count when token refresh pre-check fails", () => {
+    const tokenRefreshIdx = src.indexOf("_tokenRefreshFailed");
+    const rollbackIdx = src.indexOf("rollbackStickyUseCount", tokenRefreshIdx);
+    const excludeIdx = src.indexOf("excludeConnectionIds.add", tokenRefreshIdx);
+    expect(rollbackIdx).toBeGreaterThan(tokenRefreshIdx);
+    expect(rollbackIdx).toBeLessThan(excludeIdx);
+  });
+
   it("passes proxy-internal metadata to markAccountUnavailable", () => {
     expect(src).toContain("proxyInternal: result.proxyInternal");
     expect(src).toContain("errorCode: result.errorCode");
@@ -136,6 +144,16 @@ describe("non-chat handlers — client aborts do not mark accounts unavailable",
   ];
 
   for (const rel of files) {
+    it(`${rel} rolls back sticky use count when token refresh pre-check fails`, () => {
+      const src = readFileSync(join(root, "../..", rel), "utf8");
+      const tokenRefreshIdx = src.indexOf("_tokenRefreshFailed");
+      const rollbackIdx = src.indexOf("rollbackStickyUseCount", tokenRefreshIdx);
+      const excludeIdx = src.indexOf("excludeConnectionIds.add", tokenRefreshIdx);
+      expect(tokenRefreshIdx).toBeGreaterThan(-1);
+      expect(rollbackIdx).toBeGreaterThan(tokenRefreshIdx);
+      expect(rollbackIdx).toBeLessThan(excludeIdx);
+    });
+
     it(`${rel} returns 499 before markAccountUnavailable`, () => {
       const src = readFileSync(join(root, "../..", rel), "utf8");
       const abortIdx = src.indexOf("result.status === 499");

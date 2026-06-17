@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getProviderCacheStats: vi.fn(),
@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getFilterLeaderboard: vi.fn(),
   clearCompressionHistory: vi.fn(),
   listRequestLogSessions: vi.fn(),
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
 }));
 
 vi.mock("@/lib/usageDb", () => ({
@@ -28,10 +29,15 @@ vi.mock("open-sse/utils/requestLogger.js", () => ({
 // Stub the auth gate (requireSpawnRouteAuth reads NextRequest `.cookies`,
 // absent on the plain Request used in these tests).
 vi.mock("@/lib/auth/spawnRouteAuth", () => ({
-  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+  requireSpawnRouteAuth: mocks.requireSpawnRouteAuth,
 }));
 
 describe("extended compression APIs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: true });
+  });
+
   it("GET /api/compression/provider-cache returns aggregated data", async () => {
     mocks.getProviderCacheStats.mockResolvedValue({ requests: 1, hitRate: 100 });
     mocks.getSearchCacheStats.mockReturnValue({ hits: 2, misses: 1 });
@@ -52,6 +58,30 @@ describe("extended compression APIs", () => {
     const body = await res.json();
 
     expect(body.rows[0].filter).toBe("git-diff");
+  });
+
+  it("GET /api/compression/provider-cache requires auth", async () => {
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: false, error: "Login required", status: 401 });
+
+    const { GET } = await import("../../src/app/api/compression/provider-cache/route.js");
+    const res = await GET({ url: "http://localhost/api/compression/provider-cache" });
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body.error).toBe("Login required");
+    expect(mocks.getProviderCacheStats).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/compression/filter-leaderboard requires auth", async () => {
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: false, error: "Login required", status: 401 });
+
+    const { GET } = await import("../../src/app/api/compression/filter-leaderboard/route.js");
+    const res = await GET({ url: "http://localhost/api/compression/filter-leaderboard" });
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body.error).toBe("Login required");
+    expect(mocks.getFilterLeaderboard).not.toHaveBeenCalled();
   });
 
   it("POST /api/compression/history/clear", async () => {

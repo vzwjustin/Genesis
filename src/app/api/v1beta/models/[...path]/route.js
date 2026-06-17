@@ -185,7 +185,7 @@ async function peekFirstChunkIsGeminiSSE(peekStream) {
       if (/data:\s*\S/.test(decoded)) break;
     }
   } finally {
-    await reader.cancel().catch(() => {});
+    reader.cancel().catch(() => {});
   }
   return /"candidates"\s*:/.test(decoded);
 }
@@ -238,122 +238,131 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
 
   let sawTerminal = false;
   let consecutiveParseFailures = 0;
+  let lineBuffer = "";
   const MAX_CONSECUTIVE_PARSE_FAILURES = 3;
   const toolCallAccum = {};
 
+  const processLine = (line, controller) => {
+    if (!line.startsWith("data:")) return true;
+
+    const data = line.slice(5).trim();
+
+    // Drop empty lines and the OpenAI [DONE] sentinel.
+    // Gemini SSE ends by stream close, no sentinel needed.
+    if (!data || data === "[DONE]") {
+      if (data === "[DONE]") sawTerminal = true;
+      return true;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(data);
+      consecutiveParseFailures = 0;
+    } catch {
+      consecutiveParseFailures++;
+      if (consecutiveParseFailures >= MAX_CONSECUTIVE_PARSE_FAILURES) {
+        controller.error(new Error("Malformed SSE data after consecutive parse failures"));
+        return false;
+      }
+      return true;
+    }
+
+    const choice = parsed.choices?.[0];
+    if (!choice) return true;
+
+    const delta = choice.delta || {};
+
+    if (delta.tool_calls) {
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index ?? 0;
+        if (!toolCallAccum[idx]) {
+          toolCallAccum[idx] = { id: "", name: "", arguments: "" };
+        }
+        const accum = toolCallAccum[idx];
+        if (tc.id) accum.id = tc.id;
+        if (tc.function?.name) accum.name += tc.function.name;
+        if (tc.function?.arguments) accum.arguments += tc.function.arguments;
+      }
+    }
+
+    const parts = [];
+    if (delta.reasoning_content) {
+      parts.push({ text: delta.reasoning_content, thought: true });
+    }
+    if (delta.content) {
+      parts.push({ text: delta.content });
+    }
+
+    if (choice.finish_reason) {
+      for (const idx of Object.keys(toolCallAccum)) {
+        const accum = toolCallAccum[idx];
+        let args = {};
+        try {
+          args = JSON.parse(accum.arguments || "{}");
+        } catch {
+          /* empty */
+        }
+        parts.push({
+          functionCall: {
+            name: accum.name,
+            args,
+          },
+        });
+      }
+    }
+
+    // Skip pure role-only deltas with no content and no finish signal
+    if (parts.length === 0 && !choice.finish_reason) return true;
+
+    const candidate = {
+      content: {
+        role: "model",
+        parts: parts.length > 0 ? parts : [{ text: "" }],
+      },
+      index: 0,
+    };
+
+    if (choice.finish_reason) {
+      candidate.finishReason = FINISH_REASON_MAP[choice.finish_reason] || "STOP";
+      sawTerminal = true;
+    }
+
+    const geminiChunk = { candidates: [candidate] };
+
+    // Attach usage + modelVersion on the final chunk (when finish_reason is set)
+    if (choice.finish_reason && parsed.usage) {
+      geminiChunk.usageMetadata = {
+        promptTokenCount: parsed.usage.prompt_tokens || 0,
+        candidatesTokenCount: parsed.usage.completion_tokens || 0,
+        totalTokenCount: parsed.usage.total_tokens || 0,
+      };
+      const reasoningTokens =
+        parsed.usage.completion_tokens_details?.reasoning_tokens;
+      if (reasoningTokens) {
+        geminiChunk.usageMetadata.thoughtsTokenCount = reasoningTokens;
+      }
+      geminiChunk.modelVersion = parsed.model || model;
+    }
+
+    controller.enqueue(
+      encoder.encode("data: " + JSON.stringify(geminiChunk) + "\r\n\r\n")
+    );
+    return true;
+  };
+
   const transformStream = new TransformStream({
     transform(chunk, controller) {
-      const text = decoder.decode(chunk, { stream: true });
-      const lines = text.split("\n");
+      lineBuffer += decoder.decode(chunk, { stream: true });
+      const lines = lineBuffer.split(/\r?\n/);
+      lineBuffer = lines.pop() ?? "";
 
       for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-
-        const data = line.slice(5).trim();
-
-        // Drop empty lines and the OpenAI [DONE] sentinel.
-        // Gemini SSE ends by stream close, no sentinel needed.
-        if (!data || data === "[DONE]") {
-          if (data === "[DONE]") sawTerminal = true;
-          continue;
-        }
-
-        let parsed;
-        try {
-          parsed = JSON.parse(data);
-          consecutiveParseFailures = 0;
-        } catch {
-          consecutiveParseFailures++;
-          if (consecutiveParseFailures >= MAX_CONSECUTIVE_PARSE_FAILURES) {
-            controller.error(new Error("Malformed SSE data after consecutive parse failures"));
-            return;
-          }
-          continue;
-        }
-
-        const choice = parsed.choices?.[0];
-        if (!choice) continue;
-
-        const delta = choice.delta || {};
-
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls) {
-            const idx = tc.index ?? 0;
-            if (!toolCallAccum[idx]) {
-              toolCallAccum[idx] = { id: "", name: "", arguments: "" };
-            }
-            const accum = toolCallAccum[idx];
-            if (tc.id) accum.id = tc.id;
-            if (tc.function?.name) accum.name += tc.function.name;
-            if (tc.function?.arguments) accum.arguments += tc.function.arguments;
-          }
-        }
-
-        const parts = [];
-        if (delta.reasoning_content) {
-          parts.push({ text: delta.reasoning_content, thought: true });
-        }
-        if (delta.content) {
-          parts.push({ text: delta.content });
-        }
-
-        if (choice.finish_reason) {
-          for (const idx of Object.keys(toolCallAccum)) {
-            const accum = toolCallAccum[idx];
-            let args = {};
-            try {
-              args = JSON.parse(accum.arguments || "{}");
-            } catch {
-              /* empty */
-            }
-            parts.push({
-              functionCall: {
-                name: accum.name,
-                args,
-              },
-            });
-          }
-        }
-
-        // Skip pure role-only deltas with no content and no finish signal
-        if (parts.length === 0 && !choice.finish_reason) continue;
-
-        const candidate = {
-          content: {
-            role: "model",
-            parts: parts.length > 0 ? parts : [{ text: "" }],
-          },
-          index: 0,
-        };
-
-        if (choice.finish_reason) {
-          candidate.finishReason = FINISH_REASON_MAP[choice.finish_reason] || "STOP";
-          sawTerminal = true;
-        }
-
-        const geminiChunk = { candidates: [candidate] };
-
-        // Attach usage + modelVersion on the final chunk (when finish_reason is set)
-        if (choice.finish_reason && parsed.usage) {
-          geminiChunk.usageMetadata = {
-            promptTokenCount: parsed.usage.prompt_tokens || 0,
-            candidatesTokenCount: parsed.usage.completion_tokens || 0,
-            totalTokenCount: parsed.usage.total_tokens || 0,
-          };
-          const reasoningTokens =
-            parsed.usage.completion_tokens_details?.reasoning_tokens;
-          if (reasoningTokens) {
-            geminiChunk.usageMetadata.thoughtsTokenCount = reasoningTokens;
-          }
-          geminiChunk.modelVersion = parsed.model || model;
-        }
-
-        controller.enqueue(
-          encoder.encode("data: " + JSON.stringify(geminiChunk) + "\r\n\r\n")
-        );
+        if (!processLine(line, controller)) return;
       }
     },
     flush(controller) {
+      lineBuffer += decoder.decode();
+      if (lineBuffer.trim() && !processLine(lineBuffer, controller)) return;
       if (!sawTerminal) {
         controller.error(new Error("Stream ended without terminal completion chunk"));
       }

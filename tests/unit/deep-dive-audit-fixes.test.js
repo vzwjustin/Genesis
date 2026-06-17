@@ -26,14 +26,51 @@ describe("fixToolUseOrdering — tool_result isolation", () => {
 });
 
 describe("claudeToOpenAIRequest — built-in tools", () => {
-  it("preserves non-function Anthropic built-in tools", () => {
+  it("drops non-function Anthropic built-in tools for OpenAI-compatible targets", () => {
     const body = {
       messages: [{ role: "user", content: "hi" }],
       tools: [{ type: "web_search_20250305", name: "web_search" }],
+      tool_choice: { type: "tool", name: "web_search" },
     };
     const out = claudeToOpenAIRequest("gpt-4o", body, false);
-    expect(out.tools[0].type).toBe("web_search_20250305");
-    expect(out.tools[0].function).toBeUndefined();
+    expect(out.tools).toBeUndefined();
+    expect(out.tool_choice).toBeUndefined();
+  });
+
+  it("keeps client function tools while dropping Anthropic built-ins", () => {
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [
+        { type: "web_search_20250305", name: "web_search" },
+        { name: "Read", description: "read file", input_schema: { type: "object", properties: {} } },
+      ],
+      tool_choice: { type: "tool", name: "Read" },
+    };
+    const out = claudeToOpenAIRequest("gpt-4o", body, false);
+    expect(out.tools).toEqual([{
+      type: "function",
+      function: {
+        name: "Read",
+        description: "read file",
+        parameters: { type: "object", properties: {} },
+      },
+    }]);
+    expect(out.tool_choice).toEqual({ type: "function", function: { name: "Read" } });
+  });
+
+  it("drops tool_choice when it targets a dropped built-in tool", () => {
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [
+        { type: "web_search_20250305", name: "web_search" },
+        { name: "Read", description: "read file", input_schema: { type: "object", properties: {} } },
+      ],
+      tool_choice: { type: "tool", name: "web_search" },
+    };
+    const out = claudeToOpenAIRequest("gpt-4o", body, false);
+    expect(out.tools).toHaveLength(1);
+    expect(out.tools[0].function.name).toBe("Read");
+    expect(out.tool_choice).toBeUndefined();
   });
 });
 

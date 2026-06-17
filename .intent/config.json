@@ -1,0 +1,70 @@
+{
+  "scripts": [
+    {
+      "name": "dev",
+      "command": "npm run dev",
+      "mode": "service",
+      "category": "dev"
+    },
+    {
+      "name": "build",
+      "command": "npm run build",
+      "mode": "command",
+      "category": "build"
+    },
+    {
+      "name": "postbuild",
+      "command": "npm run postbuild",
+      "mode": "command",
+      "category": "build"
+    },
+    {
+      "name": "start",
+      "command": "npm run start",
+      "mode": "service",
+      "category": "dev"
+    },
+    {
+      "name": "dev:bun",
+      "command": "npm run dev:bun",
+      "mode": "service",
+      "category": "dev"
+    },
+    {
+      "name": "build:bun",
+      "command": "npm run build:bun",
+      "mode": "command",
+      "category": "build"
+    },
+    {
+      "name": "start:bun",
+      "command": "npm run start:bun",
+      "mode": "service",
+      "category": "dev"
+    },
+    {
+      "name": "verify:cli-build",
+      "command": "npm run verify:cli-build",
+      "mode": "command",
+      "category": "build"
+    },
+    {
+      "name": "lint:backend",
+      "command": "npm run lint:backend",
+      "mode": "command",
+      "category": "lint"
+    },
+    {
+      "name": "test",
+      "command": "npm run test",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:watch",
+      "command": "npm run test:watch",
+      "mode": "command",
+      "category": "test"
+    }
+  ]
+}

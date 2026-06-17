@@ -3,6 +3,7 @@ import {
   getProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
+  rollbackStickyUseCount,
 } from "../services/auth.js";
 import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
@@ -143,6 +144,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, si
 
     if (refreshedCredentials._tokenRefreshFailed) {
       log.warn("AUTH", `Token refresh failed for ${credentials.connectionName}, falling back to next connection`);
+      await rollbackStickyUseCount(credentials.connectionId);
       excludeConnectionIds.add(credentials.connectionId);
       lastError = "Token refresh failed";
       lastStatus = 401;

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   json: vi.fn((body, init) => ({ status: init?.status || 200, body })),
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     },
   ]),
   resetCompressionStats: vi.fn(async () => ({ updatedAt: null, tools: {} })),
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
 }));
 
 vi.mock("next/server", () => ({
@@ -28,10 +29,15 @@ vi.mock("@/lib/compressionStats", () => ({
 // Stub the auth gate (the reset route's POST calls requireSpawnRouteAuth,
 // which reads NextRequest `.cookies` absent on the plain Request used here).
 vi.mock("@/lib/auth/spawnRouteAuth", () => ({
-  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+  requireSpawnRouteAuth: mocks.requireSpawnRouteAuth,
 }));
 
 describe("compression history API", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: true });
+  });
+
   it("GET returns normalized history rows", async () => {
     const { GET } = await import("../../src/app/api/compression/history/route.js");
     const req = { url: "http://localhost/api/compression/history?subsystem=rtk&limit=50" };
@@ -46,6 +52,17 @@ describe("compression history API", () => {
       since: undefined,
       limit: 50,
     });
+  });
+
+  it("GET requires auth", async () => {
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: false, error: "Login required", status: 401 });
+
+    const { GET } = await import("../../src/app/api/compression/history/route.js");
+    const response = await GET({ url: "http://localhost/api/compression/history" });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Login required");
+    expect(mocks.getCompressionStatsHistory).not.toHaveBeenCalled();
   });
 
   it("POST reset clears aggregate stats", async () => {
