@@ -616,6 +616,8 @@ Rule:
 
 Passthrough mode does not bypass MITM bypass DNS rules. DNS integrity is still enforced.
 
+Upstream TLS from the MITM server to real providers is validated by default; set `GENESIS_MITM_INSECURE_UPSTREAM=1` only for local self-signed upstreams — see `.env.example`.
+
 ---
 
 ## Request and Response Logging

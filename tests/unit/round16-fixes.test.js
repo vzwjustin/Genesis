@@ -5,9 +5,13 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 const root = dirname(fileURLToPath(import.meta.url));
+
+vi.mock("@/lib/auth/spawnRouteAuth", () => ({
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+}));
 
 describe("suggested-models SSRF guard", () => {
   it("rejects arbitrary URLs not in the provider allowlist", async () => {
@@ -24,6 +28,7 @@ describe("suggested-models SSRF guard", () => {
       "utf8"
     );
     expect(src).toContain("ALLOWED_MODELS_URLS");
+    expect(src).toContain("requireSpawnRouteAuth");
     expect(src).toContain("assertSafeFetchUrl");
     expect(src).toContain("proxyAwareFetch");
     expect(src).not.toMatch(/\bfetch\s*\(/);

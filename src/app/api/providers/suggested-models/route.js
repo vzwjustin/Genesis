@@ -3,6 +3,7 @@ import { FILTERS } from "./filters.js";
 import { assertSafeFetchUrl } from "open-sse/utils/ssrfGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { FREE_PROVIDERS, FREE_TIER_PROVIDERS } from "@/shared/constants/providers";
+import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,9 @@ const ALLOWED_MODELS_URLS = new Set(
 );
 
 export async function GET(request) {
+  const auth = await requireSpawnRouteAuth(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   const { searchParams } = new URL(request.url);
   const url = searchParams.get("url");
   const type = searchParams.get("type");

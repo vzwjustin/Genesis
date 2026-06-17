@@ -314,11 +314,13 @@ export async function POST(request) {
           isValid = anthropicRes.status !== 401;
           break;
 
-        case "gemini":
-          // proxyOptions is the 3rd arg (init is 2nd) — passing it as init dropped proxy config.
-          const geminiRes = await validateFetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`, undefined, proxyOptions);
+        case "gemini": {
+          const geminiRes = await validateFetch("https://generativelanguage.googleapis.com/v1/models", {
+            headers: { "x-goog-api-key": apiKey },
+          }, proxyOptions);
           isValid = geminiRes.ok;
           break;
+        }
 
         case "openrouter":
         case "fusion":
@@ -510,9 +512,14 @@ export async function POST(request) {
           } else {
             // Raw key: probe Vertex — 404 means key is valid (model just doesn't exist), 401 means invalid key
             const probeRes = await validateFetch(
-              `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
-              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-            , proxyOptions);
+              "https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+                body: "{}",
+              },
+              proxyOptions,
+            );
             isValid = probeRes.status !== 401 && probeRes.status !== 403;
           }
           break;
@@ -524,9 +531,14 @@ export async function POST(request) {
             isValid = !!(saJson.client_email && saJson.private_key && saJson.project_id);
           } else {
             const probeRes = await validateFetch(
-              `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
-              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-            , proxyOptions);
+              "https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+                body: "{}",
+              },
+              proxyOptions,
+            );
             isValid = probeRes.status !== 401 && probeRes.status !== 403;
           }
           break;
