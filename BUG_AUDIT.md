@@ -8,6 +8,52 @@ Severity: {"high":6,"medium":11,"low":12}
 
 ---
 
+## STATUS (2026-06)
+
+Remediation status for the **29 confirmed** findings below. Re-verify against current source before relying on this table.
+
+### Fixed (18)
+
+| # | Finding |
+|---|---------|
+| 1 | Redirect SSRF — `allowLoopback` derived from redirect target |
+| 2 | Unbounded SSE `buffer` growth (no newline) |
+| 3 | `responsesTransformer` `output_index` collision |
+| 4 | API keys stored plaintext in `usageDaily` / `usageHistory` |
+| 5 | Root CA private key world-readable |
+| 6 | MITM upstream TLS validation disabled globally — **secure by default**; opt-out env in `.env.example` |
+| 7 | Relay redirect path uses unguarded `originalFetch` |
+| 8 | Loopback-origin direct requests skip connect-time guarded dispatcher |
+| 9 | `invalid_request` misclassified as unrecoverable token error |
+| 10 | Tool-call SSE assembled with `finish_reason: "stop"` instead of `"tool_calls"` |
+| 11 | Passthrough flush re-emits truncated partial SSE as complete |
+| 13 | sql.js debounced persist — usage flush on write path |
+| 15 | SNI mints leaf for any `servername` (no allowlist) |
+| 16 | Leaf certs include over-broad wildcard SAN (`*.${domain}`) |
+| 18 | `testProxyUrl` — no scheme/SSRF validation on proxy URL |
+| 26 | `compareVersions` mishandles prerelease/short semver |
+| 27 | CLI `PROVIDER_MODELS` drift from source of truth |
+| 29 | Combo edit allows <2 models (create enforces min-2) |
+
+### Still open or partial (11 open; #6 partial doc)
+
+| # | Status | Finding |
+|---|--------|---------|
+| 6 | **Partial** | Upstream TLS secure by default; `GENESIS_MITM_INSECURE_UPSTREAM=1` opt-out must be set deliberately (see `.env.example`) |
+| 12 | **Open** | Usage persistence fully best-effort — DB failures silently swallowed |
+| 14 | **Open** | Hardcoded `8.8.8.8` DNS with no DNSSEC/spoof detection |
+| 17 | **Open / may be fixed** | Gemini (and other `authQuery`) API key injected into URL query string |
+| 19 | **Open** | MITM bypass HTTP/1.1 connect has no independent timeout when upstream timeout disabled |
+| 20 | **Open** | Refresh-token dedup cache retains plaintext tokens indefinitely |
+| 21 | **Open** | `openai-to-gemini` silently drops non-standard tool shapes |
+| 22 | **Open** | Unknown `reasoning_effort` values silently dropped (`openai-to-claude`) |
+| 23 | **Open** | Codex default reasoning effort comment vs code mismatch (`medium` vs `low`) |
+| 24 | **Open** | Antigravity `Retry-After` >10s not honored |
+| 25 | **Open** | `trackPendingRequest` START/END not paired per-request |
+| 28 | **Open** | Unreachable combo edit/delete helpers (dead code) |
+
+---
+
 ## [1] HIGH — Redirect SSRF guard derives allowLoopback from the attacker-controlled redirect target, permitting redirect-to-loopback
 
 - **File**: `open-sse/utils/proxyFetch.js:945-951`

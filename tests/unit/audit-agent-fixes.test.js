@@ -175,9 +175,13 @@ describe("audit#11/#12 provider validate route", () => {
     const src = read("src/app/api/providers/validate/route.js");
     expect(src).toMatch(/endpoint = validateProviderBaseUrl\(\(providerSpecificData\?\.azureEndpoint/);
   });
-  it("gemini validate passes proxyOptions as the 3rd arg", () => {
+  it("gemini validate uses x-goog-api-key header instead of URL query param", () => {
     const src = read("src/app/api/providers/validate/route.js");
-    expect(src).toMatch(/generativelanguage\.googleapis\.com[\s\S]*key=\$\{apiKey\}`,\s*undefined,\s*proxyOptions\)/);
+    const geminiBlock = src.slice(src.indexOf('case "gemini"'), src.indexOf('case "openrouter"'));
+    expect(geminiBlock).toContain('"x-goog-api-key": apiKey');
+    expect(geminiBlock).toContain("generativelanguage.googleapis.com/v1/models");
+    expect(geminiBlock).not.toMatch(/\?key=\$\{apiKey\}/);
+    expect(geminiBlock).toMatch(/proxyOptions\)/);
   });
 });
 

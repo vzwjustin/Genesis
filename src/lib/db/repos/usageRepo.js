@@ -20,6 +20,7 @@ if (!global._statsEmitter) {
 if (!global._pendingTimers) global._pendingTimers = {};
 if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
+if (global._usagePersistFailures == null) global._usagePersistFailures = 0;
 
 const pendingRequests = global._pendingRequests;
 const lastErrorProvider = global._lastErrorProvider;
@@ -28,6 +29,13 @@ const recentRing = global._recentRing;
 const connCache = global._connectionMapCache;
 
 export const statsEmitter = global._statsEmitter;
+
+/** In-memory count of saveRequestUsage failures after all retries (dashboard/debug). */
+export const usagePersistFailures = {
+  get count() {
+    return global._usagePersistFailures ?? 0;
+  },
+};
 
 if (global._nextPendingRequestId == null) global._nextPendingRequestId = 1;
 const nextPendingRequestId = () => global._nextPendingRequestId++;
@@ -378,7 +386,16 @@ export async function saveRequestUsage(entry) {
         await new Promise((r) => setTimeout(r, 25 * (attempt + 1)));
         continue;
       }
-      console.error("Failed to save usage stats:", e);
+      global._usagePersistFailures = (global._usagePersistFailures ?? 0) + 1;
+      const provider = entry.provider ?? "unknown";
+      const model = entry.model ?? "unknown";
+      try {
+        console.warn(
+          `[usage-persist-failed] provider=${provider} model=${model} attempts=${maxAttempts} error=${e?.message ?? e}`,
+        );
+      } catch {
+        // Logging must not break the request path.
+      }
     }
   }
 }
