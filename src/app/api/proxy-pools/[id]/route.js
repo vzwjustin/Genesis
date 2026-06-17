@@ -8,6 +8,7 @@ import {
 import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { normalizeProxyPoolType } from "@/lib/network/proxyPoolTypes";
+import { sanitizeProxyPoolForResponse } from "@/lib/network/proxyPoolResponse";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
@@ -71,7 +72,7 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Proxy pool not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ proxyPool });
+    return NextResponse.json({ proxyPool: sanitizeProxyPoolForResponse(proxyPool) });
   } catch (error) {
     console.error("Error fetching proxy pool:", error?.message);
     return NextResponse.json({ error: "Failed to fetch proxy pool" }, { status: 500 });
@@ -98,7 +99,7 @@ export async function PUT(request, { params }) {
     }
 
     const updated = await updateProxyPool(id, normalized.updates);
-    return NextResponse.json({ proxyPool: updated });
+    return NextResponse.json({ proxyPool: sanitizeProxyPoolForResponse(updated) });
   } catch (error) {
     console.error("Error updating proxy pool:", error?.message);
     return NextResponse.json({ error: "Failed to update proxy pool" }, { status: 500 });

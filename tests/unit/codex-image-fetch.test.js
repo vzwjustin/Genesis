@@ -25,7 +25,7 @@ function makeImageBuffer(sizeBytes) {
 function mockImageFetch(sizeBytes, mimeType = "image/jpeg") {
   return {
     ok: true,
-    headers: { get: (k) => (k === "Content-Type" ? mimeType : null) },
+    headers: { get: (k) => (String(k).toLowerCase() === "content-type" ? mimeType : null) },
     arrayBuffer: async () => makeImageBuffer(sizeBytes),
   };
 }
@@ -103,6 +103,38 @@ describe("CodexExecutor image handling", () => {
 
     const imgBlock = body.input[0].content.find((c) => c.type === "input_image");
     expect(imgBlock.image_url).toBe(REMOTE_URL);
+  });
+
+  it("does not buffer remote images larger than the configured cap", async () => {
+    const arrayBuffer = vi.fn(async () => makeImageBuffer(1));
+    vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockImplementation(async () => ({
+      ok: true,
+      headers: {
+        get: (k) => {
+          const key = String(k).toLowerCase();
+          if (key === "content-type") return "image/jpeg";
+          if (key === "content-length") return String(25 * 1024 * 1024);
+          return null;
+        },
+      },
+      arrayBuffer,
+    }));
+
+    const executor = new CodexExecutor();
+    const body = {
+      input: [
+        {
+          role: "user",
+          content: [{ type: "image_url", image_url: { url: REMOTE_URL } }],
+        },
+      ],
+    };
+
+    await executor.prefetchImages(body);
+
+    const imgBlock = body.input[0].content.find((c) => c.type === "input_image");
+    expect(imgBlock.image_url).toBe(REMOTE_URL);
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   it("execute() prefetches images before sending to upstream", async () => {

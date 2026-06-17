@@ -3,7 +3,7 @@ import { BaseExecutor } from "./base.js";
 import { CODEX_DEFAULT_INSTRUCTIONS } from "../config/codexInstructions.js";
 import { PROVIDERS } from "../config/providers.js";
 import { normalizeResponsesInput } from "../translator/helpers/responsesApiHelper.js";
-import { fetchImageAsBase64 } from "../translator/helpers/imageHelper.js";
+import { DEFAULT_MAX_IMAGE_BYTES, fetchImageAsBase64 } from "../translator/helpers/imageHelper.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import { getConsistentMachineId } from "../../src/shared/utils/machineId.js";
 import { DEFAULT_RETRY_CONFIG, resolveRetryEntry } from "../config/runtimeConfig.js";
@@ -19,6 +19,8 @@ import {
 // SSE error patterns inside 200-OK body that should trigger retry as if 503
 const CODEX_SSE_OVERLOADED_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
 const CODEX_SSE_PEEK_BYTES = 4096;
+const CODEX_MAX_REMOTE_IMAGES = 16;
+const CODEX_MAX_TOTAL_IMAGE_BYTES = 40 * 1024 * 1024;
 
 // In-memory map: hash(machineId + first assistant content) → { sessionId, lastUsed }
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -238,20 +240,44 @@ export class CodexExecutor extends BaseExecutor {
   async prefetchImages(body, proxyOptions = null) {
     if (!Array.isArray(body?.input)) return;
     const cacheFloor = findLastCacheBoundary(body.input);
+    let remoteImageCount = 0;
+    let totalImageBytes = 0;
     for (let i = 0; i < body.input.length; i++) {
       if (shouldSkipMessageForCache(i, body.input, cacheFloor)) continue;
       const item = body.input[i];
       if (!Array.isArray(item.content)) continue;
-      const pending = item.content.map(async (c) => {
-        if (c.type !== "image_url") return c;
+      const nextContent = [];
+      for (const c of item.content) {
+        if (c.type !== "image_url") {
+          nextContent.push(c);
+          continue;
+        }
         const url = typeof c.image_url === "string" ? c.image_url : c.image_url?.url;
         const detail = c.image_url?.detail || "auto";
-        if (!url) return c;
-        if (url.startsWith("data:")) return { type: "input_image", image_url: url, detail };
-        const fetched = await fetchImageAsBase64(url, { timeoutMs: 15000, proxyOptions });
-        return { type: "input_image", image_url: fetched?.url || url, detail };
-      });
-      item.content = await Promise.all(pending);
+        if (!url) {
+          nextContent.push(c);
+          continue;
+        }
+        if (url.startsWith("data:")) {
+          nextContent.push({ type: "input_image", image_url: url, detail });
+          continue;
+        }
+        if (remoteImageCount >= CODEX_MAX_REMOTE_IMAGES || totalImageBytes >= CODEX_MAX_TOTAL_IMAGE_BYTES) {
+          nextContent.push({ type: "input_image", image_url: url, detail });
+          continue;
+        }
+
+        remoteImageCount += 1;
+        const remainingBytes = CODEX_MAX_TOTAL_IMAGE_BYTES - totalImageBytes;
+        const fetched = await fetchImageAsBase64(url, {
+          timeoutMs: 15000,
+          proxyOptions,
+          maxBytes: Math.min(DEFAULT_MAX_IMAGE_BYTES, remainingBytes),
+        });
+        if (fetched?.bytes) totalImageBytes += fetched.bytes;
+        nextContent.push({ type: "input_image", image_url: fetched?.url || url, detail });
+      }
+      item.content = nextContent;
     }
   }
 

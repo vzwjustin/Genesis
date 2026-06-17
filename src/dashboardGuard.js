@@ -8,6 +8,7 @@ import {
   isPrivateLanAccessRequest,
   isDashboardLoopbackSession,
   isLocalDashboardSession,
+  isSameOriginDashboardFetch,
   getSocketRemoteIp,
 } from "@/shared/utils/loopbackRequest.js";
 import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
@@ -58,6 +59,7 @@ const LOCAL_ONLY_PATHS = [
   "/api/tunnel/tailscale-check",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
+  "/api/translator/",
 ];
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -140,6 +142,9 @@ async function canAccessLocalOnlyRoute(request) {
     const socketIp = getSocketRemoteIp(request);
     if (socketIp && !isLoopbackIp(socketIp) && !isPrivateLanIp(socketIp)) {
       return false;
+    }
+    if (!socketIp && request.method !== "GET" && request.method !== "HEAD") {
+      return isSameOriginDashboardFetch(request);
     }
     return true;
   }

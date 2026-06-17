@@ -3,6 +3,7 @@ import { createProxyPool } from "@/models";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { buildCloudflareRelayCode, generateRelayAuthSecret } from "@/lib/network/relayDeploy.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { sanitizeProxyPoolForResponse } from "@/lib/network/proxyPoolResponse";
 
 // POST /api/proxy-pools/cloudflare-deploy
 export async function POST(request) {
@@ -102,7 +103,7 @@ export async function POST(request) {
       relayAuthSecret,
     });
 
-    return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
+    return NextResponse.json({ proxyPool: sanitizeProxyPoolForResponse(proxyPool), deployUrl }, { status: 201 });
   } catch (error) {
     console.error("Error deploying Cloudflare relay:", error?.stack || error);
     return NextResponse.json({ error: "Cloudflare relay deployment failed" }, { status: 500 });

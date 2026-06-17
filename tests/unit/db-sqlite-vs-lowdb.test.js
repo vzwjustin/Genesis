@@ -120,7 +120,9 @@ describe("DB SQLite layer — public API parity", () => {
   it("proxyPools: CRUD with sort by updatedAt desc", async () => {
     const p1 = await sqliteDb.createProxyPool({ name: "p1", proxyUrl: "http://a", type: "http" });
     await new Promise((r) => setTimeout(r, 10));
-    const p2 = await sqliteDb.createProxyPool({ name: "p2", proxyUrl: "http://b", type: "http" });
+    const p2 = await sqliteDb.createProxyPool({ name: "p2", proxyUrl: "http://b", type: "deno", relayAuthSecret: "relay-secret" });
+    const savedRelay = await sqliteDb.getProxyPoolById(p2.id);
+    expect(savedRelay.relayAuthSecret).toBe("relay-secret");
     const list = await sqliteDb.getProxyPools();
     expect(list[0].id).toBe(p2.id); // newest first
     await sqliteDb.deleteProxyPool(p1.id);

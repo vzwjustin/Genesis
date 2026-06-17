@@ -509,12 +509,12 @@ describe("dashboard guard management API access", () => {
     expect(response).toBe(mocks.nextResponse);
   });
 
-  it("rejects management API from tunnel host even when requireLogin=false", async () => {
+  it("rejects translator debug API as local-only from tunnel host", async () => {
     const response = await proxy(request("/api/translator/send", {
       host: "router.example.com",
     }));
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 });
 
@@ -689,6 +689,22 @@ describe("dashboard guard local-only access", () => {
 
     const response = await proxy(cookieReq);
     expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects mutating local-only route on LAN host with valid JWT but no socket or same-origin signal", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const cookieReq = {
+      nextUrl: { pathname: "/api/tunnel/enable" },
+      method: "POST",
+      headers: new Headers({ host: "192.168.8.201:20128" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://192.168.8.201:20128/api/tunnel/enable",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("CLI token or login required");
   });
 
   it("rejects local-only route when LAN Host is spoofed by public socket", async () => {
@@ -980,6 +996,20 @@ describe("dashboard guard cli-tools local-only coverage", () => {
       headers: new Headers({ host: "router.example.com" }),
       cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
       url: "http://router.example.com/api/cli-tools/claude-settings",
+    };
+
+    const response = await proxy(cookieReq);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("CLI token or login required");
+  });
+
+  it("blocks translator debug routes from public host with JWT only", async () => {
+    const cookieReq = {
+      nextUrl: { pathname: "/api/translator/translate" },
+      method: "POST",
+      headers: new Headers({ host: "router.example.com" }),
+      cookies: { get: vi.fn(() => ({ value: "valid-jwt" })) },
+      url: "http://router.example.com/api/translator/translate",
     };
 
     const response = await proxy(cookieReq);

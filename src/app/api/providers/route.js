@@ -11,6 +11,7 @@ import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompat
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { normalizeProxyUrl } from "open-sse/utils/proxyFetch.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { sanitizeProviderConnection } from "@/lib/providerConnectionSanitizer";
 
 export const dynamic = "force-dynamic";
 
@@ -78,14 +79,7 @@ export async function GET(request) {
       const name = isCompatible
         ? (c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)
         : c.name;
-      return {
-        ...c,
-        name,
-        apiKey: undefined,
-        accessToken: undefined,
-        refreshToken: undefined,
-        idToken: undefined,
-      };
+      return sanitizeProviderConnection(c, { name });
     });
 
     return NextResponse.json({ connections: safeConnections });
@@ -213,9 +207,7 @@ export async function POST(request) {
       testStatus: testStatus || "unknown",
     });
 
-    // Hide sensitive fields
-    const result = { ...newConnection };
-    delete result.apiKey;
+    const result = sanitizeProviderConnection(newConnection);
 
     return NextResponse.json({ connection: result }, { status: 201 });
   } catch (error) {
