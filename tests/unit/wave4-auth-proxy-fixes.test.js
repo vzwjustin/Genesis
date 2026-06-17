@@ -164,6 +164,12 @@ describe("wave4 — proxy routing", () => {
     // replacing the earlier bodyChunks.shift() so backlog memory stays bounded.
     expect(src).toMatch(/bodyChunks\[offset\]\s*=\s*null/);
   });
+
+  it("bypass stream cancel closes underlying transports", () => {
+    const src = read("../../open-sse/utils/proxyFetch.js");
+    expect(src).toMatch(/cancel\(\) \{[\s\S]*activeRes\?\.destroy\(\)[\s\S]*socket\.destroy\(\)/);
+    expect(src).toMatch(/cancel\(\) \{[\s\S]*req\.close\(\)[\s\S]*client\.close\(\)/);
+  });
 });
 
 describe("wave4 — mergeAbortSignals cleanup", () => {

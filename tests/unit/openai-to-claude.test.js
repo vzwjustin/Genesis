@@ -23,6 +23,39 @@ describe("openaiToClaudeRequest", () => {
     expect(result.tool_choice).toEqual({ type: "tool", name: "my_tool" });
   });
 
+  it("preserves Claude-style tool_choice objects with tool names", () => {
+    const body = {
+      messages: [{ role: "user", content: "run tool" }],
+      tools: [{ type: "function", function: { name: "my_tool", parameters: {} } }],
+      tool_choice: { type: "tool", name: "my_tool" },
+    };
+
+    const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
+    expect(result.tool_choice).toEqual({ type: "tool", name: "my_tool" });
+  });
+
+  it("maps tool_choice objects that omit type but include function name", () => {
+    const body = {
+      messages: [{ role: "user", content: "run tool" }],
+      tools: [{ type: "function", function: { name: "my_tool", parameters: {} } }],
+      tool_choice: { function: { name: "my_tool" } },
+    };
+
+    const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
+    expect(result.tool_choice).toEqual({ type: "tool", name: "my_tool" });
+  });
+
+  it("falls back malformed tool_choice objects to auto", () => {
+    const body = {
+      messages: [{ role: "user", content: "run tool" }],
+      tools: [{ type: "function", function: { name: "my_tool", parameters: {} } }],
+      tool_choice: { type: "function" },
+    };
+
+    const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
+    expect(result.tool_choice).toEqual({ type: "auto" });
+  });
+
   it("maps OpenAI tool_choice 'none' to Claude 'none' (must not call tools)", () => {
     const body = {
       messages: [{ role: "user", content: "hi" }],

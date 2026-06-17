@@ -46,7 +46,13 @@ export class GithubExecutor extends BaseExecutor {
     if (hasAnthropicCacheBreakpoints(body)) return body;
 
     const sanitized = { ...body };
-    
+    // Work on a shallow-cloned message array (and cloned message objects) so we
+    // never mutate the caller's body. chatCore reuses the same translatedBody on
+    // the 401/403 → token-refresh → retry path; in-place mutation here caused the
+    // response_format instructions to be injected twice (and corrupted the logged
+    // providerRequest) on the retry.
+    let messages = body.messages.map(m => ({ ...m }));
+
     // Handle response_format for Claude models via GitHub
     // GitHub's internal translation doesn't respect response_format, so we inject it as a system prompt
     // AND prepend a reminder to the last user message for maximum effectiveness
@@ -60,31 +66,32 @@ export class GithubExecutor extends BaseExecutor {
       }
       if (systemInstruction) {
         // Add to system message
-        const systemIdx = body.messages.findIndex(m => m.role === 'system');
+        const systemIdx = messages.findIndex(m => m.role === 'system');
         if (systemIdx >= 0) {
-          const existing = body.messages[systemIdx].content;
+          const existing = messages[systemIdx].content;
           // System content may be a multimodal array — string-concat would
           // stringify it to "[object Object]" and corrupt the prompt. Prepend a
-          // text block for arrays; only concat when it's already a string.
+          // text block for arrays (new array, no in-place push); only concat when
+          // it's already a string.
           if (Array.isArray(existing)) {
-            body.messages[systemIdx].content = [{ type: 'text', text: systemInstruction }, ...existing];
+            messages[systemIdx].content = [{ type: 'text', text: systemInstruction }, ...existing];
           } else {
-            body.messages[systemIdx].content = systemInstruction + '\n\n' + (typeof existing === 'string' ? existing : '');
+            messages[systemIdx].content = systemInstruction + '\n\n' + (typeof existing === 'string' ? existing : '');
           }
         } else {
-          body.messages.unshift({ role: 'system', content: systemInstruction });
+          messages.unshift({ role: 'system', content: systemInstruction });
         }
-        
+
         // Also prepend to the last user message as a reminder
-        const lastUserIdx = body.messages.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0).pop();
+        const lastUserIdx = messages.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0).pop();
         if (lastUserIdx >= 0) {
-          const userMsg = body.messages[lastUserIdx];
+          const userMsg = messages[lastUserIdx];
           const userContent = typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content);
           userMsg.content = 'Respond with ONLY raw JSON (no markdown, no backticks, no code blocks): ' + userContent;
         }
       }
     }
-    sanitized.messages = body.messages.map(msg => {
+    sanitized.messages = messages.map(msg => {
       // assistant messages with only tool_calls have content: null — leave as-is
       if (!msg.content) return msg;
 

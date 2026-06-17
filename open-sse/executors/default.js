@@ -49,7 +49,10 @@ export class DefaultExecutor extends BaseExecutor {
     const sys = messages.find(m => m.role === "system");
     if (sys) {
       if (typeof sys.content === "string") sys.content = `${sys.content}\n\n${prompt}`;
-      else if (Array.isArray(sys.content)) sys.content.push({ type: "text", text: `\n\n${prompt}` });
+      // messages.map(m => ({ ...m })) shallow-clones each message but the content
+      // array is still the caller's reference — build a new array instead of
+      // push() so we don't mutate (and duplicate on retry) the original body.
+      else if (Array.isArray(sys.content)) sys.content = [...sys.content, { type: "text", text: `\n\n${prompt}` }];
     } else {
       messages.unshift({ role: "system", content: prompt });
     }

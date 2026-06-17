@@ -652,14 +652,18 @@ export async function getUsageStats(period = "all") {
       }
     }
 
-    // Overlay precise lastUsed timestamps from history
+    // Overlay precise lastUsed timestamps from history. Aggregate in SQL
+    // (MAX per distinct combo) instead of loading every row — for period="all"
+    // (maxDays≈3650) the old query materialized the entire usageHistory table.
     const overlayCutoff = maxDays ? Date.now() - maxDays * 86400000 : 0;
     const histRows = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint FROM usageHistory WHERE timestamp >= ?`,
+      `SELECT provider, model, connectionId, apiKey, endpoint, MAX(timestamp) AS ts
+       FROM usageHistory WHERE timestamp >= ?
+       GROUP BY provider, model, connectionId, apiKey, endpoint`,
       [new Date(overlayCutoff).toISOString()]
     );
     for (const e of histRows) {
-      const ts = e.timestamp;
+      const ts = e.ts;
       const modelKey = e.provider ? `${e.model} (${e.provider})` : e.model;
       if (stats.byModel[modelKey] && ts > (stats.byModel[modelKey].lastUsed || "")) stats.byModel[modelKey].lastUsed = ts;
 

@@ -28,7 +28,10 @@ async function refreshXaiToken(refreshToken, log, proxyOptions = null) {
     } catch (e) {
       log?.warn?.("TOKEN_REFRESH", `xai refresh failed: ${e?.message || e}`);
       const msg = String(e?.message || "");
-      if (msg.includes("invalid_grant") || msg.includes("invalid_request")) {
+      // Only invalid_grant is unrecoverable (dead refresh token). invalid_request
+      // is RFC6749 §5.2 (malformed/transient) and must NOT permanently disable a
+      // valid connection — let it retry.
+      if (msg.includes("invalid_grant")) {
         return { error: "invalid_grant" };
       }
       return null;
@@ -407,12 +410,14 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null) 
  * Supports both AWS SSO OIDC (Builder ID/IDC) and Social Auth (Google/GitHub)
  */
 // Backfill missing Kiro profileArn on refresh so existing IDC connections self-heal
-async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn) {
+async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn, proxyOptions = null) {
   if (providerSpecificData?.profileArn) return {};
   let profileArn = refreshedArn?.trim?.() || null;
   if (!profileArn) {
     const { fetchKiroProfileArn } = await import("../../src/lib/oauth/providers.js");
-    profileArn = await fetchKiroProfileArn(accessToken);
+    // Thread proxyOptions: codewhisperer.* is a MITM-bypass host and must use the
+    // connection's configured outbound proxy, never direct egress.
+    profileArn = await fetchKiroProfileArn(accessToken, proxyOptions);
   }
   return profileArn ? { providerSpecificData: { profileArn } } : {};
 }
@@ -470,7 +475,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken || refreshToken,
       expiresIn: tokens.expiresIn,
-      ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken)),
+      ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, null, proxyOptions)),
     };
   }
 
@@ -512,7 +517,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken || refreshToken,
     expiresIn: tokens.expiresIn,
-    ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn)),
+    ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn, proxyOptions)),
   };
   } catch (error) {
     log?.error?.("TOKEN_REFRESH", `Network error refreshing Kiro token: ${error.message}`);

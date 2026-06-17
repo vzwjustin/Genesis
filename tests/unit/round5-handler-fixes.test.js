@@ -48,7 +48,7 @@ describe("chatCore.js — validation and executor error logging", () => {
   });
 
   it("logs executor.execute errors via reqLogger.logError", () => {
-    const catchBlock = src.slice(src.indexOf("} catch (error) {"), src.indexOf("} catch (error) {") + 400);
+    const catchBlock = src.slice(src.indexOf("} catch (error) {"), src.indexOf("} catch (error) {") + 600);
     expect(catchBlock).toContain("reqLogger.logError(error");
   });
 

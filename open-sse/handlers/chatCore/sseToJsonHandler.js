@@ -80,6 +80,116 @@ function pickAssistantMessageForChatCompletion(output) {
   return { msgItem: last, textContent: textFromResponsesMessageItem(last) };
 }
 
+function parseToolArguments(argsJson) {
+  try {
+    return JSON.parse(argsJson || "{}");
+  } catch {
+    return null;
+  }
+}
+
+function openAIChatCompletionToClaude(openaiResponse) {
+  const choice = openaiResponse.choices?.[0];
+  if (!choice) return openaiResponse;
+
+  const msg = choice.message || {};
+  const content = [];
+  if (msg.reasoning_content) content.push({ type: "thinking", thinking: msg.reasoning_content });
+  if (msg.content) content.push({ type: "text", text: msg.content });
+  if (Array.isArray(msg.tool_calls)) {
+    for (const tc of msg.tool_calls) {
+      const input = parseToolArguments(tc.function?.arguments);
+      if (input === null) return null;
+      content.push({
+        type: "tool_use",
+        id: tc.id || `toolu_${Date.now()}`,
+        name: tc.function?.name || "",
+        input,
+      });
+    }
+  }
+  if (content.length === 0) content.push({ type: "text", text: "" });
+
+  let stopReason = "end_turn";
+  if (choice.finish_reason === "tool_calls") stopReason = "tool_use";
+  else if (choice.finish_reason === "length") stopReason = "max_tokens";
+
+  const result = {
+    id: openaiResponse.id?.replace("chatcmpl-", "msg_") || `msg_${Date.now()}`,
+    type: "message",
+    role: "assistant",
+    model: openaiResponse.model || "unknown",
+    content,
+    stop_reason: stopReason,
+    stop_sequence: null,
+  };
+  if (openaiResponse.usage) {
+    result.usage = {
+      input_tokens: openaiResponse.usage.prompt_tokens || 0,
+      output_tokens: openaiResponse.usage.completion_tokens || 0,
+    };
+    if (openaiResponse.usage.prompt_tokens_details?.cached_tokens) {
+      result.usage.cache_read_input_tokens = openaiResponse.usage.prompt_tokens_details.cached_tokens;
+    }
+  }
+  return result;
+}
+
+function openAIChatCompletionToGemini(openaiResponse, wrapAntigravity = false) {
+  const choice = openaiResponse.choices?.[0];
+  if (!choice) return openaiResponse;
+
+  const msg = choice.message || {};
+  const parts = [];
+  if (msg.reasoning_content) parts.push({ thought: true, text: msg.reasoning_content });
+  if (msg.content) parts.push({ text: msg.content });
+  if (Array.isArray(msg.tool_calls)) {
+    for (const tc of msg.tool_calls) {
+      const args = parseToolArguments(tc.function?.arguments);
+      if (args === null) return null;
+      parts.push({ functionCall: { name: tc.function?.name || "", args } });
+    }
+  }
+  if (parts.length === 0) parts.push({ text: "" });
+
+  let finishReason = "STOP";
+  if (choice.finish_reason === "length") finishReason = "MAX_TOKENS";
+  else if (choice.finish_reason === "content_filter") finishReason = "SAFETY";
+
+  const geminiBody = {
+    candidates: [{ content: { role: "model", parts }, finishReason }],
+    modelVersion: openaiResponse.model || "unknown",
+    responseId: openaiResponse.id || `resp_${Date.now()}`,
+  };
+  if (openaiResponse.usage) {
+    geminiBody.usageMetadata = {
+      promptTokenCount: openaiResponse.usage.prompt_tokens || 0,
+      candidatesTokenCount: openaiResponse.usage.completion_tokens || 0,
+      totalTokenCount: openaiResponse.usage.total_tokens || 0,
+    };
+    if (openaiResponse.usage.completion_tokens_details?.reasoning_tokens) {
+      geminiBody.usageMetadata.thoughtsTokenCount = openaiResponse.usage.completion_tokens_details.reasoning_tokens;
+    }
+    if (openaiResponse.usage.prompt_tokens_details?.cached_tokens) {
+      geminiBody.usageMetadata.cachedContentTokenCount = openaiResponse.usage.prompt_tokens_details.cached_tokens;
+    }
+  }
+  return wrapAntigravity ? { response: geminiBody } : geminiBody;
+}
+
+function convertOpenAIChatCompletionToSource(openaiResponse, sourceFormat) {
+  if (sourceFormat === FORMATS.OPENAI) return openaiResponse;
+  if (sourceFormat === FORMATS.OPENAI_RESPONSES) return openAIChatCompletionToResponsesJson(openaiResponse);
+  if (sourceFormat === FORMATS.CLAUDE) return openAIChatCompletionToClaude(openaiResponse);
+  if (sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {
+    return openAIChatCompletionToGemini(openaiResponse, false);
+  }
+  if (sourceFormat === FORMATS.ANTIGRAVITY) {
+    return openAIChatCompletionToGemini(openaiResponse, true);
+  }
+  return openaiResponse;
+}
+
 // Split raw SSE text into payload strings, one per event. Per the SSE spec an
 // event is delimited by a blank line and may carry multiple `data:` lines that
 // are concatenated with "\n". Splitting on bare "\n" and parsing each data line
@@ -661,7 +771,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         for (const item of funcCallItems) {
           let args = item.arguments || {};
           if (typeof args === "string") {
-            try { args = JSON.parse(args); } catch { args = {}; }
+            try { args = JSON.parse(args); } catch { throw new Error("Invalid Responses API function-call arguments"); }
           }
           geminiParts.push({
             functionCall: {
@@ -686,6 +796,24 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         finalResp = sourceFormat === FORMATS.ANTIGRAVITY
           ? { response: geminiBody }
           : geminiBody;
+      } else if (sourceFormat === FORMATS.CLAUDE) {
+        finalResp = convertOpenAIChatCompletionToSource({
+          id: jsonResponse.id || `chatcmpl-${Date.now()}`,
+          object: "chat.completion",
+          created: jsonResponse.created_at || Math.floor(Date.now() / 1000),
+          model: jsonResponse.model || model,
+          choices: [{
+            index: 0,
+            message: {
+              role: "assistant",
+              content: textContent || (hasToolCalls ? null : ""),
+              ...(hasToolCalls ? { tool_calls: toolCalls } : {}),
+            },
+            finish_reason: hasToolCalls ? "tool_calls" : (jsonResponse.status === "completed" ? "stop" : (jsonResponse.status || "stop")),
+          }],
+          usage: { prompt_tokens: inTokens, completion_tokens: outTokens, total_tokens: inTokens + outTokens },
+        }, sourceFormat);
+        if (!finalResp) throw new Error("Invalid Responses API function-call arguments");
       } else {
         const message = { role: "assistant", content: textContent || (hasToolCalls ? null : "") };
         if (hasToolCalls) message.tool_calls = toolCalls;
@@ -726,8 +854,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       finalizeFailure("Invalid SSE response for non-streaming request");
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request", undefined, PROXY_INTERNAL_SSE);
     }
-    if (!passthrough && sourceFormat === FORMATS.OPENAI_RESPONSES) {
-      parsed = openAIChatCompletionToResponsesJson(parsed);
+    if (!passthrough) {
+      parsed = convertOpenAIChatCompletionToSource(parsed, sourceFormat);
+      if (!parsed) {
+        finalizeFailure("Invalid SSE response for non-streaming request");
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request", undefined, PROXY_INTERNAL_SSE);
+      }
     }
 
     const usage = parsed.usage || {};

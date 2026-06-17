@@ -14,11 +14,11 @@ export class GeminiCLIExecutor extends BaseExecutor {
     return `${this.config.baseUrl}:${action}`;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, model = "") {
     return {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${credentials.accessToken}`,
-      "User-Agent": geminiCLIUserAgent(this._currentModel),
+      "User-Agent": geminiCLIUserAgent(model),
       "X-Goog-Api-Client": GEMINI_CLI_API_CLIENT,
       "Accept": stream ? "text/event-stream" : "application/json"
     };
@@ -26,8 +26,6 @@ export class GeminiCLIExecutor extends BaseExecutor {
 
   transformRequest(model, body, stream, credentials) {
     if (hasAnthropicCacheBreakpoints(body)) return body;
-    // Store model for use in buildHeaders (called by base.execute after transformRequest)
-    this._currentModel = model;
     // Cloud Code Assist wraps the Gemini payload: { project, model, request: <body> }
     if (body && body.request && body.model) return body;
     return {

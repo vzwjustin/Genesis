@@ -48,11 +48,11 @@ export const refreshCodexToken = (refreshToken) =>
 export const refreshIflowToken = (refreshToken) =>
   _refreshIflowToken(refreshToken, log);
 
-export const refreshGitHubToken = (refreshToken) =>
-  _refreshGitHubToken(refreshToken, log);
+export const refreshGitHubToken = (refreshToken, proxyOptions = null) =>
+  _refreshGitHubToken(refreshToken, log, proxyOptions);
 
-export const refreshCopilotToken = (githubAccessToken) =>
-  _refreshCopilotToken(githubAccessToken, log);
+export const refreshCopilotToken = (githubAccessToken, proxyOptions = null) =>
+  _refreshCopilotToken(githubAccessToken, log, proxyOptions);
 
 export const refreshKiroToken = (refreshToken, providerSpecificData) =>
   _refreshKiroToken(refreshToken, providerSpecificData, log);
@@ -294,7 +294,9 @@ export async function checkAndRefreshToken(provider, credentials) {
         expiresIn: Math.round(remaining / 1000),
       });
 
-      const copilotToken = await refreshCopilotToken(creds.accessToken);
+      // api.github.com is a MITM-bypass host — route the Copilot exchange through
+      // the connection's configured outbound proxy (matches the GitHub OAuth refresh).
+      const copilotToken = await refreshCopilotToken(creds.accessToken, buildProxyOptionsFromCredentials(creds));
       if (copilotToken) {
         const updatedSpecific = {
           ...creds.providerSpecificData,
@@ -336,10 +338,13 @@ export async function checkAndRefreshToken(provider, credentials) {
  * @returns {Promise<object|null>} merged credentials or the raw GitHub credentials on Copilot failure
  */
 export async function refreshGitHubAndCopilotTokens(credentials) {
-  const newGitHubCreds = await refreshGitHubToken(credentials.refreshToken);
+  // Both github.com and api.github.com are MITM-bypass hosts — route both calls
+  // through the connection's configured outbound proxy.
+  const proxyOptions = buildProxyOptionsFromCredentials(credentials);
+  const newGitHubCreds = await refreshGitHubToken(credentials.refreshToken, proxyOptions);
   if (!newGitHubCreds?.accessToken) return newGitHubCreds;
 
-  const copilotToken = await refreshCopilotToken(newGitHubCreds.accessToken);
+  const copilotToken = await refreshCopilotToken(newGitHubCreds.accessToken, proxyOptions);
   if (!copilotToken) return newGitHubCreds;
 
   return {

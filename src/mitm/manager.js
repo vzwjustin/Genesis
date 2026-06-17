@@ -178,6 +178,24 @@ function isProcessAlive(pid) {
   }
 }
 
+// Verify a PID actually belongs to the MITM server before we SIGKILL it. After a
+// hard crash the saved .mitm.pid can go stale and the OS may reuse that PID for an
+// unrelated (possibly root) process — killing it blindly is a local DoS. POSIX-only
+// (uses `ps`); on Windows we can't cheaply verify, so we fall back to the prior
+// behavior. Fails closed: if identity can't be confirmed, do NOT kill.
+function isLikelyMitmProcess(pid) {
+  if (!pid) return false;
+  if (IS_WIN) return true; // best-effort: no cheap identity check on Windows
+  try {
+    const out = execSync(`ps -p ${pid} -o command= 2>/dev/null`, { encoding: "utf8", windowsHide: true }).trim();
+    if (!out) return false;
+    if (SERVER_PATH && out.includes(SERVER_PATH)) return true;
+    return /mitm[/\\]server|mitm-server|genesis[\s\S]*mitm/i.test(out);
+  } catch {
+    return false; // can't verify → never SIGKILL an unknown PID
+  }
+}
+
 function killProcess(pid, force = false, sudoPassword = null) {
   if (IS_WIN) {
     const flag = force ? "/F " : "";
@@ -382,7 +400,9 @@ async function killLeftoverMitm(sudoPassword) {
   try {
     if (fs.existsSync(PID_FILE)) {
       const savedPid = parseInt(fs.readFileSync(PID_FILE, "utf-8").trim(), 10);
-      if (savedPid && isProcessAlive(savedPid)) {
+      // Only kill the saved PID if it's verifiably the MITM server — a reused PID
+      // must not be SIGKILLed. The stale PID file is removed regardless.
+      if (savedPid && isProcessAlive(savedPid) && isLikelyMitmProcess(savedPid)) {
         killProcess(savedPid, true, sudoPassword);
         await new Promise(r => setTimeout(r, 500));
       }
@@ -840,11 +860,14 @@ async function stopServer(sudoPassword) {
 
   // Kill server process
   const proc = serverProcess;
-  const pidToKill = proc && !proc.killed
+  const fromLiveProc = !!(proc && !proc.killed);
+  const pidToKill = fromLiveProc
     ? proc.pid
     : (() => { try { return parseInt(fs.readFileSync(PID_FILE, "utf-8").trim(), 10); } catch { return null; } })();
 
-  if (pidToKill && isProcessAlive(pidToKill)) {
+  // A PID read from the file (not our live child) might be a reused PID after a
+  // stale write — verify identity before killing. Our own live child is trusted.
+  if (pidToKill && isProcessAlive(pidToKill) && (fromLiveProc || isLikelyMitmProcess(pidToKill))) {
     log(`Killing server (PID: ${pidToKill})...`);
     killProcess(pidToKill, false, sudoPassword);
     await new Promise(r => setTimeout(r, 1000));

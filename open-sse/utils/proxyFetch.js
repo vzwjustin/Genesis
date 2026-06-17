@@ -377,7 +377,7 @@ function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
 
   const normalizedProxyUrl = normalizeProxyUrl(proxyUrlRaw, false);
   if (!normalizedProxyUrl) {
-    if (proxyOptions?.strictProxy === true) {
+    if (proxyOptions?.strictProxy !== false) {
       throw new Error("[ProxyFetch] Strict connection proxy URL is invalid");
     }
     console.warn("[ProxyFetch] Ignoring invalid connection proxy URL");
@@ -645,6 +645,9 @@ async function createBypassRequest(parsedUrl, realIP, options) {
                 cancel() {
                   streamDone = true;
                   detach();
+                  try { activeRes?.destroy(); } catch { /* noop */ }
+                  try { req?.destroy(); } catch { /* noop */ }
+                  try { socket.destroy(); } catch { /* noop */ }
                 },
               });
             },
@@ -884,6 +887,8 @@ async function createHttp2BypassRequest(parsedUrl, realIP, options) {
             cancel() {
               streamDone = true;
               detach();
+              try { req.close(); } catch { /* noop */ }
+              try { client.close(); } catch { /* noop */ }
             },
           });
         },

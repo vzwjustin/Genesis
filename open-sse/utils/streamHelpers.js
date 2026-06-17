@@ -102,6 +102,9 @@ function cleanUsagePayload(payload) {
 export function formatSSE(data, format = null) {
   if (data === null || data === undefined) return "";
   if (typeof data === "string") return data;
+  if (format === FORMATS.OPENAI_RESPONSES && typeof data.event === "string" && "data" in data) {
+    return `event: ${data.event}\ndata: ${JSON.stringify(data.data)}\n\n`;
+  }
   // Anthropic Messages streaming requires a named `event:` line per frame
   // (message_start, content_block_delta, message_stop, ...). Strict Claude
   // clients switch on it. OpenAI/Gemini SSE use bare `data:` lines — never

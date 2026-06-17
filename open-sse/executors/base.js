@@ -172,7 +172,13 @@ export class BaseExecutor {
 
       throwOnCacheViolation(transformedBody, cacheProtectedSnapshot, "executor transform");
 
-      const headers = this.buildHeaders(credentials, stream);
+      const headers = this.buildHeaders(credentials, stream, model, {
+        body: transformedBody,
+        originalBody: body,
+        passthrough,
+        sourceFormat,
+        urlIndex,
+      });
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 

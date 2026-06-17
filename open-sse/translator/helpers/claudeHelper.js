@@ -24,13 +24,10 @@ export function isAnthropicBuiltinToolPassthroughProvider(provider) {
   return provider === "claude" || provider?.startsWith("anthropic-compatible");
 }
 
-/** Claude /v1/messages API providers plus OpenAI/Gemini when body carries cache_control. */
-export function usesAnthropicToolCleaning(provider, clientHasCacheBreakpoints = false) {
+/** Claude /v1/messages API providers and Claude-compatible providers. */
+export function usesAnthropicToolCleaning(provider) {
   if (isAnthropicBuiltinToolPassthroughProvider(provider)) return true;
   if (new Set(["minimax", "minimax-cn", "glm", "kimi", "kimi-coding"]).has(provider)) return true;
-  if (clientHasCacheBreakpoints && ["openai", "gemini", "gemini-cli", "antigravity"].includes(provider)) {
-    return true;
-  }
   return false;
 }
 

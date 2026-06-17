@@ -24,39 +24,13 @@ describe("getProviderCompressionStats", () => {
   });
 
   it("aggregates compression events by provider and subsystem", async () => {
+    // getProviderCompressionStats now aggregates in SQL (GROUP BY provider, subsystem),
+    // so the mocked adapter returns one pre-aggregated row per (provider, subsystem).
     mocks.rows = [
-      {
-        timestamp: "2026-06-08T10:00:00.000Z",
-        provider: "anthropic",
-        subsystem: "rtk",
-        bytes_before: 1000,
-        bytes_after: 400,
-        level: null,
-      },
-      {
-        timestamp: "2026-06-08T10:01:00.000Z",
-        provider: "anthropic",
-        subsystem: "headroom",
-        bytes_before: 800,
-        bytes_after: 500,
-        level: null,
-      },
-      {
-        timestamp: "2026-06-08T10:02:00.000Z",
-        provider: "openai",
-        subsystem: "caveman",
-        bytes_before: 0,
-        bytes_after: 0,
-        level: "full",
-      },
-      {
-        timestamp: "2026-06-08T10:03:00.000Z",
-        provider: null,
-        subsystem: "rtk",
-        bytes_before: 200,
-        bytes_after: 100,
-        level: null,
-      },
+      { provider: "anthropic", subsystem: "rtk", events: 1, bytesSaved: 600, lastUsed: "2026-06-08T10:00:00.000Z" },
+      { provider: "anthropic", subsystem: "headroom", events: 1, bytesSaved: 300, lastUsed: "2026-06-08T10:01:00.000Z" },
+      { provider: "openai", subsystem: "caveman", events: 1, bytesSaved: 0, lastUsed: "2026-06-08T10:02:00.000Z" },
+      { provider: null, subsystem: "rtk", events: 1, bytesSaved: 100, lastUsed: "2026-06-08T10:03:00.000Z" },
     ];
 
     const { getProviderCompressionStats } = await import("../../src/lib/compressionStats.js");

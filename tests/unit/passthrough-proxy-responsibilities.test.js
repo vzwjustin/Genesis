@@ -143,6 +143,7 @@ vi.mock("open-sse/handlers/chatCore/streamingHandler.js", () => ({
 vi.mock("open-sse/utils/upstreamTelemetry.js", () => ({
   checkCircuitBreaker: (...args) => mockCheckCircuitBreaker(...args),
   recordUpstreamTelemetry: (...args) => mockRecordUpstreamTelemetry(...args),
+  releaseCircuitProbe: vi.fn(),
 }));
 vi.mock("open-sse/utils/toolDeduper.js", () => ({
   dedupeTools: (tools) => ({ tools, stripped: [] }),
