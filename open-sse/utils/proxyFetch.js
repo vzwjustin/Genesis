@@ -1121,8 +1121,11 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
 async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
   let originHost = "";
+  let originPort = "";
   try {
-    originHost = new URL(targetUrl).hostname.toLowerCase();
+    const originUrl = new URL(targetUrl);
+    originHost = originUrl.hostname.toLowerCase();
+    originPort = originUrl.port;
   } catch { /* unparseable */ }
 
   let directIsLoopback = false;
@@ -1142,6 +1145,13 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     return originalFetch(u, { ...o, dispatcher });
   };
 
+  // Loopback-origin providers (ollama/searxng) may 3xx-redirect on the same
+  // host; inherit the origin's loopback policy into safeRedirectFetch so
+  // redirects are not blocked while non-loopback origins stay strict.
+  const withDirectRedirectOptions = (opts) => (
+    directIsLoopback ? { ...opts, ssrfAllowLoopback: true } : opts
+  );
+
   // For direct (non-proxy) egress to a non-loopback host, attach the
   // connect-time guarded dispatcher so the IP actually dialed is re-checked —
   // closes the DNS-rebind window between the check above and the real connect.
@@ -1154,12 +1164,15 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
     // just because the original target was loopback (rebind/loopback-pivot fix).
     let hopIsLoopback = false;
     try {
-      const hopHost = new URL(typeof u === "string" ? u : u.toString()).hostname.toLowerCase();
-      // Only skip the guarded dispatcher for the original loopback host — not
-      // arbitrary localhost ports reached via redirect (loopback port pivot).
+      const hopUrl = new URL(typeof u === "string" ? u : u.toString());
+      const hopHost = hopUrl.hostname.toLowerCase();
+      // Only skip the guarded dispatcher for the exact origin loopback endpoint
+      // (same host + port). A redirect to another localhost port must use the
+      // connect-time guarded dispatcher even when the origin was loopback.
       hopIsLoopback = directIsLoopback
         && originHost
         && hopHost === originHost
+        && hopUrl.port === originPort
         && ["localhost", "127.0.0.1", "::1"].includes(hopHost);
     } catch { /* unparseable URL — fall through to guarded path */ }
     if (hopIsLoopback) return originalFetch(u, o);
@@ -1219,7 +1232,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // routing before relay/env proxy selection (relay no_proxy regression fix).
   const connectionNoProxy = normalizeString(proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy);
   if (connectionNoProxy && shouldBypassByNoProxy(targetUrl, connectionNoProxy)) {
-    return safeRedirectFetch(url, options, directFetch);
+    return safeRedirectFetch(url, withDirectRedirectOptions(options), directFetch);
   }
 
   if (!proxyUrl && vercelRelayUrl) {
@@ -1244,11 +1257,11 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
         throw new Error(`[ProxyFetch] Proxy required but failed: ${proxyError.message}`);
       }
       console.warn(`[ProxyFetch] Proxy failed, falling back to direct (strictProxy=false): ${proxyError.message}`);
-      return safeRedirectFetch(url, options, directFetch);
+      return safeRedirectFetch(url, withDirectRedirectOptions(options), directFetch);
     }
   }
 
-  return safeRedirectFetch(url, options, directFetch);
+  return safeRedirectFetch(url, withDirectRedirectOptions(options), directFetch);
 }
 
 /**

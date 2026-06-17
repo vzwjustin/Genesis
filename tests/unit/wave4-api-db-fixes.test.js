@@ -255,6 +255,12 @@ describe("wave4 — usageRepo totals and bounds", () => {
     const stats = await sqliteDb.getProviderCacheStats("all");
     expect(stats.requests).toBeGreaterThanOrEqual(1);
   });
+
+  it("saveRequestUsage retries transient failures and flushes sql.js writes", () => {
+    const src = fs.readFileSync(path.join(repoRoot, "src/lib/db/repos/usageRepo.js"), "utf8");
+    expect(src).toMatch(/const maxAttempts = 3/);
+    expect(src).toContain("flushPendingSave");
+  });
 });
 
 describe("wave4 — request-details pagination guard", () => {

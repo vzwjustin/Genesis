@@ -168,4 +168,18 @@ describe("proxyFetch — wave2 hardening", () => {
     expect(src).toMatch(/isHttps \? await import\("https"\) : await import\("http"\)/);
     expect(src).toMatch(/socket\.connect\(port,\s*realIP/);
   });
+
+  it("direct paths inherit loopback redirect policy for same-origin providers", () => {
+    const src = readFileSync(join(root, "open-sse/utils/proxyFetch.js"), "utf8");
+    expect(src).toContain("withDirectRedirectOptions");
+    expect(src).toMatch(/ssrfAllowLoopback:\s*true/);
+    expect(src).toMatch(/safeRedirectFetch\(url,\s*withDirectRedirectOptions\(options\),\s*directFetch\)/);
+  });
+
+  it("loopback directFetch skips guarded dispatcher only for same host and port", () => {
+    const src = readFileSync(join(root, "open-sse/utils/proxyFetch.js"), "utf8");
+    const block = src.slice(src.indexOf("const directFetch = async"), src.indexOf("const connectionProxyUrl"));
+    expect(block).toContain("hopUrl.port === originPort");
+    expect(block).toContain("hopHost === originHost");
+  });
 });
