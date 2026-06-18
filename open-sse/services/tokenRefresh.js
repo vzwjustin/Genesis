@@ -1,6 +1,7 @@
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT, REFRESH_LEAD_MS } from "../config/appConstants.js";
 import { proxyAwareFetch, buildProxyOptionsFromCredentials } from "../utils/proxyFetch.js";
+import { createHash } from "node:crypto";
 
 function resolveProxyOptions(credentials, proxyOptions) {
   return proxyOptions ?? (credentials ? buildProxyOptionsFromCredentials(credentials) : null);
@@ -71,9 +72,14 @@ export function __clearRefreshDedupCacheForTests() {
   refreshDedupCache.clear();
 }
 
+function refreshDedupCacheKey(provider, oldToken) {
+  const digest = createHash("sha256").update(oldToken).digest("hex");
+  return `${provider}:${digest}`;
+}
+
 async function dedupRefresh(provider, oldToken, fn, log) {
   if (!oldToken) return fn();
-  const key = `${provider}:${oldToken}`;
+  const key = refreshDedupCacheKey(provider, oldToken);
   const hit = refreshDedupCache.get(key);
   if (hit) {
     if (hit.promise) {
@@ -892,6 +898,19 @@ export function parseVertexSaJson(apiKey) {
 
 // Cache Vertex tokens keyed by service account email { token, expiresAt }
 const vertexTokenCache = new Map();
+const VERTEX_TOKEN_CACHE_MAX_ENTRIES = 100;
+
+function pruneVertexTokenCache() {
+  const now = Date.now();
+  for (const [k, v] of vertexTokenCache) {
+    if (v.expiresAt <= now) vertexTokenCache.delete(k);
+  }
+  while (vertexTokenCache.size > VERTEX_TOKEN_CACHE_MAX_ENTRIES) {
+    const oldest = vertexTokenCache.keys().next().value;
+    if (oldest === undefined) break;
+    vertexTokenCache.delete(oldest);
+  }
+}
 
 /**
  * Mint a short-lived OAuth2 Bearer token for Google Cloud Vertex AI
@@ -946,6 +965,7 @@ export async function refreshVertexToken(saJson, log, proxyOptions = null) {
     const expiresAt = Date.now() + (expires_in ?? 3600) * 1000;
 
     vertexTokenCache.set(cacheKey, { token: access_token, expiresAt });
+    pruneVertexTokenCache();
     log?.info?.("TOKEN_REFRESH", `Vertex token minted for ${saJson.client_email}`);
 
     return { accessToken: access_token, expiresAt };

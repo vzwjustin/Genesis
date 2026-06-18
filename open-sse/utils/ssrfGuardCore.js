@@ -4,7 +4,7 @@
 
 export const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
 
-function isPrivateOrReservedIpv4(a, b) {
+function isPrivateOrReservedIpv4(a, b, c = 0, d = 0) {
   if (a === 10) return true;
   if (a === 100 && b >= 64 && b <= 127) return true; // RFC 6598 CGNAT
   if (a === 172 && b >= 16 && b <= 31) return true;
@@ -21,6 +21,8 @@ function isPrivateOrReservedIpv4(a, b) {
   if (a === 192 && b === 0) return true; // covers 192.0.0.0/24 (IETF) + 192.0.2.0/24 TEST-NET-1
   if (a === 198 && b === 51) return true; // 198.51.100.0/24 TEST-NET-2
   if (a === 203 && b === 0) return true; // 203.0.113.0/24 TEST-NET-3
+  void c;
+  void d;
   return false;
 }
 
@@ -105,8 +107,8 @@ export function isBlockedHostname(hostname) {
   if (h.endsWith(".local") || h.endsWith(".internal")) return true;
   if (h === "metadata.google.internal" || h === "metadata") return true;
   if (isIpv4Literal(h)) {
-    const [a, b] = h.split(".").map(Number);
-    return isPrivateOrReservedIpv4(a, b);
+    const [a, b, c, d] = h.split(".").map(Number);
+    return isPrivateOrReservedIpv4(a, b, c, d);
   }
   if (h.includes(":")) {
     return isPrivateOrReservedIpv6(h);

@@ -48,6 +48,35 @@ const MITM_PORT = 443;
 const MITM_WIN_NODE_PORT = 8443;
 const PID_FILE = path.join(MITM_DIR, ".mitm.pid");
 const MITM_SERVER_ENV_FILE = path.join(MITM_DIR, ".mitm-server.env");
+const MITM_RUNTIME_ASSETS = ["sql-wasm.wasm"];
+
+function syncMitmRuntimeAssets(bundledPath, destDir) {
+  const bundledDir = path.dirname(bundledPath);
+  for (const name of MITM_RUNTIME_ASSETS) {
+    const src = path.join(bundledDir, name);
+    const dest = path.join(destDir, name);
+    if (fs.existsSync(src)) {
+      try { fs.copyFileSync(src, dest); } catch { /* ignore */ }
+    }
+  }
+}
+
+function mitmRuntimeNodePath() {
+  const runtimeModules = path.join(DATA_DIR, "runtime", "node_modules");
+  if (!fs.existsSync(runtimeModules)) return null;
+  const existing = process.env.NODE_PATH || "";
+  if (!existing) return runtimeModules;
+  const parts = existing.split(path.delimiter);
+  if (parts.includes(runtimeModules)) return existing;
+  return `${runtimeModules}${path.delimiter}${existing}`;
+}
+
+function buildMitmChildEnv(overrides = {}) {
+  const env = { ...process.env, ...overrides };
+  const nodePath = mitmRuntimeNodePath();
+  if (nodePath) env.NODE_PATH = nodePath;
+  return env;
+}
 
 function cleanupMitmRuntimeFiles() {
   try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
@@ -83,9 +112,9 @@ function ensureRuntimeServer(bundledPath) {
   try {
     if (!bundledPath || !fs.existsSync(bundledPath)) return bundledPath;
 
-    // Dev mode: source file has relative requires (./logger, ./config...),
-    // only the bundled file inside node_modules is self-contained + safe to copy.
+    // Dev/fork bundle: server.js + sql-wasm.wasm live together under cli/app/src/mitm.
     if (!bundledPath.includes(`${path.sep}node_modules${path.sep}`)) {
+      syncMitmRuntimeAssets(bundledPath, path.dirname(bundledPath));
       return bundledPath;
     }
 
@@ -102,6 +131,7 @@ function ensureRuntimeServer(bundledPath) {
 
     fs.mkdirSync(runtimeDir, { recursive: true });
     fs.copyFileSync(bundledPath, runtimeServer);
+    syncMitmRuntimeAssets(bundledPath, runtimeDir);
     fs.writeFileSync(hashFile, bundledHash, "utf8");
     return runtimeServer;
   } catch (e) {
@@ -692,12 +722,11 @@ async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) 
         windowsHide: true,
         cwd: os.tmpdir(),
         stdio: ["ignore", "pipe", "pipe"],
-        env: {
-          ...process.env,
+        env: buildMitmChildEnv({
           ROUTER_API_KEY: apiKey,
           NODE_ENV: "production",
           MITM_ROUTER_BASE: mitmRouterBase,
-        },
+        }),
       }
     );
 
@@ -711,6 +740,8 @@ async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) 
       `MITM_ROUTER_BASE=${mitmRouterBase}`,
       "NODE_ENV=production",
     ];
+    const nodePath = mitmRuntimeNodePath();
+    if (nodePath) envLines.push(`NODE_PATH=${nodePath}`);
     fs.writeFileSync(mitmEnvFile, `${envLines.join("\n")}\n`, { mode: 0o600 });
     const inlineCmd = [
       `set -a && . ${shellQuoteSingle(mitmEnvFile)} && set +a && exec`,
@@ -733,12 +764,11 @@ async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) 
       windowsHide: true,
       cwd: os.tmpdir(),
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
+      env: buildMitmChildEnv({
         ROUTER_API_KEY: apiKey,
         NODE_ENV: "production",
         MITM_ROUTER_BASE: mitmRouterBase,
-      },
+      }),
     });
   }
 

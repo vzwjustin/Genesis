@@ -70,7 +70,6 @@ function verifyProtectedArray(arr, snap, itemMatchesSnapshot) {
       return false;
     }
   }
-  if (hasProtected && arr.length > snap.length) return false;
   return true;
 }
 

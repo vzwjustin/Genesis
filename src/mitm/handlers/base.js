@@ -62,6 +62,7 @@ async function pipeSSE(routerRes, res, dumper) {
 
   const reader = routerRes.body.getReader();
   const decoder = new TextDecoder();
+  let ended = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -70,6 +71,7 @@ async function pipeSSE(routerRes, res, dumper) {
         if (tail) res.write(tail);
         if (dumper) dumper.end();
         res.end();
+        ended = true;
         break;
       }
       if (dumper) dumper.writeChunk(value);
@@ -78,6 +80,7 @@ async function pipeSSE(routerRes, res, dumper) {
   } finally {
     // Release the upstream connection if the client aborted mid-stream (res.write threw)
     reader.cancel().catch(() => {});
+    if (!ended) { try { res.end(); } catch {} }
   }
 }
 
