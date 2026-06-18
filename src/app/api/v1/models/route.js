@@ -13,6 +13,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
+import { FILTERS as SUGGESTED_MODEL_FILTERS } from "../../providers/suggested-models/filters.js";
 
 async function buildProxyOptionsFromConnection(conn) {
   const proxyConfig = await resolveConnectionProxyConfig(conn?.providerSpecificData || {});
@@ -156,6 +157,27 @@ async function fetchCompatibleModelIds(connection, proxyOptions = null) {
           .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "")
       )
     );
+  } catch {
+    return [];
+  }
+}
+
+async function fetchSuggestedNoAuthModelIds(providerInfo) {
+  const fetcher = providerInfo?.modelsFetcher;
+  const filter = fetcher?.type ? SUGGESTED_MODEL_FILTERS[fetcher.type] : null;
+  if (!fetcher?.url || !filter) return [];
+
+  try {
+    const response = await proxyAwareFetch(fetcher.url, { cache: "no-store" });
+    if (!response.ok) return [];
+    const json = await response.json();
+    const raw = json.data ?? json.models ?? json;
+    const filtered = filter(Array.isArray(raw) ? raw : []);
+    return Array.from(new Set(
+      filtered
+        .map((model) => model?.id)
+        .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "")
+    ));
   } catch {
     return [];
   }
@@ -415,6 +437,49 @@ export async function buildModelsList(kindFilter) {
           owned_by: outputAlias,
         });
       }
+    }
+  }
+
+  for (const [providerId, providerInfo] of Object.entries(AI_PROVIDERS)) {
+    if (!providerInfo?.noAuth || activeConnectionByProvider.has(providerId)) continue;
+    if (!providerMatchesKinds(providerId, kindFilter)) continue;
+
+    const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
+    const outputAlias = (getProviderAlias(providerId) || staticAlias).trim();
+    const providerModels = PROVIDER_MODELS[staticAlias] || [];
+    const staticModelKindById = new Map(providerModels.map((m) => [m.id, modelKind(m)]));
+    let rawModelIds = providerModels.map((model) => model.id);
+    if (rawModelIds.length === 0) {
+      rawModelIds = await fetchSuggestedNoAuthModelIds(providerInfo);
+    }
+
+    for (const modelId of rawModelIds) {
+      if (typeof modelId !== "string" || modelId.trim() === "") continue;
+      const kind = staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
+      if (!kindFilter.includes(kind)) continue;
+      if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
+      models.push({
+        id: `${outputAlias}/${modelId}`,
+        object: "model",
+        owned_by: outputAlias,
+      });
+    }
+
+    if (kindFilter.includes("webSearch") && providerInfo?.searchConfig) {
+      models.push({
+        id: `${outputAlias}/search`,
+        object: "model",
+        kind: "webSearch",
+        owned_by: outputAlias,
+      });
+    }
+    if (kindFilter.includes("webFetch") && providerInfo?.fetchConfig) {
+      models.push({
+        id: `${outputAlias}/fetch`,
+        object: "model",
+        kind: "webFetch",
+        owned_by: outputAlias,
+      });
     }
   }
 

@@ -62,4 +62,11 @@ describe("dashboard password sensitive actions", () => {
     await expect(verifyDashboardPassword("change-me")).resolves.toBe(true);
     await expect(verifyDashboardPassword("wrong")).resolves.toBe(false);
   });
+
+  it("verifyDashboardPassword rejects old shared default when INITIAL_PASSWORD is unset", async () => {
+    mocks.getSettings.mockResolvedValue({});
+    const { verifyDashboardPassword } = await import("../../src/lib/auth/dashboardSession.js");
+
+    await expect(verifyDashboardPassword("123456")).resolves.toBe(false);
+  });
 });

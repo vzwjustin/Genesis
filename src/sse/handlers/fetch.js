@@ -207,7 +207,11 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     });
 
     if (result.success) {
-      await clearAccountError(credentials.connectionId, credentials);
+      try {
+        await clearAccountError(credentials.connectionId, credentials);
+      } catch (err) {
+        console.error("[FETCH] clearAccountError failed after successful response (ignored):", err?.message || err);
+      }
       return new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });

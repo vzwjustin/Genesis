@@ -164,7 +164,11 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, si
     });
 
     if (result.success) {
-      await clearAccountError(credentials.connectionId, credentials, model);
+      try {
+        await clearAccountError(credentials.connectionId, credentials, model);
+      } catch (err) {
+        console.error("[TTS] clearAccountError failed after successful response (ignored):", err?.message || err);
+      }
       return result.response;
     }
 

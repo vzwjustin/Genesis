@@ -5,7 +5,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { LOCAL_STDIO_PLUGINS, ALLOWED_MCP_COMMANDS } = require("@/shared/constants/coworkPlugins");
+const { LOCAL_STDIO_PLUGINS, isAllowedMcpCommand } = require("@/shared/constants/coworkPlugins");
 const { DATA_DIR } = require("@/lib/dataDir");
 
 const CUSTOM_FILE = path.join(DATA_DIR, "mcp", "customPlugins.json");
@@ -112,8 +112,7 @@ const getCustomStore = () => {
 };
 
 function isAllowedCommand(cmd) {
-  const bin = path.basename(String(cmd || ""));
-  return ALLOWED_MCP_COMMANDS.has(bin);
+  return isAllowedMcpCommand(cmd);
 }
 
 function registerCustomPlugin(def) {

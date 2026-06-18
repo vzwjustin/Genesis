@@ -185,7 +185,13 @@ export async function handleImageGenerationCore({
     });
   }
 
-  if (onRequestSuccess) await onRequestSuccess();
+  if (onRequestSuccess) {
+    try {
+      await onRequestSuccess();
+    } catch (err) {
+      console.error("[Image] onRequestSuccess failed after successful response (ignored):", err?.message || err);
+    }
+  }
 
   // Normalize → OpenAI-compatible shape
   const normalized = adapter.normalize(parsed, body.prompt);

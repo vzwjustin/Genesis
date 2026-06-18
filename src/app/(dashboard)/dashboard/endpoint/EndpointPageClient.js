@@ -115,7 +115,7 @@ export default function APIPageClient({ machineId }) {
   const [tunnelEverReachable, setTunnelEverReachable] = useState(false);
   const [tsEverReachable, setTsEverReachable] = useState(false);
 
-  // Security gate: block remote exposure while dashboard uses default password or login is off.
+  // Security gate: block remote exposure while dashboard has no custom password or login is off.
   const isLoginUnsafe = !requireLogin || !hasPassword;
   const unsafeReason = !requireLogin
     ? SECURITY_COPY.preEnableLoginOff

@@ -1,3 +1,5 @@
+const path = require("path");
+
 // Default remote plugins for Claude Cowork (3p managedMcpServers, HTTPS only).
 const DEFAULT_PLUGINS = [
   {
@@ -72,4 +74,12 @@ function buildManagedMcpServers(plugins) {
 // Allowlist of executables that may be spawned for custom stdio MCP plugins.
 const ALLOWED_MCP_COMMANDS = new Set(["npx", "node", "uvx", "python", "python3", "bunx", "bun"]);
 
-module.exports = { DEFAULT_PLUGINS, LOCAL_STDIO_PLUGINS, ALLOWED_MCP_COMMANDS, buildManagedMcpServers };
+function isAllowedMcpCommand(command) {
+  const cmd = String(command || "").trim();
+  if (!cmd) return false;
+  if (cmd.includes("/") || cmd.includes("\\")) return false;
+  if (path.basename(cmd) !== cmd) return false;
+  return ALLOWED_MCP_COMMANDS.has(cmd);
+}
+
+module.exports = { DEFAULT_PLUGINS, LOCAL_STDIO_PLUGINS, ALLOWED_MCP_COMMANDS, isAllowedMcpCommand, buildManagedMcpServers };

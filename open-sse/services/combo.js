@@ -327,22 +327,18 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // concurrent round-robin calls do not all hit the same model. A 2xx
         // response must still leave the committed combo position on the model
         // that actually served the response.
-        if (comboStrategy === "round-robin") {
+        if (comboStrategy === "round-robin" && i > 0) {
           const rotationKey = comboName || "__default__";
           const servedIndex = (rotationStartIndex + i) % models.length;
           await withComboRotationLock(comboName, async () => {
             const live = comboRotationState.get(rotationKey) || { index: 0, consecutiveUseCount: 0, seq: 0 };
-            // Failover must pin to the model that served. For first-try success,
-            // only commit when this request still owns the latest reservation seq —
-            // otherwise a concurrent completion already advanced state and we must
-            // not overwrite it with a stale pre-fetch index snapshot.
-            if (i > 0 || live.seq === rotationSeq) {
-              comboRotationState.set(rotationKey, {
-                index: servedIndex,
-                consecutiveUseCount: 0,
-                seq: live.seq,
-              });
-            }
+            // Failover pins future rotation to the model that actually served.
+            // First-try success keeps the reservation made by getRotatedModels().
+            comboRotationState.set(rotationKey, {
+              index: servedIndex,
+              consecutiveUseCount: 0,
+              seq: live.seq,
+            });
           });
         }
         return result;

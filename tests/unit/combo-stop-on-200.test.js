@@ -83,7 +83,7 @@ describe("Combo stop on 200 — Requirement 5.2", () => {
   });
 
   describe("round-robin strategy", () => {
-    it("does NOT advance combo position after 200 success", async () => {
+    it("rotates after a 200 success when sticky limit is reached", async () => {
       const models = ["cc/opus", "openai/gpt-4o"];
 
       // First request: succeeds on first model
@@ -100,31 +100,29 @@ describe("Combo stop on 200 — Requirement 5.2", () => {
         comboStickyLimit: 1,
       });
 
-      // After 200, the rotation state should stay on the same model (index 0)
-      // Second request should still start with the same model
       const rotated = getRotatedModels(models, "rr-combo", "round-robin", 1);
-      expect(rotated[0]).toBe("cc/opus");
+      expect(rotated[0]).toBe("openai/gpt-4o");
     });
 
-    it("position stays pinned even with stickyLimit > 1 after 200", async () => {
+    it("honors stickyLimit across successful requests", async () => {
       const models = ["cc/opus", "openai/gpt-4o"];
+      const picks = [];
+      for (let i = 0; i < 5; i++) {
+        await handleComboChat({
+          body: { messages: [] },
+          models,
+          handleSingleModel: vi.fn(async (_body, model) => {
+            picks.push(model);
+            return makeResponse(200, { message: "success" });
+          }),
+          log: mockLog,
+          comboName: "sticky-combo",
+          comboStrategy: "round-robin",
+          comboStickyLimit: 2,
+        });
+      }
 
-      const handleSingleModel = vi.fn()
-        .mockResolvedValueOnce(makeResponse(200, { message: "success" }));
-
-      await handleComboChat({
-        body: { messages: [] },
-        models,
-        handleSingleModel,
-        log: mockLog,
-        comboName: "sticky-combo",
-        comboStrategy: "round-robin",
-        comboStickyLimit: 3,
-      });
-
-      // Position should remain at index 0 (cc/opus) after a 200
-      const rotated = getRotatedModels(models, "sticky-combo", "round-robin", 3);
-      expect(rotated[0]).toBe("cc/opus");
+      expect(picks).toEqual(["cc/opus", "cc/opus", "openai/gpt-4o", "openai/gpt-4o", "cc/opus"]);
     });
 
     it("pins to fallback model index when first model fails and second succeeds", async () => {

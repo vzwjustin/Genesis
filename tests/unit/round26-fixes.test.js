@@ -112,7 +112,7 @@ describe("Round 26 — combo round-robin concurrency lock", () => {
     expect(maxConcurrent).toBe(2);
     expect(handleSingleModel.mock.calls[0][1]).toBe("cc/opus");
     expect(handleSingleModel.mock.calls[1][1]).toBe("openai/gpt-4o");
-    expect(getRotatedModels(models, "concurrent-combo", "round-robin", 1)[0]).toBe("openai/gpt-4o");
+    expect(getRotatedModels(models, "concurrent-combo", "round-robin", 1)[0]).toBe("cc/opus");
   });
 });
 

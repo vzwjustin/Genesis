@@ -6,7 +6,7 @@ import path from "path";
 import os from "os";
 import { getCliHomeDir } from "@/shared/utils/cliHome";
 import crypto from "crypto";
-import { DEFAULT_PLUGINS, LOCAL_STDIO_PLUGINS, ALLOWED_MCP_COMMANDS, buildManagedMcpServers } from "@/shared/constants/coworkPlugins";
+import { DEFAULT_PLUGINS, LOCAL_STDIO_PLUGINS, isAllowedMcpCommand, buildManagedMcpServers } from "@/shared/constants/coworkPlugins";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { DATA_DIR } from "@/lib/dataDir";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
@@ -337,7 +337,7 @@ export async function POST(request) {
       const { registerCustomPlugin } = require("@/lib/mcp/stdioSseBridge");
       const stdioCustoms = customPluginsArray
         .filter((p) => p && typeof p.command === "string" && p.command.trim())
-        .filter((p) => ALLOWED_MCP_COMMANDS.has(path.basename(p.command)))
+        .filter((p) => isAllowedMcpCommand(p.command))
         .map((p) => ({
           name: String(p.name || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64),
           command: p.command,

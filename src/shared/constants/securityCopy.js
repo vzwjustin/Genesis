@@ -11,19 +11,19 @@ export const SECURITY_COPY = {
     "Dashboard pages are open without login on this machine. Management APIs are available from loopback without a session; remote access still requires login.",
 
   defaultPassword:
-    "No custom password is set. The default password (123456) is active until you set one in Profile.",
+    "No custom password is set. Sign in with INITIAL_PASSWORD, then set a password in Profile.",
 
   preEnableLoginOff:
     "Require login is off — the dashboard UI will be open to anyone who can reach your tunnel URL. Enable login and set a password first.",
 
   preEnableDefaultPassword:
-    "The dashboard still uses the default password (123456). Set a custom password in Profile before exposing a tunnel.",
+    "The dashboard has no custom password. Set one in Profile before exposing a tunnel.",
 
   tunnelLoginOff:
     "Require login is off — tunnel visitors can open dashboard pages without signing in. Management APIs still require a session; LLM routes use API keys.",
 
   tunnelDefaultPassword:
-    "Dashboard still uses the default password (123456) — change it in Profile before sharing your tunnel URL.",
+    "Dashboard has no custom password — set one in Profile before sharing your tunnel URL.",
 
   requireApiKeyOff:
     "Require API key is disabled — your LLM endpoint is publicly accessible without authentication.",
@@ -32,7 +32,7 @@ export const SECURITY_COPY = {
     "When enabled, the dashboard can be opened through your tunnel or Tailscale URL — a login is still required if \"Require login\" is ON. When disabled, the dashboard can only be opened on this machine.",
 
   loginDefaultPassword:
-    "First-time setup uses the default password (123456). Change it in Profile → Security after signing in.",
+    "First-time setup uses INITIAL_PASSWORD. Set a custom password in Profile → Security after signing in.",
 
   apiKeysMasked:
     "Keys are masked in the list. Use Show to reveal briefly, or copy right after creating a new key.",

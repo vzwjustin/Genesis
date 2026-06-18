@@ -141,7 +141,11 @@ async function handleSingleModelStt(formData, modelStr, signal) {
     const result = await handleSttCore({ provider, model, formData, credentials: refreshedCredentials, signal });
 
     if (result.success) {
-      await clearAccountError(credentials.connectionId, credentials, model);
+      try {
+        await clearAccountError(credentials.connectionId, credentials, model);
+      } catch (err) {
+        console.error("[STT] clearAccountError failed after successful response (ignored):", err?.message || err);
+      }
       return result.response;
     }
 

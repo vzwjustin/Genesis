@@ -79,15 +79,15 @@ export async function isDashboardPasswordConfigured() {
   return Boolean(settings?.password);
 }
 
-// Verify the current dashboard password (re-auth for sensitive actions like DB export/import).
-// Mirrors the login route's bcrypt check + INITIAL_PASSWORD fallback.
+// Verify the current dashboard password. Mirrors the login route's bcrypt check
+// and only accepts an explicitly configured INITIAL_PASSWORD before setup.
 export async function verifyDashboardPassword(password) {
   if (typeof password !== "string" || !password) return false;
   const settings = await getSettings();
   const storedHash = settings?.password;
   if (storedHash) return bcrypt.compare(password, storedHash);
-  const initialPassword = process.env.INITIAL_PASSWORD || "123456";
-  return password === initialPassword;
+  const initialPassword = process.env.INITIAL_PASSWORD;
+  return typeof initialPassword === "string" && initialPassword.length > 0 && password === initialPassword;
 }
 
 /** Sensitive actions require a custom password — no INITIAL_PASSWORD / default fallback. */

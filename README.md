@@ -1169,7 +1169,7 @@ docker pull decolua/genesis:latest   # update to latest
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `JWT_SECRET` | Auto-generated (`~/.genesis/jwt-secret`) | JWT signing secret for dashboard auth cookie (override to share across instances) |
-| `INITIAL_PASSWORD` | `123456` | First login password when no saved hash exists |
+| `INITIAL_PASSWORD` | unset | First login password when no saved hash exists. Set this before first login. |
 | `DATA_DIR` | `~/.genesis` | Main app data location (SQLite at `$DATA_DIR/db/data.sqlite`) |
 | `PORT` | framework default | Service port (`20128` in examples) |
 | `HOSTNAME` | framework default | Bind host (Docker defaults to `0.0.0.0`) |
@@ -1298,7 +1298,7 @@ Notes:
 
 **First login not working**
 - Check `INITIAL_PASSWORD` in `.env`
-- If unset, fallback password is `123456`
+- If unset, first login is disabled until `INITIAL_PASSWORD` is configured or a password is set through another trusted setup path
 
 **No request logs under `logs/`**
 - Set `ENABLE_REQUEST_LOGS=true`

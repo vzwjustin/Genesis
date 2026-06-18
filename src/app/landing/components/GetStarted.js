@@ -48,7 +48,7 @@ export default function GetStarted() {
                 <div className="flex-none w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">!</div>
                 <div>
                   <h4 className="font-bold text-lg">Secure before you share</h4>
-                  <p className="text-sm text-gray-500 mt-1">Change the default password in Profile before enabling tunnels or remote dashboard access.</p>
+                  <p className="text-sm text-gray-500 mt-1">Set a custom password in Profile before enabling tunnels or remote dashboard access.</p>
                 </div>
               </div>
             </div>
@@ -102,4 +102,3 @@ export default function GetStarted() {
     </section>
   );
 }
-
