@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const dns = require("dns");
 const { promisify } = require("util");
-const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
+const { log, err, dumpRequest, createResponseDumper, clearDumpDir, initMitmLoggerRedaction } = require("./logger");
 const { IS_DEV, TARGET_HOSTS, URL_PATTERNS, getToolForHost } = require("./config");
 const { isKiroMitmHost, isHttp2Required } = require("../shared/constants/mitmToolHosts.js");
 const { DATA_DIR, MITM_DIR } = require("./paths");
@@ -484,7 +484,18 @@ const server = https.createServer(sslOptions, async (req, res) => {
   }
 });
 
-server.listen(LOCAL_PORT, "127.0.0.1", () => log(`🚀 Server ready on 127.0.0.1:${LOCAL_PORT}`));
+async function startServer() {
+  if (ENABLE_FILE_LOG) {
+    try {
+      await initMitmLoggerRedaction();
+    } catch (e) {
+      err(`MITM redaction preload failed: ${e.message}`);
+    }
+  }
+  server.listen(LOCAL_PORT, "127.0.0.1", () => log(`🚀 Server ready on 127.0.0.1:${LOCAL_PORT}`));
+}
+
+startServer();
 
 server.on("error", (e) => {
   if (e.code === "EADDRINUSE") err(`Port ${LOCAL_PORT} already in use`);

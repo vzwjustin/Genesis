@@ -677,18 +677,27 @@ function providerRequestLooksLikeResponsesApi(providerRequest) {
   );
 }
 
+/** Read only the first chunk of a cloned body to detect JSON without buffering SSE streams. */
+async function peekResponseStartsWithJson(providerResponse) {
+  try {
+    const reader = providerResponse.clone().body?.getReader();
+    if (!reader) return false;
+    const { value, done } = await reader.read();
+    try { await reader.cancel(); } catch { /* ignore */ }
+    if (done || !value?.length) return false;
+    const trimmed = new TextDecoder().decode(value).trimStart();
+    return trimmed.startsWith("{") || trimmed.startsWith("[");
+  } catch {
+    return false;
+  }
+}
+
 export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, passthrough }) {
   const contentType = readResponseHeader(providerResponse.headers, "content-type");
   const isExplicitSSE = contentType.includes("text/event-stream");
   const isCodexEmptyType = contentType === "" && provider === "codex" && providerResponse.ok;
-  if (isCodexEmptyType) {
-    try {
-      const peek = await providerResponse.clone().text();
-      const trimmed = peek.trimStart();
-      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-        return null;
-      }
-    } catch { /* continue SSE path */ }
+  if (isCodexEmptyType && await peekResponseStartsWithJson(providerResponse)) {
+    return null;
   }
   const isSSE = isExplicitSSE || isCodexEmptyType;
   if (!isSSE) return null; // not handled here
@@ -872,7 +881,6 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
       : parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) {
-      if (isCodexEmptyType) return null;
       finalizeFailure("Invalid SSE response for non-streaming request");
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request", undefined, PROXY_INTERNAL_SSE);
     }
