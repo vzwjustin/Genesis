@@ -232,14 +232,12 @@ async function removeDNSEntry(tool, sudoPassword) {
   const hosts = TOOL_HOSTS[tool];
   if (!hosts) throw new Error(`Unknown tool: ${tool}`);
 
-  const entriesToRemove = hosts.filter(h => {
-    try {
-      const hostsContent = fs.readFileSync(HOSTS_FILE, "utf8");
-      return hostsContentHasManagedHost(hostsContent, h);
-    } catch {
-      return false;
-    }
-  });
+  let hostsContent = "";
+  try {
+    hostsContent = fs.readFileSync(HOSTS_FILE, "utf8");
+  } catch { /* hosts file unreadable — nothing to remove */ }
+
+  const entriesToRemove = hosts.filter((h) => hostsContentHasManagedHost(hostsContent, h));
   if (entriesToRemove.length === 0) {
     log(`🌐 DNS ${tool}: already inactive`);
     return;

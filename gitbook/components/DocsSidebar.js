@@ -57,7 +57,11 @@ export default function DocsSidebar({ isMobile = false, onClose, lang = DEFAULT_
 
   useEffect(() => {
     if (!hydrated) return;
-    sessionStorage.setItem("sidebarOpen", JSON.stringify(openSections));
+    try {
+      sessionStorage.setItem("sidebarOpen", JSON.stringify(openSections));
+    } catch {
+      // Ignore storage write failures (quota, private mode, blocked storage)
+    }
   }, [openSections, hydrated]);
 
   const toggleSection = (index) => {

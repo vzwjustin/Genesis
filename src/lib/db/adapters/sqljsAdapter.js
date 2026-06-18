@@ -27,7 +27,7 @@ export async function createSqlJsAdapter(filePath) {
     const tmpPath = `${filePath}.tmp`;
     fs.writeFileSync(tmpPath, Buffer.from(data));
     try {
-      const fd = fs.openSync(tmpPath, "r");
+      const fd = fs.openSync(tmpPath, "r+");
       fs.fsyncSync(fd);
       fs.closeSync(fd);
     } catch {}

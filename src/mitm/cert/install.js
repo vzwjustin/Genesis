@@ -41,6 +41,9 @@ function execFileWithSudo(argv, password) {
 
     let stdout = "";
     let stderr = "";
+    child.on("error", (err) => {
+      reject(err);
+    });
     child.stdout.on("data", (d) => { stdout += d; });
     child.stderr.on("data", (d) => { stderr += d; });
 
