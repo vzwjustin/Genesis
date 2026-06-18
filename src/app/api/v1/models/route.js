@@ -11,6 +11,7 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { capabilitiesFromServiceKind } from "open-sse/providers/capabilities.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
 import { FILTERS as SUGGESTED_MODEL_FILTERS } from "../../providers/suggested-models/filters.js";
@@ -348,14 +349,16 @@ export async function buildModelsList(kindFilter) {
       const customModelIds = customModels
         .filter((m) => {
           if (!m?.id) return false;
-          const kind = modelKind(m);
-          if (!kindFilter.includes(kind)) return false;
+          const kind = modelKind(m) || LLM_KIND;
+          // imageToText custom models are vision-capable chat models: expose them
+          // both in the default LLM list and in /v1/models/image-to-text.
+          if (!kindFilter.includes(kind) && !(kind === "imageToText" && kindFilter.includes(LLM_KIND))) return false;
           const alias = m.providerAlias;
           return alias === staticAlias || alias === outputAlias || alias === providerId;
         })
         .map((m) => {
           const modelId = String(m.id).trim();
-          if (modelId) customModelKindById.set(modelId, modelKind(m));
+          if (modelId) customModelKindById.set(modelId, modelKind(m) || LLM_KIND);
           return modelId;
         })
         .filter((modelId) => modelId !== "");
@@ -386,16 +389,20 @@ export async function buildModelsList(kindFilter) {
       const mergedModelIds = Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
 
       for (const modelId of mergedModelIds) {
-        // Resolve kind: prefer static metadata, otherwise infer from ID heuristics
-        const kind = staticModelKindById.get(modelId) || customModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
-        if (!kindFilter.includes(kind)) continue;
+        const customKind = customModelKindById.get(modelId);
+        const kind = staticModelKindById.get(modelId) || customKind || inferKindFromUnknownModelId(modelId);
+        const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
+        if (!kindFilter.includes(kind) && !allowAsLlm) continue;
         if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
 
-        models.push({
+        const model = {
           id: `${outputAlias}/${modelId}`,
           object: "model",
           owned_by: outputAlias,
-        });
+        };
+        const caps = capabilitiesFromServiceKind(customKind);
+        if (caps) model.capabilities = caps;
+        models.push(model);
       }
 
       // Merge sub-config models (TTS / embedding) that live on AI_PROVIDERS, not PROVIDER_MODELS
