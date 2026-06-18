@@ -36,13 +36,15 @@ export function stripProviderModelPrefix(model) {
       }
     }
     if (!stripped) {
-      // Embedded prefix (e.g. provider/cc/claude-opus-4-6 → claude-opus-4-6)
+      // Embedded prefix (e.g. provider/cc/claude-opus-4-6 → claude-opus-4-6).
+      // Only strip when the prefix follows a path separator — avoids truncating
+      // legitimate model ids that merely contain a prefix substring mid-string.
       if (result.includes("/")) {
         const lowered = result.toLowerCase();
         let embedded = false;
         for (const prefix of KNOWN_TOOL_MODEL_PREFIXES) {
           const idx = lowered.indexOf(prefix);
-          if (idx > 0) {
+          if (idx > 0 && lowered[idx - 1] === "/") {
             result = result.slice(idx + prefix.length);
             embedded = true;
             break;

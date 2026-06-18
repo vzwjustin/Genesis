@@ -14,6 +14,14 @@ const err = (msg) => console.error(`[${time()}] ❌ [MITM] ${msg}`);
 const DUMP_DIR = path.join(DATA_DIR, "logs", "mitm");
 if (!fs.existsSync(DUMP_DIR)) fs.mkdirSync(DUMP_DIR, { recursive: true });
 
+let redactionPromise = null;
+function loadRedaction() {
+  if (!redactionPromise) {
+    redactionPromise = import("../shared/utils/redaction.js");
+  }
+  return redactionPromise;
+}
+
 // Clear all files inside DUMP_DIR (called on MITM server start to avoid unbounded growth)
 function clearDumpDir() {
   try {
@@ -47,6 +55,16 @@ function decodeBody(buf, encoding) {
   return buf;
 }
 
+function redactResponseBody(text, { redactSensitiveText, sanitizeValue }) {
+  const trimmed = String(text || "").trimStart();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      return JSON.stringify(sanitizeValue(JSON.parse(text)), null, 2);
+    } catch { /* fall through */ }
+  }
+  return redactSensitiveText(text);
+}
+
 // Save raw request: method + url + headers + body
 function dumpRequest(req, bodyBuffer, tag = "raw") {
   if (isBlacklisted(req.url)) return null;
@@ -54,15 +72,18 @@ function dumpRequest(req, bodyBuffer, tag = "raw") {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const slug = slugify((req.headers.host || "") + req.url);
     const file = path.join(DUMP_DIR, `${ts}_${tag}_${slug}.req.json`);
-    let parsed = null;
-    try { parsed = JSON.parse(bodyBuffer.toString()); } catch { /* not JSON */ }
-    fs.writeFileSync(file, JSON.stringify({
-      method: req.method,
-      url: req.url,
-      host: req.headers.host,
-      headers: req.headers,
-      body: parsed ?? bodyBuffer.toString("utf8")
-    }, null, 2));
+    void loadRedaction().then(({ redactSensitiveUrl, sanitizeValue, maskSensitiveHeaders, redactSensitiveText }) => {
+      const safeUrl = redactSensitiveUrl(req.url);
+      let parsed = null;
+      try { parsed = JSON.parse(bodyBuffer.toString()); } catch { /* not JSON */ }
+      fs.writeFileSync(file, JSON.stringify({
+        method: req.method,
+        url: safeUrl,
+        host: req.headers.host,
+        headers: maskSensitiveHeaders(req.headers),
+        body: parsed ? sanitizeValue(parsed) : redactSensitiveText(bodyBuffer.toString("utf8")),
+      }, null, 2));
+    }).catch(() => {});
     return file;
   } catch { return null; }
 }
@@ -89,17 +110,19 @@ function createResponseDumper(req, tag = "raw") {
         const enc = headers["content-encoding"] || headers["Content-Encoding"];
         const decoded = decodeBody(raw, enc);
         const text = decoded.toString("utf8");
-        // Skip empty / trivially-empty bodies
         if (EMPTY_BODY_RE.test(text)) return;
-        // Strip content-encoding since body is now decoded
         const cleanHeaders = { ...headers };
         delete cleanHeaders["content-encoding"];
         delete cleanHeaders["Content-Encoding"];
-        const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(cleanHeaders, null, 2)}\n---BODY---\n${text}`;
-        fs.writeFileSync(file, out);
+        void loadRedaction().then(({ redactSensitiveText, maskSensitiveHeaders, sanitizeValue }) => {
+          const safeHeaders = maskSensitiveHeaders(cleanHeaders);
+          const safeBody = redactResponseBody(text, { redactSensitiveText, sanitizeValue });
+          const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(safeHeaders, null, 2)}\n---BODY---\n${safeBody}`;
+          fs.writeFileSync(file, out);
+        }).catch(() => {});
       } catch { /* ignore */ }
     },
-    file
+    file,
   };
 }
 

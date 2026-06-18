@@ -208,7 +208,13 @@ async function getMitmDnsServers() {
  */
 async function resolveRealIP(hostname) {
   const cached = DNS_CACHE.get(hostname);
-  if (cached && Date.now() < cached.expiry) return cached.ip;
+  if (cached && Date.now() < cached.expiry) {
+    if (isBlockedHostname(String(cached.ip))) {
+      DNS_CACHE.delete(hostname);
+    } else {
+      return cached.ip;
+    }
+  }
 
   try {
     const dns = await import("dns");

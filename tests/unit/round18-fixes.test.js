@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
-import { getBrokenComboErrorFromData } from "../../open-sse/services/combo.js";
+import { getBrokenComboErrorFromData, getComboModelsFromData } from "../../open-sse/services/combo.js";
 
 describe("cowork MCP SSRF guard", () => {
   it("route uses assertSafeFetchUrl and proxyAwareFetch", () => {
@@ -58,16 +58,15 @@ describe("getBrokenComboErrorFromData", () => {
     );
   });
 
-  it("returns error for single-model combo", () => {
-    expect(getBrokenComboErrorFromData("single", combos)).toBe(
-      'Combo "single" must include at least 2 models for failover.'
-    );
-  });
-
   it("returns null for valid combo or unknown name", () => {
     expect(getBrokenComboErrorFromData("good", combos)).toBeNull();
+    expect(getBrokenComboErrorFromData("single", combos)).toBeNull();
     expect(getBrokenComboErrorFromData("missing", combos)).toBeNull();
     expect(getBrokenComboErrorFromData("openai/gpt-4o", combos)).toBeNull();
+  });
+
+  it("resolves single-model combo names", () => {
+    expect(getComboModelsFromData("single", combos)).toEqual(["openai/gpt-4o"]);
   });
 });
 

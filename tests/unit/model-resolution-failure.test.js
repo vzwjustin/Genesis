@@ -187,14 +187,14 @@ describe("getComboModels — combo match requires valid actionable targets (AGEN
     expect(result).toEqual(["cc/opus", "openai/gpt-4o"]);
   });
 
-  it("returns null when combo has only one valid model (failover requires 2+)", async () => {
+  it("returns a single valid model when combo has only one target", async () => {
     getComboByName.mockResolvedValue({
       name: "single-model",
       models: ["cc/opus"],
     });
 
     const result = await getComboModels("single-model");
-    expect(result).toBeNull();
+    expect(result).toEqual(["cc/opus"]);
   });
 
   it("returns null when combo is not found in registry", async () => {

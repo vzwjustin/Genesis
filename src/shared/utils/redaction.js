@@ -69,6 +69,11 @@ const SENSITIVE_QUERY_PARAM_NAMES = new Set([
   "password",
   "token",
   "secret",
+  "code",
+  "auth",
+  "session",
+  "jwt",
+  "signature",
 ]);
 
 export function isSensitiveQueryParam(name) {
@@ -105,6 +110,9 @@ export function redactSensitiveText(value) {
     .replace(/Token\s+[A-Za-z0-9._~+/=-]+/gi, "Token [redacted]")
     .replace(/\bsk-[A-Za-z0-9_-]+/g, "sk-[redacted]")
     .replace(/\bsk_[A-Za-z0-9_-]+/g, "sk_[redacted]")
+    .replace(/\bAIza[0-9A-Za-z_-]{10,}/g, "AIza[redacted]")
+    .replace(/\bgh[pousr]_[A-Za-z0-9_]+/g, "gh[redacted]")
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "eyJ[redacted]")
     .replace(/\b(access_token|refresh_token|id_token|api_key|client_secret|password|token|secret|key)=([^&\s]+)/gi, "$1=[redacted]")
     .replace(/("(?:authorization|x-api-key|x-9r-cli-token|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)"/gi, '$1[redacted]"')
     .replace(/('(?:authorization|x-api-key|x-9r-cli-token|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)'\s*:\s*')([^'\\]*(?:\\.[^'\\]*)*)'/gi, "$1[redacted]'")

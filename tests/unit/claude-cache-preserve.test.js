@@ -130,7 +130,7 @@ describe("Claude cache — snapshot contract", () => {
     });
   });
 
-  it("preserves protected client tools byte-identical (no model/type strip)", () => {
+  it("strips prefixed model from protected client tools (Anthropic rejects cc/ in tools.N.model)", () => {
     const tool = {
       name: "Read",
       type: "function",
@@ -139,10 +139,11 @@ describe("Claude cache — snapshot contract", () => {
       input_schema: { type: "object", properties: { path: { type: "string" } } },
     };
     const body = { tools: [tool], messages: [{ role: "user", content: "hi", cache_control: { type: "ephemeral" } }] };
-    const snap = snapshotCacheProtectedBody(body);
     body.tools[0] = cleanAnthropicToolDefinitions([tool], "claude", { preserveClientCache: true })[0];
-    expect(body.tools[0]).toEqual(tool);
-    expect(verifyCacheProtectedBody(body, snap)).toBe(true);
+    expect(body.tools[0].model).toBeUndefined();
+    expect(body.tools[0].name).toBe("Read");
+    expect(body.tools[0].type).toBe("function");
+    expect(body.tools[0].cache_control).toEqual(tool.cache_control);
   });
 
   it("allows protected built-in tool model prefix normalization for upstream", () => {
