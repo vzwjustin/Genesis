@@ -189,10 +189,10 @@ function rejectTunnelDashboardAuth(request, settings) {
 }
 
 /** Management API routes: JWT, CLI token, or verifiable loopback when requireLogin=false. */
-async function isApiAuthenticated(request) {
+async function isApiAuthenticated(request, settings = null) {
   if (await hasValidToken(request)) return true;
-  const settings = await loadSettings();
-  if (settings && settings.requireLogin === false && isVerifiableLoopbackRequest(request)) return true;
+  const resolved = settings ?? await loadSettings();
+  if (resolved && resolved.requireLogin === false && isVerifiableLoopbackRequest(request)) return true;
   return false;
 }
 
@@ -274,9 +274,10 @@ export async function proxy(request) {
       }
       return NextResponse.next();
     }
-    const tunnelBlocked = await rejectTunnelDashboardApi(request, await loadSettings());
+    const privateApiSettings = await loadSettings();
+    const tunnelBlocked = await rejectTunnelDashboardApi(request, privateApiSettings);
     if (tunnelBlocked) return tunnelBlocked;
-    if (await hasValidLocalCliToken(request) || await isApiAuthenticated(request))
+    if (await hasValidLocalCliToken(request) || await isApiAuthenticated(request, privateApiSettings))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

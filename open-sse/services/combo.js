@@ -8,7 +8,7 @@ import { MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
 
 /**
  * Track rotation state per combo (for round-robin strategy)
- * @type {Map<string, { index: number, consecutiveUseCount: number }>}
+ * @type {Map<string, { index: number, consecutiveUseCount: number, seq: number }>}
  */
 const comboRotationState = new Map();
 /** @type {Map<string, { current: Promise<void>, queued: Promise<void> }>} */
@@ -75,7 +75,8 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1) {
 
   const rotationKey = comboName || "__default__";
   const normalizedStickyLimit = normalizeStickyLimit(stickyLimit);
-  const state = comboRotationState.get(rotationKey) || { index: 0, consecutiveUseCount: 0 };
+  const state = comboRotationState.get(rotationKey) || { index: 0, consecutiveUseCount: 0, seq: 0 };
+  const nextSeq = (state.seq ?? 0) + 1;
 
   const currentIndex = state.index % models.length;
   const rotatedModels = rotateModelsFromIndex(models, currentIndex);
@@ -85,11 +86,13 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1) {
     comboRotationState.set(rotationKey, {
       index: (currentIndex + 1) % models.length,
       consecutiveUseCount: 0,
+      seq: nextSeq,
     });
   } else {
     comboRotationState.set(rotationKey, {
       index: currentIndex,
       consecutiveUseCount: nextUseCount,
+      seq: nextSeq,
     });
   }
 
@@ -292,6 +295,7 @@ export async function isProviderAccountsExhaustedResponse(response) {
  */
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1 }) {
   let currentRotationIndex = 0;
+  let rotationSeq = 0;
   let rotatedModels = models;
 
   await withComboRotationLock(comboName, async () => {
@@ -301,6 +305,10 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       currentRotationIndex = state.index % models.length;
     }
     rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
+    if (comboStrategy === "round-robin" && models && models.length > 1) {
+      const rotationKey = comboName || "__default__";
+      rotationSeq = comboRotationState.get(rotationKey)?.seq ?? 0;
+    }
   });
 
   let lastError = null;
@@ -323,10 +331,19 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         if (comboStrategy === "round-robin") {
           const rotationKey = comboName || "__default__";
           await withComboRotationLock(comboName, async () => {
-            comboRotationState.set(rotationKey, {
-              index: (currentRotationIndex + i) % models.length,
-              consecutiveUseCount: 0,
-            });
+            const live = comboRotationState.get(rotationKey) || { index: 0, consecutiveUseCount: 0, seq: 0 };
+            const succeededIndex = (currentRotationIndex + i) % models.length;
+            // Failover must pin to the model that served. For first-try success,
+            // only commit when this request still owns the latest reservation seq —
+            // otherwise a concurrent completion already advanced state and we must
+            // not overwrite it with a stale pre-fetch index snapshot.
+            if (i > 0 || live.seq === rotationSeq) {
+              comboRotationState.set(rotationKey, {
+                index: succeededIndex,
+                consecutiveUseCount: 0,
+                seq: live.seq,
+              });
+            }
           });
         }
         return result;

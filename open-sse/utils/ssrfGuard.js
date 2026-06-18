@@ -24,6 +24,19 @@ const resolve6 = promisify(dns.resolve6);
 
 const DNS_RESOLVE_CACHE = new Map();
 const DNS_RESOLVE_CACHE_TTL_MS = 60_000;
+const DNS_RESOLVE_CACHE_MAX_ENTRIES = 1000;
+
+function pruneDnsResolveCache() {
+  const now = Date.now();
+  for (const [k, v] of DNS_RESOLVE_CACHE) {
+    if (v.expiry <= now) DNS_RESOLVE_CACHE.delete(k);
+  }
+  while (DNS_RESOLVE_CACHE.size > DNS_RESOLVE_CACHE_MAX_ENTRIES) {
+    const oldest = DNS_RESOLVE_CACHE.keys().next().value;
+    if (oldest === undefined) break;
+    DNS_RESOLVE_CACHE.delete(oldest);
+  }
+}
 
 function isIpv4Literal(host) {
   const parts = host.split(".");
@@ -66,6 +79,7 @@ export async function assertSafeResolvedHostname(hostname, options = {}) {
 
     if (addresses.length === 0) throw new Error("DNS resolution failed");
     DNS_RESOLVE_CACHE.set(h, { addresses, expiry: Date.now() + DNS_RESOLVE_CACHE_TTL_MS });
+    pruneDnsResolveCache();
   }
 
   const safe = addresses.every((ip) => {

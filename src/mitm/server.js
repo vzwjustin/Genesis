@@ -14,6 +14,8 @@ const { extractModel, getMappedModel } = require("./modelMapping");
 const { applyAntigravityIdeVersionOverride } = require("./antigravityIdeVersion");
 const LOCAL_PORT = 443;
 const ENABLE_FILE_LOG = IS_DEV;
+// Match proxyFetch HTTP/2 bypass hangTimeout — prevent indefinite hangs on black-holed upstreams.
+const PASSTHROUGH_TIMEOUT_MS = 60_000;
 
 // Upstream TLS validation is enforced by default. The proxy connects to the
 // resolved IP with `servername` set to the real host, so Node validates the
@@ -119,7 +121,8 @@ async function resolveTargetIP(hostname) {
   let servers = ["8.8.8.8"];
   try {
     const { getMitmDnsServers } = await import("../../open-sse/utils/proxyFetch.js");
-    servers = await getMitmDnsServers();
+    const loaded = await getMitmDnsServers();
+    if (loaded.length > 0) servers = loaded;
   } catch { /* keep default */ }
 
   const resolver = new dns.Resolver();
@@ -255,25 +258,49 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
   h2Headers[":authority"] = targetHost;
 
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (fn) => (...args) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hangTimeout);
+      fn(...args);
+    };
+
+    const fail502 = finish(() => {
+      if (!res.headersSent) res.writeHead(502);
+      if (!res.writableEnded) res.end("Bad Gateway");
+      try { client?.close(); } catch {}
+      try { client?.destroy(); } catch {}
+      resolve();
+    });
+
+    const hangTimeout = setTimeout(() => {
+      err(`[mitm] http2 passthrough timed out after ${PASSTHROUGH_TIMEOUT_MS}ms`);
+      if (dumper) { dumper.writeChunk(`\n[ERROR h2-timeout]\n`); dumper.end(); }
+      fail502();
+    }, PASSTHROUGH_TIMEOUT_MS);
+    hangTimeout.unref?.();
+
     const client = http2.connect(`https://${targetHost}`, {
-      createConnection: () => tls.connect({
-        host: targetIP, port: 443, servername: targetHost,
-        ALPNProtocols: ["h2"], rejectUnauthorized: TLS_REJECT_UNAUTHORIZED,
-      }),
+      createConnection: () => {
+        const socket = tls.connect({
+          host: targetIP, port: 443, servername: targetHost,
+          ALPNProtocols: ["h2"], rejectUnauthorized: TLS_REJECT_UNAUTHORIZED,
+        });
+        socket.setTimeout(PASSTHROUGH_TIMEOUT_MS, () => {
+          socket.destroy(new Error("TLS connect timeout"));
+        });
+        return socket;
+      },
     });
     client.once("error", (e) => {
       err(`[mitm] http2 client error: ${e.message}`);
       if (dumper) { dumper.writeChunk(`\n[ERROR h2] ${e.message}\n`); dumper.end(); }
-      if (!res.headersSent) res.writeHead(502);
-      if (!res.writableEnded) res.end("Bad Gateway");
-      try { client.close(); } catch {}
-      resolve();
+      fail502();
     });
 
     if (client.destroyed) {
-      if (!res.headersSent) res.writeHead(502);
-      if (!res.writableEnded) res.end("Bad Gateway");
-      resolve();
+      fail502();
       return;
     }
 
@@ -286,14 +313,18 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
     } catch (e) {
       err(`[mitm] http2 request error: ${e.message}`);
       if (dumper) { dumper.writeChunk(`\n[ERROR h2-request] ${e.message}\n`); dumper.end(); }
-      if (!res.headersSent) res.writeHead(502);
-      if (!res.writableEnded) res.end("Bad Gateway");
-      try { client.destroy(); } catch {}
-      resolve();
+      fail502();
       return;
     }
 
+    stream.setTimeout(PASSTHROUGH_TIMEOUT_MS, () => {
+      err(`[mitm] http2 stream idle timeout after ${PASSTHROUGH_TIMEOUT_MS}ms`);
+      try { stream.close(); } catch {}
+      fail502();
+    });
+
     stream.once("response", (responseHeaders) => {
+      clearTimeout(hangTimeout);
       const status = responseHeaders[":status"];
       // Filter pseudo-headers + connection-specific
       const outHeaders = {};
@@ -328,16 +359,13 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
         if (!res.writableEnded) res.end();
         if (onResponse && !inspectOverflow) try { onResponse(Buffer.concat(chunks), outHeaders); } catch {}
         try { client.close(); } catch {}
-        resolve();
+        finish(() => resolve())();
       });
     });
     stream.once("error", (e) => {
       err(`[mitm] http2 stream error: ${e.message}`);
       if (dumper) { dumper.writeChunk(`\n[ERROR h2-stream] ${e.message}\n`); dumper.end(); }
-      if (!res.headersSent) res.writeHead(502);
-      if (!res.writableEnded) res.end();
-      try { client.close(); } catch {}
-      resolve();
+      fail502();
     });
   });
 }
@@ -352,7 +380,8 @@ async function passthroughHttps(req, res, bodyBuffer, headers, targetHost, onRes
     method: req.method,
     headers,
     servername: targetHost,
-    rejectUnauthorized: TLS_REJECT_UNAUTHORIZED
+    rejectUnauthorized: TLS_REJECT_UNAUTHORIZED,
+    timeout: PASSTHROUGH_TIMEOUT_MS,
   }, (forwardRes) => {
     // Without this, a mid-stream upstream error rejects unhandled → crashes server
     forwardRes.on("error", (e) => {
@@ -388,6 +417,16 @@ async function passthroughHttps(req, res, bodyBuffer, headers, targetHost, onRes
     if (!res.headersSent) res.writeHead(502);
     res.end("Bad Gateway");
   });
+
+  forwardReq.on("timeout", () => {
+    err(`Passthrough request timed out after ${PASSTHROUGH_TIMEOUT_MS}ms`);
+    if (dumper) { dumper.writeChunk(`\n[ERROR timeout]\n`); dumper.end(); }
+    forwardReq.destroy();
+    if (!res.headersSent) res.writeHead(504);
+    if (!res.writableEnded) res.end("Gateway Timeout");
+  });
+
+  forwardReq.setTimeout(PASSTHROUGH_TIMEOUT_MS);
 
   if (bodyBuffer.length > 0) forwardReq.write(bodyBuffer);
   forwardReq.end();
@@ -430,11 +469,6 @@ const server = https.createServer(sslOptions, async (req, res) => {
       if (tool === "kiro") {
         log(`kiro passthrough (no alias): host=${req.headers.host} url=${req.url} model=${model ?? "null"}`);
       }
-      return await passthrough(req, res, bodyBuffer);
-    }
-
-    if (tool === "kiro" && handlers.kiro.kiroRequiresPassthrough(bodyBuffer)) {
-      log(`kiro passthrough (tool round): host=${req.headers.host} url=${req.url} model=${model ?? "null"}`);
       return await passthrough(req, res, bodyBuffer);
     }
 

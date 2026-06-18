@@ -9,6 +9,7 @@ import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, getModelUpstreamId, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, VALIDATION_ERROR_TYPES, PROXY_INTERNAL_ERROR_CODES } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { MITM_PROXY_HEADER } from "../config/appConstants.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { getExecutor } from "../executors/index.js";
@@ -108,17 +109,22 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       return String(endpoint).split("?")[0] || "";
     }
   })();
+  const normalizedClientHeaders = Object.fromEntries(
+    Object.entries(clientHeaders).map(([k, v]) => [k.toLowerCase(), String(v)])
+  );
   const clientTool = detectClientTool(clientHeaders, body);
   const passthrough = shouldUseNativePassthrough(clientTool, provider, {
     body,
-    headers: Object.fromEntries(
-      Object.entries(clientHeaders).map(([k, v]) => [k.toLowerCase(), String(v)])
-    ),
+    headers: normalizedClientHeaders,
     pathname: requestPathname,
   });
 
+  const isMitmProxyRequest =
+    normalizedClientHeaders[MITM_PROXY_HEADER.name] === MITM_PROXY_HEADER.value;
+
   if (
     !passthrough
+    && !isMitmProxyRequest
     && provider === "claude"
     && sourceFormat === FORMATS.OPENAI
     && requestPathname.includes("/v1/chat/completions")

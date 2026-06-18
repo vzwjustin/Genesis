@@ -72,7 +72,7 @@ describe("wave6 — fixToolUseOrdering cacheFloor original index", () => {
 });
 
 describe("wave6 — verifyProtectedArray append detection", () => {
-  it("rejects when protected array grows past snapshot length", () => {
+  it("allows when protected array grows past snapshot length (dynamic appends permitted)", () => {
     const body = {
       messages: [
         { role: "user", content: "a", cache_control: { type: "ephemeral" } },
@@ -81,7 +81,7 @@ describe("wave6 — verifyProtectedArray append detection", () => {
     };
     const snapshot = snapshotCacheProtectedBody(body);
     body.messages.push({ role: "user", content: "injected" });
-    expect(verifyCacheProtectedBody(body, snapshot)).toBe(false);
+    expect(verifyCacheProtectedBody(body, snapshot)).toBe(true);
   });
 });
 

@@ -404,36 +404,6 @@ async function pipeOpenAIasEventStream(routerRes, res) {
   }
 }
 
-/**
- * True when this Kiro request is part of a tool-call round and must not be translated.
- * Tool execution turns carry toolResults and/or follow assistant toolUses; MITM
- * translation can break signing, EventStream framing, and tool-result validation.
- */
-function kiroRequiresPassthrough(bodyBuffer) {
-  try {
-    const body = JSON.parse(bodyBuffer.toString());
-    const cs = body.conversationState;
-    if (!cs) return false;
-
-    const hasToolResults = (uim) => {
-      const results = uim?.userInputMessageContext?.toolResults;
-      return Array.isArray(results) && results.length > 0;
-    };
-
-    if (hasToolResults(cs.currentMessage?.userInputMessage)) return true;
-
-    for (const item of cs.history || []) {
-      const toolUses = item.assistantResponseMessage?.toolUses;
-      if (Array.isArray(toolUses) && toolUses.length > 0) return true;
-      if (hasToolResults(item.userInputMessage)) return true;
-    }
-
-    return false;
-  } catch {
-    return false;
-  }
-}
-
 // ─── MITM intercept entry point ───────────────────────────────────────────────
 /**
  * Intercept Kiro IDE CodeWhisperer request:
@@ -503,6 +473,5 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
 
 module.exports = {
   intercept,
-  kiroRequiresPassthrough,
   __test__: { convertUserInputMessage },
 };
