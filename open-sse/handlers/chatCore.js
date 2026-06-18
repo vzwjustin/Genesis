@@ -556,7 +556,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const finalizeFailedRequest = (message, status = HTTP_STATUS.BAD_GATEWAY) => {
     try {
-      trackPendingRequest(model, provider, connectionId, false, true, pendingHandle);
       appendRequestLog({ model, provider, connectionId, status: `FAILED ${status}` }).catch(() => { });
       saveRequestDetail(buildRequestDetail({
         provider, model, connectionId,
@@ -722,6 +721,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       }
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed`);
+        if (newCredentials.expiresIn != null && newCredentials.expiresAt == null) {
+          newCredentials.expiresAt = Date.now() + Number(newCredentials.expiresIn) * 1000;
+        }
         Object.assign(credentials, newCredentials);
         if (onCredentialsRefreshed) {
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }

@@ -165,7 +165,7 @@ export function fixToolUseOrdering(messages) {
   for (let mi = 0; mi < messages.length; mi++) {
     const msg = messages[mi];
     const last = merged[merged.length - 1];
-    const msgContent = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
+    const msgContent = Array.isArray(msg.content) ? msg.content.map(b => ({ ...b })) : [{ type: "text", text: msg.content }];
     const skipMerge = last?.role === "assistant" && (contentHasToolUse(last.content) || contentHasToolUse(msgContent))
       || contentHasToolResult(last?.content) || contentHasToolResult(msgContent)
       || messageHasCacheMarker(last) || messageHasCacheMarker(msg)
