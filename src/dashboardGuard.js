@@ -78,6 +78,9 @@ function isLoopbackIp(ip) {
 }
 
 function isLocalRequest(request) {
+  // Stamped by custom-server.js when forwarding headers exist: request came through
+  // a reverse proxy, so the loopback socket is the proxy hop, not the end-user.
+  if (request.headers.get("x-9r-via-proxy")) return false;
   return isLoopbackRequest(request);
 }
 

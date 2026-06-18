@@ -5,6 +5,7 @@
 import { formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse, PROXY_EXHAUSTED_HEADER, isProxyInternalError } from "../utils/error.js";
 import { MIN_RETRY_DELAY_MS } from "../config/errorConfig.js";
+import { extractTextContent } from "../translator/helpers/geminiHelper.js";
 
 /**
  * Track rotation state per combo (for round-robin strategy)
@@ -475,4 +476,205 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   const retryHuman = formatRetryAfter(minRetryAt);
   log.warn("COMBO", `All models exhausted | ${msg} (${retryHuman})`);
   return unavailableResponse(finalStatus, msg, minRetryAt, retryHuman);
+}
+
+// --- Fusion combo strategy (local panel + judge synthesis) ---
+
+const TOOL_CALL_PREFIX = "[Called tools: ";
+const TOOL_RESULT_PREFIX = "[Tool result: ";
+
+function flattenToolHistory(messages) {
+  return messages
+    .filter((msg) => msg)
+    .map((msg) => {
+      if (msg.role === "tool" || msg.role === "function") {
+        return { role: "assistant", content: `${TOOL_RESULT_PREFIX}${extractTextContent(msg.content) || String(msg.content ?? "")}]` };
+      }
+      if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
+        const { tool_calls, ...rest } = msg;
+        const names = tool_calls.map((c) => c?.function?.name || c?.name || "tool").join(", ");
+        const base = extractTextContent(rest.content) || (typeof rest.content === "string" ? rest.content : "");
+        return { ...rest, content: `${base}${base ? "\n" : ""}${TOOL_CALL_PREFIX}${names}]` };
+      }
+      return msg;
+    });
+}
+
+function extractPanelText(json) {
+  if (!json || typeof json !== "object") return "";
+
+  const choice = json.choices?.[0];
+  if (choice) {
+    const msg = choice.message ?? choice.delta ?? {};
+    const t = extractTextContent(msg.content);
+    if (t.trim()) return t;
+    if (typeof choice.text === "string" && choice.text.trim()) return choice.text;
+  }
+
+  const claudeText = extractTextContent(json.content);
+  if (claudeText.trim()) return claudeText;
+
+  const parts = json.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    const t = parts.map((p) => p?.text || "").join("");
+    if (t.trim()) return t;
+  }
+
+  if (Array.isArray(json.output)) {
+    const t = json.output
+      .flatMap((o) => (Array.isArray(o.content) ? o.content.map((c) => c?.text || "") : []))
+      .join("");
+    if (t.trim()) return t;
+  }
+
+  return "";
+}
+
+function appendUserTurn(body, text) {
+  const next = { ...body };
+  if (Array.isArray(body.messages)) {
+    next.messages = [...body.messages, { role: "user", content: text }];
+  } else if (Array.isArray(body.input)) {
+    next.input = [...body.input, { role: "user", content: text }];
+  } else if (Array.isArray(body.contents)) {
+    next.contents = [...body.contents, { role: "user", parts: [{ text }] }];
+  } else {
+    next.messages = [{ role: "user", content: text }];
+  }
+  return next;
+}
+
+function buildJudgePrompt(answers) {
+  const panel = answers
+    .map((a, i) => `[Source ${i + 1}]\n${a.text}`)
+    .join("\n\n");
+
+  return [
+    `You are the JUDGE in a model-fusion panel. ${answers.length} expert models independently answered the user's most recent request. Their responses are below, anonymized by source.`,
+    "",
+    "Do NOT mention that multiple models were used, and do NOT refer to the sources. Produce ONE authoritative final answer addressed directly to the user.",
+    "",
+    "First, internally analyze the panel along these dimensions: consensus (points most sources agree on — treat as higher-confidence), contradictions (where they disagree — resolve with your own judgment), partial coverage, unique insights only one source surfaced, and blind spots every source missed. Then write the best possible final answer grounded in that analysis — more complete and correct than any single response, with no filler.",
+    "",
+    "=== PANEL RESPONSES ===",
+    panel,
+    "=== END PANEL RESPONSES ===",
+    "",
+    "Now write the final answer to the user's original request.",
+  ].join("\n");
+}
+
+const FUSION_DEFAULTS = {
+  minPanel: 2,
+  stragglerGraceMs: 8000,
+  panelHardTimeoutMs: 90000,
+};
+
+function withTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve({ __timeout: true }), ms);
+    Promise.resolve(promise)
+      .then((v) => { clearTimeout(t); resolve(v); })
+      .catch((e) => { clearTimeout(t); resolve({ __error: e }); });
+  });
+}
+
+function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs }) {
+  return new Promise((resolve) => {
+    const out = new Array(calls.length);
+    let settled = 0;
+    let ok = 0;
+    let finished = false;
+    let graceTimer = null;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(hardTimer);
+      if (graceTimer) clearTimeout(graceTimer);
+      resolve(out);
+    };
+    const hardTimer = setTimeout(finish, panelHardTimeoutMs);
+    calls.forEach((p, i) => {
+      Promise.resolve(p)
+        .then((v) => { out[i] = v; })
+        .catch((e) => { out[i] = { __error: e }; })
+        .finally(() => {
+          settled++;
+          if (out[i] && out[i].ok) ok++;
+          if (settled === calls.length) return finish();
+          if (ok >= minPanel && !graceTimer) graceTimer = setTimeout(finish, stragglerGraceMs);
+        });
+    });
+  });
+}
+
+export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning }) {
+  const panel = Array.isArray(models) ? models.filter(Boolean) : [];
+  if (panel.length === 0) {
+    return new Response(
+      JSON.stringify({ error: { message: "Fusion combo has no models" } }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (panel.length === 1) {
+    return handleSingleModel(body, panel[0]);
+  }
+
+  const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
+  const minPanel = Math.min(Math.max(2, cfg.minPanel), panel.length);
+  const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : panel[0];
+  log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
+
+  const { tools, tool_choice, ...rest } = body;
+  const panelBody = { ...rest, stream: false };
+
+  if (Array.isArray(panelBody.messages)) {
+    panelBody.messages = flattenToolHistory(panelBody.messages);
+  } else if (Array.isArray(panelBody.input)) {
+    panelBody.input = flattenToolHistory(panelBody.input);
+  }
+
+  const t0 = Date.now();
+  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs));
+  const settled = await collectPanel(calls, { ...cfg, minPanel });
+  log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
+
+  const answers = [];
+  for (let i = 0; i < settled.length; i++) {
+    const res = settled[i];
+    const model = panel[i];
+    if (!res) { log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`); continue; }
+    if (res.__timeout) { log.warn("FUSION", `Panel ${model} timed out`); continue; }
+    if (res.__error) { log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) }); continue; }
+    if (!res.ok) { log.warn("FUSION", `Panel ${model} failed`, { status: res.status }); continue; }
+    try {
+      const json = await res.clone().json();
+      const text = extractPanelText(json);
+      if (text) {
+        answers.push({ model, text });
+        log.info("FUSION", `Panel ${model} ok (${text.length} chars)`);
+      } else {
+        log.warn("FUSION", `Panel ${model} returned empty content`);
+      }
+    } catch (e) {
+      log.warn("FUSION", `Panel ${model} unparseable`, { error: e.message || String(e) });
+    }
+  }
+
+  if (answers.length === 0) {
+    log.warn("FUSION", "All panel models failed");
+    return new Response(
+      JSON.stringify({ error: { message: "All fusion panel models failed" } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  if (answers.length === 1) {
+    log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
+    return handleSingleModel(body, answers[0].model);
+  }
+
+  const judgeBody = appendUserTurn(body, buildJudgePrompt(answers));
+  log.info("FUSION", `Judging ${answers.length} answers with ${judge}`);
+  return handleSingleModel(judgeBody, judge);
 }

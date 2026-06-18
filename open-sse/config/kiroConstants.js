@@ -89,44 +89,88 @@ REMEMBER: When in doubt, write LESS per operation. Multiple small operations > o
  * @returns {boolean}
  */
 export function isThinkingEnabled(body, headers, model) {
-  if (headers) {
-    const beta = pickHeader(headers, "anthropic-beta");
-    if (typeof beta === "string" && beta.toLowerCase().includes("interleaved-thinking")) {
-      return true;
+  return resolveKiroThinkingBudget(body, headers, model) != null;
+}
+
+const EFFORT_TO_BUDGET = {
+  minimal: 512,
+  low: 1024,
+  medium: 8192,
+  high: 24576,
+  xhigh: 32768,
+  max: 128000,
+};
+
+function effortToBudget(effort) {
+  if (!effort) return undefined;
+  return EFFORT_TO_BUDGET[String(effort).toLowerCase()];
+}
+
+function readThinkingBudgetFromBody(body) {
+  if (!body || typeof body !== "object") return null;
+
+  const oc = body.output_config?.effort;
+  if (typeof oc === "string" && oc) {
+    const e = oc.toLowerCase();
+    if (e === "none" || e === "off") return null;
+    if (e === "auto") return KIRO_THINKING_BUDGET_DEFAULT;
+    return effortToBudget(e) ?? KIRO_THINKING_BUDGET_DEFAULT;
+  }
+
+  const thinking = body.thinking;
+  if (thinking && typeof thinking === "object") {
+    if (thinking.type === "disabled") return null;
+    if (thinking.type === "adaptive" || thinking.type === "enabled") {
+      const budget = Number(thinking.budget_tokens);
+      if (Number.isFinite(budget) && budget > 0) return budget;
+      return KIRO_THINKING_BUDGET_DEFAULT;
     }
   }
 
-  if (body && typeof body === "object") {
-    const thinking = body.thinking;
-    if (thinking && typeof thinking === "object" && thinking.type === "enabled") {
-      const budget = Number(thinking.budget_tokens);
-      if (!Number.isFinite(budget) || budget > 0) {
-        return true;
-      }
-    }
+  const effort = body.reasoning_effort
+    ?? (body.reasoning && typeof body.reasoning === "object" ? body.reasoning.effort : null);
+  if (typeof effort === "string" && effort) {
+    const e = effort.toLowerCase();
+    if (e === "none" || e === "off") return null;
+    if (e === "auto") return KIRO_THINKING_BUDGET_DEFAULT;
+    return effortToBudget(e) ?? KIRO_THINKING_BUDGET_DEFAULT;
+  }
 
-    const effort = body.reasoning_effort
-      ?? (body.reasoning && typeof body.reasoning === "object" ? body.reasoning.effort : null);
-    if (typeof effort === "string") {
-      const v = effort.toLowerCase();
-      if (v && v !== "none" && (v === "low" || v === "medium" || v === "high" || v === "auto")) {
-        return true;
-      }
-    }
+  if (containsThinkingModeTag(body)) {
+    return KIRO_THINKING_BUDGET_DEFAULT;
+  }
 
-    if (containsThinkingModeTag(body)) {
-      return true;
+  return undefined;
+}
+
+/**
+ * Resolve the Kiro thinking budget requested by a client.
+ * Explicit none/off/disabled wins and returns null (no prefix injected).
+ *
+ * @param {object} body OpenAI/Claude-shaped request body
+ * @param {object} [headers] Original inbound HTTP headers (case-insensitive)
+ * @param {string} [model] Model id the caller asked for
+ * @returns {number|null} budget to inject, or null when thinking is disabled
+ */
+export function resolveKiroThinkingBudget(body, headers, model) {
+  const fromBody = readThinkingBudgetFromBody(body);
+  if (fromBody !== undefined) return fromBody;
+
+  if (headers) {
+    const beta = pickHeader(headers, "anthropic-beta");
+    if (typeof beta === "string" && beta.toLowerCase().includes("interleaved-thinking")) {
+      return KIRO_THINKING_BUDGET_DEFAULT;
     }
   }
 
   if (typeof model === "string" && model) {
     const m = model.toLowerCase();
     if (m.includes("thinking") || m.includes("-reason")) {
-      return true;
+      return KIRO_THINKING_BUDGET_DEFAULT;
     }
   }
 
-  return false;
+  return null;
 }
 
 /**

@@ -203,6 +203,12 @@ if (!standaloneApp) {
 }
 copyRecursive(standaloneApp, cliAppDir);
 
+const customServerSrc = path.join(cliDir, "custom-server.js");
+if (fs.existsSync(customServerSrc)) {
+  fs.copyFileSync(customServerSrc, path.join(cliAppDir, "custom-server.js"));
+  console.log("✅ Copied custom-server.js (socket IP + reverse-proxy guard)\n");
+}
+
 // Older nested-app layout stores traced node_modules at standalone root.
 const standaloneNodeModules = path.join(standaloneRootToUse, "node_modules");
 if (standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules)) {

@@ -515,8 +515,16 @@ async function getAntigravitySubscriptionInfo(accessToken, proxyOptions = null) 
 /**
  * Claude Usage - Primary: OAuth endpoint, Fallback: legacy settings/org endpoint
  */
+const OAUTH_429_COOLDOWN_MS = 180000;
+const oauthCooldown = new Map();
+
 async function getClaudeUsage(accessToken, proxyOptions = null) {
   try {
+    const cooldownUntil = oauthCooldown.get(accessToken);
+    if (cooldownUntil && Date.now() < cooldownUntil) {
+      return await getClaudeUsageLegacy(accessToken, proxyOptions);
+    }
+
     // Primary: OAuth usage endpoint (Claude Code consumer OAuth tokens)
     const oauthResponse = await proxyAwareFetch(CLAUDE_CONFIG.oauthUsageUrl, {
       method: "GET",
@@ -569,6 +577,10 @@ async function getClaudeUsage(accessToken, proxyOptions = null) {
         extraUsage: data.extra_usage ?? null,
         quotas,
       };
+    }
+
+    if (oauthResponse.status === 429) {
+      oauthCooldown.set(accessToken, Date.now() + OAUTH_429_COOLDOWN_MS);
     }
 
     // Fallback: legacy settings + org usage endpoint

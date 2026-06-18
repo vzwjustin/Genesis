@@ -7,9 +7,10 @@ import { FORMATS } from "../formats.js";
 import { v4 as uuidv4 } from "uuid";
 import {
   resolveKiroModel,
-  isThinkingEnabled,
+  resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
-  KIRO_AGENTIC_SYSTEM_PROMPT
+  KIRO_AGENTIC_SYSTEM_PROMPT,
+  KIRO_THINKING_BUDGET_DEFAULT,
 } from "../../config/kiroConstants.js";
 
 // Tool-call arguments arrive as a JSON string. Malformed/partial JSON must not
@@ -321,7 +322,9 @@ export function buildKiroPayload(model, body, stream, credentials) {
   const topP = body.top_p;
 
   const { upstream: upstreamModel, agentic, thinking: modelImpliesThinking } = resolveKiroModel(model);
-  const thinkingEnabled = modelImpliesThinking || isThinkingEnabled(body, null, model);
+  const thinkingBudget = modelImpliesThinking
+    ? resolveKiroThinkingBudget(body, null, model) ?? KIRO_THINKING_BUDGET_DEFAULT
+    : resolveKiroThinkingBudget(body, null, model);
 
   const { history, currentMessage } = convertMessages(messages, tools, upstreamModel);
 
@@ -334,8 +337,8 @@ export function buildKiroPayload(model, body, stream, credentials) {
   // Order: thinking_mode tag first (so Kiro sees it before any user text),
   // then context/timestamp marker, then optional agentic chunked-write prompt.
   const prefixParts = [];
-  if (thinkingEnabled) {
-    prefixParts.push(buildThinkingSystemPrefix());
+  if (thinkingBudget != null) {
+    prefixParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }
   prefixParts.push(`[Context: Current time is ${timestamp}]`);
   if (agentic) {
