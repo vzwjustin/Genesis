@@ -344,6 +344,7 @@ export function parseSSEToClaudeResponse(rawSSE) {
   if (invalidToolJson) return null;
   if (!message) return null;
   if (!sawMessageStop) return null;
+  if (!sawContent) return null;
 
   if (stopReason) message.stop_reason = stopReason;
   if (stopSequence !== undefined) message.stop_sequence = stopSequence;
@@ -680,6 +681,15 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   const contentType = readResponseHeader(providerResponse.headers, "content-type");
   const isExplicitSSE = contentType.includes("text/event-stream");
   const isCodexEmptyType = contentType === "" && provider === "codex" && providerResponse.ok;
+  if (isCodexEmptyType) {
+    try {
+      const peek = await providerResponse.clone().text();
+      const trimmed = peek.trimStart();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        return null;
+      }
+    } catch { /* continue SSE path */ }
+  }
   const isSSE = isExplicitSSE || isCodexEmptyType;
   if (!isSSE) return null; // not handled here
 
@@ -862,6 +872,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
       : parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) {
+      if (isCodexEmptyType) return null;
       finalizeFailure("Invalid SSE response for non-streaming request");
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request", undefined, PROXY_INTERNAL_SSE);
     }

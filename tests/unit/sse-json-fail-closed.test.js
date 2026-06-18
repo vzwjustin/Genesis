@@ -325,6 +325,14 @@ describe("parseSSEToOpenAIResponse — missing terminal signal (Bug C)", () => {
 });
 
 describe("parseSSEToClaudeResponse — truncated stream fail-closed", () => {
+  it("returns null for message_start and message_stop with no content blocks", () => {
+    const sse = [
+      'data: {"type":"message_start","message":{"id":"msg_x","type":"message","role":"assistant","content":[]}}',
+      'data: {"type":"message_stop"}',
+    ].join("\n");
+    expect(parseSSEToClaudeResponse(sse)).toBeNull();
+  });
+
   it("returns null for message_start only without message_stop", () => {
     const sse =
       'data: {"type":"message_start","message":{"id":"msg_x","type":"message","role":"assistant","content":[]}}';

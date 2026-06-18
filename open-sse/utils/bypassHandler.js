@@ -234,87 +234,91 @@ function mergeChunksToResponse(chunks, sourceFormat) {
     return createOpenAIResponse("unknown");
   }
 
-  // For most formats, the last chunk before done contains the complete response
-  // Find the most complete chunk (usually the last one with content)
-  let finalChunk = chunks[chunks.length - 1];
-
-  // For Claude format, reconstruct message from streaming events
   if (sourceFormat === FORMATS.CLAUDE) {
-    const messageStop = chunks.find(c => c.type === "message_stop");
-    if (messageStop) {
-      const messageDelta = chunks.find(c => c.type === "message_delta");
-      const messageStart = chunks.find(c => c.type === "message_start");
+    const messageStop = chunks.find((c) => c.type === "message_stop");
+    if (!messageStop) {
+      return createOpenAIResponse("unknown");
+    }
+    const messageDelta = chunks.find((c) => c.type === "message_delta");
+    const messageStart = chunks.find((c) => c.type === "message_start");
+    let finalChunk = chunks[chunks.length - 1];
 
-      if (messageStart?.message) {
-        finalChunk = { ...messageStart.message };
+    if (messageStart?.message) {
+      finalChunk = { ...messageStart.message };
 
-        let accumulatedText = "";
-        let accumulatedThinking = "";
-        const toolInputByIndex = new Map();
-        const openToolBlocks = new Map();
+      let accumulatedText = "";
+      let accumulatedThinking = "";
+      const toolInputByIndex = new Map();
+      const openToolBlocks = new Map();
 
-        for (const c of chunks) {
-          if (c.type === "content_block_start" && c.content_block?.type === "tool_use") {
-            openToolBlocks.set(c.index, { ...c.content_block, input: c.content_block.input || {} });
-          }
-          if (c.type === "content_block_delta" && c.delta) {
-            if (c.delta.type === "text_delta" && c.delta.text) {
-              accumulatedText += c.delta.text;
-            } else if (c.delta.type === "thinking_delta" && c.delta.thinking) {
-              accumulatedThinking += c.delta.thinking;
-            } else if (c.delta.type === "input_json_delta") {
-              const prev = toolInputByIndex.get(c.index) || "";
-              toolInputByIndex.set(c.index, prev + (c.delta.partial_json || ""));
-            }
-          }
+      for (const c of chunks) {
+        if (c.type === "content_block_start" && c.content_block?.type === "tool_use") {
+          openToolBlocks.set(c.index, { ...c.content_block, input: c.content_block.input || {} });
         }
-
-        if (!Array.isArray(finalChunk.content)) {
-          finalChunk.content = [];
-        }
-
-        if (accumulatedThinking) {
-          const thinkingBlock = finalChunk.content.find((b) => b.type === "thinking");
-          if (thinkingBlock) {
-            thinkingBlock.thinking = accumulatedThinking;
-          } else {
-            finalChunk.content.unshift({ type: "thinking", thinking: accumulatedThinking });
+        if (c.type === "content_block_delta" && c.delta) {
+          if (c.delta.type === "text_delta" && c.delta.text) {
+            accumulatedText += c.delta.text;
+          } else if (c.delta.type === "thinking_delta" && c.delta.thinking) {
+            accumulatedThinking += c.delta.thinking;
+          } else if (c.delta.type === "input_json_delta") {
+            const prev = toolInputByIndex.get(c.index) || "";
+            toolInputByIndex.set(c.index, prev + (c.delta.partial_json || ""));
           }
-        }
-
-        if (accumulatedText) {
-          const textBlock = finalChunk.content.find((b) => b.type === "text");
-          if (textBlock) {
-            textBlock.text = accumulatedText;
-          } else {
-            finalChunk.content.push({ type: "text", text: accumulatedText });
-          }
-        }
-
-        for (const [index, partialJson] of toolInputByIndex.entries()) {
-          const base = openToolBlocks.get(index);
-          if (!base) continue;
-          try {
-            base.input = JSON.parse(partialJson);
-          } catch {
-            base.input = base.input || {};
-          }
-          const existing = finalChunk.content.find((b) => b.type === "tool_use" && b.id === base.id);
-          if (existing) {
-            existing.input = base.input;
-          } else {
-            finalChunk.content.push({ type: "tool_use", id: base.id, name: base.name, input: base.input });
-          }
-        }
-
-        if (messageDelta?.usage) {
-          finalChunk.usage = messageDelta.usage;
         }
       }
+
+      if (!Array.isArray(finalChunk.content)) {
+        finalChunk.content = [];
+      }
+
+      if (accumulatedThinking) {
+        const thinkingBlock = finalChunk.content.find((b) => b.type === "thinking");
+        if (thinkingBlock) {
+          thinkingBlock.thinking = accumulatedThinking;
+        } else {
+          finalChunk.content.unshift({ type: "thinking", thinking: accumulatedThinking });
+        }
+      }
+
+      if (accumulatedText) {
+        const textBlock = finalChunk.content.find((b) => b.type === "text");
+        if (textBlock) {
+          textBlock.text = accumulatedText;
+        } else {
+          finalChunk.content.push({ type: "text", text: accumulatedText });
+        }
+      }
+
+      for (const [index, partialJson] of toolInputByIndex.entries()) {
+        const base = openToolBlocks.get(index);
+        if (!base) continue;
+        try {
+          base.input = JSON.parse(partialJson);
+        } catch {
+          base.input = base.input || {};
+        }
+        const existing = finalChunk.content.find((b) => b.type === "tool_use" && b.id === base.id);
+        if (existing) {
+          existing.input = base.input;
+        } else {
+          finalChunk.content.push({ type: "tool_use", id: base.id, name: base.name, input: base.input });
+        }
+      }
+
+      if (messageDelta?.usage) {
+        finalChunk.usage = messageDelta.usage;
+      }
     }
+
+    return finalChunk;
   }
 
-  return finalChunk;
+  const last = chunks[chunks.length - 1];
+  const hasFinish = last?.choices?.[0]?.finish_reason != null || last?.finish_reason != null;
+  if (!hasFinish) {
+    return createOpenAIResponse("unknown");
+  }
+  return last;
 }
 
 /**

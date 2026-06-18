@@ -181,9 +181,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // in the endpoint verb (:streamGenerateContent = SSE, :generateContent = single JSON),
   // not in body.stream — the native body has no `stream` field. The MITM layer surfaces
   // that verb as the x-genesis-stream-intent header. When the signal is absent (legacy
-  // callers / direct API), default to streaming so existing clients never regress.
+  // callers / direct API), default to non-streaming so :generateContent clients get JSON.
   const geminiFamilyFormat = sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
-  const geminiWantsStream = geminiFamilyFormat ? (parseStreamIntentHeader(clientHeaders) ?? true) : false;
+  const geminiWantsStream = geminiFamilyFormat ? (parseStreamIntentHeader(clientHeaders) ?? false) : false;
   const clientRequestedStreaming = body.stream === true || geminiWantsStream;
   const providerRequiresStreaming = provider === "openai" || provider === "codex" || provider === "commandcode";
   let stream = providerRequiresStreaming ? true : (body.stream !== false);

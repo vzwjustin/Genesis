@@ -443,9 +443,9 @@ describe("providerRequiresStreaming logic (Requirements 6.3, 1.2)", () => {
 
   function computeClientRequestedStreaming(bodyStream, sourceFormat, headers = {}) {
     // Mirrors chatCore.js: Gemini-family stream intent comes from the endpoint verb
-    // (surfaced as x-genesis-stream-intent), defaulting to stream when the signal is absent.
+    // (surfaced as x-genesis-stream-intent), defaulting to non-streaming when the signal is absent.
     const geminiFamily = sourceFormat === "antigravity" || sourceFormat === "gemini" || sourceFormat === "gemini-cli";
-    const geminiWantsStream = geminiFamily ? (parseStreamIntentHeader(headers) ?? true) : false;
+    const geminiWantsStream = geminiFamily ? (parseStreamIntentHeader(headers) ?? false) : false;
     return bodyStream === true || geminiWantsStream;
   }
 
@@ -491,10 +491,10 @@ describe("providerRequiresStreaming logic (Requirements 6.3, 1.2)", () => {
     expect(!clientRequestedStreaming && providerRequiresStreaming).toBe(false);
   });
 
-  it("streaming-native formats (Gemini, Antigravity) default to streaming when no verb signal is present", () => {
-    expect(computeClientRequestedStreaming(false, "antigravity")).toBe(true);
-    expect(computeClientRequestedStreaming(false, "gemini")).toBe(true);
-    expect(computeClientRequestedStreaming(false, "gemini-cli")).toBe(true);
+  it("streaming-native formats default to non-streaming when no verb signal is present", () => {
+    expect(computeClientRequestedStreaming(false, "antigravity")).toBe(false);
+    expect(computeClientRequestedStreaming(false, "gemini")).toBe(false);
+    expect(computeClientRequestedStreaming(false, "gemini-cli")).toBe(false);
   });
 
   it("passthrough preserves client-requested streaming (stream=true → stream=true upstream)", () => {
@@ -512,10 +512,17 @@ describe("providerRequiresStreaming logic (Requirements 6.3, 1.2)", () => {
     expect(computeStreamDecision("claude", undefined, true, "claude")).toBe(false);
   });
 
-  it("passthrough keeps native streaming formats streaming even when stream is omitted", () => {
-    expect(computeStreamDecision("gemini", undefined, true, "gemini")).toBe(true);
-    expect(computeStreamDecision("gemini-cli", undefined, true, "gemini-cli")).toBe(true);
-    expect(computeStreamDecision("antigravity", undefined, true, "antigravity")).toBe(true);
+  it("passthrough treats native Gemini-family formats as non-streaming when verb signal is absent", () => {
+    expect(computeStreamDecision("gemini", undefined, true, "gemini")).toBe(false);
+    expect(computeStreamDecision("gemini-cli", undefined, true, "gemini-cli")).toBe(false);
+    expect(computeStreamDecision("antigravity", undefined, true, "antigravity")).toBe(false);
+  });
+
+  it("passthrough streams native Gemini-family formats when verb signal requests streaming", () => {
+    const streamHeaders = { "x-genesis-stream-intent": "1" };
+    expect(computeStreamDecision("gemini", undefined, true, "gemini", streamHeaders)).toBe(true);
+    expect(computeStreamDecision("gemini-cli", undefined, true, "gemini-cli", streamHeaders)).toBe(true);
+    expect(computeStreamDecision("antigravity", undefined, true, "antigravity", streamHeaders)).toBe(true);
   });
 
   // ── #12: the Gemini verb (x-genesis-stream-intent) is authoritative ──────────

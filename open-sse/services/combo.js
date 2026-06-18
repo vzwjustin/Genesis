@@ -145,7 +145,7 @@ export function getComboModelsFromData(modelStr, combosData) {
   // Filter to only valid actionable targets — a combo match succeeds only when
   // it resolves to at least one valid actionable provider/model target.
   const validModels = combo.models.filter(isValidComboModelTarget);
-  if (validModels.length < 2) return null;
+  if (validModels.length < 1) return null;
 
   return validModels;
 }
@@ -162,10 +162,7 @@ export function getBrokenComboErrorFromData(modelStr, combosData) {
   const combo = combos.find((c) => c.name === modelStr);
   if (!combo) return null;
   const validModels = (combo.models || []).filter(isValidComboModelTarget);
-  if (validModels.length >= 2) return null;
-  if (validModels.length === 1) {
-    return `Combo "${modelStr}" must include at least 2 models for failover.`;
-  }
+  if (validModels.length >= 1) return null;
   return `Combo "${modelStr}" has no valid model targets configured.`;
 }
 
@@ -294,15 +291,17 @@ export async function isProviderAccountsExhaustedResponse(response) {
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1 }) {
-  let currentRotationIndex = 0;
+  let rotationStartIndex = 0;
   let rotationSeq = 0;
   let rotatedModels = models;
+  let rotationSnapshot = null;
 
   await withComboRotationLock(comboName, async () => {
     if (comboStrategy === "round-robin" && models && models.length > 1) {
       const rotationKey = comboName || "__default__";
-      const state = comboRotationState.get(rotationKey) || { index: 0 };
-      currentRotationIndex = state.index % models.length;
+      const state = comboRotationState.get(rotationKey) || { index: 0, consecutiveUseCount: 0, seq: 0 };
+      rotationSnapshot = { index: state.index, consecutiveUseCount: state.consecutiveUseCount, seq: state.seq ?? 0 };
+      rotationStartIndex = state.index % models.length;
     }
     rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
     if (comboStrategy === "round-robin" && models && models.length > 1) {
@@ -330,16 +329,16 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // that actually served the response.
         if (comboStrategy === "round-robin") {
           const rotationKey = comboName || "__default__";
+          const servedIndex = (rotationStartIndex + i) % models.length;
           await withComboRotationLock(comboName, async () => {
             const live = comboRotationState.get(rotationKey) || { index: 0, consecutiveUseCount: 0, seq: 0 };
-            const succeededIndex = (currentRotationIndex + i) % models.length;
             // Failover must pin to the model that served. For first-try success,
             // only commit when this request still owns the latest reservation seq —
             // otherwise a concurrent completion already advanced state and we must
             // not overwrite it with a stale pre-fetch index snapshot.
             if (i > 0 || live.seq === rotationSeq) {
               comboRotationState.set(rotationKey, {
-                index: succeededIndex,
+                index: servedIndex,
                 consecutiveUseCount: 0,
                 seq: live.seq,
               });
@@ -453,7 +452,14 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
     }
   }
 
-  // All models exhausted (Req 5.6) — return HTTP 503 with last error message
+  // All models exhausted (Req 5.6) — restore round-robin reservation if nothing succeeded
+  if (comboStrategy === "round-robin" && rotationSnapshot && models && models.length > 1) {
+    const rotationKey = comboName || "__default__";
+    await withComboRotationLock(comboName, async () => {
+      comboRotationState.set(rotationKey, rotationSnapshot);
+    });
+  }
+
   const msg = lastError || "All combo models unavailable";
   const status = lastStatus || 503;
   // Use 503 (Service Unavailable) — all providers in the combo are unavailable

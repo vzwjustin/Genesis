@@ -83,6 +83,8 @@ export function errorResponse(statusCode, message, options = {}) {
   }
   if (options.retryAfterSec != null) {
     headers["Retry-After"] = String(Math.max(1, Number(options.retryAfterSec) || 1));
+  } else if (statusCode === 429) {
+    headers["Retry-After"] = String(Math.ceil(MIN_RETRY_DELAY_MS / 1000));
   }
   return new Response(JSON.stringify(buildErrorBody(statusCode, message, options)), {
     status: statusCode,

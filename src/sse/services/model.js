@@ -110,8 +110,8 @@ export async function getComboModels(modelStr) {
     (m) => typeof m === "string" && m.trim().length > 0
   );
 
-  // Align with open-sse combo: failover requires at least two valid targets
-  if (validModels.length < 2) return null;
+  // Align with open-sse combo: at least one valid target
+  if (validModels.length < 1) return null;
 
   return validModels;
 }
@@ -127,11 +127,5 @@ export async function getBrokenComboError(modelStr) {
   if (!combo) return null;
   const models = await getComboModels(modelStr);
   if (models) return null;
-  const validModels = (combo.models || []).filter(
-    (m) => typeof m === "string" && m.trim().length > 0
-  );
-  if (validModels.length === 1) {
-    return `Combo "${modelStr}" must include at least 2 models for failover.`;
-  }
   return `Combo "${modelStr}" has no valid model targets configured.`;
 }

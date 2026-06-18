@@ -85,6 +85,10 @@ export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientC
           return { ...tool, model: normalized };
         }
       }
+      if ((!tool.type || tool.type === "function") && typeof tool.model === "string" && tool.model.includes("/")) {
+        const { model, ...clientRest } = tool;
+        return { ...clientRest };
+      }
       return { ...tool };
     }
 
