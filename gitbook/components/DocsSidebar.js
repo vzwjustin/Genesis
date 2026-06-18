@@ -43,16 +43,22 @@ const ITEM_ICONS = {
 export default function DocsSidebar({ isMobile = false, onClose, lang = DEFAULT_LANG }) {
   const pathname = usePathname();
   const navigation = getNavigation(lang);
-  const [openSections, setOpenSections] = useState(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(sessionStorage.getItem("sidebarOpen") || "[]");
-    } catch { return []; }
-  });
+  const [openSections, setOpenSections] = useState([]);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    try {
+      setOpenSections(JSON.parse(sessionStorage.getItem("sidebarOpen") || "[]"));
+    } catch {
+      setOpenSections([]);
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
     sessionStorage.setItem("sidebarOpen", JSON.stringify(openSections));
-  }, [openSections]);
+  }, [openSections, hydrated]);
 
   const toggleSection = (index) => {
     setOpenSections(prev =>

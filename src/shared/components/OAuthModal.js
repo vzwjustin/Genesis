@@ -302,7 +302,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       } else if (!isLocalhost || provider === "codex" || provider === "xai") {
         // Non-localhost or proxy failed: manual input mode
         setStep("input");
-        window.open(data.authUrl, "_blank");
+        window.open(data.authUrl, "_blank", "noopener,noreferrer");
       } else {
         // Localhost (non-Codex/xAI): Open popup and wait for message
         setStep("waiting");

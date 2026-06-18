@@ -57,6 +57,46 @@ export function isSensitiveHeaderName(key) {
   return SENSITIVE_KEY_PARTS.some((part) => lower.includes(part));
 }
 
+/** Query-param names whose values must be redacted in URLs (exact / compact match). */
+const SENSITIVE_QUERY_PARAM_NAMES = new Set([
+  "key",
+  "api_key",
+  "apikey",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "client_secret",
+  "password",
+  "token",
+  "secret",
+]);
+
+export function isSensitiveQueryParam(name) {
+  const lower = String(name || "").toLowerCase();
+  const compact = lower.replace(/[^a-z0-9]/g, "");
+  return SENSITIVE_QUERY_PARAM_NAMES.has(lower)
+    || SENSITIVE_QUERY_PARAM_NAMES.has(compact)
+    || isSensitiveKey(name);
+}
+
+/** Redact secret-looking query params and free-text secrets from a URL string. */
+export function redactSensitiveUrl(url) {
+  if (url == null || typeof url !== "string" || !url) return url;
+  let redacted = url;
+  try {
+    const parsed = new URL(url);
+    for (const name of [...parsed.searchParams.keys()]) {
+      if (isSensitiveQueryParam(name)) {
+        parsed.searchParams.set(name, "[redacted]");
+      }
+    }
+    redacted = parsed.toString();
+  } catch {
+    // relative or malformed URL — fall through to text redaction
+  }
+  return redactSensitiveText(redacted);
+}
+
 /** Redact secret-looking substrings from a free-text blob (logs, bodies, stack traces). */
 export function redactSensitiveText(value) {
   return String(value)
@@ -65,7 +105,7 @@ export function redactSensitiveText(value) {
     .replace(/Token\s+[A-Za-z0-9._~+/=-]+/gi, "Token [redacted]")
     .replace(/\bsk-[A-Za-z0-9_-]+/g, "sk-[redacted]")
     .replace(/\bsk_[A-Za-z0-9_-]+/g, "sk_[redacted]")
-    .replace(/\b(access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)=([^&\s]+)/gi, "$1=[redacted]")
+    .replace(/\b(access_token|refresh_token|id_token|api_key|client_secret|password|token|secret|key)=([^&\s]+)/gi, "$1=[redacted]")
     .replace(/("(?:authorization|x-api-key|x-9r-cli-token|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)"/gi, '$1[redacted]"')
     .replace(/('(?:authorization|x-api-key|x-9r-cli-token|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)'\s*:\s*')([^'\\]*(?:\\.[^'\\]*)*)'/gi, "$1[redacted]'")
     .replace(/\b(authorization|x-api-key|x-9r-cli-token|cookie|set-cookie)\s*:\s*([^\r\n]+)/gi, "$1: [redacted]");

@@ -33,6 +33,8 @@ function atomicWriteHostsWin(target, originalContent, newContent) {
 
 const IS_WIN = process.platform === "win32";
 const IS_MAC = process.platform === "darwin";
+/** Ownership marker — only lines containing this are managed on add/remove. */
+const MANAGED_HOSTS_MARKER = "# genesis-mitm";
 const HOSTS_FILE = IS_WIN
   ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "drivers", "etc", "hosts")
   : "/etc/hosts";
@@ -123,9 +125,33 @@ function hostsLineMatchesHost(line, host) {
   return tokens.slice(1).includes(host);
 }
 
+function isManagedHostsLine(line) {
+  return String(line || "").includes(MANAGED_HOSTS_MARKER);
+}
+
+function managedHostsLineMatchesHost(line, host) {
+  return isManagedHostsLine(line) && hostsLineMatchesHost(line, host);
+}
+
+function formatManagedHostsEntry(host) {
+  return `127.0.0.1 ${host} ${MANAGED_HOSTS_MARKER}`;
+}
+
+/** Remove only genesis-mitm–tagged lines that map any of the given hosts. */
+function filterOutManagedHosts(content, hostsToRemove) {
+  const eol = String(content || "").includes("\r\n") ? "\r\n" : "\n";
+  return content.split(/\r?\n/)
+    .filter(l => !(isManagedHostsLine(l) && hostsToRemove.some(h => hostsLineMatchesHost(l, h))))
+    .join(eol);
+}
+
 /** True if any line in the hosts content maps the hostname as an exact token. */
 function hostsContentHasHost(content, host) {
   return String(content || "").split(/\r?\n/).some(l => hostsLineMatchesHost(l, host));
+}
+
+function hostsContentHasManagedHost(content, host) {
+  return String(content || "").split(/\r?\n/).some(l => managedHostsLineMatchesHost(l, host));
 }
 
 /**
@@ -176,14 +202,14 @@ async function addDNSEntry(tool, sudoPassword) {
       // Read → trim → append → atomic write (Node-side, no CLI size limit)
       const current = fs.readFileSync(HOSTS_FILE, "utf8");
       const trimmed = current.replace(/[\r\n\s]+$/g, "");
-      const toAppend = entriesToAdd.map(h => `127.0.0.1 ${h}`).join("\r\n");
+      const toAppend = entriesToAdd.map(formatManagedHostsEntry).join("\r\n");
       const next = `${trimmed}\r\n${toAppend}\r\n`;
       atomicWriteHostsWin(HOSTS_FILE, current, next);
       await runElevatedPowerShell("ipconfig /flushdns | Out-Null");
     } else {
       const current = fs.readFileSync(HOSTS_FILE, "utf8");
       const trimmed = current.replace(/[\r\n\s]+$/g, "");
-      const toAppend = entriesToAdd.map(h => `127.0.0.1 ${h}`).join("\n");
+      const toAppend = entriesToAdd.map(formatManagedHostsEntry).join("\n");
       const next = `${trimmed}\n${toAppend}\n`;
       // Use tee via sudo to overwrite atomically — escape single quotes in content
       const escaped = next.replace(/'/g, "'\\''");
@@ -206,7 +232,14 @@ async function removeDNSEntry(tool, sudoPassword) {
   const hosts = TOOL_HOSTS[tool];
   if (!hosts) throw new Error(`Unknown tool: ${tool}`);
 
-  const entriesToRemove = hosts.filter(h => checkDNSEntry(h));
+  const entriesToRemove = hosts.filter(h => {
+    try {
+      const hostsContent = fs.readFileSync(HOSTS_FILE, "utf8");
+      return hostsContentHasManagedHost(hostsContent, h);
+    } catch {
+      return false;
+    }
+  });
   if (entriesToRemove.length === 0) {
     log(`🌐 DNS ${tool}: already inactive`);
     return;
@@ -215,14 +248,12 @@ async function removeDNSEntry(tool, sudoPassword) {
   try {
     if (IS_WIN) {
       const current = fs.readFileSync(HOSTS_FILE, "utf8");
-      const filtered = current.split(/\r?\n/).filter(l => !entriesToRemove.some(h => hostsLineMatchesHost(l, h))).join("\r\n");
-      const next = filtered.replace(/[\r\n\s]+$/g, "") + "\r\n";
+      const next = normalizeHostsContent(filterOutManagedHosts(current, entriesToRemove));
       atomicWriteHostsWin(HOSTS_FILE, current, next);
       await runElevatedPowerShell("ipconfig /flushdns | Out-Null");
     } else {
       const current = fs.readFileSync(HOSTS_FILE, "utf8");
-      const filtered = current.split(/\r?\n/).filter(l => !entriesToRemove.some(h => hostsLineMatchesHost(l, h))).join("\n");
-      const next = filtered.replace(/[\r\n\s]+$/g, "") + "\n";
+      const next = normalizeHostsContent(filterOutManagedHosts(current, entriesToRemove));
       const escaped = next.replace(/'/g, "'\\''");
       // Write to a temp file then atomically rename — a `tee` straight onto
       // HOSTS_FILE truncates first, so an interrupt mid-write leaves it empty/partial.
@@ -258,9 +289,7 @@ function removeAllDNSEntriesSync() {
     if (!fs.existsSync(HOSTS_FILE)) return;
     const allHosts = Object.values(TOOL_HOSTS).flat();
     const content = fs.readFileSync(HOSTS_FILE, "utf8");
-    const eol = IS_WIN ? "\r\n" : "\n";
-    const filtered = content.split(/\r?\n/).filter(l => !allHosts.some(h => hostsLineMatchesHost(l, h))).join(eol);
-    const next = filtered.replace(/[\r\n\s]+$/g, "") + eol;
+    const next = normalizeHostsContent(filterOutManagedHosts(content, allHosts));
     if (next === content) return;
     fs.writeFileSync(HOSTS_FILE, next, "utf8");
     if (IS_WIN) {
@@ -275,6 +304,7 @@ function removeAllDNSEntriesSync() {
 
 module.exports = {
   TOOL_HOSTS,
+  MANAGED_HOSTS_MARKER,
   addDNSEntry,
   removeDNSEntry,
   removeAllDNSEntries,
@@ -285,4 +315,11 @@ module.exports = {
   isSudoPasswordRequired,
   checkDNSEntry,
   checkAllDNSStatus,
+  hostsLineMatchesHost,
+  isManagedHostsLine,
+  managedHostsLineMatchesHost,
+  formatManagedHostsEntry,
+  filterOutManagedHosts,
+  hostsContentHasManagedHost,
+  normalizeHostsContent,
 };

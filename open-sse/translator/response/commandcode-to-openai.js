@@ -31,7 +31,28 @@ function ensureState(state, model) {
     state.finishReason = null;
     state.usage = null;
     state.finishSeen = false;
+    state.finishReasonSent = false;
   }
+}
+
+function buildUpstreamErrorFrame(errVal) {
+  if (errVal && typeof errVal === "object" && !Array.isArray(errVal)) {
+    return {
+      error: {
+        message: errVal.message || JSON.stringify(errVal),
+        type: errVal.type || "upstream_error",
+        code: errVal.code || "commandcode_error",
+      },
+    };
+  }
+  const errStr = typeof errVal === "string" ? errVal : JSON.stringify(errVal ?? "unknown");
+  return {
+    error: {
+      message: errStr,
+      type: "upstream_error",
+      code: "commandcode_error",
+    },
+  };
 }
 
 function makeChunk(state, delta, finishReason = null) {
@@ -181,11 +202,9 @@ export function convertCommandCodeToOpenAI(chunk, state) {
     }
     case "error": {
       state.finishSeen = true;
-      state.finishReason = "stop";
+      state.finishReasonSent = true;
       const errVal = event.error ?? event.message ?? "unknown";
-      const errStr = typeof errVal === "string" ? errVal : JSON.stringify(errVal);
-      out.push(makeChunk(state, { content: `\n\n[CommandCode error: ${errStr}]` }));
-      out.push(makeChunk(state, {}, "stop"));
+      out.push(buildUpstreamErrorFrame(errVal));
       break;
     }
     // Silently ignore: start, start-step, reasoning-start, reasoning-end, text-start, text-end,

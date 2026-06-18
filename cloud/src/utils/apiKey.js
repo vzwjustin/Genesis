@@ -11,10 +11,8 @@
 // machine's stored keys, and the exact-match check in the handler
 // (isKeyAllowed) is the authoritative auth gate; CRC verification here guards
 // key shape/integrity. Configure API_KEY_SECRET (via process.env under
-// nodejs_compat, or globalThis) to match the issuing install; keys signed with
-// the legacy default secret are always accepted.
-
-const LEGACY_API_KEY_SECRET = "endpoint-proxy-api-key-secret";
+// nodejs_compat, or globalThis) to match the issuing install. For legacy-key
+// migration only, optionally set LEGACY_API_KEY_SECRET to the old install secret.
 
 /** Configured install secret, if exposed to the Worker, else null. */
 function getConfiguredSecret() {
@@ -23,6 +21,17 @@ function getConfiguredSecret() {
   }
   if (typeof globalThis !== "undefined" && globalThis.API_KEY_SECRET) {
     return globalThis.API_KEY_SECRET;
+  }
+  return null;
+}
+
+/** Optional legacy install secret for migration — never hardcode production values. */
+function getLegacyApiKeySecret() {
+  if (typeof process !== "undefined" && process.env && process.env.LEGACY_API_KEY_SECRET) {
+    return process.env.LEGACY_API_KEY_SECRET;
+  }
+  if (typeof globalThis !== "undefined" && globalThis.LEGACY_API_KEY_SECRET) {
+    return globalThis.LEGACY_API_KEY_SECRET;
   }
   return null;
 }
@@ -65,12 +74,13 @@ function timingSafeStrEqual(a, b) {
   return diff === 0;
 }
 
-/** Accept keys signed with the configured install secret or the legacy default. */
+/** Accept keys signed with the configured install secret and optional legacy migration secret. */
 async function verifyCrc(machineId, keyId, crc) {
   const secrets = [];
   const configured = getConfiguredSecret();
   if (configured) secrets.push(configured);
-  if (!secrets.includes(LEGACY_API_KEY_SECRET)) secrets.push(LEGACY_API_KEY_SECRET);
+  const legacy = getLegacyApiKeySecret();
+  if (legacy && !secrets.includes(legacy)) secrets.push(legacy);
 
   let ok = false;
   // Check every secret (no early break) so timing does not reveal which secret matched.

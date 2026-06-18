@@ -16,7 +16,8 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    include: ["**/*.test.js"],
+    include: [join(__dirname, "**/*.test.js")],
+    exclude: [join(__dirname, "**/*.bench.js"), "**/node_modules/**"],
     // Suppress noisy console output from handlers under test
     silent: false,
     env: {

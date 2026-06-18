@@ -65,7 +65,7 @@ describe("legacy request logger redaction", () => {
       { cookie: "session=raw-cookie" }
     );
     logger.logTargetRequest(
-      "https://api.example.com/v1/messages",
+      "https://api.example.com/v1/messages?key=provider-query-secret&model=claude-3",
       { Authorization: "Bearer provider-header-secret" },
       { client_secret: "provider-client-secret", safe: "provider-safe" }
     );
@@ -93,6 +93,7 @@ describe("legacy request logger redaction", () => {
       "sk-client-secret",
       "header-secret",
       "provider-header-secret",
+      "provider-query-secret",
       "provider-client-secret",
       "provider-cookie",
       "provider-refresh-token",

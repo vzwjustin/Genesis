@@ -33,6 +33,7 @@ import {
   QODER_MODEL_MAP,
 } from "@/lib/qoder/constants.js";
 import { getQoderModelConfig, resolveQoderModels } from "../services/qoderModels.js";
+import { buildErrorBody } from "../utils/error.js";
 
 /**
  * Hoist role:"system" messages out of the messages array (Qoder rejects
@@ -219,8 +220,8 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
  * Each upstream line looks like:
  *   data: {"statusCodeValue":200,"body":"{\"choices\":[{\"delta\":{...}}]}"}
  * The inner body is an OpenAI streaming chunk (or "[DONE]"). We unwrap it
- * and re-emit as `data: <inner>\n\n`. Errors become `data: [DONE]\n\n` plus
- * a synthetic OpenAI error chunk.
+ * and re-emit as `data: <inner>\n\n`. App-level errors (statusCodeValue !== 200)
+ * become a top-level `data: {"error":{...}}\n\n` frame plus `data: [DONE]\n\n`.
  */
 function wrapQoderSSE(response, model) {
   if (!response.ok || !response.body) return response;
@@ -252,14 +253,12 @@ function wrapQoderSSE(response, model) {
     const inner = typeof envelope.body === "string" ? envelope.body : "";
     if (statusVal !== 200) {
       const msg = inner || `upstream status ${statusVal}`;
-      const errChunk = JSON.stringify({
-        id: `qoder-error-${Date.now()}`,
-        object: "chat.completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        choices: [{ index: 0, delta: { content: `\n[qoder error ${statusVal}: ${truncate(msg, 200)}]` }, finish_reason: "stop" }],
+      const httpStatus = statusVal >= 400 && statusVal < 600 ? statusVal : 502;
+      const errorBody = buildErrorBody(httpStatus, truncate(msg, 200), {
+        errorType: "upstream_error",
+        errorCode: "qoder_upstream_error",
       });
-      controller.enqueue(encoder.encode(`data: ${errChunk}\n\n`));
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorBody)}\n\n`));
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       doneEmitted = true;
       return;

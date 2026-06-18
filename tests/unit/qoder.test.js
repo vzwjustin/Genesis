@@ -438,12 +438,22 @@ describe("wrapQoderSSE", () => {
     expect(() => JSON.parse(dataLine.slice("data: ".length))).not.toThrow();
   });
 
-  it("upstream error envelope produces an error chunk + [DONE]", async () => {
+  it("upstream error envelope emits top-level error frame + [DONE]", async () => {
     const env = JSON.stringify({ statusCodeValue: 503, body: "service unavailable" });
     const wrapped = wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/lite");
     const out = await drain(wrapped);
-    expect(out).toContain("[qoder error 503");
+    expect(out).toContain('"error"');
+    expect(out).toContain("service unavailable");
+    expect(out).not.toMatch(/finish_reason":"stop"/);
     expect(out).toContain("data: [DONE]\n\n");
+  });
+
+  it("upstream error envelope fails closed in non-streaming assembly", async () => {
+    const { parseSSEToOpenAIResponse } = await import("../../open-sse/handlers/chatCore/sseToJsonHandler.js");
+    const env = JSON.stringify({ statusCodeValue: 503, body: "service unavailable" });
+    const wrapped = wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/lite");
+    const out = await drain(wrapped);
+    expect(parseSSEToOpenAIResponse(out, "qoder/lite")).toBeNull();
   });
 
   it("non-ok responses are returned unchanged (no transform)", () => {

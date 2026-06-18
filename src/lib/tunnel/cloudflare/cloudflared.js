@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import https from "https";
 import os from "os";
-import { execSync, spawn } from "child_process";
+import { execSync, execFileSync, spawn } from "child_process";
 import { savePid, loadPid, clearPid } from "./pid.js";
 import { DATA_DIR } from "@/lib/dataDir.js";
 
@@ -413,11 +413,14 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
 // Kill cloudflared processes whose command line targets the given port (any host).
 // Boundary check ensures :20128 doesn't match :201280 or :202128.
 function killCloudflaredByPort(port) {
-  if (!port) return;
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return;
   try {
     if (IS_WINDOWS) {
       const psCmd = `Get-CimInstance Win32_Process -Filter \\"Name='cloudflared.exe'\\" | Where-Object { $_.CommandLine -match ':${port}(\\D|$)' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
-      execSync(`${POWERSHELL_HIDDEN_COMMAND} "${psCmd}"`, { stdio: "ignore", windowsHide: true });
+      execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psCmd], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
     } else {
       execSync(`pkill -f "cloudflared.*:${port}([^0-9]|$)" 2>/dev/null || true`, { stdio: "ignore", windowsHide: true });
     }

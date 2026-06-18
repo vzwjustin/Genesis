@@ -1,6 +1,6 @@
 const fs = require("fs");
 const crypto = require("crypto");
-const { exec, execFile } = require("child_process");
+const { exec, execFile, spawn } = require("child_process");
 const { execWithPassword, isSudoAvailable } = require("../dns/dnsConfig.js");
 const { runElevatedPowerShell, quotePs } = require("../winElevated.js");
 const { log, err } = require("../logger");
@@ -30,6 +30,60 @@ function getLinuxCertConfig() {
 const ROOT_CA_CN = "Genesis MITM Root CA";
 /** Pre-rebrand certs migrated from ~/.9router still use this CN in the keychain. */
 const LEGACY_ROOT_CA_CNS = ["9Router MITM Root CA", "9router MITM Root CA"];
+
+function execFileWithSudo(argv, password) {
+  const [file, ...args] = argv;
+  return new Promise((resolve, reject) => {
+    const useSudo = isSudoAvailable();
+    const child = useSudo
+      ? spawn("sudo", ["-S", file, ...args], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
+      : spawn(file, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+
+    child.on("close", (code) => {
+      if (code === 0) resolve(stdout);
+      else reject(new Error(stderr || `Exit code ${code}`));
+    });
+
+    if (useSudo) {
+      child.stdin.write(`${password}\n`);
+      child.stdin.end();
+    }
+  });
+}
+
+async function deleteMacCertByCn(sudoPassword, cn) {
+  try {
+    await execFileWithSudo(
+      ["security", "delete-certificate", "-c", cn, "/Library/Keychains/System.keychain"],
+      sudoPassword,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function purgeLegacyRootCAs(sudoPassword) {
+  if (IS_WIN) {
+    const script = LEGACY_ROOT_CA_CNS
+      .map((cn) => `certutil -delstore Root ${quotePs(cn)} 2>$null | Out-Null`)
+      .join("\n    ");
+    try {
+      await runElevatedPowerShell(script);
+    } catch { /* legacy entries may be absent */ }
+    return;
+  }
+  if (IS_MAC) {
+    for (const cn of LEGACY_ROOT_CA_CNS) {
+      await deleteMacCertByCn(sudoPassword, cn);
+    }
+  }
+}
 
 // Get SHA1 fingerprint from cert file using Node.js crypto
 function getCertFingerprint(certPath) {
@@ -109,17 +163,21 @@ async function installCert(sudoPassword, certPath) {
 
 async function installCertMac(sudoPassword, certPath) {
   const fingerprint = getCertFingerprint(certPath).replace(/:/g, "");
-  const legacyDeletes = LEGACY_ROOT_CA_CNS.map(
-    (cn) => `security delete-certificate -c "${cn}" /Library/Keychains/System.keychain 2>/dev/null || true`,
-  ).join("; ");
-  const deleteOld = [
-    legacyDeletes,
-    `security delete-certificate -c "${ROOT_CA_CN}" /Library/Keychains/System.keychain 2>/dev/null || true`,
-    `security delete-certificate -Z "${fingerprint}" /Library/Keychains/System.keychain 2>/dev/null || true`,
-  ].join("; ");
-  const install = `security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`;
+  for (const cn of LEGACY_ROOT_CA_CNS) {
+    await deleteMacCertByCn(sudoPassword, cn);
+  }
+  await deleteMacCertByCn(sudoPassword, ROOT_CA_CN);
   try {
-    await execWithPassword(`${deleteOld} && ${install}`, sudoPassword);
+    await execFileWithSudo(
+      ["security", "delete-certificate", "-Z", fingerprint, "/Library/Keychains/System.keychain"],
+      sudoPassword,
+    );
+  } catch { /* stale fingerprint may be absent */ }
+  try {
+    await execFileWithSudo(
+      ["security", "add-trusted-cert", "-d", "-r", "trustRoot", "-k", "/Library/Keychains/System.keychain", certPath],
+      sudoPassword,
+    );
     log("🔐 Cert: ✅ installed to system keychain");
   } catch (error) {
     const msg = error.message?.includes("canceled") ? "User canceled authorization" : "Certificate install failed";
@@ -147,41 +205,58 @@ async function installCertWindows(certPath) {
  * Uninstall SSL certificate from system store
  */
 async function uninstallCert(sudoPassword, certPath) {
-  const isInstalled = await checkCertInstalled(certPath);
-  if (!isInstalled) {
-    log("🔐 Cert: not found in system store");
-    return;
+  await purgeLegacyRootCAs(sudoPassword);
+
+  let removed = false;
+  if (IS_WIN) {
+    removed = await uninstallCertWindows();
+  } else if (IS_MAC) {
+    removed = await uninstallCertMac(sudoPassword, certPath);
+  } else {
+    removed = await uninstallCertLinux(sudoPassword);
   }
 
-  if (IS_WIN) {
-    await uninstallCertWindows();
-  } else if (IS_MAC) {
-    await uninstallCertMac(sudoPassword, certPath);
-  } else {
-    await uninstallCertLinux(sudoPassword);
+  if (!removed) {
+    log("🔐 Cert: not found in system store");
   }
 }
 
 async function uninstallCertMac(sudoPassword, certPath) {
-  const fingerprint = getCertFingerprint(certPath).replace(/:/g, "");
-  const command = `security delete-certificate -Z "${fingerprint}" /Library/Keychains/System.keychain`;
-  try {
-    await execWithPassword(command, sudoPassword);
-    log("🔐 Cert: ✅ uninstalled from system keychain");
-  } catch (err) {
-    throw new Error("Failed to uninstall certificate");
+  let removed = false;
+  if (certPath && fs.existsSync(certPath)) {
+    try {
+      const fingerprint = getCertFingerprint(certPath).replace(/:/g, "");
+      await execFileWithSudo(
+        ["security", "delete-certificate", "-Z", fingerprint, "/Library/Keychains/System.keychain"],
+        sudoPassword,
+      );
+      removed = true;
+    } catch { /* fingerprint may not match installed cert */ }
   }
+  if (await deleteMacCertByCn(sudoPassword, ROOT_CA_CN)) {
+    removed = true;
+  }
+  if (removed) {
+    log("🔐 Cert: ✅ uninstalled from system keychain");
+  }
+  return removed;
 }
 
 async function uninstallCertWindows() {
-  // Auto-elevate via UAC popup if not admin
-  const script = `certutil -delstore Root ${quotePs(ROOT_CA_CN)}`;
+  const script = [ROOT_CA_CN, ...LEGACY_ROOT_CA_CNS]
+    .map((cn) => `certutil -delstore Root ${quotePs(cn)} 2>$null | Out-Null`)
+    .join("\n    ");
+  let removed = false;
   try {
     await runElevatedPowerShell(script);
+    removed = true;
     log("🔐 Cert: ✅ uninstalled from Windows Root store");
   } catch (e) {
-    throw new Error(`Failed to uninstall certificate: ${e.message}`);
+    if (e.message && !/exit|not found|cannot find/i.test(e.message)) {
+      throw new Error(`Failed to uninstall certificate: ${e.message}`);
+    }
   }
+  return removed;
 }
 
 function checkCertInstalledLinux() {
@@ -259,20 +334,24 @@ async function installCertLinux(sudoPassword, certPath) {
 
 async function uninstallCertLinux(sudoPassword) {
   // Always try to uninstall from user DBs even without sudo
-  await updateNssDatabases(null, 'delete');
+  await updateNssDatabases(null, "delete");
 
   if (!isSudoAvailable()) {
-    return;
+    return false;
   }
-  
+
   const config = getLinuxCertConfig();
   const destFile = `${config.dir}/genesis-root-ca.crt`;
+  if (!fs.existsSync(destFile)) {
+    return false;
+  }
   const cmd = `rm -f "${destFile}" && (${config.cmd} 2>/dev/null || true)`;
-  
+
   try {
     await execWithPassword(cmd, sudoPassword);
     log("🔐 Cert: ✅ uninstalled from Linux trust store and user browser databases");
-  } catch (error) {
+    return true;
+  } catch {
     throw new Error("Failed to uninstall certificate");
   }
 }

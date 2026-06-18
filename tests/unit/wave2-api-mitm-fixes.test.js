@@ -265,7 +265,7 @@ describe("wave2 — MITM stopServer DNS cleanup finally", () => {
       "utf8",
     );
     const stopIdx = src.indexOf("async function stopServer");
-    const stopBody = src.slice(stopIdx, stopIdx + 3500);
+    const stopBody = src.slice(stopIdx, stopIdx + 5000);
     expect(stopBody).toMatch(/try\s*\{[\s\S]*removeAllDNSEntries/);
     expect(stopBody).toMatch(/finally\s*\{[\s\S]*mitmIsRestarting\s*=\s*false/);
   });
