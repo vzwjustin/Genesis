@@ -4,7 +4,7 @@ import { LEGACY_FILES, DB_DIR, DATA_FILE } from "./paths.js";
 import { TABLES, buildCreateTableSql } from "./schema.js";
 import { MIGRATIONS, latestVersion } from "./migrations/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
-import { makeBackupDir, backupFile, pruneOldBackups } from "./backup.js";
+import { makeBackupDir, backupFile, backupSqliteFile, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
 
@@ -308,14 +308,14 @@ export async function runMigrationOnce(adapter) {
   const newVer = getAppVersion();
   if (oldVer && oldVer !== newVer) {
     const backupDir = makeBackupDir(`upgrade-${oldVer}-to-${newVer}`);
-    try { backupFile(DATA_FILE, backupDir); } catch {}
+    try { backupSqliteFile(adapter, DATA_FILE, backupDir); } catch {}
     setMetaSync(adapter, "appVersion", newVer);
     pruneOldBackups();
     console.log(`[DB][migrate] App ${oldVer} → ${newVer} | schema ${migInfo.from} → ${migInfo.to} | backup: ${backupDir}`);
   } else if (migInfo.applied > 0) {
     // Schema upgrade without app version bump — still backup
     const backupDir = makeBackupDir(`schema-${migInfo.from}-to-${migInfo.to}`);
-    try { backupFile(DATA_FILE, backupDir); } catch {}
+    try { backupSqliteFile(adapter, DATA_FILE, backupDir); } catch {}
     pruneOldBackups();
   }
 }

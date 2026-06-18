@@ -65,8 +65,16 @@ function CallbackContent() {
 
     // Method 3: localStorage event (fallback)
     try {
+      localStorage.removeItem("oauth_callback");
       localStorage.setItem("oauth_callback", JSON.stringify({ ...callbackData, timestamp: Date.now() }));
       relayed = true;
+      setTimeout(() => {
+        try {
+          localStorage.removeItem("oauth_callback");
+        } catch {
+          // ignore cleanup failures
+        }
+      }, 5000);
     } catch (e) {
       console.log("localStorage failed:", e);
     }

@@ -5,7 +5,7 @@ const os = require("os");
 const net = require("net");
 const https = require("https");
 const crypto = require("crypto");
-const { addDNSEntry, removeDNSEntry, removeAllDNSEntries, removeAllDNSEntriesSync, checkAllDNSStatus, TOOL_HOSTS, isSudoAvailable, isSudoPasswordRequired } = require("./dns/dnsConfig");
+const { addDNSEntry, removeDNSEntry, removeAllDNSEntries, removeAllDNSEntriesSync, checkAllDNSStatus, TOOL_HOSTS, isSudoAvailable, isSudoPasswordRequired, filterOutManagedHosts, normalizeHostsContent, MANAGED_HOSTS_MARKER } = require("./dns/dnsConfig");
 const { isAdmin } = require("./winElevated.js");
 
 const IS_WIN = process.platform === "win32";
@@ -885,19 +885,25 @@ async function stopServer(sudoPassword) {
         if (isAdmin()) {
           // Direct fs write — bypass PowerShell to avoid parser pitfalls
           const content = fs.readFileSync(hostsFile, "utf8");
-          const filtered = content.split(/\r?\n/).filter(l => !allHosts.some(h => l.includes(h))).join("\r\n");
-          const next = filtered.replace(/[\r\n\s]+$/g, "") + "\r\n";
+          const next = normalizeHostsContent(filterOutManagedHosts(content, allHosts));
           if (next !== content) fs.writeFileSync(hostsFile, next, "utf8");
           try { require("child_process").execSync("ipconfig /flushdns", { windowsHide: true, stdio: "ignore" }); } catch { /* ignore */ }
           log("🌐 DNS: ✅ all tool hosts removed");
         } else {
+          const marker = MANAGED_HOSTS_MARKER.replace(/'/g, "''");
           const hostsList = allHosts.map(quotePs).join(",");
           const script = `
+          $marker = '${marker}'
           $hosts = @(${hostsList})
           $lines = Get-Content -LiteralPath ${quotePs(hostsFile)}
           $filtered = $lines | Where-Object {
             $line = $_
-            -not ($hosts | Where-Object { $line -match [regex]::Escape($_) })
+            if ($line -notlike "*$marker*") { return $true }
+            $hostPart = ($line -split '#')[0].Trim()
+            $tokens = @($hostPart -split '\\s+' | Where-Object { $_ })
+            if ($tokens.Count -lt 2) { return $true }
+            $lineHosts = $tokens | Select-Object -Skip 1
+            -not ($hosts | Where-Object { $lineHosts -contains $_ })
           }
           Set-Content -LiteralPath ${quotePs(hostsFile)} -Value $filtered
           ipconfig /flushdns | Out-Null

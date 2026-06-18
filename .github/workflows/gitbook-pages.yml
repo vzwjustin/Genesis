@@ -12,6 +12,9 @@ concurrency:
   group: gitbook-pages
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
@@ -37,11 +40,11 @@ jobs:
       - name: Add .nojekyll
         run: touch out/.nojekyll
 
-      - name: Deploy to genesis.github.io
+      - name: Deploy to decolua/genesis.github.io
         uses: peaceiris/actions-gh-pages@v4
         with:
           deploy_key: ${{ secrets.GH_PAGES_DEPLOY_KEY }}
-          external_repository: genesis/genesis.github.io
+          external_repository: decolua/genesis.github.io
           publish_branch: main
           publish_dir: gitbook/out
           force_orphan: true

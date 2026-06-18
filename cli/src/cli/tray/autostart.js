@@ -6,6 +6,26 @@ const { execSync } = require("child_process");
 const APP_NAME = "genesis";
 const APP_LABEL = "com.genesis.autostart";
 
+/** Escape text for XML/plist string elements. */
+function escapeXmlText(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/** Escape a path embedded in a VBS double-quoted string (double internal quotes). */
+function escapeVbsPath(value) {
+  return String(value).replace(/"/g, '""');
+}
+
+/** Escape a path argument in a .desktop Exec line. */
+function escapeDesktopExecArg(value) {
+  return String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
+
 /**
  * Resolve the absolute path to this package's cli.js.
  *
@@ -151,13 +171,16 @@ function enableMacOS(cliPath) {
   // Don't write a broken plist that references a non-existent script.
   if (!routerScript) return false;
 
+  const safeNodePath = escapeXmlText(nodePath);
+  const safeRouterScript = escapeXmlText(routerScript);
+
   // Invoke node + cli.js directly with absolute paths — no shell wrapper.
   // The previous design ran `zsh -l -c "..."` so a login shell would source
   // nvm/.zshrc and set PATH; that's fragile (nvm.sh sourcing varies by user,
   // some setups don't put node on PATH from a non-interactive login shell).
   // EnvironmentVariables.PATH explicitly includes node's bin dir so child
   // processes spawned by cli.js (npm install at runtime, etc.) resolve.
-  const launchPath = `${path.dirname(nodePath)}:/usr/local/bin:/usr/bin:/bin`;
+  const launchPath = escapeXmlText(`${path.dirname(nodePath)}:/usr/local/bin:/usr/bin:/bin`);
 
   const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -167,8 +190,8 @@ function enableMacOS(cliPath) {
     <string>${APP_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${nodePath}</string>
-        <string>${routerScript}</string>
+        <string>${safeNodePath}</string>
+        <string>${safeRouterScript}</string>
         <string>--tray</string>
         <string>--skip-update</string>
     </array>
@@ -246,10 +269,13 @@ function enableWindows(cliPath) {
   const routerScript = getCliJsPath(cliPath);
   if (!routerScript) return false;
 
+  const safeNodePath = escapeVbsPath(nodePath);
+  const safeRouterScript = escapeVbsPath(routerScript);
+
   // Run node + cli.js directly, hidden window. Avoids the fragile
   // `genesis.cmd` lookup that depended on the npm prefix path.
   const vbsContent = `Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """${nodePath}"" ""${routerScript}"" --tray --skip-update", 0, False
+WshShell.Run """${safeNodePath}"" ""${safeRouterScript}"" --tray --skip-update", 0, False
 `;
   fs.writeFileSync(vbsPath, vbsContent);
   return true;
@@ -278,11 +304,14 @@ function enableLinux(cliPath) {
   const routerScript = getCliJsPath(cliPath);
   if (!routerScript) return false;
 
+  const safeNodePath = escapeDesktopExecArg(nodePath);
+  const safeRouterScript = escapeDesktopExecArg(routerScript);
+
   const desktopContent = `[Desktop Entry]
 Type=Application
 Name=Genesis
 Comment=Genesis API Proxy
-Exec="${nodePath}" "${routerScript}" --tray --skip-update
+Exec="${safeNodePath}" "${safeRouterScript}" --tray --skip-update
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true

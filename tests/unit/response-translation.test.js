@@ -2,7 +2,9 @@ import { describe, expect, it, beforeAll } from "vitest";
 import { translateResponse, initState } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { openaiToGeminiResponse } from "../../open-sse/translator/response/openai-to-gemini.js";
+import { openaiResponsesToOpenAIResponse } from "../../open-sse/translator/response/openai-responses.js";
 import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
+import { parseSSEToOpenAIResponse } from "../../open-sse/handlers/chatCore/sseToJsonHandler.js";
 
 // Import translators to trigger their register() calls
 import "../../open-sse/translator/response/claude-to-openai.js";
@@ -436,5 +438,45 @@ describe("openaiToGeminiResponse unit tests", () => {
     const result = openaiToGeminiResponse(openaiFinishChunk("stop"), state);
     expect(result.usageMetadata.promptTokenCount).toBe(100);
     expect(result.usageMetadata.candidatesTokenCount).toBe(50);
+  });
+});
+
+describe("openai-responses → openai — upstream errors", () => {
+  it("emits top-level error object for response.failed events", () => {
+    const state = {};
+    const chunk = openaiResponsesToOpenAIResponse({
+      type: "response.failed",
+      response: { error: { message: "model_not_found", type: "invalid_request_error", code: "model_not_found" } },
+    }, state);
+    expect(chunk.error).toEqual({
+      message: "model_not_found",
+      type: "invalid_request_error",
+      code: "model_not_found",
+    });
+    expect(chunk.choices).toBeUndefined();
+  });
+
+  it("deduplicates back-to-back error + response.failed", () => {
+    const state = {};
+    const first = openaiResponsesToOpenAIResponse({
+      type: "error",
+      error: { message: "quota exceeded", type: "rate_limit_error", code: "insufficient_quota" },
+    }, state);
+    const second = openaiResponsesToOpenAIResponse({
+      type: "response.failed",
+      response: { error: { message: "quota exceeded" } },
+    }, state);
+    expect(first.error.message).toBe("quota exceeded");
+    expect(second).toBeNull();
+  });
+
+  it("fails closed in non-streaming assembly when error frame is present", () => {
+    const state = {};
+    const chunk = openaiResponsesToOpenAIResponse({
+      type: "error",
+      error: { message: "upstream broke", type: "server_error", code: "upstream" },
+    }, state);
+    const sse = `data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`;
+    expect(parseSSEToOpenAIResponse(sse, "gpt-5-codex")).toBeNull();
   });
 });

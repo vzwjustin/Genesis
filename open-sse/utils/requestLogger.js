@@ -1,6 +1,7 @@
 import {
   maskSensitiveHeaders,
   redactSensitiveText,
+  redactSensitiveUrl,
   sanitizeValue as sanitizeLogValue,
 } from "../../src/shared/utils/redaction.js";
 
@@ -223,7 +224,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
     logTargetRequest(url, headers, body) {
       safeWrite("logTargetRequest", () => writeJsonFile(sessionPath, "4_req_target.json", {
         timestamp: new Date().toISOString(),
-        url,
+        url: redactSensitiveUrl(url),
         headers: maskSensitiveHeaders(headers),
         body: sanitizeLogValue(body)
       }));

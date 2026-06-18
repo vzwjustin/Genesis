@@ -276,6 +276,40 @@ describe("DB SQLite layer — public API parity", () => {
     expect((await sqliteDb.getModelAliases()).marker).toBe("before");
   });
 
+  it("importDb preserves usage and observability tables", async () => {
+    await sqliteDb.saveRequestUsage({
+      provider: "preserve-import", model: "m1", connectionId: "pc1",
+      tokens: { prompt_tokens: 11, completion_tokens: 7 },
+      endpoint: "/v1/chat", status: "ok",
+    });
+    const histBefore = await sqliteDb.getUsageHistory({ provider: "preserve-import" });
+    expect(histBefore.length).toBeGreaterThanOrEqual(1);
+
+    await sqliteDb.updateSettings({ enableObservability: true, observabilityBatchSize: 1 });
+    await sqliteDb.saveRequestDetail({
+      id: "preserve-detail-1", provider: "preserve-import", model: "m1", connectionId: "pc1",
+      status: "ok", tokens: { prompt_tokens: 5 },
+      request: { method: "POST" },
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    const detailsBefore = await sqliteDb.getRequestDetails({ provider: "preserve-import" });
+    expect(detailsBefore.pagination.totalItems).toBeGreaterThanOrEqual(1);
+
+    const settingsBefore = await sqliteDb.getSettings();
+    await sqliteDb.importDb({
+      settings: { ...settingsBefore, importPreserveMarker: "config-only" },
+    });
+
+    const histAfter = await sqliteDb.getUsageHistory({ provider: "preserve-import" });
+    expect(histAfter.length).toBe(histBefore.length);
+
+    const detailsAfter = await sqliteDb.getRequestDetails({ provider: "preserve-import" });
+    expect(detailsAfter.pagination.totalItems).toBe(detailsBefore.pagination.totalItems);
+
+    const settings = await sqliteDb.getSettings();
+    expect(settings.importPreserveMarker).toBe("config-only");
+  });
+
   it("pricing: user pricing merged with constants", async () => {
     await sqliteDb.updatePricing({ openai: { "gpt-test": { input: 1, output: 2 } } });
     const p = await sqliteDb.getPricing();

@@ -601,17 +601,12 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       state.error = error;
       state.finishReasonSent = true;
 
-      // Surface the error as an OpenAI-compatible error chunk
       return {
-        id: state.chatId || `chatcmpl-${Date.now()}`,
-        object: "chat.completion.chunk",
-        created: state.created || Math.floor(Date.now() / 1000),
-        model: state.model || "unknown",
-        choices: [{
-          index: 0,
-          delta: { content: `[Error] ${error.message || JSON.stringify(error)}` },
-          finish_reason: "stop"
-        }]
+        error: {
+          message: error.message || JSON.stringify(error),
+          type: error.type || "upstream_error",
+          code: error.code || "responses_api_error",
+        },
       };
     }
     return null;

@@ -63,7 +63,7 @@ export default function LandingPage() {
                 Start Free
               </button>
               <button 
-                onClick={() => window.open("https://github.com/decolua/genesis#readme", "_blank")}
+                onClick={() => window.open("https://github.com/decolua/genesis#readme", "_blank", "noopener,noreferrer")}
                 className="w-full sm:w-auto h-14 px-10 rounded-lg landing-glass-btn text-lg"
               >
                 Read Documentation

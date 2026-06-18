@@ -116,12 +116,22 @@ describe("commandcode-to-openai — finish", () => {
 });
 
 describe("commandcode-to-openai — error event", () => {
-  it("stringifies object errors so client sees readable message", () => {
+  it("emits top-level error object instead of content + stop", () => {
     const { chunks } = feed([
       { type: "error", error: { type: "server_error", message: "Boom" } },
     ]);
-    const text = chunks[0].choices[0].delta.content;
-    expect(text).toContain("Boom");
-    expect(text).not.toContain("[object Object]");
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].error).toEqual({
+      message: "Boom",
+      type: "server_error",
+      code: "commandcode_error",
+    });
+    expect(chunks[0].choices).toBeUndefined();
+  });
+
+  it("stringifies string errors into error.message", () => {
+    const { chunks } = feed([{ type: "error", error: "plain failure" }]);
+    expect(chunks[0].error.message).toBe("plain failure");
+    expect(chunks[0].error.type).toBe("upstream_error");
   });
 });

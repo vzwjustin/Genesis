@@ -64,6 +64,18 @@ function isAllowedMitmSniHost(servername) {
   return isKiroMitmHost(h);
 }
 
+function validatePassthroughRequest(req) {
+  const hostHeader = (req.headers.host || "").split(":")[0].toLowerCase();
+  if (!hostHeader || !isAllowedMitmSniHost(hostHeader)) {
+    return { ok: false, status: 403, message: "Passthrough host not allowed" };
+  }
+  const sni = (req.socket?.servername || "").split(":")[0].toLowerCase();
+  if (sni && sni !== hostHeader) {
+    return { ok: false, status: 403, message: "Passthrough SNI/Host mismatch" };
+  }
+  return { ok: true };
+}
+
 function sniCallback(servername, cb) {
   try {
     if (!isAllowedMitmSniHost(servername)) {
@@ -159,6 +171,16 @@ function isMitmChatRequest(tool, req, bodyBuffer) {
  * Also tees full stream into a dump file when ENABLE_FILE_LOG is on.
  */
 async function passthrough(req, res, bodyBuffer, onResponse) {
+  const validation = validatePassthroughRequest(req);
+  if (!validation.ok) {
+    err(`[mitm] passthrough rejected: ${validation.message} host=${req.headers.host} sni=${req.socket?.servername || ""}`);
+    if (!res.headersSent) {
+      res.writeHead(validation.status, { "Content-Type": "text/plain" });
+      res.end(validation.message);
+    }
+    return;
+  }
+
   const originalHost = (req.headers.host || TARGET_HOSTS[0]).split(":")[0];
   // Only rewrite host for chat endpoints — daily-cloudcode-pa rejects auth/login requests
   const isChatEndpoint = req.url.includes(":generateContent") || req.url.includes(":streamGenerateContent");
