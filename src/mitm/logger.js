@@ -14,12 +14,22 @@ const err = (msg) => console.error(`[${time()}] ❌ [MITM] ${msg}`);
 const DUMP_DIR = path.join(DATA_DIR, "logs", "mitm");
 if (!fs.existsSync(DUMP_DIR)) fs.mkdirSync(DUMP_DIR, { recursive: true });
 
+let redactionModule = null;
 let redactionPromise = null;
+
 function loadRedaction() {
   if (!redactionPromise) {
-    redactionPromise = import("../shared/utils/redaction.js");
+    redactionPromise = import("../shared/utils/redaction.js").then((mod) => {
+      redactionModule = mod;
+      return mod;
+    });
   }
   return redactionPromise;
+}
+
+/** Preload shared redaction before the MITM server accepts traffic. */
+async function initMitmLoggerRedaction() {
+  return loadRedaction();
 }
 
 // Clear all files inside DUMP_DIR (called on MITM server start to avoid unbounded growth)
@@ -65,6 +75,28 @@ function redactResponseBody(text, { redactSensitiveText, sanitizeValue }) {
   return redactSensitiveText(text);
 }
 
+function writeRequestDump(file, req, bodyBuffer, redaction) {
+  const { redactSensitiveUrl, sanitizeValue, maskSensitiveHeaders, redactSensitiveText } = redaction;
+  const safeUrl = redactSensitiveUrl(req.url);
+  let parsed = null;
+  try { parsed = JSON.parse(bodyBuffer.toString()); } catch { /* not JSON */ }
+  fs.writeFileSync(file, JSON.stringify({
+    method: req.method,
+    url: safeUrl,
+    host: req.headers.host,
+    headers: maskSensitiveHeaders(req.headers),
+    body: parsed ? sanitizeValue(parsed) : redactSensitiveText(bodyBuffer.toString("utf8")),
+  }, null, 2));
+}
+
+function writeResponseDump(file, status, headers, text, redaction) {
+  const { redactSensitiveText, maskSensitiveHeaders, sanitizeValue } = redaction;
+  const safeHeaders = maskSensitiveHeaders(headers);
+  const safeBody = redactResponseBody(text, { redactSensitiveText, sanitizeValue });
+  const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(safeHeaders, null, 2)}\n---BODY---\n${safeBody}`;
+  fs.writeFileSync(file, out);
+}
+
 // Save raw request: method + url + headers + body
 function dumpRequest(req, bodyBuffer, tag = "raw") {
   if (isBlacklisted(req.url)) return null;
@@ -72,18 +104,11 @@ function dumpRequest(req, bodyBuffer, tag = "raw") {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const slug = slugify((req.headers.host || "") + req.url);
     const file = path.join(DUMP_DIR, `${ts}_${tag}_${slug}.req.json`);
-    void loadRedaction().then(({ redactSensitiveUrl, sanitizeValue, maskSensitiveHeaders, redactSensitiveText }) => {
-      const safeUrl = redactSensitiveUrl(req.url);
-      let parsed = null;
-      try { parsed = JSON.parse(bodyBuffer.toString()); } catch { /* not JSON */ }
-      fs.writeFileSync(file, JSON.stringify({
-        method: req.method,
-        url: safeUrl,
-        host: req.headers.host,
-        headers: maskSensitiveHeaders(req.headers),
-        body: parsed ? sanitizeValue(parsed) : redactSensitiveText(bodyBuffer.toString("utf8")),
-      }, null, 2));
-    }).catch(() => {});
+    if (redactionModule) {
+      writeRequestDump(file, req, bodyBuffer, redactionModule);
+    } else {
+      void loadRedaction().then((mod) => writeRequestDump(file, req, bodyBuffer, mod)).catch(() => {});
+    }
     return file;
   } catch { return null; }
 }
@@ -114,16 +139,15 @@ function createResponseDumper(req, tag = "raw") {
         const cleanHeaders = { ...headers };
         delete cleanHeaders["content-encoding"];
         delete cleanHeaders["Content-Encoding"];
-        void loadRedaction().then(({ redactSensitiveText, maskSensitiveHeaders, sanitizeValue }) => {
-          const safeHeaders = maskSensitiveHeaders(cleanHeaders);
-          const safeBody = redactResponseBody(text, { redactSensitiveText, sanitizeValue });
-          const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(safeHeaders, null, 2)}\n---BODY---\n${safeBody}`;
-          fs.writeFileSync(file, out);
-        }).catch(() => {});
+        if (redactionModule) {
+          writeResponseDump(file, status, cleanHeaders, text, redactionModule);
+        } else {
+          void loadRedaction().then((mod) => writeResponseDump(file, status, cleanHeaders, text, mod)).catch(() => {});
+        }
       } catch { /* ignore */ }
     },
     file,
   };
 }
 
-module.exports = { log, err, dumpRequest, createResponseDumper, clearDumpDir };
+module.exports = { log, err, dumpRequest, createResponseDumper, clearDumpDir, initMitmLoggerRedaction };

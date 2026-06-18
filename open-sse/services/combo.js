@@ -456,7 +456,11 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   if (comboStrategy === "round-robin" && rotationSnapshot && models && models.length > 1) {
     const rotationKey = comboName || "__default__";
     await withComboRotationLock(comboName, async () => {
-      comboRotationState.set(rotationKey, rotationSnapshot);
+      const live = comboRotationState.get(rotationKey);
+      // Only undo this request's reservation — concurrent successes may have advanced state.
+      if (live && live.seq === rotationSeq) {
+        comboRotationState.set(rotationKey, rotationSnapshot);
+      }
     });
   }
 
