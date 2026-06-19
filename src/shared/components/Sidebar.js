@@ -23,10 +23,11 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
-function sidebarLinkClass(active, nested = false) {
+function sidebarLinkClass(active, nested = false, withDescription = false) {
   return cn(
-    "sidebar-nav-link flex items-center gap-3 rounded-lg transition-colors duration-150",
-    nested ? "px-3 py-1.5" : "px-3 py-2",
+    "sidebar-nav-link flex rounded-lg transition-colors duration-150",
+    withDescription ? "items-start gap-2.5 px-3 py-2.5" : "items-center gap-3",
+    nested ? "px-3 py-1.5" : withDescription ? "" : "px-3 py-2",
     active && "active",
   );
 }
@@ -39,19 +40,30 @@ function sidebarIconClass(active, nested = false) {
   );
 }
 
-function SidebarNavLink({ item, active, nested = false, onClose }) {
+function SidebarNavLink({ item, active, nested = false, onClose, showDescription = false }) {
+  const withDescription = showDescription && !nested && item.description;
   return (
     <Link
       href={item.href}
       onClick={onClose}
-      title={item.description}
+      title={withDescription ? undefined : item.description}
       aria-current={active ? "page" : undefined}
-      className={sidebarLinkClass(active, nested)}
+      className={sidebarLinkClass(active, nested, withDescription)}
     >
-      <span aria-hidden="true" className={sidebarIconClass(active, nested)}>
+      <span
+        aria-hidden="true"
+        className={cn(sidebarIconClass(active, nested), withDescription && "mt-0.5")}
+      >
         {item.icon}
       </span>
-      <span className={nested ? "text-sm" : "text-[13px] font-medium"}>{item.label}</span>
+      <span className="min-w-0 flex-1">
+        <span className={nested ? "text-sm" : "text-[13px] font-medium"}>{item.label}</span>
+        {withDescription ? (
+          <span className="sidebar-nav-link-desc hidden xl:block text-[10px] leading-snug mt-0.5 line-clamp-2">
+            {item.description}
+          </span>
+        ) : null}
+      </span>
     </Link>
   );
 }
@@ -66,6 +78,7 @@ SidebarNavLink.propTypes = {
   active: PropTypes.bool.isRequired,
   nested: PropTypes.bool,
   onClose: PropTypes.func,
+  showDescription: PropTypes.bool,
 };
 
 export default function Sidebar({ onClose }) {
@@ -191,7 +204,7 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="dashboard-sidebar flex w-64 flex-col min-h-full">
+      <aside className="dashboard-sidebar flex w-64 xl:w-72 flex-col min-h-full">
         {/* Logo */}
         <div className="px-5 py-5 flex flex-col gap-2">
           <Link href="/dashboard" className="flex items-center gap-3">
@@ -246,6 +259,7 @@ export default function Sidebar({ onClose }) {
                   item={item}
                   active={isActive(item.href)}
                   onClose={onClose}
+                  showDescription={!onClose}
                 />
               ))}
             </div>
@@ -303,6 +317,7 @@ export default function Sidebar({ onClose }) {
                 item={item}
                 active={isActive(item.href)}
                 onClose={onClose}
+                showDescription={!onClose}
               />
             ))}
 
@@ -315,6 +330,7 @@ export default function Sidebar({ onClose }) {
                   item={item}
                   active={isActive(item.href)}
                   onClose={onClose}
+                  showDescription={!onClose}
                 />
               ) : null;
             })}
@@ -323,6 +339,7 @@ export default function Sidebar({ onClose }) {
               item={DASHBOARD_NAV_SETTINGS}
               active={isActive(DASHBOARD_NAV_SETTINGS.href)}
               onClose={onClose}
+              showDescription={!onClose}
             />
           </div>
         </nav>

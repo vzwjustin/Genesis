@@ -7,6 +7,7 @@ import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { isCliToolConfigured } from "@/shared/components/ConfigStatusBadge";
 import { getRelativeTime } from "@/shared/utils";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { openDashboardTour } from "@/shared/utils/dashboardTour";
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -200,7 +201,15 @@ function WhereThingsLive() {
       </div>
       <p className="mt-4 text-[11px] text-text-subtle">
         Tip: press <kbd className="glass-code px-1 py-0.5 text-[10px]">⌘K</kbd> or{" "}
-        <kbd className="glass-code px-1 py-0.5 text-[10px]">Ctrl+K</kbd> to jump to any page.
+        <kbd className="glass-code px-1 py-0.5 text-[10px]">Ctrl+K</kbd> to jump to any page.{" "}
+        <button
+          type="button"
+          onClick={openDashboardTour}
+          className="text-brand-500 hover:text-brand-600 underline underline-offset-2"
+        >
+          Show the quick tour again
+        </button>
+        .
       </p>
     </div>
   );

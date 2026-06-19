@@ -9,6 +9,7 @@ import ConfirmDialogHost from "../ConfirmDialogHost";
 import DashboardSecurityBanner from "../DashboardSecurityBanner";
 import FirstRunSecurityWizard from "../FirstRunSecurityWizard";
 import CommandPalette from "../CommandPalette";
+import DashboardTour from "../DashboardTour";
 
 function getToastStyle(type) {
   if (type === "success") {
@@ -46,6 +47,7 @@ export default function DashboardLayout({ children }) {
     <div className="flex h-screen w-full overflow-hidden">
       <ConfirmDialogHost />
       <CommandPalette />
+      <DashboardTour />
       <div className="fixed bottom-4 right-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2 sm:top-4 sm:bottom-auto">
         {notifications.length > 1 && (
           <button

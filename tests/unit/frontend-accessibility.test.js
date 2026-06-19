@@ -181,7 +181,23 @@ describe("frontend accessibility regressions", () => {
     expect(nav).toContain("Monitor");
     expect(sidebar).toContain("DASHBOARD_NAV_SECTIONS");
     expect(sidebar).toContain("Advanced");
-    expect(sidebar).toContain("title={item.description}");
+    expect(sidebar).toContain("sidebar-nav-link-desc");
+    expect(sidebar).toContain("showDescription={!onClose}");
+  });
+
+  it("registers dashboard tour and dismissible page hints", () => {
+    const layout = read("src/shared/components/layouts/DashboardLayout.js");
+    const tour = read("src/shared/components/DashboardTour.js");
+    const menu = read("src/shared/components/HeaderMenu.js");
+    const providers = read("src/app/(dashboard)/dashboard/providers/page.js");
+
+    expect(layout).toContain("DashboardTour");
+    expect(tour).toContain('role="dialog"');
+    expect(tour).toContain("DASHBOARD_TOUR_STEPS");
+    expect(menu).toContain("Dashboard tour");
+    expect(menu).toContain("openDashboardTour");
+    expect(providers).toContain("PageHint");
+    expect(providers).toContain("How providers work");
   });
 
   it("keeps primary dashboard copy direct and task-oriented", () => {
