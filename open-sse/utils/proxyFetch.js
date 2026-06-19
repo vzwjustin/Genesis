@@ -19,6 +19,7 @@ const CREDENTIAL_HEADER_EXACT = new Set([
   "x-relay-auth",
   "api-key",
   "x-goog-api-key",
+  "x-key",
 ]);
 
 /**
@@ -1125,6 +1126,12 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
 }
 
 async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  // Fail closed: a connection bound to a proxy pool that could not be resolved
+  // (missing/inactive/invalid pool, or a DB lookup failure) must NOT silently
+  // route direct or via environment proxy. Block the request instead.
+  if (proxyOptions?.proxyRequiredUnavailable === true) {
+    throw new Error("[ProxyFetch] Bound proxy pool is unavailable — failing closed (no direct fallback)");
+  }
   const targetUrl = typeof url === "string" ? url : url.toString();
   let originHost = "";
   let originPort = "";
@@ -1320,6 +1327,7 @@ export function buildProxyOptionsFromCredentials(credentials) {
     vercelRelayUrl: psd.vercelRelayUrl || "",
     relayAuthSecret: psd.relayAuthSecret || "",
     strictProxy: resolveStrictProxyOption(psd.strictProxy),
+    proxyRequiredUnavailable: psd.proxyRequiredUnavailable === true,
   };
 }
 

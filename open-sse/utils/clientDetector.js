@@ -152,6 +152,14 @@ export function shouldUseNativePassthrough(clientTool, provider, { body, headers
       const isConnectProto = contentType.includes("application/connect");
       if (!isConnectProto && !Buffer.isBuffer(body)) return false;
     }
+    // OpenAI Chat Completions wire to a non-OpenAI-native provider is NOT a
+    // lossless passthrough: the body is OpenAI-shaped and must be translated to
+    // the provider's native format. Without this guard a native client UA
+    // (claude/gemini-cli/codex/antigravity) hitting /v1/chat/completions would
+    // skip translation and send the wrong body upstream.
+    if (provider !== "openai" && String(pathname).includes("/v1/chat/completions")) {
+      return false;
+    }
     return true;
   }
   return isFormatAlignedClaudePassthrough(provider, { body, headers, pathname });

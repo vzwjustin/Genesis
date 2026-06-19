@@ -436,6 +436,12 @@ export function createSSEStream(options = {}) {
           }
         }
 
+        // Tell cross-format flush translators whether the upstream actually
+        // terminated. When it did not (no finish_reason and no [DONE]), they must
+        // NOT fabricate a clean terminal (message_stop / response.completed) — the
+        // response is truncated and must fail closed.
+        if (state) state.streamTruncated = !sawTerminal;
+
         const flushed = translateResponse(targetFormat, sourceFormat, null, state);
         markTerminalFromState();
         markTerminalFromTranslated(flushed);

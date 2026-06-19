@@ -134,6 +134,23 @@ export async function resolveConnectionProxyConfig(
           ...(strictProxy !== undefined ? { strictProxy } : {}),
         };
       }
+
+      // The connection is explicitly bound to a proxy pool, but it did not
+      // resolve to a usable proxy (missing, inactive, or invalid URL). Fail
+      // closed: never silently downgrade to legacy/env/direct routing.
+      return {
+        source: "pool_unresolved",
+
+        proxyPoolId,
+        proxyPool: proxyPool || null,
+
+        connectionProxyEnabled: false,
+        connectionProxyUrl: "",
+        connectionNoProxy: noProxy,
+
+        strictProxy: true,
+        proxyRequiredUnavailable: true,
+      };
     }
 
     /**
@@ -179,6 +196,11 @@ export async function resolveConnectionProxyConfig(
       ? providerSpecificData.strictProxy === true
       : undefined;
 
+    // If a proxy pool was explicitly bound, a resolution failure must fail
+    // closed rather than route direct/legacy.
+    const boundPoolIdRaw = normalizeString(providerSpecificData?.proxyPoolId);
+    const boundToPool = boundPoolIdRaw && boundPoolIdRaw !== "__none__";
+
     return {
       source: "error",
 
@@ -191,6 +213,9 @@ export async function resolveConnectionProxyConfig(
 
       ...legacy,
       ...(strictProxy !== undefined ? { strictProxy } : {}),
+      ...(boundToPool
+        ? { strictProxy: true, proxyRequiredUnavailable: true }
+        : {}),
     };
   }
 }

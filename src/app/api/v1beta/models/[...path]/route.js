@@ -1,7 +1,6 @@
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators, translateRequest } from "open-sse/translator/index.js";
 import { FORMATS } from "open-sse/translator/formats.js";
-import { detectClientTool, isNativePassthrough } from "open-sse/utils/clientDetector.js";
 import { VALIDATION_ERROR_TYPES } from "open-sse/utils/error.js";
 
 let initialized = false;
@@ -113,29 +112,38 @@ export async function POST(request, { params }) {
       );
     }
 
+    // The body has been converted to OpenAI shape. Build forwarded headers that
+    // do NOT carry the Gemini-specific auth/format header: leaving x-goog-api-key
+    // on the request makes the core re-detect the converted body as Gemini and
+    // double-translate it (dropping the prompt). Promote a Gemini credential
+    // (x-goog-api-key or ?key=) to the gateway's x-api-key so standard Gemini SDK
+    // auth is accepted under requireApiKey (non-gateway-shaped keys are still
+    // ignored/rejected by the auth layer — this does not weaken enforcement).
+    const fwdHeaders = new Headers(request.headers);
+    let googKey = (request.headers.get("x-goog-api-key") || "").trim();
+    if (!googKey) {
+      try { googKey = (new URL(request.url).searchParams.get("key") || "").trim(); } catch { /* ignore */ }
+    }
+    fwdHeaders.delete("x-goog-api-key");
+    if (googKey && !fwdHeaders.get("x-api-key") && !fwdHeaders.get("authorization")) {
+      fwdHeaders.set("x-api-key", googKey);
+    }
+
     // Create new request with converted body
     const newRequest = new Request(request.url, {
       method: "POST",
-      headers: request.headers,
+      headers: fwdHeaders,
       body: JSON.stringify(convertedBody),
       signal: request.signal,
     });
 
-    const headerObj = {};
-    for (const [k, v] of request.headers.entries()) {
-      headerObj[k.toLowerCase()] = v;
-    }
-    const provider = model.includes("/") ? model.split("/")[0] : model;
-    const clientTool = detectClientTool(headerObj, body);
-    const passthrough = isNativePassthrough(clientTool, provider);
-
     const response = await handleChat(newRequest);
 
     if (stream) {
-      // Passthrough or upstream-native Gemini SSE: relay unchanged.
-      if (passthrough) {
-        return withGeminiStreamHeaders(response);
-      }
+      // The converted request is translated upstream, so the response is OpenAI
+      // SSE (or upstream-native Gemini SSE). peekFirstChunkIsGeminiSSE inside
+      // passthroughOrTransformGeminiSSE relays native Gemini frames unchanged and
+      // transforms OpenAI frames to Gemini SSE.
       return passthroughOrTransformGeminiSSE(response, model);
     } else {
       // Convert OpenAI JSON response => Gemini GenerateContentResponse

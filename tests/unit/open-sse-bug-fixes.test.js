@@ -103,10 +103,14 @@ describe("v1beta route source fixes", () => {
     "utf8"
   );
 
-  it("skips OpenAI→Gemini transform on passthrough and native Gemini SSE", () => {
-    expect(src).toContain("isNativePassthrough");
+  it("auto-detects native Gemini vs OpenAI SSE and strips x-goog-api-key before forwarding", () => {
     expect(src).toContain("passthroughOrTransformGeminiSSE");
-    expect(src).toContain('peekFirstChunkIsGeminiSSE');
+    expect(src).toContain("peekFirstChunkIsGeminiSSE");
+    // The converted body is OpenAI-shaped, so the Gemini auth/format header must
+    // not ride along (it would make the core re-detect the body as Gemini).
+    expect(src).toContain('fwdHeaders.delete("x-goog-api-key")');
+    // No native-passthrough shortcut: the response is always peeked + transformed.
+    expect(src).not.toContain("isNativePassthrough");
   });
 
   it("returns 502 when non-streaming response has no choices", () => {

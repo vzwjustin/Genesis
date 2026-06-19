@@ -157,8 +157,11 @@ export function convertKiroToOpenAI(chunk, state) {
 
   // Handle completion/done events
   if (eventType === "messageStopEvent" || eventType === "done" || data.messageStopEvent) {
-    state.finishReason = "stop"; // Mark for usage injection in stream.js
-    
+    // If any tool-call deltas were emitted this stream, OpenAI clients gate tool
+    // execution on finish_reason === "tool_calls". Reporting "stop" drops the call.
+    const finalFinishReason = state.toolCallIndex > 0 ? "tool_calls" : "stop";
+    state.finishReason = finalFinishReason; // Mark for usage injection in stream.js
+
     const openaiChunk = {
       id: state.responseId,
       object: "chat.completion.chunk",
@@ -167,7 +170,7 @@ export function convertKiroToOpenAI(chunk, state) {
       choices: [{
         index: 0,
         delta: {},
-        finish_reason: "stop"
+        finish_reason: finalFinishReason
       }]
     };
 

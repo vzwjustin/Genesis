@@ -25,6 +25,9 @@ async function testVercelRelay(relayUrl, relayAuthSecret, timeoutMs = 10000) {
         "x-relay-path": "/get",
         "x-relay-auth": authSecret,
       },
+      // Do NOT auto-follow redirects: a 3xx would otherwise forward the
+      // x-relay-auth secret to an attacker-chosen redirect target.
+      redirect: "manual",
       signal: controller.signal,
     });
     return {
