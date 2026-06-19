@@ -310,11 +310,10 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
         for await (const chunk of extractContent(eventStream, signal)) {
           if (chunk.backendUuid) respBackendUuid = chunk.backendUuid;
           if (chunk.error) {
-            controller.enqueue(encoder.encode(sseChunk({
-              id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-              choices: [{ index: 0, delta: { content: `[Error: ${chunk.error}]` }, finish_reason: null, logprobs: null }],
-            })));
-            break;
+            // Fail closed: propagate to the catch (→ controller.error) instead of
+            // emitting the error as content + a synthetic "stop"/[DONE] that looks
+            // like a successful completion to the client.
+            throw new Error(`Perplexity stream error: ${chunk.error}`);
           }
           if (chunk.thinking) {
             controller.enqueue(encoder.encode(sseChunk({

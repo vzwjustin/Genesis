@@ -150,11 +150,11 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
           if (chunk.fingerprint) fp = chunk.fingerprint;
 
           if (chunk.error) {
-            controller.enqueue(encoder.encode(sseChunk({
-              id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: fp || null,
-              choices: [{ index: 0, delta: { content: `[Error: ${chunk.error}]` }, finish_reason: null, logprobs: null }],
-            })));
-            break;
+            // Fail closed: an in-band upstream error must propagate to the catch
+            // (→ controller.error) rather than be emitted as content followed by a
+            // synthetic finish_reason:"stop" + [DONE], which looks like a normal
+            // completion to the client.
+            throw new Error(`Grok stream error: ${chunk.error}`);
           }
           if (chunk.thinking) {
             controller.enqueue(encoder.encode(sseChunk({

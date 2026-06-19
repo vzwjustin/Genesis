@@ -7,6 +7,13 @@
  *  #4 DefaultExecutor refreshWithJSON/refreshWithForm classify invalid_grant as unrecoverable.
  *  #5 translator/send route persists the rotated refresh token.
  *  #6 parseSSEToClaudeResponse merges message_delta usage (preserves input_tokens).
+ *
+ * PR #115 review follow-ups:
+ *  A opencode-go buildHeaders uses the threaded model, transformRequest does not
+ *    mutate the shared credentials object.
+ *  B importDb usageHistory is idempotent (INSERT OR IGNORE on idempotencyKey).
+ *  C grok-web/perplexity-web throw on an in-band stream error (fail closed).
+ *  D flushRequestDetailsSync is wired into the controlled shutdown path.
  */
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
@@ -15,6 +22,7 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { OpenCodeGoExecutor } from "../../open-sse/executors/opencode-go.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -152,5 +160,89 @@ describe("importDb — partial payload preserves untouched config tables (#2)", 
     expect(conns.some((c) => c.id === "replace-conn")).toBe(true);
     // Present section is a deliberate replace → the earlier connection is gone.
     expect(conns.some((c) => c.id === "keep-conn")).toBe(false);
+  });
+
+  it("re-importing usageHistory with idempotencyKey does not duplicate rows (B)", async () => {
+    const { importDb, getUsageHistory } = await import("../../src/lib/db/index.js");
+    const payload = {
+      // A config section so the payload passes validation (usageHistory alone does not).
+      modelAliases: { "broadscan-dedup-alias": "openai/gpt-4o" },
+      usageHistory: [
+        {
+          timestamp: new Date().toISOString(),
+          provider: "dedup-prov", model: "m1",
+          promptTokens: 10, completionTokens: 5, cost: 0.01, status: "ok",
+          idempotencyKey: "broadscan-dedup-key-1",
+        },
+      ],
+    };
+    await importDb(payload);
+    const after1 = await getUsageHistory({ provider: "dedup-prov" });
+    expect(after1.length).toBe(1);
+
+    // Re-importing the same backup must NOT append a duplicate (unique idempotencyKey).
+    await importDb(payload);
+    const after2 = await getUsageHistory({ provider: "dedup-prov" });
+    expect(after2.length).toBe(1);
+  });
+});
+
+// ── A opencode-go: per-request model, no shared-credential mutation ───────────
+describe("opencode-go — per-request model, no shared-cred mutation (A)", () => {
+  it("buildHeaders uses the threaded model: Claude-format → x-api-key", () => {
+    const ex = new OpenCodeGoExecutor();
+    const headers = ex.buildHeaders({ apiKey: "k1" }, true, "minimax-m2.5");
+    expect(headers["x-api-key"]).toBe("k1");
+    expect(headers["anthropic-version"]).toBeDefined();
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it("buildHeaders uses Bearer for non-Claude models", () => {
+    const ex = new OpenCodeGoExecutor();
+    const headers = ex.buildHeaders({ apiKey: "k1" }, true, "openai/gpt-4o");
+    expect(headers.Authorization).toBe("Bearer k1");
+    expect(headers["x-api-key"]).toBeUndefined();
+  });
+
+  it("transformRequest does NOT mutate the shared credentials object", () => {
+    const ex = new OpenCodeGoExecutor();
+    const creds = { apiKey: "k1" };
+    ex.transformRequest("minimax-m2.5", { messages: [{ role: "user", content: "hi" }] }, true, creds);
+    expect(creds._opencodeGoCtx).toBeUndefined();
+  });
+});
+
+// ── C grok-web / perplexity-web: in-band stream error fails closed ────────────
+describe("web executors — in-band stream error fails closed (C)", () => {
+  const grok = readFileSync(join(root, "../../open-sse/executors/grok-web.js"), "utf8");
+  const pplx = readFileSync(join(root, "../../open-sse/executors/perplexity-web.js"), "utf8");
+
+  it("grok-web throws on chunk.error instead of emitting a synthetic stop", () => {
+    const block = grok.match(/if \(chunk\.error\) \{[\s\S]*?\n {10}\}/)?.[0] || "";
+    expect(block).toMatch(/throw new Error\(`Grok stream error/);
+    expect(block).not.toContain("[Error:");
+    expect(block).not.toContain('finish_reason: "stop"');
+  });
+
+  it("perplexity-web throws on chunk.error instead of emitting a synthetic stop", () => {
+    const block = pplx.match(/if \(chunk\.error\) \{[\s\S]*?\n {10}\}/)?.[0] || "";
+    expect(block).toMatch(/throw new Error\(`Perplexity stream error/);
+    expect(block).not.toContain("[Error:");
+  });
+});
+
+// ── D request-details flush wired into shutdown ──────────────────────────────
+describe("request-details flush wired into shutdown (D)", () => {
+  it("requestDetailsRepo exports flushRequestDetailsSync and registers no import-time signal handlers", () => {
+    const src = readFileSync(join(root, "../../src/lib/db/repos/requestDetailsRepo.js"), "utf8");
+    expect(src).toMatch(/export function flushRequestDetailsSync/);
+    expect(src).not.toMatch(/process\.on\(/);
+  });
+
+  it("initializeApp cleanup drains the buffer via flushRequestDetailsSync before exit", () => {
+    const src = readFileSync(join(root, "../../src/shared/services/initializeApp.js"), "utf8");
+    expect(src).toMatch(/import \{ flushRequestDetailsSync \}/);
+    expect(src.indexOf("flushRequestDetailsSync()")).toBeGreaterThan(-1);
+    expect(src.indexOf("flushRequestDetailsSync()")).toBeLessThan(src.indexOf("process.exit()"));
   });
 });
