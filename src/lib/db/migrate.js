@@ -73,6 +73,14 @@ function readJsonSafe(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf-8")); } catch { return null; }
 }
 
+function safeGetMetaSync(adapter, key, fallback = null) {
+  try {
+    return getMetaSync(adapter, key, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
 function isFreshDb(adapter) {
   // Table _meta may not exist yet on truly fresh DB
   try {
@@ -256,21 +264,33 @@ export async function runMigrationOnce(adapter) {
   // a brand-new DB as non-fresh once schemaVersion is written).
   const fresh = isFreshDb(adapter);
 
+  const legacyMain = readJsonSafe(LEGACY_FILES.main);
+  const legacyUsage = readJsonSafe(LEGACY_FILES.usage);
+  const legacyDisabled = readJsonSafe(LEGACY_FILES.disabled);
+  const legacyDetails = readJsonSafe(LEGACY_FILES.details);
+  const hasLegacy = !!(legacyMain || legacyUsage || legacyDisabled || legacyDetails);
+  const alreadyImported = fs.existsSync(MIGRATED_MARKER);
+  const legacyImportPending = hasLegacy && !alreadyImported && (fresh || !safeGetMetaSync(adapter, "migratedAt", null));
+
+  const oldVer = safeGetMetaSync(adapter, "appVersion", null);
+  const newVer = getAppVersion();
+  const needsUpgradeBackup = oldVer && oldVer !== newVer && !fresh;
+
+  // Safety net: snapshot data.sqlite before any schema/data mutation.
+  if (legacyImportPending || needsUpgradeBackup) {
+    const label = legacyImportPending ? "pre-migrate-from-json" : `pre-upgrade-${oldVer}-to-${newVer}`;
+    const backupDir = makeBackupDir(label);
+    try { backupSqliteFile(adapter, DATA_FILE, backupDir); } catch {}
+  }
+
   // 1. Always run versioned migrations chain (skip-version safe)
   const migInfo = runVersionedMigrations(adapter);
 
   // 2. Additive sync (auto add missing columns/indexes declared in TABLES)
   syncSchemaFromTables(adapter);
 
-  // 3. One-time legacy JSON import (only if DB was fresh on entry)
-  const alreadyImported = fs.existsSync(MIGRATED_MARKER);
-  const legacyMain = readJsonSafe(LEGACY_FILES.main);
-  const legacyUsage = readJsonSafe(LEGACY_FILES.usage);
-  const legacyDisabled = readJsonSafe(LEGACY_FILES.disabled);
-  const legacyDetails = readJsonSafe(LEGACY_FILES.details);
-  const hasLegacy = !!(legacyMain || legacyUsage || legacyDisabled || legacyDetails);
-
-  if (fresh && hasLegacy && !alreadyImported) {
+  // 3. One-time legacy JSON import (retry until migratedAt is stamped)
+  if (legacyImportPending) {
     const t0 = Date.now();
     const backupDir = makeBackupDir("migrate-from-json");
     for (const f of Object.values(LEGACY_FILES)) backupFile(f, backupDir);
@@ -303,17 +323,12 @@ export async function runMigrationOnce(adapter) {
     return;
   }
 
-  // 4. App version bump → backup data.sqlite (safety net before user-side upgrade)
-  const oldVer = getMetaSync(adapter, "appVersion", null);
-  const newVer = getAppVersion();
+  // 4. App version bump → stamp + log (pre-mutation backup already taken above)
   if (oldVer && oldVer !== newVer) {
-    const backupDir = makeBackupDir(`upgrade-${oldVer}-to-${newVer}`);
-    try { backupSqliteFile(adapter, DATA_FILE, backupDir); } catch {}
     setMetaSync(adapter, "appVersion", newVer);
     pruneOldBackups();
-    console.log(`[DB][migrate] App ${oldVer} → ${newVer} | schema ${migInfo.from} → ${migInfo.to} | backup: ${backupDir}`);
+    console.log(`[DB][migrate] App ${oldVer} → ${newVer} | schema ${migInfo.from} → ${migInfo.to}`);
   } else if (migInfo.applied > 0) {
-    // Schema upgrade without app version bump — still backup
     const backupDir = makeBackupDir(`schema-${migInfo.from}-to-${migInfo.to}`);
     try { backupSqliteFile(adapter, DATA_FILE, backupDir); } catch {}
     pruneOldBackups();

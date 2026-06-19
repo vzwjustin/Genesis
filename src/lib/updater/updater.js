@@ -79,7 +79,12 @@ const server = http.createServer((req, res) => {
 
 server.on("error", (e) => {
   state.error = `status server error: ${e.message}`;
+  state.done = true;
+  state.success = false;
+  state.finishedAt = Date.now();
+  state.phase = "error";
   persistStatus();
+  process.exit(1);
 });
 
 server.listen(port, "127.0.0.1", () => {

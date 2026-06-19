@@ -31,7 +31,7 @@ export function getPublicOrigin(request) {
     return trimTrailingSlashes(configuredBaseUrl);
   }
 
-  const trustProxyHeaders = process.env.TRUST_PROXY_HEADERS === "true";
+  const trustProxyHeaders = process.env.TRUST_PROXY === "true" || process.env.TRUST_PROXY_HEADERS === "true";
   const forwardedProto = trustProxyHeaders ? request?.headers?.get?.("x-forwarded-proto") || "" : "";
   const forwardedHost = trustProxyHeaders ? request?.headers?.get?.("x-forwarded-host") || "" : "";
   const host = forwardedHost || request?.headers?.get?.("host") || "";

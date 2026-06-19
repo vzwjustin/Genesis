@@ -203,8 +203,25 @@ function isProcessAlive(pid) {
   try {
     process.kill(pid, 0);
     return true;
-  } catch (err) {
-    return err.code === "EACCES";
+  } catch {
+    return false;
+  }
+}
+
+function isMitmServerProcess(pid) {
+  if (!pid || !isProcessAlive(pid)) return false;
+  try {
+    if (IS_WIN) {
+      const out = execSync(`wmic process where processid=${pid} get commandline /format:list`, {
+        encoding: "utf8",
+        windowsHide: true,
+      });
+      return /mitm[\\/].*server\.js/i.test(out);
+    }
+    const out = execSync(`ps -p ${pid} -o args=`, { encoding: "utf8", windowsHide: true }).trim();
+    return /mitm[\\/].*server\.js/i.test(out);
+  } catch {
+    return false;
   }
 }
 
@@ -491,7 +508,7 @@ async function getMitmStatus() {
     try {
       if (fs.existsSync(PID_FILE)) {
         const savedPid = parseInt(fs.readFileSync(PID_FILE, "utf-8").trim(), 10);
-        if (savedPid && isProcessAlive(savedPid)) {
+        if (savedPid && isMitmServerProcess(savedPid)) {
           running = true;
           pid = savedPid;
         } else {
@@ -749,7 +766,7 @@ async function _startServerImpl(apiKey, sudoPassword, forceKillPort443 = false) 
       shellQuoteSingle(effectiveServerPath),
     ].join(" ");
     serverProcess = spawn(
-      "sudo", ["-S", "-E", "sh", "-c", inlineCmd],
+      "sudo", ["-S", "sh", "-c", inlineCmd],
       { detached: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
     if (serverProcess.stdin && !serverProcess.stdin.destroyed) {

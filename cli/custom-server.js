@@ -1,5 +1,8 @@
 const http = require("http");
 
+// Downstream guards only trust x-9r-real-ip when this process injected it.
+globalThis.__nineRouterRealIpTrusted = true;
+
 const origCreate = http.createServer.bind(http);
 
 // Wrap Next standalone HTTP server: derive client IP from the TCP socket

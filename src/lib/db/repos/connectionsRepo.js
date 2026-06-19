@@ -94,6 +94,7 @@ function reorderInTx(db, providerId) {
 }
 
 export async function createProviderConnection(data) {
+  if (!data?.provider) throw new Error("provider is required");
   const db = await getAdapter();
   const now = new Date().toISOString();
   let result;

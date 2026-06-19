@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
@@ -13,6 +14,14 @@ import {
 import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { getSettingsSafe } from "@/lib/localDb";
 import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
+
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
 
 function clearOidcCookies(cookieStore) {
   cookieStore.delete("oidc_state");
@@ -39,7 +48,7 @@ export async function GET(request) {
   const storedNonce = cookieStore.get("oidc_nonce")?.value;
   const codeVerifier = cookieStore.get("oidc_code_verifier")?.value;
 
-  if (!storedState || !storedNonce || !codeVerifier || storedState !== state) {
+  if (!storedState || !storedNonce || !codeVerifier || !timingSafeEqualStr(storedState, state)) {
     clearOidcCookies(cookieStore);
     return NextResponse.redirect(new URL("/login?error=oidc_invalid_state", getPublicOrigin(request)));
   }

@@ -21,6 +21,9 @@ function throwIfCancelled(token) {
 }
 
 export async function enableTailscale(localPort = 20128) {
+  if (svc.spawnInProgress) {
+    throw new Error("tailscale spawn already in progress");
+  }
   console.log(`[Tailscale] enable start (port=${localPort})`);
   svc.cancelToken = { cancelled: false };
   svc.activeLocalPort = localPort;

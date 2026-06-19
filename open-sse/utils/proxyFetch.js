@@ -445,9 +445,27 @@ async function createBypassRequest(parsedUrl, realIP, options) {
 
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
-    let req = null;
     let settled = false;
+    let req = null;
     let activeRes = null;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(value);
+    };
+
+    const abort = () => {
+      try { socket.destroy(); } catch {}
+      finish(new DOMException("The operation was aborted", "AbortError"));
+    };
+    if (options.signal) {
+      if (options.signal.aborted) {
+        abort();
+        return;
+      }
+      options.signal.addEventListener("abort", abort, { once: true });
+    }
 
     const cleanup = () => {
       try { req?.destroy(); } catch { /* noop */ }

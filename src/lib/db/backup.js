@@ -17,8 +17,19 @@ export function makeBackupDir(label) {
   return dir;
 }
 
-export function backupFile(srcPath, destDir, destName = null) {
+/**
+ * Flush in-memory DB state and checkpoint WAL before copying the on-disk file.
+ * @param {object|null} adapter - SQLite adapter from driver.js (optional)
+ */
+export function prepareDbForBackup(adapter) {
+  if (!adapter) return;
+  if (typeof adapter.flush === "function") adapter.flush();
+  if (typeof adapter.checkpoint === "function") adapter.checkpoint();
+}
+
+export function backupFile(srcPath, destDir, destName = null, adapter = null) {
   if (!fs.existsSync(srcPath)) return null;
+  prepareDbForBackup(adapter);
   const name = destName || path.basename(srcPath);
   const dest = path.join(destDir, name);
   fs.copyFileSync(srcPath, dest);

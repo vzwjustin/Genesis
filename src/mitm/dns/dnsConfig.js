@@ -100,6 +100,36 @@ function normalizeHostsContent(content) {
   return content.replace(/[\r\n\s]+$/g, "") + eol;
 }
 
+/** True when a hosts line maps the exact hostname (not a substring). */
+function hostsLineHasHost(line, host) {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("#")) return false;
+  const parts = trimmed.split(/\s+/);
+  if (parts.length < 2) return false;
+  return parts.slice(1).some((name) => name === host);
+}
+
+function hostsContentHasHost(content, host) {
+  if (!host) return false;
+  return content.split(/\r?\n/).some((line) => hostsLineHasHost(line, host));
+}
+
+function filterHostsContent(content, hostsToRemove) {
+  const eol = IS_WIN ? "\r\n" : "\n";
+  return content.split(/\r?\n/).filter(
+    (line) => !hostsToRemove.some((h) => hostsLineHasHost(line, h))
+  ).join(eol);
+}
+
+function atomicWriteHostsUnix(target, newContent, sudoPassword) {
+  const tmpFile = `${target}.9router.new`;
+  const escaped = newContent.replace(/'/g, "'\\''");
+  return execWithPassword(
+    `printf '%s' '${escaped}' > ${tmpFile} && mv ${tmpFile} ${target}`,
+    sudoPassword
+  );
+}
+
 /**
  * Flush DNS cache (macOS/Linux)
  */
@@ -289,7 +319,13 @@ function removeAllDNSEntriesSync() {
     const content = fs.readFileSync(HOSTS_FILE, "utf8");
     const next = normalizeHostsContent(filterOutManagedHosts(content, allHosts));
     if (next === content) return;
-    fs.writeFileSync(HOSTS_FILE, next, "utf8");
+    if (IS_WIN) {
+      fs.writeFileSync(HOSTS_FILE, next, "utf8");
+    } else {
+      const tmpFile = `${HOSTS_FILE}.9router.new`;
+      fs.writeFileSync(tmpFile, next, "utf8");
+      fs.renameSync(tmpFile, HOSTS_FILE);
+    }
     if (IS_WIN) {
       try { execSync("ipconfig /flushdns", { windowsHide: true, stdio: "ignore" }); } catch { /* ignore */ }
     } else if (IS_MAC) {

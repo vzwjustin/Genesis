@@ -48,15 +48,16 @@ const handlers = {
 // ── SSL / SNI ─────────────────────────────────────────────────
 
 const certCache = new Map();
+const CACHE_MAX_ENTRIES = 128;
 let rootCAPem;
 
-// Bounded insert: evict oldest entry when full so per-servername caches can't grow unbounded.
-const MAX_CACHE_ENTRIES = 1000;
-function cacheSet(map, key, value) {
-  if (!map.has(key) && map.size >= MAX_CACHE_ENTRIES) {
-    map.delete(map.keys().next().value);
-  }
+function cacheSetBounded(map, key, value) {
+  if (map.has(key)) map.delete(key);
   map.set(key, value);
+  if (map.size > CACHE_MAX_ENTRIES) {
+    const oldest = map.keys().next().value;
+    map.delete(oldest);
+  }
 }
 
 function isAllowedMitmSniHost(servername) {
@@ -90,7 +91,7 @@ function sniCallback(servername, cb) {
       key: certData.key,
       cert: `${certData.cert}\n${rootCAPem}`
     });
-    cacheSet(certCache, servername, ctx);
+    cacheSetBounded(certCache, servername, ctx);
     cb(null, ctx);
   } catch (e) {
     err(`SNI error for ${servername}: ${e.message}`);
@@ -142,13 +143,33 @@ async function resolveTargetIP(hostname) {
   return cachedTargetIPs[hostname].ip;
 }
 
+const MAX_BODY_BYTES = 32 * 1024 * 1024;
+
 function collectBodyRaw(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", chunk => chunks.push(chunk));
+    let size = 0;
+    req.on("data", chunk => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        req.destroy();
+        const err = new Error(`Request body exceeds ${MAX_BODY_BYTES} bytes`);
+        err.code = "BODY_TOO_LARGE";
+        reject(err);
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+function writeWithBackpressure(upstream, downstream, chunk) {
+  if (!downstream.write(chunk)) {
+    upstream.pause();
+    downstream.once("drain", () => upstream.resume());
+  }
 }
 
 /** Kiro AWS SDK often POSTs to / with X-Amz-Target instead of /generateAssistantResponse path */
@@ -231,7 +252,7 @@ async function negotiateAlpn(host) {
       ALPNProtocols: ["h2", "http/1.1"], rejectUnauthorized: TLS_REJECT_UNAUTHORIZED,
     }, () => {
       const proto = socket.alpnProtocol || "http/1.1";
-      cacheSet(alpnCache, host, proto);
+      cacheSetBounded(alpnCache, host, proto);
       log(`🔗 [mitm] ALPN ${host} → ${proto}`);
       socket.end();
       resolve(proto);
@@ -344,7 +365,6 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
         if (dumper) dumper.writeChunk(chunk);
         if (onResponse && !inspectOverflow) {
           if (bufferedBytes + chunk.length > RESPONSE_INSPECT_CAP) {
-            // Too large to inspect — stop accumulating and skip inspection (still streams to res).
             inspectOverflow = true;
             chunks.length = 0;
           } else {
@@ -352,7 +372,7 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
             bufferedBytes += chunk.length;
           }
         }
-        res.write(chunk);
+        writeWithBackpressure(stream, res, chunk);
       });
       stream.on("end", () => {
         if (dumper) dumper.end();
@@ -402,7 +422,7 @@ async function passthroughHttps(req, res, bodyBuffer, headers, targetHost, onRes
     forwardRes.on("data", chunk => {
       if (dumper) dumper.writeChunk(chunk);
       if (onResponse) chunks.push(chunk);
-      res.write(chunk);
+      writeWithBackpressure(forwardRes, res, chunk);
     });
     forwardRes.on("end", () => {
       if (dumper) dumper.end();
@@ -478,6 +498,11 @@ const server = https.createServer(sslOptions, async (req, res) => {
 
     return await handlers[tool].intercept(req, res, bodyBuffer, mappedModel, passthrough);
   } catch (e) {
+    if (e.code === "BODY_TOO_LARGE") {
+      if (!res.headersSent) res.writeHead(413);
+      res.end("Payload Too Large");
+      return;
+    }
     err(`Unhandled error: ${e.message}`);
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: { message: e.message, type: "mitm_error" } }));

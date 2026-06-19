@@ -26,6 +26,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      { find: "better-sqlite3", replacement: resolve(__dirname, "mocks/better-sqlite3.cjs") },
       // Resolve open-sse/* imports to the actual local package
       { find: /^open-sse(.*)$/, replacement: resolve(__dirname, "../open-sse$1") },
       // Resolve @/* imports to src directory

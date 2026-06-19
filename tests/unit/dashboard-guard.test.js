@@ -61,6 +61,7 @@ describe("dashboard guard public LLM API access", () => {
   beforeEach(() => {
     useTestApiKeySecret();
     vi.clearAllMocks();
+    globalThis.__nineRouterRealIpTrusted = false;
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
@@ -87,6 +88,38 @@ describe("dashboard guard public LLM API access", () => {
     const response = await proxy(request("/api/v1/chat/completions", {
       host: "localhost:20128",
       "x-forwarded-for": "203.0.113.9",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("rejects remote Host-spoof when real peer IP is non-loopback", async () => {
+    globalThis.__nineRouterRealIpTrusted = true;
+    const response = await proxy(request("/v1/chat/completions", {
+      host: "localhost",
+      "x-9r-real-ip": "10.204.111.34",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("allows loopback peer IP regardless of Host", async () => {
+    globalThis.__nineRouterRealIpTrusted = true;
+    const response = await proxy(request("/v1/chat/completions", {
+      host: "localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("ignores spoofed x-9r-real-ip when custom-server did not inject it", async () => {
+    const response = await proxy(request("/v1/chat/completions", {
+      host: "router.example.com",
+      "x-9r-real-ip": "127.0.0.1",
     }));
 
     expect(response.status).toBe(401);

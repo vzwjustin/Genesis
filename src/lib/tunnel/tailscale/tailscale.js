@@ -573,8 +573,20 @@ export async function startDaemonWithPassword(sudoPassword) {
     child.unref();
   }
 
-  // Wait for socket ready
-  await new Promise((r) => setTimeout(r, 3000));
+  // Wait for socket ready (poll status, same pattern as Windows path above)
+  const bin = getTailscaleBin() || "tailscale";
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    try {
+      execSync(`"${bin}" ${SOCKET_FLAG.join(" ")} status --json`, {
+        stdio: "ignore", windowsHide: true,
+        env: { ...process.env, PATH: EXTENDED_PATH }, timeout: 2000,
+      });
+      return;
+    } catch { /* daemon not ready yet */ }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  console.warn("[Tailscale] daemon readiness poll timed out after spawn");
 }
 
 /** Best-effort: ensure daemon running (used for login flow) */

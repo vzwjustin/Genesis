@@ -1,6 +1,9 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
+import { sseChunk } from "../utils/sse.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";
@@ -200,36 +203,11 @@ function buildQuery(parsed, followUpUuid, tools) {
   if (toolsHint) instr.push(toolsHint);
   instr.push("You have built-in web search. Answer questions directly using search results.");
   obj.instructions = instr;
-  const history = parsed.history.length > 0 ? [...parsed.history] : null;
-  if (history) obj.history = history;
+  if (parsed.history.length > 0) obj.history = parsed.history;
   if (parsed.currentMsg) obj.query = parsed.currentMsg;
   else if (parsed.history.length === 0) obj.query = "";
-  // Drop oldest history entries until the serialized payload fits the budget,
-  // keeping valid JSON instead of truncating the serialized string.
-  while (JSON.stringify(obj).length > 96000 && history && history.length > 0) {
-    history.shift();
-    if (history.length === 0) delete obj.history;
-  }
-  // Still over budget (e.g. an oversized system prompt with no history to drop):
-  // clamp the longest instruction entry, then the query, until it fits. Trimming
-  // a single string field preserves valid JSON.
-  const BUDGET = 96000;
-  let serializedLen = JSON.stringify(obj).length;
-  while (serializedLen > BUDGET && Array.isArray(obj.instructions) && obj.instructions.some((s) => s.length > 0)) {
-    let idx = 0;
-    for (let i = 1; i < obj.instructions.length; i++) {
-      if (obj.instructions[i].length > obj.instructions[idx].length) idx = i;
-    }
-    const over = serializedLen - BUDGET;
-    obj.instructions[idx] = obj.instructions[idx].slice(0, Math.max(0, obj.instructions[idx].length - over));
-    serializedLen = JSON.stringify(obj).length;
-  }
-  while (serializedLen > BUDGET && typeof obj.query === "string" && obj.query.length > 0) {
-    const over = serializedLen - BUDGET;
-    obj.query = obj.query.slice(0, Math.max(0, obj.query.length - over));
-    serializedLen = JSON.stringify(obj).length;
-  }
-  return JSON.stringify(obj);
+  const json = JSON.stringify(obj);
+  return json.length > 96000 ? json.slice(-96000) : json;
 }
 
 async function* extractContent(eventStream, signal) {
@@ -287,19 +265,7 @@ async function* extractContent(eventStream, signal) {
       if (chunks.length === 0) continue;
 
       if (mb.progress === "DONE") {
-        // DONE carries the full answer. If the server streamed incremental
-        // chunks already, seenLen covers them and only the tail is new; if it
-        // sent the full text only in DONE, this emits the whole thing. Either
-        // way, yield the unseen remainder so streaming clients aren't shorted.
-        const done = chunks.join("");
-        if (done.length > seenLen) {
-          const delta = done.slice(seenLen);
-          fullAnswer = done;
-          seenLen = done.length;
-          yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
-        } else {
-          fullAnswer = done;
-        }
+        fullAnswer = chunks.join("");
       } else {
         const chunkText = chunks.join("");
         const cumulative = fullAnswer + chunkText;
@@ -327,15 +293,10 @@ async function* extractContent(eventStream, signal) {
   yield { delta: "", answer: fullAnswer, backendUuid: backendUuid ?? undefined, done: true };
 }
 
-function sseChunk(data) {
-  return `data: ${JSON.stringify(data)}\n\n`;
-}
-
 function buildStreamingResponse(eventStream, model, cid, created, history, currentMsg, signal) {
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
-      let errored = false;
       try {
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
@@ -348,9 +309,11 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
         for await (const chunk of extractContent(eventStream, signal)) {
           if (chunk.backendUuid) respBackendUuid = chunk.backendUuid;
           if (chunk.error) {
-            errored = true;
-            controller.error(new Error(chunk.error));
-            return;
+            controller.enqueue(encoder.encode(sseChunk({
+              id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
+              choices: [{ index: 0, delta: { content: `[Error: ${chunk.error}]` }, finish_reason: null, logprobs: null }],
+            })));
+            break;
           }
           if (chunk.thinking) {
             controller.enqueue(encoder.encode(sseChunk({
@@ -377,15 +340,18 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
           choices: [{ index: 0, delta: {}, finish_reason: "stop", logprobs: null }],
         })));
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.enqueue(encoder.encode(SSE_DONE));
 
         sessionStore(history, currentMsg, cleanResponse(fullAnswer), respBackendUuid);
       } catch (err) {
-        errored = true;
-        controller.error(err);
-        return;
+        controller.enqueue(encoder.encode(sseChunk({
+          id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
+          choices: [{ index: 0, delta: { content: `[Stream error: ${err.message || String(err)}]` }, finish_reason: "stop", logprobs: null }],
+        })));
+        controller.enqueue(encoder.encode(SSE_DONE));
+      } finally {
+        controller.close();
       }
-      if (!errored) controller.close();
     },
   });
 }
@@ -486,15 +452,21 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     log?.info?.("PPLX-WEB", `Query to ${model} (pref=${modelPref}, mode=${pplxMode}), len=${query.length}`);
 
-    const fetchOptions = { method: "POST", headers, body: JSON.stringify(pplxBody) };
-    if (signal) fetchOptions.signal = signal;
+    const connectCtrl = new AbortController();
+    const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), FETCH_CONNECT_TIMEOUT_MS);
+    const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
     let response;
     try {
-      response = await proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions);
+      response = await proxyAwareFetch(PPLX_SSE_ENDPOINT, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(pplxBody),
+        signal: mergedSignal,
+      }, proxyOptions);
+      clearTimeout(connectTimer);
     } catch (err) {
-      // Client cancellation must propagate as an abort, not be masked as a 502.
-      if (err?.name === "AbortError" || signal?.aborted) throw err;
+      clearTimeout(connectTimer);
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Perplexity connection failed: ${err.message || String(err)}`, type: "upstream_error" },
@@ -529,7 +501,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
       const sseStream = buildStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal);
       finalResponse = new Response(sseStream, {
         status: 200,
-        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
+        headers: { ...SSE_HEADERS_NO_BUFFER },
       });
     } else {
       finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal);

@@ -7,6 +7,7 @@ import { deriveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch, cancelResponseBody } from "../utils/proxyFetch.js";
 import { cleanJSONSchemaForAntigravity } from "../translator/helpers/geminiHelper.js";
 import { throwOnCacheViolation } from "../rtk/cacheBoundary.js";
+import { parseOAuthRefreshErrorBody } from "../services/tokenRefresh.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
 function sanitizeFunctionName(name) {
@@ -35,12 +36,13 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   buildHeaders(credentials, stream = true, sessionId = null) {
+    const sid = sessionId || credentials?._antigravityCtx?.sessionId;
     return {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${credentials.accessToken}`,
       "User-Agent": this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"],
       [INTERNAL_REQUEST_HEADER.name]: INTERNAL_REQUEST_HEADER.value,
-      ...(sessionId && { "X-Machine-Session-Id": sessionId }),
+      ...(sid && { "X-Machine-Session-Id": sid }),
       "Accept": stream ? "text/event-stream" : "application/json"
     };
   }
@@ -108,6 +110,10 @@ export class AntigravityExecutor extends BaseExecutor {
         : (clientToolConfig !== undefined ? { toolConfig: clientToolConfig } : {}))
     };
 
+    if (credentials) {
+      credentials._antigravityCtx = { sessionId: transformedRequest.sessionId };
+    }
+
     return {
       ...body,
       project: projectId,
@@ -134,7 +140,12 @@ export class AntigravityExecutor extends BaseExecutor {
         })
       }, proxyOptions);
 
-      if (!response.ok) return null;
+      if (!response.ok) {
+        const errorText = await response.text();
+        const unrecoverable = parseOAuthRefreshErrorBody(errorText, log, "antigravity");
+        if (unrecoverable) return unrecoverable;
+        return null;
+      }
 
       const tokens = await response.json();
       log?.info?.("TOKEN", "Antigravity refreshed");

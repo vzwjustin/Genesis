@@ -1,6 +1,9 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
+import { sseChunk } from "../utils/sse.js";
 
 const GROK_CHAT_API = PROVIDERS["grok-web"].baseUrl;
 const GROK_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
@@ -131,15 +134,10 @@ async function* extractContent(eventStream, isThinkingModel, signal) {
   yield { done: true, fingerprint, responseId };
 }
 
-function sseChunk(data) {
-  return `data: ${JSON.stringify(data)}\n\n`;
-}
-
 function buildStreamingResponse(eventStream, model, cid, created, isThinkingModel, signal) {
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
-      let errored = false;
       try {
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
@@ -151,9 +149,11 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
           if (chunk.fingerprint) fp = chunk.fingerprint;
 
           if (chunk.error) {
-            errored = true;
-            controller.error(new Error(chunk.error));
-            return;
+            controller.enqueue(encoder.encode(sseChunk({
+              id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: fp || null,
+              choices: [{ index: 0, delta: { content: `[Error: ${chunk.error}]` }, finish_reason: null, logprobs: null }],
+            })));
+            break;
           }
           if (chunk.thinking) {
             controller.enqueue(encoder.encode(sseChunk({
@@ -175,13 +175,16 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: fp || null,
           choices: [{ index: 0, delta: {}, finish_reason: "stop", logprobs: null }],
         })));
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.enqueue(encoder.encode(SSE_DONE));
       } catch (err) {
-        errored = true;
-        controller.error(err);
-        return;
+        controller.enqueue(encoder.encode(sseChunk({
+          id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
+          choices: [{ index: 0, delta: { content: `[Stream error: ${err.message || String(err)}]` }, finish_reason: "stop", logprobs: null }],
+        })));
+        controller.enqueue(encoder.encode(SSE_DONE));
+      } finally {
+        controller.close();
       }
-      if (!errored) controller.close();
     },
   });
 }
@@ -291,13 +294,16 @@ export class GrokWebExecutor extends BaseExecutor {
     log?.info?.("GROK-WEB", `Query to ${model} (grok=${grokModel}, mode=${modelMode}), len=${message.length}`);
 
     let response;
+    const connectCtrl = new AbortController();
+    const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), FETCH_CONNECT_TIMEOUT_MS);
+    const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
     try {
       response = await proxyAwareFetch(GROK_CHAT_API, {
-        method: "POST", headers, body: JSON.stringify(grokPayload), signal,
+        method: "POST", headers, body: JSON.stringify(grokPayload), signal: mergedSignal,
       }, proxyOptions);
+      clearTimeout(connectTimer);
     } catch (err) {
-      // Client cancellation must propagate as an abort, not be masked as a 502.
-      if (err?.name === "AbortError" || signal?.aborted) throw err;
+      clearTimeout(connectTimer);
       log?.error?.("GROK-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Grok connection failed: ${err.message || String(err)}`, type: "upstream_error" },
@@ -332,7 +338,7 @@ export class GrokWebExecutor extends BaseExecutor {
       const sseStream = buildStreamingResponse(response.body, model, cid, created, isThinking, signal);
       finalResponse = new Response(sseStream, {
         status: 200,
-        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
+        headers: { ...SSE_HEADERS_NO_BUFFER },
       });
     } else {
       finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, isThinking, signal);

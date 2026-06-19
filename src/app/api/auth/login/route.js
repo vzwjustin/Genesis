@@ -5,7 +5,7 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
-import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
+import { withLoginLock, checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isTunnelDashboardAccessDenied } from "@/shared/utils/tunnelRequest";
 
 const RESET_HINT = "Forgot password? Reset to default via Genesis CLI → Settings → Reset Password to Default.";
@@ -22,6 +22,7 @@ function timingSafeEqualStr(a, b) {
 export async function POST(request) {
   try {
     const ip = getClientIp(request);
+    return withLoginLock(ip, async () => {
     const lock = checkLock(ip);
     if (lock.locked) {
       return NextResponse.json(
@@ -89,6 +90,7 @@ export async function POST(request) {
       { error: `Invalid password. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock },
       { status: 401 }
     );
+    });
   } catch (error) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

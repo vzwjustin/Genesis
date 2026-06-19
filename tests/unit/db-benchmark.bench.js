@@ -3,8 +3,21 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { describe, it, beforeAll, afterAll, vi } from "vitest";
 import { Low, JSONFile } from "../fixtures/lowdb.js";
+
+const require = createRequire(import.meta.url);
+const hasLowdb = (() => {
+  try {
+    require.resolve("lowdb");
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+const benchDescribe = hasLowdb ? describe : describe.skip;
 
 const N_ITEMS = 500;
 const N_QUERIES = 200;
@@ -25,6 +38,7 @@ async function bench(label, fn) {
   return dt;
 }
 
+benchDescribe("DB Benchmark — SQLite vs Lowdb", () => {
 beforeAll(async () => {
   // SQLite setup
   tempSqlite = fs.mkdtempSync(path.join(os.tmpdir(), "genesis-bench-sqlite-"));
@@ -41,14 +55,12 @@ beforeAll(async () => {
   await lowDb.read();
 });
 
-afterAll(() => {
-  if (tempSqlite) fs.rmSync(tempSqlite, { recursive: true, force: true });
-  if (tempLowdb) fs.rmSync(tempLowdb, { recursive: true, force: true });
-  if (originalDataDir === undefined) delete process.env.DATA_DIR;
-  else process.env.DATA_DIR = originalDataDir;
-});
-
-describe("DB Benchmark — SQLite vs Lowdb", () => {
+  afterAll(() => {
+    if (tempSqlite) fs.rmSync(tempSqlite, { recursive: true, force: true });
+    if (tempLowdb) fs.rmSync(tempLowdb, { recursive: true, force: true });
+    if (originalDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = originalDataDir;
+  });
   it(`INSERT ${N_ITEMS} provider connections`, async () => {
     console.log(`\n[INSERT ${N_ITEMS}]`);
 
