@@ -8,6 +8,7 @@ import { isCliToolConfigured } from "@/shared/components/ConfigStatusBadge";
 import { getRelativeTime } from "@/shared/utils";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { openDashboardTour } from "@/shared/utils/dashboardTour";
+import NextStepCallout from "@/shared/components/NextStepCallout";
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -295,13 +296,51 @@ export default function DashboardOverviewClient() {
   const recentRequests = (usageStats?.recentRequests || []).slice(0, 8);
 
   const setupSteps = [
-    { done: activeConns.length > 0, label: "Connect a provider", href: "/dashboard/providers" },
-    { done: requireApiKey, label: "Enable API key requirement (recommended)", href: "/dashboard/endpoint#require-api-key" },
-    { done: cliStats.configured > 0, label: "Configure a CLI tool", href: "/dashboard/cli-tools" },
-    { done: requestsToday > 0, label: "Review caching & token savings", href: "/dashboard/caching" },
-    { done: remoteOn, label: "Optional: enable tunnel for remote access", href: "/dashboard/endpoint" },
+    {
+      done: activeConns.length > 0,
+      label: "Connect a provider",
+      href: "/dashboard/providers",
+      icon: "dns",
+      description: "Add OAuth or API key connections so Genesis can route requests upstream.",
+      action: "Add provider",
+    },
+    {
+      done: requireApiKey,
+      label: "Require API keys",
+      href: "/dashboard/endpoint#require-api-key",
+      icon: "vpn_key",
+      description: "Turn on API key enforcement before exposing tunnels or sharing your endpoint.",
+      action: "Open Endpoint",
+    },
+    {
+      done: cliStats.configured > 0,
+      label: "Configure a CLI tool",
+      href: "/dashboard/cli-tools",
+      icon: "terminal",
+      description: "Point Claude Code, Cursor, or Codex at your local Genesis URL.",
+      action: "Configure tools",
+    },
+    {
+      done: requestsToday > 0,
+      label: "Send a test request",
+      href: "/dashboard/basic-chat",
+      icon: "chat",
+      description: "Confirm routing works, then review token savings under Caching.",
+      action: "Try Basic Chat",
+    },
+    {
+      done: remoteOn,
+      label: "Enable remote access",
+      href: "/dashboard/endpoint",
+      icon: "public",
+      description: "Use Cloudflare tunnel or Tailscale when you need Genesis from another network.",
+      action: "Set up tunnel",
+      optional: true,
+    },
   ];
   const setupComplete = setupSteps.filter((s) => s.done).length;
+  const nextSetupStepIndex = setupSteps.findIndex((s) => !s.done);
+  const nextSetupStep = nextSetupStepIndex >= 0 ? setupSteps[nextSetupStepIndex] : null;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -336,6 +375,14 @@ export default function DashboardOverviewClient() {
             </div>
           </div>
         </div>
+      )}
+
+      {!loading && nextSetupStep && (
+        <NextStepCallout
+          step={nextSetupStep}
+          stepIndex={nextSetupStepIndex}
+          totalSteps={setupSteps.length}
+        />
       )}
 
       {!loading && setupComplete < setupSteps.length && (

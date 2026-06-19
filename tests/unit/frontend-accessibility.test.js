@@ -168,7 +168,18 @@ describe("frontend accessibility regressions", () => {
 
     expect(overview).toContain("Setup checklist");
     expect(overview).toContain("Where things live");
-    expect(overview).toContain("/dashboard/caching");
+    expect(overview).toContain("NextStepCallout");
+    expect(overview).toContain("/dashboard/basic-chat");
+  });
+
+  it("adds contextual page hints on combos and caching pages", () => {
+    const combos = read("src/app/(dashboard)/dashboard/combos/page.js");
+    const caching = read("src/app/(dashboard)/dashboard/caching/CachingPageClient.js");
+
+    expect(combos).toContain('id="combos-intro"');
+    expect(combos).toContain("When to use combos");
+    expect(caching).toContain('id="caching-intro"');
+    expect(caching).toContain("What shows up here");
   });
 
   it("groups sidebar navigation into labeled sections with descriptions", () => {
