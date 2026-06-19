@@ -202,19 +202,25 @@ export async function importDb(payload) {
   const db = await getAdapter();
 
   db.transaction(() => {
-    // Wipe config tables (keep _meta). Observability tables (usageHistory,
-    // usageDaily, requestDetails) are intentionally NOT wiped: they are not
-    // part of the export payload (exportDb omits them by design — they can be
-    // large), so a config-only import must preserve historical usage/details
-    // rather than silently destroying them. If a payload explicitly includes
-    // those sections they are merged below.
-    db.run(`DELETE FROM settings`);
-    db.run(`DELETE FROM providerConnections`);
-    db.run(`DELETE FROM providerNodes`);
-    db.run(`DELETE FROM proxyPools`);
-    db.run(`DELETE FROM apiKeys`);
-    db.run(`DELETE FROM combos`);
-    db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing', 'disabledModels')`);
+    // Wipe a config table ONLY when its section is present in the payload, then
+    // repopulate it below. A section that is absent is left untouched: a partial
+    // import (e.g. settings-only) must not silently destroy provider connections
+    // (OAuth tokens!), API keys, combos, etc. that it does not carry. A full
+    // export round-trips every section, so a full import still fully replaces.
+    // An explicitly-present-but-empty section is a deliberate "clear this table".
+    // Observability tables (usageHistory, usageDaily, requestDetails) are never
+    // wiped here; if present in the payload they are merged below.
+    if (payload.settings) db.run(`DELETE FROM settings`);
+    if (payload.providerConnections) db.run(`DELETE FROM providerConnections`);
+    if (payload.providerNodes) db.run(`DELETE FROM providerNodes`);
+    if (payload.proxyPools) db.run(`DELETE FROM proxyPools`);
+    if (payload.apiKeys) db.run(`DELETE FROM apiKeys`);
+    if (payload.combos) db.run(`DELETE FROM combos`);
+    if (payload.modelAliases) db.run(`DELETE FROM kv WHERE scope = 'modelAliases'`);
+    if (payload.customModels) db.run(`DELETE FROM kv WHERE scope = 'customModels'`);
+    if (payload.mitmAlias) db.run(`DELETE FROM kv WHERE scope = 'mitmAlias'`);
+    if (payload.pricing) db.run(`DELETE FROM kv WHERE scope = 'pricing'`);
+    if (payload.disabledModels) db.run(`DELETE FROM kv WHERE scope = 'disabledModels'`);
 
     // Settings
     if (payload.settings) {

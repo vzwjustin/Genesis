@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { shouldComboAdvance, handleComboChat, resetComboRotation, isZeroConnectionsResponse, isModelResolutionFailureResponse, isProxyInternalResponse } from "../../open-sse/services/combo.js";
-import { PROXY_INTERNAL_ERROR_CODES } from "../../open-sse/utils/error.js";
+import { PROXY_INTERNAL_ERROR_CODES, modelNotFoundResponse } from "../../open-sse/utils/error.js";
 
 describe("shouldComboAdvance (Requirement 5.1, 5.3–5.5)", () => {
   it("does not advance on 2xx", () => {
@@ -296,6 +296,29 @@ describe("handleComboChat — model resolution failure advances", () => {
     const response = await handleComboChat({
       body: { messages: [{ role: "user", content: "hi" }] },
       models: ["bad-alias", "claude/sonnet"],
+      handleSingleModel,
+      log,
+    });
+
+    expect(handleSingleModel).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(200);
+  });
+
+  it("advances past a 404 model_not_found member (chat outlier) to the next model", async () => {
+    // chat's handleSingleModelChat returns modelNotFoundResponse (404, code
+    // model_not_found) for an unresolvable combo member — the same condition the
+    // other handlers express as a 400 "Failed to resolve model:". The combo must
+    // advance, not abort with the member's 404.
+    const handleSingleModel = vi.fn()
+      .mockResolvedValueOnce(modelNotFoundResponse("typo-alias", ["openai/gpt-4o"]))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+
+    const response = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: ["typo-alias", "openai/gpt-4o"],
       handleSingleModel,
       log,
     });

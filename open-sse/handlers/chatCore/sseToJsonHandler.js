@@ -354,7 +354,10 @@ export function parseSSEToClaudeResponse(rawSSE) {
 
   if (stopReason) message.stop_reason = stopReason;
   if (stopSequence !== undefined) message.stop_sequence = stopSequence;
-  if (usage) message.usage = usage;
+  // Merge, don't overwrite: message_start carries input_tokens (+cache_* fields)
+  // while message_delta.usage carries only output_tokens. Overwriting would drop
+  // input_tokens → undercounted prompt tokens in usage stats / billing.
+  if (usage) message.usage = { ...message.usage, ...usage };
   return message;
 }
 

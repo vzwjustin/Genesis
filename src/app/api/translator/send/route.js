@@ -1,5 +1,6 @@
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor, refreshTokenByProvider } from "open-sse/index.js";
+import { updateProviderCredentials } from "@/sse/services/tokenRefresh.js";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
 import { buildProxyOptionsFromCredentials } from "open-sse/utils/proxyFetch.js";
 import {
@@ -55,6 +56,12 @@ export async function POST(request) {
       const newCredentials = await refreshTokenByProvider(provider, credentials);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         Object.assign(credentials, newCredentials);
+        // Persist the rotated token to the DB. refreshTokenByProvider only
+        // returns new credentials; without this the rotated refresh_token is
+        // kept in memory only and the next request reuses the old (now-dead)
+        // token → invalid_grant. Fail-open: a persist failure must not block
+        // this already-refreshed request.
+        await updateProviderCredentials(connection.id, newCredentials);
         execOpts.credentials = cacheProtectedSnapshot
           ? { ...credentials, _preserveClientCache: true }
           : credentials;
