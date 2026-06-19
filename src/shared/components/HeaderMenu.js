@@ -7,6 +7,7 @@ import { useTheme } from "@/shared/hooks/useTheme";
 import ChangelogModal from "./ChangelogModal";
 import NineRemotePromoModal from "./NineRemotePromoModal";
 import LanguageSwitcher from "./LanguageSwitcher";
+import { openDashboardTour } from "@/shared/utils/dashboardTour";
 
 const LOCALE_INFO = {
   "en": { name: "English", flag: "🇺🇸" },
@@ -126,6 +127,11 @@ export default function HeaderMenu({ onLogout }) {
 
         {isOpen && (
           <div id="dashboard-header-menu" role="menu" className="absolute right-0 top-full mt-2 w-60 glass-panel rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden py-1">
+            <MenuItem
+              icon="tour"
+              label="Dashboard tour"
+              onClick={() => { close(); openDashboardTour(); }}
+            />
             <MenuItem
               icon="history"
               label="Change Log"

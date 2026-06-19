@@ -19,6 +19,7 @@ import InlineAlert from "@/shared/components/InlineAlert";
 import RequestLogSessionModal from "@/shared/components/RequestLogSessionModal";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { formatHeadroomSetupHint, headroomCanEnable } from "@/shared/utils/headroomStatusHint";
+import PageHint from "@/shared/components/PageHint";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -325,6 +326,11 @@ export default function CachingPageClient() {
 
   return (
     <div className="flex w-full flex-col gap-6">
+      <PageHint id="caching-intro" title="What shows up here">
+        RTK and Caveman shrink large prompts before they reach providers. Headroom runs a separate
+        compression proxy. Stats appear after traffic flows through Genesis — send a test message from
+        Basic Chat or your CLI tool first.
+      </PageHint>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-text-main">Caching & Compression</h1>

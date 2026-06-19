@@ -8,6 +8,7 @@ import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifi
 import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, Toggle, ConfirmModal, EmptyState, MobileStickyActionBar, CopyButton } from "@/shared/components";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { useNotificationStore } from "@/store/notificationStore";
+import PageHint from "@/shared/components/PageHint";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -143,6 +144,11 @@ export default function CombosPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 pb-24 sm:px-0 lg:pb-0">
+      <PageHint id="combos-intro" title="When to use combos">
+        A combo is an ordered list of models registered as one name. If the first model errors or is
+        unavailable, Genesis tries the next entry automatically. Use combos for failover, not for load
+        balancing across healthy models.
+      </PageHint>
       <div className="hidden sm:flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
         <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto">
           Create Combo

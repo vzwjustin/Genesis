@@ -8,6 +8,7 @@ import { SECURITY_COPY } from "@/shared/constants/securityCopy";
 import InlineAlert from "@/shared/components/InlineAlert";
 import { useNotificationStore } from "@/store/notificationStore";
 import { getExposureErrorAction } from "@/shared/utils/exposureErrorAction";
+import PageHint from "@/shared/components/PageHint";
 
 function exposureStatus(type, message) {
   return { type, message, action: getExposureErrorAction(message) };
@@ -691,6 +692,10 @@ export default function APIPageClient({ machineId }) {
 
   return (
     <div className="flex flex-col gap-8">
+      <PageHint id="endpoint-intro" title="What to copy into your tools">
+        Use the Local URL as your OpenAI-compatible base URL. Create an API key under API Keys if
+        required, then paste both into CLI tools. Enable tunnel or cloud only when you need remote access.
+      </PageHint>
       {/* Endpoint Card */}
       <Card>
         <h2 className="text-lg font-semibold tracking-tight mb-4 flex items-center gap-2">

@@ -8,6 +8,7 @@ import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { MitmLinkCard } from "./components";
 import ToolSummaryCard from "./components/ToolSummaryCard";
+import PageHint from "@/shared/components/PageHint";
 
 const ALL_STATUSES_URL = "/api/cli-tools/all-statuses";
 const MITM_STATUS_URL = "/api/cli-tools/antigravity-mitm";
@@ -97,6 +98,10 @@ export default function CLIToolsPageClient({ machineId }) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-1 sm:px-0">
+      <PageHint id="cli-tools-intro" title="Point your tools at Genesis">
+        Each card configures a local CLI or IDE to use your Genesis endpoint instead of calling providers
+        directly. Connect at least one provider first, then use the setup button on the tool you use daily.
+      </PageHint>
       {statusError && (
         <InlineAlert
           variant="error"

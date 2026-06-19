@@ -713,6 +713,15 @@ button {
   background: linear-gradient(180deg, #e8d5a3 0%, #c9a84c 100%);
 }
 
+.dashboard-sidebar .sidebar-nav-link-desc {
+  color: rgba(248, 250, 252, 0.42);
+}
+
+.dashboard-sidebar .sidebar-nav-link:hover .sidebar-nav-link-desc,
+.dashboard-sidebar .sidebar-nav-link.active .sidebar-nav-link-desc {
+  color: rgba(248, 250, 252, 0.58);
+}
+
 .dashboard-sidebar .sidebar-footer {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }

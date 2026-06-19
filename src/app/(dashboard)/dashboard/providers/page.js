@@ -28,6 +28,7 @@ import { getConnectionErrorTag } from "@/shared/utils/connectionErrorUtils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
+import PageHint from "@/shared/components/PageHint";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -277,6 +278,11 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+      <PageHint id="providers-intro" title="How providers work">
+        Pick a provider card below to sign in or paste an API key. Genesis uses these connections when
+        routing chat, tool calls, and combo failover. Start with one OAuth or API key provider, then
+        test from Basic Chat.
+      </PageHint>
       {!searchQuery.trim() && connections.length === 0 && (
         <EmptyState
           icon="dns"
