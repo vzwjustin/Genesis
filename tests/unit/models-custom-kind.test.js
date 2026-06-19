@@ -46,8 +46,8 @@ describe("custom model kind catalog", () => {
     });
 
     const { buildModelsList } = await import("../../src/app/api/v1/models/route.js");
-    const embeddingIds = (await buildModelsList(["embedding"])).map((m) => m.id);
-    const llmIds = (await buildModelsList(["llm"])).map((m) => m.id);
+    const embeddingIds = (await buildModelsList(["embedding"])).models.map((m) => m.id);
+    const llmIds = (await buildModelsList(["llm"])).models.map((m) => m.id);
 
     expect(embeddingIds).toContain("openai/private-vector-v1");
     expect(llmIds).not.toContain("openai/private-vector-v1");
