@@ -42,6 +42,7 @@ export default async function handler(req) {
     headers,
     body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
     duplex: "half",
+    redirect: "manual",
   });
 
   return new Response(response.body, {
@@ -85,6 +86,7 @@ Deno.serve(async (request) => {
   const init = {
     method: request.method,
     headers: newHeaders,
+    redirect: "manual",
   };
 
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -136,6 +138,7 @@ export default {
     const newRequestInit = {
       method: request.method,
       headers: new Headers(request.headers),
+      redirect: "manual",
     };
 
     if (request.method !== "GET" && request.method !== "HEAD") {

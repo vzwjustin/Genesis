@@ -7,6 +7,9 @@
  *  - bound-but-unresolved proxy pool fails closed
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { shouldUseNativePassthrough } from "../../open-sse/utils/clientDetector.js";
 import { convertKiroToOpenAI } from "../../open-sse/translator/response/kiro-to-openai.js";
@@ -14,6 +17,13 @@ import { buildKiroPayload } from "../../open-sse/translator/request/openai-to-ki
 import { openaiToClaudeResponse } from "../../open-sse/translator/response/openai-to-claude.js";
 import { openaiResponsesToOpenAIResponse } from "../../open-sse/translator/response/openai-responses.js";
 import { shouldStripCredentialHeaderOnRedirect } from "../../open-sse/utils/proxyFetch.js";
+import {
+  buildCloudflareRelayCode,
+  buildDenoRelayCode,
+  buildVercelRelayCode,
+} from "../../src/lib/network/relayDeploy.js";
+
+const testRoot = dirname(fileURLToPath(import.meta.url));
 
 describe("shouldUseNativePassthrough — OpenAI chat wire guard", () => {
   it("does NOT passthrough a native client's OpenAI chat body to a non-OpenAI provider", () => {
@@ -147,5 +157,48 @@ describe("resolveConnectionProxyConfig — bound pool fails closed", () => {
     const { resolveConnectionProxyConfig } = await import("../../src/lib/network/connectionProxy.js");
     const cfg = await resolveConnectionProxyConfig({ proxyPoolId: "p1" });
     expect(cfg.proxyRequiredUnavailable).toBe(true);
+  });
+});
+
+describe("GET /v1/models — proxy-required propagation", () => {
+  it("passes proxyRequiredUnavailable into proxyAwareFetch options", () => {
+    const src = readFileSync(join(testRoot, "../../src/app/api/v1/models/route.js"), "utf8");
+    expect(src).toContain("proxyRequiredUnavailable: proxyConfig.proxyRequiredUnavailable === true");
+  });
+});
+
+describe("auxiliary provider calls — proxy-required propagation", () => {
+  it("passes proxyRequiredUnavailable through provider model fetcher options", () => {
+    const src = readFileSync(join(testRoot, "../../src/lib/models/fetchConnectionModels.js"), "utf8");
+    expect(src).toContain("proxyRequiredUnavailable: proxyConfig.proxyRequiredUnavailable === true");
+  });
+
+  it("passes proxyRequiredUnavailable through usage route options", () => {
+    const src = readFileSync(join(testRoot, "../../src/app/api/usage/[connectionId]/route.js"), "utf8");
+    expect(src).toContain("proxyRequiredUnavailable: proxyConfig.proxyRequiredUnavailable === true");
+  });
+
+  it("passes proxyRequiredUnavailable through provider validate route options", () => {
+    const src = readFileSync(join(testRoot, "../../src/app/api/providers/validate/route.js"), "utf8");
+    expect(src).toContain("proxyRequiredUnavailable: proxyConfig.proxyRequiredUnavailable === true");
+  });
+
+  it("passes proxyRequiredUnavailable through provider connection tests", () => {
+    const src = readFileSync(join(testRoot, "../../src/app/api/providers/[id]/test/testUtils.js"), "utf8");
+    expect(src).toContain("effectiveProxy?.proxyRequiredUnavailable === true");
+    expect(src).toContain("proxyOptions = { proxyRequiredUnavailable: true, strictProxy: true }");
+  });
+});
+
+describe("generated relay code — redirect credential safety", () => {
+  it("does not auto-follow upstream redirects with forwarded credentials", () => {
+    const relays = [
+      buildVercelRelayCode("secret"),
+      buildDenoRelayCode("secret"),
+      buildCloudflareRelayCode("secret"),
+    ];
+    for (const src of relays) {
+      expect(src).toContain('redirect: "manual"');
+    }
   });
 });

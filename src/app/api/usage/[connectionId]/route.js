@@ -145,6 +145,7 @@ export async function GET(request, { params }) {
       vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
       relayAuthSecret: proxyConfig.relayAuthSecret || "",
       strictProxy: proxyConfig.strictProxy,
+      proxyRequiredUnavailable: proxyConfig.proxyRequiredUnavailable === true,
     };
 
     // Refresh credentials only for OAuth connections (apikey has no token refresh)

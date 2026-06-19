@@ -91,3 +91,53 @@ describe("provider API redaction", () => {
     expect(connection.providerSpecificData.clientSecret).toBeUndefined();
   });
 });
+
+describe("provider API proxy field validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: true });
+    mocks.getProviderConnectionById.mockResolvedValue({
+      id: "conn-1",
+      provider: "openai-compatible-chat-node",
+      authType: "apikey",
+      providerSpecificData: { baseUrl: "https://api.example.com/v1" },
+    });
+  });
+
+  it("rejects proxy pool updates nested inside providerSpecificData", async () => {
+    const { PUT } = await import("../../src/app/api/providers/[id]/route.js?nested-proxy-pool");
+    const response = await PUT(new Request("http://localhost/api/providers/conn-1", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerSpecificData: { proxyPoolId: "missing-pool" } }),
+    }), {
+      params: Promise.resolve({ id: "conn-1" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("proxyPoolId must be updated with top-level proxy fields");
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("rejects legacy proxy updates nested inside providerSpecificData", async () => {
+    const { PUT } = await import("../../src/app/api/providers/[id]/route.js?nested-legacy-proxy");
+    const response = await PUT(new Request("http://localhost/api/providers/conn-1", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        providerSpecificData: {
+          connectionProxyEnabled: true,
+          connectionProxyUrl: "http://proxy.example.com:8080",
+        },
+      }),
+    }), {
+      params: Promise.resolve({ id: "conn-1" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("connectionProxyEnabled must be updated with top-level proxy fields");
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+  });
+});

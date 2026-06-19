@@ -2,6 +2,11 @@ import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConv
 import { createErrorResult, PROXY_INTERNAL_ERROR_CODES } from "../../utils/error.js";
 
 const PROXY_INTERNAL_SSE = {
+  // Client-facing alias (Req 6.6): expose error.type = "stream_assembly_failed" while
+  // keeping the internal error.code = "sse_assembly_failed" (PROXY_INTERNAL_ERROR_CODES)
+  // unchanged for combo/fallback gating. Alias-only at the response boundary — see
+  // design.md "Open Questions — RESOLVED", Decision 2.
+  errorType: "stream_assembly_failed",
   errorCode: PROXY_INTERNAL_ERROR_CODES.SSE_ASSEMBLY_FAILED,
   proxyInternal: true,
 };
@@ -407,7 +412,13 @@ export function parseSSEToGeminiResponse(rawSSE, wrapInResponse = false) {
       continue;
     }
     try {
-      chunks.push(JSON.parse(payload));
+      const parsed = JSON.parse(payload);
+      if (parsed && parsed.error) {
+        console.warn("[SSE] parseSSEToGeminiResponse: upstream error event received:",
+          parsed.error?.status || parsed.error?.code || "unknown", "|", parsed.error?.message || "(no message)");
+        return null;
+      }
+      chunks.push(parsed);
     } catch {
       return null;
     }

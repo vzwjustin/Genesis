@@ -14,7 +14,13 @@ import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { capabilitiesFromServiceKind } from "open-sse/providers/capabilities.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
+import { getWireType } from "open-sse/config/wireType.js";
 import { FILTERS as SUGGESTED_MODEL_FILTERS } from "../../providers/suggested-models/filters.js";
+
+// Claude-family aliases (broad/Kiro family) that emit -thinking/-agentic
+// variants after dynamic discovery (Req 5.2). Gated additionally by
+// getWireType(..., { family: "broad" }) === "anthropic".
+const CLAUDE_FAMILY_ALIASES = new Set(["cc", "kr", "kimi", "glm", "minimax"]);
 
 async function buildProxyOptionsFromConnection(conn) {
   const proxyConfig = await resolveConnectionProxyConfig(conn?.providerSpecificData || {});
@@ -25,6 +31,7 @@ async function buildProxyOptionsFromConnection(conn) {
     vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
     relayAuthSecret: proxyConfig.relayAuthSecret || "",
     strictProxy: proxyConfig.strictProxy,
+    proxyRequiredUnavailable: proxyConfig.proxyRequiredUnavailable === true,
   };
 }
 
@@ -205,6 +212,7 @@ function comboMatchesKinds(combo, kindFilter) {
 /**
  * Build OpenAI-format models list filtered by service kinds.
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
+ * @returns {Promise<{ models: Array<{id, object, owned_by, requires_auth?}>, warnings: Array<{provider, reason}> }>}
  */
 export async function buildModelsList(kindFilter) {
   let connections = [];
@@ -244,6 +252,10 @@ export async function buildModelsList(kindFilter) {
     console.log("Could not fetch disabled models");
   }
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && disabledByAlias[alias].includes(modelId);
+
+  // Req 5.3: top-level warnings surfaced when dynamic discovery fails while the
+  // static catalog is still returned (fail-soft for optional live discovery).
+  const warnings = [];
 
   const activeConnectionByProvider = new Map();
   for (const conn of connections) {
@@ -289,6 +301,9 @@ export async function buildModelsList(kindFilter) {
         || getProviderAlias(providerId)
         || staticAlias
       ).trim();
+      // Req 5.5: a connection with no active access token still enumerates its
+      // static models, each flagged requires_auth so clients know auth is needed.
+      const requiresAuth = !(conn?.accessToken || conn?.apiKey);
       const providerModels = PROVIDER_MODELS[staticAlias] || [];
       const enabledModels = conn?.providerSpecificData?.enabledModels;
       const hasExplicitEnabledModels =
@@ -327,7 +342,11 @@ export async function buildModelsList(kindFilter) {
             rawModelIds = live.models.map((m) => m.id);
           }
         } catch (err) {
-          console.log(`Live model fetch failed for ${providerId}: ${err?.message || err}`);
+          // Req 5.3: discovery failure surfaces a warning but the static catalog
+          // (rawModelIds already holds providerModels) is still returned.
+          const reason = err?.message || String(err);
+          console.log(`Live model fetch failed for ${providerId}: ${reason}`);
+          warnings.push({ provider: outputAlias, reason });
         }
       }
 
@@ -389,6 +408,24 @@ export async function buildModelsList(kindFilter) {
 
       const mergedModelIds = Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
 
+      // Req 5.2: Claude-family aliases (broad family) also emit -thinking and
+      // -agentic variants for each discovered model id.
+      const isClaudeFamily =
+        CLAUDE_FAMILY_ALIASES.has(outputAlias) &&
+        getWireType(`${outputAlias}/`, { family: "broad" }) === "anthropic";
+
+      const pushModel = (id, extra = {}) => {
+        const entry = {
+          id,
+          object: "model",
+          owned_by: outputAlias,
+          ...extra,
+        };
+        // Req 5.5: flag tokenless connections.
+        if (requiresAuth) entry.requires_auth = true;
+        models.push(entry);
+      };
+
       for (const modelId of mergedModelIds) {
         const customKind = customModelKindById.get(modelId);
         const kind = staticModelKindById.get(modelId) || customKind || inferKindFromUnknownModelId(modelId);
@@ -396,14 +433,13 @@ export async function buildModelsList(kindFilter) {
         if (!kindFilter.includes(kind) && !allowAsLlm) continue;
         if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
 
-        const model = {
-          id: `${outputAlias}/${modelId}`,
-          object: "model",
-          owned_by: outputAlias,
-        };
+        const baseId = `${outputAlias}/${modelId}`;
         const caps = capabilitiesFromServiceKind(customKind);
-        if (caps) model.capabilities = caps;
-        models.push(model);
+        pushModel(baseId, caps ? { capabilities: caps } : {});
+        if (isClaudeFamily) {
+          pushModel(`${baseId}-thinking`);
+          pushModel(`${baseId}-agentic`);
+        }
       }
 
       // Merge sub-config models (TTS / embedding) that live on AI_PROVIDERS, not PROVIDER_MODELS
@@ -421,29 +457,29 @@ export async function buildModelsList(kindFilter) {
       }
       for (const subId of subConfigModels) {
         if (isDisabled(outputAlias, subId) || isDisabled(staticAlias, subId)) continue;
-        models.push({
-          id: `${outputAlias}/${subId}`,
-          object: "model",
-          owned_by: outputAlias,
-        });
+        pushModel(`${outputAlias}/${subId}`);
       }
 
       // Web search/fetch — provider IS the model, expose as {alias}/search and/or {alias}/fetch with explicit kind
       if (kindFilter.includes("webSearch") && providerInfo?.searchConfig) {
-        models.push({
+        const entry = {
           id: `${outputAlias}/search`,
           object: "model",
           kind: "webSearch",
           owned_by: outputAlias,
-        });
+        };
+        if (requiresAuth) entry.requires_auth = true;
+        models.push(entry);
       }
       if (kindFilter.includes("webFetch") && providerInfo?.fetchConfig) {
-        models.push({
+        const entry = {
           id: `${outputAlias}/fetch`,
           object: "model",
           kind: "webFetch",
           owned_by: outputAlias,
-        });
+        };
+        if (requiresAuth) entry.requires_auth = true;
+        models.push(entry);
       }
     }
   }
@@ -499,7 +535,7 @@ export async function buildModelsList(kindFilter) {
     dedupedModels.push(model);
   }
 
-  return dedupedModels;
+  return { models: dedupedModels, warnings };
 }
 
 /**
@@ -524,10 +560,11 @@ export async function GET(request) {
   if (!routeAuth.ok) return routeAuth.response;
 
   try {
-    const data = await buildModelsList([LLM_KIND]);
-    return Response.json({ object: "list", data }, {
-      headers: { "Access-Control-Allow-Origin": "*" },
-    });
+    const { models: data, warnings } = await buildModelsList([LLM_KIND]);
+    return Response.json(
+      { object: "list", data, ...(warnings.length ? { warnings } : {}) },
+      { headers: { "Access-Control-Allow-Origin": "*" } }
+    );
   } catch (error) {
     if (error instanceof ModelsDbError) {
       return Response.json(

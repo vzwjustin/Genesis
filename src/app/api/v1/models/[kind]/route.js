@@ -45,10 +45,11 @@ export async function GET(request, { params }) {
       );
     }
 
-    const data = await buildModelsList(kindFilter);
-    return Response.json({ object: "list", data }, {
-      headers: { "Access-Control-Allow-Origin": "*" },
-    });
+    const { models: data, warnings } = await buildModelsList(kindFilter);
+    return Response.json(
+      { object: "list", data, ...(warnings.length ? { warnings } : {}) },
+      { headers: { "Access-Control-Allow-Origin": "*" } }
+    );
   } catch (error) {
     if (error instanceof ModelsDbError) {
       return Response.json(

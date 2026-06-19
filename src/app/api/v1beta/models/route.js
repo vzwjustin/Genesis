@@ -23,7 +23,7 @@ export async function GET(request) {
   if (!routeAuth.ok) return routeAuth.response;
 
   try {
-    const openAiModels = await buildModelsList(["llm"]);
+    const { models: openAiModels } = await buildModelsList(["llm"]);
     const models = openAiModels.map((model) => ({
       name: `models/${model.id}`,
       displayName: model.id.includes("/") ? model.id.split("/").slice(1).join("/") : model.id,

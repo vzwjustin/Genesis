@@ -103,6 +103,46 @@ export function validationErrorResponse(errorType, message) {
 }
 
 /**
+ * Create HTTP 404 response for an inbound model string that resolves to no provider.
+ * Fail closed: never guess the intended model.
+ * @param {string} modelStr - The unresolved Provider_Model_String from the request
+ * @param {string[]} [availableModelIds] - Registered model ids the client may use instead
+ * @returns {Response} HTTP 404 Response object
+ */
+export function modelNotFoundResponse(modelStr, availableModelIds = []) {
+  const message = `Model '${modelStr}' not found. See available_models for valid model ids.`;
+  const body = buildErrorBody(404, message, { errorType: "model_not_found", errorCode: "model_not_found" });
+  body.error.model = modelStr;
+  body.error.available_models = Array.isArray(availableModelIds) ? availableModelIds : [];
+  return new Response(JSON.stringify(body), {
+    status: 404,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
+/**
+ * Create HTTP 503 response for a resolved provider that has zero configured connections.
+ * Fail closed: zero connections means zero retries; do not attempt an upstream request.
+ * @param {string} providerAlias - The provider alias with no active connections
+ * @returns {Response} HTTP 503 Response object
+ */
+export function noConnectionsResponse(providerAlias) {
+  const message = `Provider '${providerAlias}' has no active connections.`;
+  const body = buildErrorBody(503, message, { errorType: "no_active_connections", errorCode: "no_active_connections" });
+  body.error.provider = providerAlias;
+  return new Response(JSON.stringify(body), {
+    status: 503,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
+/**
  * Write error to SSE stream (for streaming)
  * @param {WritableStreamDefaultWriter} writer - Stream writer
  * @param {number} statusCode - HTTP status code

@@ -11,7 +11,8 @@ import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettingsSafe } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getBrokenComboError } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
-import { errorResponse, unavailableResponse, validationErrorResponse, VALIDATION_ERROR_TYPES } from "open-sse/utils/error.js";
+import { errorResponse, unavailableResponse, validationErrorResponse, VALIDATION_ERROR_TYPES, modelNotFoundResponse, noConnectionsResponse } from "open-sse/utils/error.js";
+import { buildModelsList } from "@/app/api/v1/models/route.js";
 import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -28,13 +29,56 @@ import {
 } from "../utils/providerCredentialRetry.js";
 import { isInvalidJsonObjectBody } from "../utils/jsonBody.js";
 import { isRegisteredProviderId } from "../utils/providerRegistry.js";
+import { logInboundSummary } from "open-sse/utils/requestLogger.js";
+
+/**
+ * Derive the inbound wire type from the request endpoint (Req 7.1).
+ * `/v1/messages` is the Anthropic_Wire; everything else is OpenAI_Wire.
+ */
+function inboundWireFromRequest(request) {
+  try {
+    const pathname = new URL(request.url).pathname;
+    return pathname.includes("/v1/messages") ? "anthropic" : "openai";
+  } catch {
+    return "openai";
+  }
+}
 
 /**
  * Handle chat completion request
  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
  * Format detection and translation handled by translator
+ *
+ * Emits exactly one inbound-request summary on completion (success or error)
+ * via logInboundSummary (Req 7.1–7.4). The emit is fail-open: logInboundSummary
+ * never throws and is gated on ENABLE_REQUEST_LOGS, so logging can never break
+ * the request path.
  */
 export async function handleChat(request, clientRawRequest = null) {
+  // Mutable summary context populated as the request flows through resolution.
+  // Single source of truth for the one completion summary emitted below.
+  const summary = {
+    inboundWire: inboundWireFromRequest(request),
+    rawModel: null,
+    resolvedModel: null,
+    authFailureReason: null,
+    unresolvedModel: undefined,
+    registeredModels: undefined,
+  };
+  const response = await handleChatInner(request, clientRawRequest, summary);
+  logInboundSummary({
+    inboundWire: summary.inboundWire,
+    rawModel: summary.rawModel,
+    resolvedModel: summary.resolvedModel,
+    status: typeof response?.status === "number" ? response.status : null,
+    authFailureReason: summary.authFailureReason,
+    unresolvedModel: summary.unresolvedModel,
+    registeredModels: summary.registeredModels,
+  });
+  return response;
+}
+
+async function handleChatInner(request, clientRawRequest = null, summary = {}) {
   let body;
   try {
     body = await request.json();
@@ -58,8 +102,18 @@ export async function handleChat(request, clientRawRequest = null) {
     };
   }
 
+  // Record raw model field for the inbound summary as early as possible so it is
+  // present even when auth fails before resolution (Req 7.1/7.3).
+  summary.rawModel = typeof body.model === "string" ? body.model : null;
+
   const auth = await authenticateRequest(request, log);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) {
+    // Classify the auth failure reason (Req 7.3) from the request's credential
+    // shape — never from the key value. authenticateRequest already redacts;
+    // here we only inspect header presence/shape, never the secret itself.
+    summary.authFailureReason = classifyAuthFailureReason(request);
+    return auth.response;
+  }
   const { apiKey, settings } = auth;
 
   // Log request endpoint and model (after auth)
@@ -105,7 +159,7 @@ export async function handleChat(request, clientRawRequest = null) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
+          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, summary);
         },
         log,
         comboName: modelStr,
@@ -119,7 +173,7 @@ export async function handleChat(request, clientRawRequest = null) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, summary),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -128,25 +182,74 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, summary);
+}
+
+/**
+ * List registered model ids built from the same source as GET /v1/models so the
+ * "available models" list returned on resolution failure stays consistent with
+ * enumeration. Fails open to an empty list — surfacing a 404 without suggestions
+ * is preferable to turning a model-resolution error into a 500.
+ *
+ * buildModelsList currently returns an array of model objects; Task 13.1 will
+ * change it to { models, warnings }. Extract ids defensively to tolerate both.
+ */
+async function listRegisteredModelIds() {
+  try {
+    const result = await buildModelsList(["llm"]);
+    const models = Array.isArray(result) ? result : result?.models;
+    if (!Array.isArray(models)) return [];
+    return models
+      .map((m) => m?.id)
+      .filter((id) => typeof id === "string" && id.length > 0);
+  } catch (e) {
+    log.warn("CHAT", `Could not build available models list: ${e?.message || e}`);
+    return [];
+  }
+}
+
+/**
+ * Classify an inbound auth failure into a reason ∈ {missing_header, invalid_key,
+ * malformed_header} for the inbound summary (Req 7.3). Inspects only the
+ * Authorization header's presence and shape — NEVER the token/key value, which
+ * must never reach the log.
+ */
+function classifyAuthFailureReason(request) {
+  try {
+    const authHeader = request?.headers?.get?.("authorization");
+    if (!authHeader) return "missing_header";
+    // Well-formed "Bearer {token}" with a non-empty token → the key itself is
+    // invalid; otherwise the header shape is malformed.
+    const match = /^Bearer\s+(\S+)/i.exec(authHeader);
+    return match ? "invalid_key" : "malformed_header";
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, summary = {}) {
   const modelInfo = await getModelInfo(modelStr);
 
-  // If provider is null, resolution was already attempted at the outer handler.
+  // Unresolved model string — fail closed with 404 + the registered model ids
+  // (Requirement 1.2). Never guess the intended model.
   if (!modelInfo.provider) {
     log.warn("CHAT", `Model resolution failed: "${modelStr}" is not a registered alias, combo, or provider/model format`);
-    return validationErrorResponse(
-      VALIDATION_ERROR_TYPES.VALIDATION_FAILED,
-      `Failed to resolve model: "${modelStr}". Not a registered alias, combo name, or valid provider/model format. Check your model configuration.`
-    );
+    // Req 7.2 — record the unresolved string + the full registered set for the
+    // inbound summary. resolvedModel stays null (resolution failed).
+    const registered = await listRegisteredModelIds();
+    summary.resolvedModel = null;
+    summary.unresolvedModel = modelStr;
+    summary.registeredModels = registered;
+    return modelNotFoundResponse(modelStr, registered);
   }
 
   const { provider, model } = modelInfo;
+
+  // Req 7.1 — resolution succeeded: record the resolved Provider_Model_String.
+  summary.resolvedModel = `${provider}/${model}`;
 
   if (!isRegisteredProviderId(provider)) {
     log.warn("CHAT", `Unknown provider: ${provider}`);
@@ -167,9 +270,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const { isNoAuthProvider, maxRetries } = await resolveProviderRetryLimits(provider);
 
+  // Resolved provider but zero configured connections — fail closed with 503
+  // (Requirement 1.3). Zero connections means zero retries; do not attempt an
+  // upstream request.
   if (!isNoAuthProvider && maxRetries === 0) {
-    log.warn("AUTH", `No active credentials for provider: ${provider}`);
-    return noActiveCredentialsResponse(provider);
+    log.warn("AUTH", `No active connections for provider: ${provider}`);
+    return noConnectionsResponse(provider);
   }
 
   const resolvedProvider = AI_PROVIDERS[resolveProviderId(provider)];

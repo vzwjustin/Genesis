@@ -445,7 +445,7 @@ export async function authenticateRequest(request, log) {
       log?.warn?.("AUTH", "Invalid API key (credential header present)");
       return {
         ok: false,
-        response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"),
+        response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key", { errorType: "unauthorized" }),
       };
     }
     const parsedKey = parseApiKey(apiKey);
@@ -458,7 +458,7 @@ export async function authenticateRequest(request, log) {
     log?.warn?.("AUTH", "Missing API key (requireApiKey=true)");
     return {
       ok: false,
-      response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key"),
+      response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key", { errorType: "unauthorized" }),
     };
   }
 
@@ -466,7 +466,7 @@ export async function authenticateRequest(request, log) {
     log?.warn?.("AUTH", "Missing API key (remote access requires key)");
     return {
       ok: false,
-      response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "API key required for remote API access"),
+      response: errorResponse(HTTP_STATUS.UNAUTHORIZED, "API key required for remote API access", { errorType: "unauthorized" }),
     };
   }
 

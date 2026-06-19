@@ -89,6 +89,85 @@ describe("proxy routing mismatch regressions", () => {
     expect(originalFetch.mock.calls[0][1].headers["x-relay-path"]).toBe("/v1/chat");
   });
 
+  it("relay proxy routing still uses the relay for MITM DNS bypass hosts", async () => {
+    const originalFetch = vi.fn(async () => new Response("ok", { status: 200 }));
+    globalThis.fetch = originalFetch;
+    vi.resetModules();
+    vi.doMock("../../open-sse/utils/ssrfGuard.js", () => ({
+      assertSafeResolvedHostname: vi.fn(async () => true),
+    }));
+
+    const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js?relay-mitm-bypass");
+    await proxyAwareFetch("https://api.github.com/copilot_internal/user", {}, {
+      vercelRelayUrl: "https://relay.example.net/api/relay",
+      relayAuthSecret: "relay-secret",
+    });
+
+    expect(originalFetch).toHaveBeenCalledOnce();
+    expect(originalFetch.mock.calls[0][0]).toBe("https://relay.example.net/api/relay");
+    expect(originalFetch.mock.calls[0][1].headers["x-relay-target"]).toBe("https://api.github.com");
+    expect(originalFetch.mock.calls[0][1].headers["x-relay-path"]).toBe("/copilot_internal/user");
+    expect(originalFetch.mock.calls[0][1].headers["x-relay-auth"]).toBe("relay-secret");
+  });
+
+  it("relay redirects stay on the relay and preserve credentials for same-origin upstream redirects", async () => {
+    const originalFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: "/v2/chat" } }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    globalThis.fetch = originalFetch;
+    vi.resetModules();
+    vi.doMock("../../open-sse/utils/ssrfGuard.js", () => ({
+      assertSafeResolvedHostname: vi.fn(async () => true),
+    }));
+
+    const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js?relay-same-origin-redirect");
+    await proxyAwareFetch("https://api.example.com/v1/chat", {
+      headers: { Authorization: "Bearer provider-token" },
+    }, {
+      vercelRelayUrl: "https://relay.example.net/api/relay",
+      relayAuthSecret: "relay-secret",
+    });
+
+    expect(originalFetch).toHaveBeenCalledTimes(2);
+    expect(originalFetch.mock.calls[1][0]).toBe("https://relay.example.net/api/relay");
+    expect(originalFetch.mock.calls[1][1].headers["x-relay-target"]).toBe("https://api.example.com");
+    expect(originalFetch.mock.calls[1][1].headers["x-relay-path"]).toBe("/v2/chat");
+    expect(originalFetch.mock.calls[1][1].headers.Authorization).toBe("Bearer provider-token");
+  });
+
+  it("relay redirects strip provider credentials for cross-origin upstream redirects", async () => {
+    const originalFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: "https://other.example.net/v2/chat" } }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    globalThis.fetch = originalFetch;
+    vi.resetModules();
+    vi.doMock("../../open-sse/utils/ssrfGuard.js", () => ({
+      assertSafeResolvedHostname: vi.fn(async () => true),
+    }));
+
+    const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js?relay-cross-origin-redirect");
+    await proxyAwareFetch("https://api.example.com/v1/chat", {
+      headers: {
+        Authorization: "Bearer provider-token",
+        "x-api-key": "provider-key",
+        "x-relay-auth": "caller-controlled",
+      },
+    }, {
+      vercelRelayUrl: "https://relay.example.net/api/relay",
+      relayAuthSecret: "relay-secret",
+    });
+
+    expect(originalFetch).toHaveBeenCalledTimes(2);
+    expect(originalFetch.mock.calls[1][0]).toBe("https://relay.example.net/api/relay");
+    expect(originalFetch.mock.calls[1][1].headers["x-relay-target"]).toBe("https://other.example.net");
+    expect(originalFetch.mock.calls[1][1].headers["x-relay-path"]).toBe("/v2/chat");
+    expect(originalFetch.mock.calls[1][1].headers.Authorization).toBeUndefined();
+    expect(originalFetch.mock.calls[1][1].headers["x-api-key"]).toBeUndefined();
+    expect(originalFetch.mock.calls[1][1].headers["x-relay-auth"]).toBe("relay-secret");
+  });
+
   it("connectionNoProxy bypasses environment proxy when host matches", async () => {
     process.env.HTTPS_PROXY = "http://env-proxy.example.com:8080";
     const originalFetch = vi.fn(async () => new Response("ok", { status: 200 }));

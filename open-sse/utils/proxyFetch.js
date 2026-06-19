@@ -1060,6 +1060,89 @@ async function safeRedirectFetch(url, options, fetchImpl) {
   throw new Error(`[ProxyFetch] Too many redirects (>${MAX_UPSTREAM_REDIRECTS})`);
 }
 
+function stripRelayControlHeaders(headers) {
+  const cleaned = {};
+  for (const [k, v] of getRedirectHeaderEntries(headers)) {
+    const lower = String(k || "").toLowerCase();
+    if (lower === "x-relay-target" || lower === "x-relay-path" || lower === "x-relay-auth") continue;
+    cleaned[k] = v;
+  }
+  return cleaned;
+}
+
+function buildRelayFetchOptions(targetUrl, options, proxyOptions) {
+  const parsed = new URL(targetUrl);
+  const relayHeaders = {
+    ...stripRelayControlHeaders(options?.headers),
+    "x-relay-target": `${parsed.protocol}//${parsed.host}`,
+    "x-relay-path": `${parsed.pathname}${parsed.search}`,
+  };
+  const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
+  if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
+  return { ...options, headers: relayHeaders, redirect: "manual" };
+}
+
+async function relayRedirectFetch(relayUrl, targetUrl, options, proxyOptions, fetchImpl) {
+  await assertSafeResolvedHostname(new URL(relayUrl).hostname, { allowLoopback: false });
+
+  let currentTargetUrl = typeof targetUrl === "string" ? targetUrl : targetUrl.toString();
+  let currentOptions = { ...(options || {}), redirect: "manual" };
+
+  for (let hop = 0; hop <= MAX_UPSTREAM_REDIRECTS; hop++) {
+    const relayOptions = buildRelayFetchOptions(currentTargetUrl, currentOptions, proxyOptions);
+    const res = await fetchImpl(relayUrl, relayOptions);
+    const status = Number(res?.status);
+    if (!(status >= 300 && status < 400)) return res;
+
+    const location = res.headers?.get?.("location");
+    if (!location) return res;
+
+    let nextUrl;
+    try {
+      nextUrl = new URL(location, currentTargetUrl).toString();
+    } catch {
+      throw new Error("[ProxyFetch] Redirect to invalid URL blocked");
+    }
+
+    if (!shouldBypassMitmDns(nextUrl)) {
+      try {
+        await assertSafeResolvedHostname(new URL(nextUrl).hostname, { allowLoopback: false });
+      } catch (dnsError) {
+        throw new Error(`[ProxyFetch] Redirect blocked by SSRF guard: ${dnsError.message}`);
+      }
+    }
+
+    try { await res.body?.cancel(); } catch { /* noop */ }
+
+    const originChanged = new URL(nextUrl).origin !== new URL(currentTargetUrl).origin;
+    if (originChanged && currentOptions.headers) {
+      currentOptions = {
+        ...currentOptions,
+        headers: stripCredentialHeadersOnRedirect(currentOptions.headers),
+      };
+    }
+
+    const method = (currentOptions.method || "GET").toUpperCase();
+    if (res.status === 303 || ((res.status === 301 || res.status === 302) && method !== "GET" && method !== "HEAD")) {
+      const { body, ...rest } = currentOptions;
+      if (rest.headers) {
+        const cleaned = {};
+        for (const [k, v] of getRedirectHeaderEntries(rest.headers)) {
+          const lk = k.toLowerCase();
+          if (lk === "content-length" || lk === "content-type" || lk === "transfer-encoding") continue;
+          cleaned[k] = v;
+        }
+        rest.headers = cleaned;
+      }
+      currentOptions = { ...rest, method: "GET" };
+    }
+
+    currentTargetUrl = nextUrl;
+  }
+
+  throw new Error(`[ProxyFetch] Too many redirects (>${MAX_UPSTREAM_REDIRECTS})`);
+}
+
 // ─── DNS-rebind-safe dispatcher ───────────────────────────────────────────
 // assertSafeResolvedHostname validates the hostname's resolved IPs, but undici
 // then re-resolves independently when it connects. Across the ~60s DNS cache
@@ -1230,6 +1313,9 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
         console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);
       }
     }
+    if (!proxyUrl && vercelRelayUrl) {
+      return relayRedirectFetch(vercelRelayUrl, targetUrl, options, proxyOptions, guardedFetch);
+    }
     const realIP = await resolveRealIP(parsedUrl.hostname);
     if (!realIP) {
       throw new Error(`[ProxyFetch] External DNS resolution failed for MITM bypass host: ${parsedUrl.hostname}`);
@@ -1249,16 +1335,7 @@ async function _proxyAwareFetch(url, options = {}, proxyOptions = null) {
   }
 
   if (!proxyUrl && vercelRelayUrl) {
-    const parsed = new URL(targetUrl);
-    const relayHeaders = {
-      ...options.headers,
-      "x-relay-target": `${parsed.protocol}//${parsed.host}`,
-      "x-relay-path": `${parsed.pathname}${parsed.search}`,
-    };
-    const relayAuthSecret = normalizeString(proxyOptions?.relayAuthSecret);
-    if (relayAuthSecret) relayHeaders["x-relay-auth"] = relayAuthSecret;
-    await assertSafeResolvedHostname(new URL(vercelRelayUrl).hostname, { allowLoopback: false });
-    return safeRedirectFetch(vercelRelayUrl, { ...options, headers: relayHeaders, ssrfAllowLoopback: false }, guardedFetch);
+    return relayRedirectFetch(vercelRelayUrl, targetUrl, options, proxyOptions, guardedFetch);
   }
 
   if (proxyUrl) {

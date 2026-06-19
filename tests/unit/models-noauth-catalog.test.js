@@ -29,7 +29,8 @@ const { buildModelsList } = await import("../../src/app/api/v1/models/route.js")
 
 describe("/v1/models no-auth catalog", () => {
   it("lists no-auth LLM provider models without saved connections", async () => {
-    const ids = (await buildModelsList(["llm"])).map((m) => m.id);
+    const { models } = await buildModelsList(["llm"]);
+    const ids = models.map((m) => m.id);
 
     expect(ids).toContain("oc/big-pickle");
     expect(ids).toContain("oc/qwen3.6-plus-free");

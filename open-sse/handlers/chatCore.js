@@ -244,9 +244,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     toolNameMap = translatedBody._toolNameMap;
     delete translatedBody._toolNameMap;
 
-    // Post-translation validation: ensure translated body is a valid object with content
+    // Post-translation validation: ensure translated body is a valid object with content.
+    // A non-object (truthy) result is an invalid translation body, not a downstream
+    // validation failure — fail closed with translation_invalid_body (Req 6.3) and no upstream forward.
     if (!translatedBody || typeof translatedBody !== "object") {
-      return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Translation produced invalid output for ${targetFormat}`, undefined, { errorType: VALIDATION_ERROR_TYPES.VALIDATION_FAILED, errorCode: VALIDATION_ERROR_TYPES.VALIDATION_FAILED });
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Translation produced invalid output for ${targetFormat}`, undefined, { errorType: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY, errorCode: VALIDATION_ERROR_TYPES.TRANSLATION_INVALID_BODY });
     }
   }
 

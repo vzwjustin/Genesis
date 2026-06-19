@@ -57,6 +57,16 @@ describe("Round 26 — Gemini native SSE assembly", () => {
     const sse = 'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"partial"}]}}]}';
     expect(parseSSEToGeminiResponse(sse, false)).toBeNull();
   });
+
+  it("returns null when Gemini SSE includes an upstream error frame", () => {
+    const sse = [
+      'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"partial"}]} }]}',
+      'data: {"error":{"status":"UNAVAILABLE","message":"upstream failed"}}',
+      'data: {"candidates":[{"content":{"role":"model","parts":[{"text":" done"}]} ,"finishReason":"STOP"}]}',
+    ].join("\n");
+
+    expect(parseSSEToGeminiResponse(sse, false)).toBeNull();
+  });
 });
 
 describe("Round 26 — translateRequest fails closed on missing translator", () => {

@@ -29,6 +29,7 @@ async function buildValidateProxyOptions(providerSpecificData) {
     vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
     relayAuthSecret: proxyConfig.relayAuthSecret || "",
     strictProxy: proxyConfig.strictProxy,
+    proxyRequiredUnavailable: proxyConfig.proxyRequiredUnavailable === true,
   };
 }
 

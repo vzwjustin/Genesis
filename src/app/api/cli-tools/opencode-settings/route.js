@@ -7,6 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { getCliHomeDir } from "@/shared/utils/cliHome";
+import { getWireType } from "open-sse/config/wireType.js";
 
 const execAsync = promisify(exec);
 
@@ -100,7 +101,7 @@ function modelEntry(id) {
 }
 
 function isClaudeWireModel(id) {
-  return typeof id === "string" && /^(cc\/|claude[-/])/i.test(id);
+  return getWireType(id, { family: "narrow" }) === "anthropic";
 }
 
 export function providerPrefixForModel(id, modelIds = []) {
@@ -216,14 +217,27 @@ export async function GET(request) {
         installed: false,
         config: null,
         message: "OpenCode CLI is not installed",
+        diagnostics: { fileExists: false, misconfigured: false },
       });
     }
 
     const config = await readConfig();
+
+    // Req 3.6: when no opencode.json exists, report fileExists:false additively.
+    if (config === null) {
+      return NextResponse.json({
+        installed: true,
+        config: null,
+        hasGenesis: false,
+        configPath: getConfigPath(),
+        diagnostics: { fileExists: false, misconfigured: false },
+      });
+    }
+
     const modelMap = getMergedGenesisModels(config);
     const genesisProvider = config?.provider?.genesis;
     const genesisCcProvider = config?.provider?.["genesis-cc"];
-    const diagnostics = diagnoseGenesisOpenCodeConfig(config);
+    const diagnostics = { fileExists: true, ...diagnoseGenesisOpenCodeConfig(config) };
 
     return NextResponse.json({
       installed: true,
@@ -254,8 +268,19 @@ export async function POST(request) {
     // Accept either `model` (string, legacy) or `models` (array of strings)
     const modelsArray = Array.isArray(models) ? models.slice() : (typeof model === "string" ? [model] : []);
 
-    if (!baseUrl || modelsArray.length === 0) {
-      return NextResponse.json({ error: "baseUrl and at least one model are required" }, { status: 400 });
+    // Fail closed: validate inputs before touching the config file (Req 3.8).
+    const fields = [];
+    if (typeof baseUrl !== "string" || !/^https?:\/\//i.test(baseUrl) || /\/$/.test(baseUrl)) {
+      fields.push("baseUrl");
+    }
+    if (modelsArray.length === 0 || !modelsArray.every((m) => typeof m === "string" && m.length > 0)) {
+      fields.push("models");
+    }
+    if (typeof apiKey !== "string" || apiKey.length === 0) {
+      fields.push("apiKey");
+    }
+    if (fields.length > 0) {
+      return NextResponse.json({ error: { fields } }, { status: 400 });
     }
 
     const configDir = getConfigDir();
@@ -337,7 +362,8 @@ export async function PATCH(request) {
       config = JSON.parse(existing);
     } catch (error) {
       if (error.code === "ENOENT") {
-        return NextResponse.json({ success: true, message: "No config file found" });
+        // Req 3.7: repair/patch against a non-existent config fails closed with 404.
+        return NextResponse.json({ error: "No config file found" }, { status: 404 });
       }
       throw error;
     }

@@ -66,6 +66,30 @@ async function normalizeProxyPoolUpdate(proxyPoolIdInput) {
   return { hasProxyPoolField: true, proxyPoolId };
 }
 
+const PROVIDER_SPECIFIC_PROXY_FIELDS = [
+  "proxyPoolId",
+  "connectionProxyEnabled",
+  "connectionProxyUrl",
+  "connectionNoProxy",
+];
+
+function normalizeProviderSpecificDataUpdate(providerSpecificData) {
+  if (providerSpecificData === undefined) return { providerSpecificData };
+  if (providerSpecificData === null) return { providerSpecificData };
+  if (typeof providerSpecificData !== "object" || Array.isArray(providerSpecificData)) {
+    return { error: "providerSpecificData must be an object" };
+  }
+
+  const nestedProxyField = PROVIDER_SPECIFIC_PROXY_FIELDS.find((field) => (
+    Object.prototype.hasOwnProperty.call(providerSpecificData, field)
+  ));
+  if (nestedProxyField) {
+    return { error: `${nestedProxyField} must be updated with top-level proxy fields` };
+  }
+
+  return { providerSpecificData };
+}
+
 function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, hasProxyPoolField) {
   return existing !== undefined || incoming !== undefined || hasLegacyProxy || hasProxyPoolField;
 }
@@ -113,6 +137,11 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    const providerSpecificDataResult = normalizeProviderSpecificDataUpdate(providerSpecificData);
+    if (providerSpecificDataResult.error) {
+      return NextResponse.json({ error: providerSpecificDataResult.error }, { status: 400 });
+    }
+
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
@@ -135,14 +164,14 @@ export async function PUT(request, { params }) {
     if (
       shouldMergeProviderSpecificData(
         existing.providerSpecificData,
-        providerSpecificData,
+        providerSpecificDataResult.providerSpecificData,
         proxyConfig.hasAnyProxyField,
         proxyPoolResult.hasProxyPoolField
       )
     ) {
       updateData.providerSpecificData = {
         ...(existing.providerSpecificData || {}),
-        ...(providerSpecificData || {}),
+        ...(providerSpecificDataResult.providerSpecificData || {}),
       };
 
       if (proxyConfig.hasAnyProxyField) {

@@ -401,9 +401,10 @@ describe("round-5: v1beta models list", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     routeAuthMock.mockResolvedValue({ ok: true });
-    buildModelsListMock.mockResolvedValue([
-      { id: "openai/gpt-4o", owned_by: "openai" },
-    ]);
+    buildModelsListMock.mockResolvedValue({
+      models: [{ id: "openai/gpt-4o", owned_by: "openai" }],
+      warnings: [],
+    });
   });
 
   it("uses buildModelsList instead of static PROVIDER_MODELS dump", async () => {

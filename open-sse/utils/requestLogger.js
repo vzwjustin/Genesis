@@ -283,6 +283,72 @@ export async function createRequestLogger(sourceFormat, targetFormat, model, opt
   };
 }
 
+// Allowed auth-failure reasons (Req 7.3). Any other value is coerced to null so
+// a raw header/key can never leak into the summary via this field.
+const INBOUND_AUTH_FAILURE_REASONS = new Set(["missing_header", "invalid_key", "malformed_header"]);
+
+/**
+ * Write a single structured inbound-request summary entry (Req 7.1–7.5).
+ *
+ * Emitted once per inbound request on completion (success or error) from the
+ * chat handler. Contains exactly the Req 7.1 fields plus the failure-context
+ * fields when applicable:
+ *   { inboundWire, rawModel, resolvedProviderModelString | null, status }
+ *   + on resolution failure: { unresolvedModel, registeredModels }
+ *   + on auth failure:       { authFailureReason ∈ {missing_header,invalid_key,malformed_header} }
+ *
+ * Fail-open (AGENTS.md "optional systems must not break the request path"):
+ * gated on ENABLE_REQUEST_LOGS (no-op when disabled) and wrapped so ANY error —
+ * including a failure while logging the failure — is swallowed and the request
+ * proceeds. Every field is routed through the shared redaction helpers so an
+ * Authorization value / bearer token / api key can never reach the log (Req 7.5).
+ *
+ * @param {object} fields
+ * @returns {void} never throws
+ */
+export function logInboundSummary({
+  inboundWire,
+  rawModel,
+  resolvedModel,
+  status,
+  authFailureReason,
+  unresolvedModel,
+  registeredModels,
+} = {}) {
+  // Gate: no-op when request logging is disabled (Req 7.4 fail-open intent).
+  if (!LOGGING_ENABLED) return;
+  try {
+    const reason = INBOUND_AUTH_FAILURE_REASONS.has(authFailureReason) ? authFailureReason : null;
+    const entry = {
+      timestamp: new Date().toISOString(),
+      type: "inbound_summary",
+      // Req 7.1 — required fields. Route free-text through redactSensitiveText
+      // and structured values through sanitizeLogValue so no secret slips in via
+      // a hostile model string.
+      inboundWire: inboundWire == null ? null : redactSensitiveText(inboundWire),
+      rawModel: rawModel == null ? null : redactSensitiveText(rawModel),
+      resolvedProviderModelString: resolvedModel == null ? null : redactSensitiveText(resolvedModel),
+      status: typeof status === "number" ? status : null,
+      // Req 7.3 — auth failure reason only (never the key/raw Authorization value).
+      authFailureReason: reason,
+    };
+    // Req 7.2 — resolution-failure context.
+    if (unresolvedModel != null) entry.unresolvedModel = redactSensitiveText(unresolvedModel);
+    if (registeredModels != null) entry.registeredModels = sanitizeLogValue(registeredModels);
+
+    if (isNode && console?.log) {
+      console.log(`[INBOUND] ${JSON.stringify(entry)}`);
+    }
+  } catch (err) {
+    // Swallow EVERYTHING — logging must never break the request path (Req 7.4).
+    try {
+      console.log("[LOG] logInboundSummary failed (ignored):", err?.message || err);
+    } catch {
+      // If even logging the failure fails, still continue.
+    }
+  }
+}
+
 // Legacy functions for backward compatibility
 export function logRequest() {}
 export function logResponse() {}

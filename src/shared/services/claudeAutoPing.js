@@ -3,7 +3,7 @@ import "open-sse/index.js";
 
 import { getSettings, getProviderConnections, updateProviderConnection } from "@/lib/localDb";
 import { getUsageForProvider } from "open-sse/services/usage.js";
-import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
+import { PROVIDERS } from "open-sse/config/providers.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route.js";
@@ -28,7 +28,7 @@ async function sendPing(accessToken, proxyOptions) {
   const res = await proxyAwareFetch(PING_URL, {
     method: "POST",
     headers: {
-      ...CLAUDE_CLI_SPOOF_HEADERS,
+      ...PROVIDERS.claude.headers,
       Authorization: `Bearer ${accessToken}`,
       "content-type": "application/json",
     },
