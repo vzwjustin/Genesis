@@ -77,7 +77,7 @@ function SetupStepper({ steps }) {
         <div>
           <p className="text-sm font-semibold tracking-tight text-text-main">Setup checklist</p>
           <p className="mt-0.5 text-xs text-text-muted">
-            {doneCount}/{steps.length} complete · Security provider and recommended
+            {doneCount}/{steps.length} complete · Start with providers, then endpoint security
           </p>
         </div>
         <div className="flex min-w-[140px] flex-col gap-1.5 sm:items-end">
@@ -108,9 +108,7 @@ function SetupStepper({ steps }) {
               )}
               <div
                 className={`relative z-10 flex size-8 items-center justify-center rounded-full border ${
-                  step.done
-                    ? "step-done"
-                    : "step-pending"
+                  step.done ? "step-done" : "step-pending"
                 }`}
               >
                 {step.done ? (
@@ -121,7 +119,7 @@ function SetupStepper({ steps }) {
               </div>
               <Link
                 href={step.href}
-                className={`mt-2.5 text-[11px] leading-snug sm:text-xs ${step.done ? "text-text-muted" : "text-text-muted hover:text-text-main"}`}
+                className="mt-2.5 text-[11px] leading-snug sm:text-xs text-text-muted hover:text-text-main"
               >
                 {step.label}
               </Link>
@@ -129,6 +127,81 @@ function SetupStepper({ steps }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+const QUICK_GUIDE = [
+  {
+    href: "/dashboard/providers",
+    icon: "dns",
+    title: "Providers",
+    description: "Connect Anthropic, OpenAI, or custom endpoints. Genesis routes traffic to them.",
+  },
+  {
+    href: "/dashboard/endpoint",
+    icon: "api",
+    title: "Endpoint",
+    description: "Copy the base URL and API key settings your apps and CLI tools should use.",
+  },
+  {
+    href: "/dashboard/cli-tools",
+    icon: "terminal",
+    title: "CLI tools",
+    description: "One-click setup for Claude Code, Cursor, Codex, and other local agents.",
+  },
+  {
+    href: "/dashboard/combos",
+    icon: "layers",
+    title: "Combos",
+    description: "Build failover chains so requests move to the next model when one fails.",
+  },
+  {
+    href: "/dashboard/caching",
+    icon: "cached",
+    title: "Caching",
+    description: "Shrink large prompts before they reach providers and track tokens saved.",
+  },
+  {
+    href: "/dashboard/usage",
+    icon: "bar_chart",
+    title: "Usage",
+    description: "See every request, token count, and which provider handled it.",
+  },
+];
+
+function WhereThingsLive() {
+  return (
+    <div className="glass-panel p-4 sm:p-5">
+      <div className="mb-4 border-b border-border/50 pb-3">
+        <h2 className="text-sm font-semibold tracking-tight text-text-main">Where things live</h2>
+        <p className="mt-1 text-xs text-text-muted">
+          Genesis sits between your tools and AI providers. Use these pages for each step.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {QUICK_GUIDE.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="group flex gap-3 rounded-xl border border-border/40 bg-surface-1/30 p-3 transition-colors dashboard-row-hover"
+          >
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg glass-stat border-0 text-brand-500">
+              <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-text-main group-hover:text-brand-500 transition-colors">
+                {item.title}
+              </span>
+              <span className="mt-0.5 block text-xs leading-snug text-text-muted">{item.description}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+      <p className="mt-4 text-[11px] text-text-subtle">
+        Tip: press <kbd className="glass-code px-1 py-0.5 text-[10px]">⌘K</kbd> or{" "}
+        <kbd className="glass-code px-1 py-0.5 text-[10px]">Ctrl+K</kbd> to jump to any page.
+      </p>
     </div>
   );
 }
@@ -259,6 +332,8 @@ export default function DashboardOverviewClient() {
       {!loading && setupComplete < setupSteps.length && (
         <SetupStepper steps={setupSteps} />
       )}
+
+      {!loading && <WhereThingsLive />}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {loading ? (

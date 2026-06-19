@@ -11,6 +11,7 @@ import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
+import { getDashboardNavPageMeta } from "@/shared/constants/dashboardNav";
 
 const getPageInfo = (pathname) => {
   if (!pathname) return { title: "", description: "", breadcrumbs: [] };
@@ -70,29 +71,28 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/basic-chat"))
     return {
       title: "Basic Chat",
-      description: "Chat with models from your connected providers",
+      description: "Send a test message through the proxy",
       icon: "chat",
       breadcrumbs: [],
     };
   if (pathname.includes("/providers") && !pathname.includes("/media-providers"))
     return {
       title: "Providers",
-      description: "Connect, test, and route AI providers",
+      description: "Connect AI accounts and pick models",
       icon: "dns",
       breadcrumbs: [],
     };
   if (pathname.includes("/combos"))
     return {
       title: "Combos",
-      description: "Build ordered model failover chains",
+      description: "Ordered failover across models",
       icon: "layers",
       breadcrumbs: [],
     };
   if (pathname.includes("/usage"))
     return {
-      title: "Usage & Analytics",
-      description:
-        "Review spend, tokens, quota, and request history",
+      title: "Usage",
+      description: "Request history, tokens, and spend",
       icon: "bar_chart",
       breadcrumbs: [],
     };
@@ -106,63 +106,63 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/quota"))
     return {
       title: "Quota Tracker",
-      description: "Watch provider limits before requests fail",
+      description: "Watch provider limits before they fail",
       icon: "data_usage",
       breadcrumbs: [],
     };
   if (pathname.includes("/mitm"))
     return {
       title: "MITM Proxy",
-      description: "Intercept CLI tool traffic and route through Genesis",
+      description: "Intercept IDE traffic and route through Genesis",
       icon: "security",
       breadcrumbs: [],
     };
   if (pathname.includes("/cli-tools"))
     return {
       title: "CLI Tools",
-      description: "Install and point local AI tools at Genesis",
+      description: "Point Claude Code, Cursor, and Codex here",
       icon: "terminal",
       breadcrumbs: [],
     };
   if (pathname.includes("/proxy-pools"))
     return {
       title: "Proxy Pools",
-      description: "Group outbound proxies for provider routing",
+      description: "Group outbound proxies for connections",
       icon: "lan",
       breadcrumbs: [],
     };
   if (pathname.includes("/skills"))
     return {
-      title: "Agent Skills",
-      description: "Share ready-to-use capability links with AI agents",
+      title: "Skills",
+      description: "Share capability links with AI agents",
       icon: "extension",
       breadcrumbs: [],
     };
   if (pathname.includes("/endpoint"))
     return {
       title: "Endpoint",
-      description: "Copy local, tunnel, and secure API endpoints",
+      description: "Local, tunnel, and cloud API URLs",
       icon: "api",
       breadcrumbs: [],
     };
   if (pathname.includes("/api-keys"))
     return {
       title: "API Keys",
-      description: "Create and manage API keys for authenticating requests",
+      description: "Create keys for apps and CLI tools",
       icon: "vpn_key",
       breadcrumbs: [],
     };
   if (pathname.includes("/profile"))
     return {
       title: "Settings",
-      description: "Set account, security, and UI preferences",
+      description: "Password, security, and UI preferences",
       icon: "settings",
       breadcrumbs: [],
     };
   if (pathname.includes("/translator"))
     return {
       title: "Translator",
-      description: "Debug translation flow between formats",
+      description: "Debug request translation between formats",
       icon: "translate",
       breadcrumbs: [],
     };
@@ -173,13 +173,26 @@ const getPageInfo = (pathname) => {
       icon: "article",
       breadcrumbs: [],
     };
-  if (pathname === "/dashboard")
+  if (pathname.includes("/caching"))
     return {
-      title: "Overview",
-      description: "Security status, quick links, and where to go next",
-      icon: "home",
+      title: "Caching",
+      description: "Compress prompts and track token savings",
+      icon: "cached",
       breadcrumbs: [],
     };
+  if (pathname.includes("/pricing"))
+    return {
+      title: "Pricing",
+      description: "Reference rates for cost estimates",
+      icon: "payments",
+      breadcrumbs: [],
+    };
+
+  const navMeta = getDashboardNavPageMeta(pathname);
+  if (navMeta) {
+    return { ...navMeta, breadcrumbs: [] };
+  }
+
   return { title: "", description: "", breadcrumbs: [] };
 };
 

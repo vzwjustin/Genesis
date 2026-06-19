@@ -16,7 +16,7 @@ describe("frontend accessibility regressions", () => {
     const sidebar = read("src/shared/components/Sidebar.js");
 
     expect(sidebar).toContain('aria-hidden="true"');
-    expect(sidebar).toContain('aria-current={isActive(item.href) ? "page" : undefined}');
+    expect(sidebar).toContain('aria-current={active ? "page" : undefined}');
     expect(sidebar).toContain("aria-expanded={mediaOpen}");
     expect(sidebar).toContain('aria-controls="sidebar-media-providers"');
     expect(sidebar).toContain('id="sidebar-media-providers"');
@@ -86,8 +86,8 @@ describe("frontend accessibility regressions", () => {
     expect(caching).toContain("/api/compression/history");
     expect(caching).toContain("/api/compression/provider-cache");
     expect(caching).toContain("mitmAutoSetupOnImport");
-    expect(read("src/shared/components/Sidebar.js")).toContain('href: "/dashboard/caching"');
-    expect(read("src/shared/components/Sidebar.js")).toContain('href: "/dashboard/pricing"');
+    expect(read("src/shared/constants/dashboardNav.js")).toContain('"/dashboard/caching"');
+    expect(read("src/shared/constants/dashboardNav.js")).toContain('"/dashboard/pricing"');
   });
 
   it("exposes Headroom controls tied to live proxy reachability", () => {
@@ -149,6 +149,7 @@ describe("frontend accessibility regressions", () => {
     expect(layout).toContain("CommandPalette");
     expect(palette).toContain('e.key.toLowerCase() === "k"');
     expect(palette).toContain("DASHBOARD_NAV_ITEMS");
+    expect(palette).toContain("item.description");
   });
 
   it("supports request log session viewer on caching debug logs tab", () => {
@@ -166,21 +167,36 @@ describe("frontend accessibility regressions", () => {
     const overview = read("src/app/(dashboard)/dashboard/DashboardOverviewClient.js");
 
     expect(overview).toContain("Setup checklist");
+    expect(overview).toContain("Where things live");
     expect(overview).toContain("/dashboard/caching");
+  });
+
+  it("groups sidebar navigation into labeled sections with descriptions", () => {
+    const sidebar = read("src/shared/components/Sidebar.js");
+    const nav = read("src/shared/constants/dashboardNav.js");
+
+    expect(nav).toContain("DASHBOARD_NAV_SECTIONS");
+    expect(nav).toContain("Get started");
+    expect(nav).toContain("Routing");
+    expect(nav).toContain("Monitor");
+    expect(sidebar).toContain("DASHBOARD_NAV_SECTIONS");
+    expect(sidebar).toContain("Advanced");
+    expect(sidebar).toContain("title={item.description}");
   });
 
   it("keeps primary dashboard copy direct and task-oriented", () => {
     const header = read("src/shared/components/Header.js");
+    const nav = read("src/shared/constants/dashboardNav.js");
     const tools = read("src/shared/constants/cliTools.js");
     const skills = read("src/shared/constants/skills.js");
     const skillsPage = read("src/app/(dashboard)/dashboard/skills/page.js");
-    const combined = `${header}\n${tools}\n${skills}\n${skillsPage}`;
+    const combined = `${header}\n${nav}\n${tools}\n${skills}\n${skillsPage}`;
 
-    expect(header).toContain("Connect, test, and route AI providers");
-    expect(header).toContain("Build ordered model failover chains");
-    expect(header).toContain("Review spend, tokens, quota, and request history");
-    expect(header).toContain("Install and point local AI tools at Genesis");
-    expect(header).toContain("Share ready-to-use capability links with AI agents");
+    expect(header).toContain("Connect AI accounts and pick models");
+    expect(header).toContain("Ordered failover across models");
+    expect(header).toContain("Request history, tokens, and spend");
+    expect(header).toContain("Point Claude Code, Cursor, and Codex here");
+    expect(header).toContain("Share capability links with AI agents");
     expect(tools).toContain("Route Antigravity IDE traffic through Genesis");
     expect(skills).toContain("Start here: base URL, auth, model discovery, and every capability link.");
     expect(skillsPage).toContain("Send this to your agent:");
