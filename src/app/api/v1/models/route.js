@@ -23,6 +23,7 @@ async function buildProxyOptionsFromConnection(conn) {
     vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
     relayAuthSecret: proxyConfig.relayAuthSecret || "",
     strictProxy: proxyConfig.strictProxy,
+    proxyRequiredUnavailable: proxyConfig.proxyRequiredUnavailable === true,
   };
 }
 

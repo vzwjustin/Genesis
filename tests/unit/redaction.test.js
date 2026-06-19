@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { redactSensitiveText, redactSensitiveUrl } from "../../src/shared/utils/redaction.js";
+import { maskSensitiveHeaders, redactSensitiveText, redactSensitiveUrl, sanitizeValue } from "../../src/shared/utils/redaction.js";
 
 describe("redactSensitiveText", () => {
   it("redacts sk- gateway and provider key shapes", () => {
@@ -49,6 +49,57 @@ describe("redactSensitiveText", () => {
     expect(out).not.toContain("super-secret-key");
     expect(out).toContain("key=[redacted]");
     expect(out).toContain("model=gpt-4");
+  });
+
+  it("redacts relay and vendor API key headers in text and JSON", () => {
+    const headerLines = [
+      "x-relay-auth: relay-secret-value",
+      "x-goog-api-key: AIzaSyDeadBeef1234567890",
+      "x-key: bfl-secret-value",
+      "api-key: azure-secret-value",
+    ].join("\n");
+    const jsonLine = JSON.stringify({
+      "x-relay-auth": "relay-secret-value",
+      "x-goog-api-key": "AIzaSyDeadBeef1234567890",
+      "x-key": "bfl-secret-value",
+      "api-key": "azure-secret-value",
+      safe: "ok",
+    });
+
+    const out = `${redactSensitiveText(headerLines)}\n${redactSensitiveText(jsonLine)}`;
+    expect(out).not.toContain("relay-secret-value");
+    expect(out).not.toContain("AIzaSyDeadBeef");
+    expect(out).not.toContain("bfl-secret-value");
+    expect(out).not.toContain("azure-secret-value");
+    expect(out).toContain("ok");
+  });
+});
+
+describe("structured redaction", () => {
+  it("masks/drops relay and vendor API key headers", () => {
+    const masked = maskSensitiveHeaders({
+      "x-relay-auth": "relay-secret-value",
+      "x-goog-api-key": "AIzaSyDeadBeef1234567890",
+      "x-key": "bfl-secret-value",
+      safe: "ok",
+    });
+    expect(masked["x-relay-auth"]).not.toBe("relay-secret-value");
+    expect(masked["x-goog-api-key"]).not.toBe("AIzaSyDeadBeef1234567890");
+    expect(masked["x-key"]).not.toBe("bfl-secret-value");
+    expect(masked.safe).toBe("ok");
+
+    const sanitized = sanitizeValue({
+      headers: {
+        "x-relay-auth": "relay-secret-value",
+        "x-goog-api-key": "AIzaSyDeadBeef1234567890",
+        "x-key": "bfl-secret-value",
+        safe: "ok",
+      },
+    });
+    expect(sanitized.headers["x-relay-auth"]).toBeUndefined();
+    expect(sanitized.headers["x-goog-api-key"]).toBeUndefined();
+    expect(sanitized.headers["x-key"]).toBeUndefined();
+    expect(sanitized.headers.safe).toBe("ok");
   });
 });
 

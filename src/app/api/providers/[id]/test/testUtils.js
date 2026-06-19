@@ -328,7 +328,9 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
 async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null) {
   const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
   let proxyOptions = null;
-  if (effectiveProxy?.vercelRelayUrl) {
+  if (effectiveProxy?.proxyRequiredUnavailable === true) {
+    proxyOptions = { proxyRequiredUnavailable: true, strictProxy: true };
+  } else if (effectiveProxy?.vercelRelayUrl) {
     proxyOptions = {
       vercelRelayUrl: effectiveProxy.vercelRelayUrl,
       relayAuthSecret: effectiveProxy.relayAuthSecret || "",

@@ -407,7 +407,13 @@ export function parseSSEToGeminiResponse(rawSSE, wrapInResponse = false) {
       continue;
     }
     try {
-      chunks.push(JSON.parse(payload));
+      const parsed = JSON.parse(payload);
+      if (parsed && parsed.error) {
+        console.warn("[SSE] parseSSEToGeminiResponse: upstream error event received:",
+          parsed.error?.status || parsed.error?.code || "unknown", "|", parsed.error?.message || "(no message)");
+        return null;
+      }
+      chunks.push(parsed);
     } catch {
       return null;
     }

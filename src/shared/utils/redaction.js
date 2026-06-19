@@ -7,7 +7,11 @@
 // Header/field names whose VALUES must never be persisted.
 export const SENSITIVE_KEY_PARTS = [
   "authorization",
+  "proxy-authorization",
   "x-api-key",
+  "x-goog-api-key",
+  "x-key",
+  "x-relay-auth",
   "x-9r-cli-token",
   "cookie",
   "set-cookie",
@@ -21,6 +25,10 @@ export const SENSITIVE_KEY_PARTS = [
 const SENSITIVE_COMPACT_KEYS = [
   "apikey",
   "xapikey",
+  "xgoogapikey",
+  "xkey",
+  "xrelayauth",
+  "proxyauthorization",
   "setcookie",
   "clientsecret",
   "accesstoken",
@@ -113,10 +121,10 @@ export function redactSensitiveText(value) {
     .replace(/\bAIza[0-9A-Za-z_-]{10,}/g, "AIza[redacted]")
     .replace(/\bgh[pousr]_[A-Za-z0-9_]+/g, "gh[redacted]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "eyJ[redacted]")
-    .replace(/\b(access_token|refresh_token|id_token|api_key|client_secret|password|token|secret|key)=([^&\s]+)/gi, "$1=[redacted]")
-    .replace(/("(?:authorization|x-api-key|x-9r-cli-token|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)"/gi, '$1[redacted]"')
-    .replace(/('(?:authorization|x-api-key|x-9r-cli-token|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)'\s*:\s*')([^'\\]*(?:\\.[^'\\]*)*)'/gi, "$1[redacted]'")
-    .replace(/\b(authorization|x-api-key|x-9r-cli-token|cookie|set-cookie)\s*:\s*([^\r\n]+)/gi, "$1: [redacted]");
+    .replace(/\b(access_token|refresh_token|id_token|api_key|api-key|x-goog-api-key|x-key|x-relay-auth|client_secret|password|token|secret|key)=([^&\s]+)/gi, "$1=[redacted]")
+    .replace(/("(?:authorization|proxy-authorization|x-api-key|x-goog-api-key|api-key|x-key|x-relay-auth|x-9r-cli-token|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)"/gi, '$1[redacted]"')
+    .replace(/('(?:authorization|proxy-authorization|x-api-key|x-goog-api-key|api-key|x-key|x-relay-auth|x-9r-cli-token|cookie|set-cookie|access_token|refresh_token|id_token|api_key|client_secret|password|token|secret)'\s*:\s*')([^'\\]*(?:\\.[^'\\]*)*)'/gi, "$1[redacted]'")
+    .replace(/\b(authorization|proxy-authorization|x-api-key|x-goog-api-key|api-key|x-key|x-relay-auth|x-9r-cli-token|cookie|set-cookie)\s*:\s*([^\r\n]+)/gi, "$1: [redacted]");
 }
 
 /**
