@@ -14,6 +14,7 @@ const attempts = new Map(); // ip → { fails, lockUntil, lockLevel, lastFailAt 
 const MAX_ATTEMPTS_ENTRIES = 10_000;
 const ATTEMPTS_FILE = path.join(DATA_DIR, "auth", "login-attempts.json");
 let attemptsLoaded = false;
+const ipQueues = new Map(); // ip → Promise chain for atomic check+record
 
 function now() { return Date.now(); }
 
@@ -71,6 +72,23 @@ function getEntry(ip) {
   return e;
 }
 
+/**
+ * Serialize login attempts per IP so checkLock + recordFail cannot race across awaits.
+ */
+export async function withLoginLock(ip, fn) {
+  const prev = ipQueues.get(ip) || Promise.resolve();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  ipQueues.set(ip, prev.finally(() => gate));
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (ipQueues.get(ip) === gate) ipQueues.delete(ip);
+  }
+}
+
 export function checkLock(ip) {
   const e = getEntry(ip);
   if (!e || !e.lockUntil) return { locked: false };
@@ -116,7 +134,13 @@ function getFallbackClientKey(request) {
 }
 
 export function getClientIp(request) {
-  if (process.env.TRUST_PROXY_HEADERS === "true") {
+  // Trusted only when custom-server.js injected it from the TCP socket.
+  if (globalThis.__nineRouterRealIpTrusted) {
+    const realIp = request.headers.get("x-9r-real-ip");
+    if (realIp) return realIp;
+  }
+  // Behind a trusted reverse proxy that overwrites XFF with the real client IP.
+  if (process.env.TRUST_PROXY === "true" || process.env.TRUST_PROXY_HEADERS === "true") {
     const xff = request.headers.get("x-forwarded-for");
     if (xff) {
       // Use the RIGHTMOST entry: with a trusted reverse proxy that appends

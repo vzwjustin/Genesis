@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSettings, getSettingsSafe, validateApiKey } from "@/lib/localDb";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
@@ -77,11 +78,34 @@ function isLoopbackIp(ip) {
   return false;
 }
 
+function isTrustedInjectedLoopbackPeer(request) {
+  if (!globalThis.__nineRouterRealIpTrusted) return false;
+  const realIp = request.headers.get("x-9r-real-ip");
+  if (!realIp) return false;
+  return isLoopbackIp(realIp);
+}
+
 function isLocalRequest(request) {
   // Stamped by custom-server.js when forwarding headers exist: request came through
   // a reverse proxy, so the loopback socket is the proxy hop, not the end-user.
   if (request.headers.get("x-9r-via-proxy")) return false;
-  return isLoopbackRequest(request);
+  // Trusted peer IP from TCP socket (custom-server.js only); ignore client-spoofed header.
+  const realIp = globalThis.__nineRouterRealIpTrusted
+    ? request.headers.get("x-9r-real-ip")
+    : null;
+  if (realIp) {
+    if (!isLoopbackIp(realIp)) return false;
+  } else if (!isLoopbackHostname(request.headers.get("host"))) {
+    // Fallback for bare server.js (dev) without custom-server: legacy Host-based check.
+    return false;
+  }
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      if (!isLoopbackHostname(new URL(origin).hostname)) return false;
+    } catch { return false; }
+  }
+  return true;
 }
 
 function isPublicLlmApi(pathname) {
@@ -102,7 +126,7 @@ async function hasValidApiKey(request) {
 
 async function getPublicLlmApiAuthError(request) {
   if (hasgenesisCredentialAttempt(request)) return "Invalid API key";
-  if (isVerifiableLoopbackRequest(request)) return "Missing API key";
+  if (isVerifiableLoopbackRequest(request) || isTrustedInjectedLoopbackPeer(request)) return "Missing API key";
   return "API key required for remote API access";
 }
 
@@ -117,7 +141,7 @@ async function canAccessPublicLlmApi(request) {
     return false;
   }
 
-  if (!requireApiKey && isVerifiableLoopbackRequest(request)) return true;
+  if (!requireApiKey && (isVerifiableLoopbackRequest(request) || isTrustedInjectedLoopbackPeer(request))) return true;
 
   return false;
 }

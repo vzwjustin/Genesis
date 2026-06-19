@@ -12,6 +12,7 @@ const CUSTOM_FILE = path.join(DATA_DIR, "mcp", "customPlugins.json");
 
 const G_KEY = "__genesisMcpBridges";
 const MAX_TEXT_CHARS = 50000;
+const MAX_STDOUT_BUFFER_BYTES = 4 * 1024 * 1024;
 const COLLAPSE_THRESHOLD = 30;
 const COLLAPSE_KEEP_HEAD = 10;
 const COLLAPSE_KEEP_TAIL = 5;
@@ -143,7 +144,7 @@ function getOrSpawn(name) {
   if (!plugin) throw new Error(`Unknown local plugin: ${name}`);
 
   const proc = spawn(plugin.command, plugin.args, { stdio: ["pipe", "pipe", "pipe"], env: process.env });
-  entry = { proc, sessions: new Map(), buffer: "" };
+  entry = { proc, sessions: new Map(), buffer: Buffer.alloc(0) };
   store.set(name, entry);
 
   // spawn() emits 'error' (e.g. ENOENT) asynchronously; without a handler it
@@ -156,11 +157,26 @@ function getOrSpawn(name) {
 
   // Parse newline-delimited JSON-RPC from child stdout, broadcast to all sessions.
   proc.stdout.on("data", (chunk) => {
-    entry.buffer += chunk.toString("utf8");
-    let idx;
-    while ((idx = entry.buffer.indexOf("\n")) >= 0) {
-      const raw = entry.buffer.slice(0, idx).trim();
-      entry.buffer = entry.buffer.slice(idx + 1);
+    entry.buffer = Buffer.concat([entry.buffer, chunk]);
+    if (entry.buffer.length > MAX_STDOUT_BUFFER_BYTES) {
+      const drop = entry.buffer.length - MAX_STDOUT_BUFFER_BYTES;
+      entry.buffer = entry.buffer.subarray(drop);
+      console.warn(`[mcp:${name}] stdout buffer capped, dropped ${drop} bytes`);
+    }
+
+    const holdBack = incompleteUtf8ByteCount(entry.buffer);
+    let work = holdBack ? entry.buffer.subarray(0, entry.buffer.length - holdBack) : entry.buffer;
+    entry.buffer = holdBack ? entry.buffer.subarray(entry.buffer.length - holdBack) : Buffer.alloc(0);
+
+    let offset = 0;
+    while (offset < work.length) {
+      const newlineIdx = work.indexOf(0x0a, offset);
+      if (newlineIdx < 0) {
+        entry.buffer = Buffer.concat([work.subarray(offset), entry.buffer]);
+        break;
+      }
+      const raw = work.subarray(offset, newlineIdx).toString("utf8").trim();
+      offset = newlineIdx + 1;
       if (!raw) continue;
       const line = filterFrame(raw);
       for (const send of entry.sessions.values()) {

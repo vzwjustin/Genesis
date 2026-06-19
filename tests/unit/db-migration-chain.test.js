@@ -83,6 +83,27 @@ describe("Schema migrations", () => {
     expect(aliases).toHaveLength(1);
   });
 
+  it("legacy import retries on next boot when schemaVersion set but migratedAt unset", async () => {
+    const legacy = { settings: { foo: "retry-value" } };
+    fs.writeFileSync(path.join(tempDir, "db.json"), JSON.stringify(legacy));
+
+    // Boot 1: migrations stamp schemaVersion; import succeeds
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    db.run(`DELETE FROM _meta WHERE key = 'migratedAt'`);
+    try { fs.unlinkSync(path.join(tempDir, "db", ".migrated-from-json")); } catch {}
+    db.run(`DELETE FROM settings`);
+    db.close?.();
+
+    delete global._dbAdapter;
+    vi.resetModules();
+
+    const { getAdapter: getAdapter2 } = await import("@/lib/db/driver.js");
+    const db2 = await getAdapter2();
+    const settings = db2.get(`SELECT data FROM settings WHERE id=1`);
+    expect(JSON.parse(settings.data)).toEqual({ foo: "retry-value" });
+  });
+
   it("auto-sync re-creates missing index when DB lacks it", async () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();

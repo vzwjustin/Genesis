@@ -1,4 +1,4 @@
-import { getAdapter } from "../driver.js";
+import { getAdapter, getAdapterSync } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { sanitizeValue as sanitizeForPersistence } from "@/shared/utils/redaction.js";
 
@@ -59,6 +59,45 @@ function truncateField(obj, maxSize) {
   return obj || {};
 }
 
+function writeItemsToDb(db, items, config) {
+  for (const item of items) {
+    if (!item.id) item.id = generateDetailId(item.model);
+    if (!item.timestamp) item.timestamp = new Date().toISOString();
+    const request = sanitizeForPersistence(item.request);
+    const providerRequest = sanitizeForPersistence(item.providerRequest);
+    const providerResponse = sanitizeForPersistence(item.providerResponse);
+    const response = sanitizeForPersistence(item.response);
+
+    const record = {
+      id: item.id,
+      provider: item.provider || null,
+      model: item.model || null,
+      connectionId: item.connectionId || null,
+      timestamp: item.timestamp,
+      status: item.status || null,
+      latency: item.latency || {},
+      tokens: item.tokens || {},
+      request: truncateField(request, config.maxJsonSize),
+      providerRequest: truncateField(providerRequest, config.maxJsonSize),
+      providerResponse: truncateField(providerResponse, config.maxJsonSize),
+      response: truncateField(response, config.maxJsonSize),
+    };
+
+    db.run(
+      `INSERT INTO requestDetails(id, timestamp, provider, model, connectionId, status, data) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET timestamp = excluded.timestamp, provider = excluded.provider, model = excluded.model, connectionId = excluded.connectionId, status = excluded.status, data = excluded.data`,
+      [record.id, record.timestamp, record.provider, record.model, record.connectionId, record.status, stringifyJson(record)]
+    );
+  }
+
+  const cnt = db.get(`SELECT COUNT(*) as c FROM requestDetails`);
+  if (cnt && cnt.c > config.maxRecords) {
+    db.run(
+      `DELETE FROM requestDetails WHERE id IN (SELECT id FROM requestDetails ORDER BY timestamp ASC LIMIT ?)`,
+      [cnt.c - config.maxRecords]
+    );
+  }
+}
+
 async function flushToDatabase() {
   if (isFlushing) return;
   if (writeBuffer.length === 0) return;
@@ -71,43 +110,7 @@ async function flushToDatabase() {
       const config = await getObservabilityConfig();
 
       db.transaction(() => {
-        for (const item of items) {
-          if (!item.id) item.id = generateDetailId(item.model);
-          if (!item.timestamp) item.timestamp = new Date().toISOString();
-          // sanitizeForPersistence drops all sensitive keys (incl. headers) recursively.
-          const request = sanitizeForPersistence(item.request);
-          const providerRequest = sanitizeForPersistence(item.providerRequest);
-          const providerResponse = sanitizeForPersistence(item.providerResponse);
-          const response = sanitizeForPersistence(item.response);
-
-          const record = {
-            id: item.id,
-            provider: item.provider || null,
-            model: item.model || null,
-            connectionId: item.connectionId || null,
-            timestamp: item.timestamp,
-            status: item.status || null,
-            latency: item.latency || {},
-            tokens: item.tokens || {},
-            request: truncateField(request, config.maxJsonSize),
-            providerRequest: truncateField(providerRequest, config.maxJsonSize),
-            providerResponse: truncateField(providerResponse, config.maxJsonSize),
-            response: truncateField(response, config.maxJsonSize),
-          };
-
-          db.run(
-            `INSERT INTO requestDetails(id, timestamp, provider, model, connectionId, status, data) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET timestamp = excluded.timestamp, provider = excluded.provider, model = excluded.model, connectionId = excluded.connectionId, status = excluded.status, data = excluded.data`,
-            [record.id, record.timestamp, record.provider, record.model, record.connectionId, record.status, stringifyJson(record)]
-          );
-        }
-
-        const cnt = db.get(`SELECT COUNT(*) as c FROM requestDetails`);
-        if (cnt && cnt.c > config.maxRecords) {
-          db.run(
-            `DELETE FROM requestDetails WHERE id IN (SELECT id FROM requestDetails ORDER BY timestamp ASC LIMIT ?)`,
-            [cnt.c - config.maxRecords]
-          );
-        }
+        writeItemsToDb(db, items, config);
       });
     }
   } catch (e) {
@@ -190,3 +193,35 @@ export async function getRequestDetailById(id) {
   const row = db.get(`SELECT data FROM requestDetails WHERE id = ?`, [id]);
   return row ? parseJson(row.data, null) : null;
 }
+
+const _shutdownHandler = () => {
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  if (writeBuffer.length === 0) return;
+  try {
+    const db = getAdapterSync();
+    const config = cachedConfig || {
+      maxRecords: DEFAULT_MAX_RECORDS,
+      batchSize: DEFAULT_BATCH_SIZE,
+      flushIntervalMs: DEFAULT_FLUSH_INTERVAL_MS,
+      maxJsonSize: DEFAULT_MAX_JSON_SIZE,
+    };
+    const items = writeBuffer.splice(0, writeBuffer.length);
+    db.transaction(() => {
+      writeItemsToDb(db, items, config);
+    });
+  } catch (e) {
+    console.error("[requestDetailsRepo] sync shutdown flush failed:", e);
+  }
+};
+
+function ensureShutdownHandler() {
+  process.off("beforeExit", _shutdownHandler);
+  process.off("SIGINT", _shutdownHandler);
+  process.off("SIGTERM", _shutdownHandler);
+
+  process.on("beforeExit", _shutdownHandler);
+  process.on("SIGINT", _shutdownHandler);
+  process.on("SIGTERM", _shutdownHandler);
+}
+
+ensureShutdownHandler();

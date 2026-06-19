@@ -33,6 +33,9 @@ function throwIfCancelled(token) {
 }
 
 export async function enableTunnel(localPort = 20128) {
+  if (svc.spawnInProgress) {
+    throw new Error("tunnel spawn already in progress");
+  }
   console.log(`[Tunnel] enable start (port=${localPort})`);
   svc.cancelToken = { cancelled: false };
   svc.activeLocalPort = localPort;

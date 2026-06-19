@@ -94,6 +94,26 @@ export async function exportDb() {
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'disabledModels'`)) out.disabledModels[r.key] = parseJson(r.value);
 
+  out.disabledModels = {};
+  for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'disabledModels'`)) {
+    out.disabledModels[r.key] = parseJson(r.value, []);
+  }
+
+  out.usageHistory = db.all(`SELECT * FROM usageHistory ORDER BY timestamp ASC`);
+  out.usageDaily = db.all(`SELECT * FROM usageDaily`).map((r) => ({
+    dateKey: r.dateKey,
+    data: parseJson(r.data, {}),
+  }));
+  out.requestDetails = db.all(`SELECT * FROM requestDetails`).map((r) => ({
+    ...parseJson(r.data, {}),
+    id: r.id,
+    timestamp: r.timestamp,
+    provider: r.provider,
+    model: r.model,
+    connectionId: r.connectionId,
+    status: r.status,
+  }));
+
   return out;
 }
 
@@ -190,6 +210,9 @@ export async function importDb(payload) {
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing', 'disabledModels')`);
+    db.run(`DELETE FROM usageHistory`);
+    db.run(`DELETE FROM usageDaily`);
+    db.run(`DELETE FROM requestDetails`);
 
     // Settings
     if (payload.settings) {
@@ -244,6 +267,31 @@ export async function importDb(payload) {
     }
     for (const [providerAlias, ids] of Object.entries(payload.disabledModels || {})) {
       db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('disabledModels', ?, ?)`, [providerAlias, stringifyJson(ids || [])]);
+    }
+    for (const row of payload.usageHistory || []) {
+      db.run(
+        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          row.timestamp, row.provider || null, row.model || null,
+          row.connectionId || null, row.apiKey || null, row.endpoint || null,
+          row.promptTokens || 0, row.completionTokens || 0, row.cost || 0,
+          row.status || "ok", stringifyJson(row.tokens || {}), stringifyJson(row.meta || {}),
+        ]
+      );
+    }
+    for (const row of payload.usageDaily || []) {
+      db.run(
+        `INSERT OR REPLACE INTO usageDaily(dateKey, data) VALUES(?, ?)`,
+        [row.dateKey, stringifyJson(row.data || {})]
+      );
+    }
+    for (const row of payload.requestDetails || []) {
+      const record = { ...row };
+      const { id, timestamp, provider, model, connectionId, status } = record;
+      db.run(
+        `INSERT OR REPLACE INTO requestDetails(id, timestamp, provider, model, connectionId, status, data) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+        [id, timestamp, provider || null, model || null, connectionId || null, status || null, stringifyJson(record)]
+      );
     }
   });
 

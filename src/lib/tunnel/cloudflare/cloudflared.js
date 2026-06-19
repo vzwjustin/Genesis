@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import https from "https";
+import crypto from "crypto";
 import os from "os";
 import { execSync, execFileSync, spawn } from "child_process";
 import { savePid, loadPid, clearPid } from "./pid.js";
@@ -50,7 +51,106 @@ function getDownloadUrl() {
   }
 
   const binaryName = platformMapping[arch] || PLATFORM_FALLBACK[platform];
-  return `${GITHUB_BASE_URL}/${binaryName}`;
+  return { url: `${GITHUB_BASE_URL}/${binaryName}`, assetName: binaryName };
+}
+
+function httpsGetText(url, redirectsLeft = 5) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    if (parsed.protocol !== "https:") {
+      reject(new Error(`Refusing non-HTTPS URL: ${url}`));
+      return;
+    }
+
+    https.get(url, { headers: { "User-Agent": "9router-cloudflared-updater" } }, (response) => {
+      if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
+        if (redirectsLeft <= 0) {
+          reject(new Error("cloudflared fetch: too many redirects"));
+          return;
+        }
+        const location = response.headers.location;
+        if (!location) {
+          reject(new Error("cloudflared fetch: redirect without location"));
+          return;
+        }
+        const nextUrl = new URL(location, url);
+        if (nextUrl.protocol !== "https:") {
+          reject(new Error(`cloudflared fetch: redirect to non-HTTPS blocked (${nextUrl.href})`));
+          return;
+        }
+        httpsGetText(nextUrl.href, redirectsLeft - 1).then(resolve).catch(reject);
+        return;
+      }
+
+      if (response.statusCode !== 200) {
+        reject(new Error(`cloudflared fetch failed with status ${response.statusCode}`));
+        return;
+      }
+
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      response.on("error", reject);
+    }).on("error", reject);
+  });
+}
+
+let checksumCache = { assetName: null, sha256: null, ts: 0 };
+const CHECKSUM_CACHE_MS = 60 * 60 * 1000;
+
+/** Best-effort: parse cloudflared release checksums.txt for the target asset. */
+async function fetchExpectedSha256(assetName) {
+  if (checksumCache.assetName === assetName && (Date.now() - checksumCache.ts) < CHECKSUM_CACHE_MS) {
+    return checksumCache.sha256;
+  }
+
+  try {
+    const releaseJson = await httpsGetText("https://api.github.com/repos/cloudflare/cloudflared/releases/latest");
+    const release = JSON.parse(releaseJson);
+    const checksumAsset = (release.assets || []).find((a) => /checksums\.txt$/i.test(a.name));
+    if (!checksumAsset?.browser_download_url) return null;
+
+    const checksumText = await httpsGetText(checksumAsset.browser_download_url);
+    for (const line of checksumText.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const match = trimmed.match(/^([a-fA-F0-9]{64})\s+(.+)$/);
+      if (!match) continue;
+      const [, hash, name] = match;
+      if (name === assetName || name.endsWith(`/${assetName}`)) {
+        checksumCache = { assetName, sha256: hash.toLowerCase(), ts: Date.now() };
+        return checksumCache.sha256;
+      }
+    }
+  } catch (e) {
+    console.warn(`[cloudflared] checksum lookup skipped: ${e.message}`);
+  }
+  return null;
+}
+
+function sha256File(filePath) {
+  const hash = crypto.createHash("sha256");
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest("hex");
+}
+
+async function verifyDownloadChecksum(filePath, assetName) {
+  const expected = await fetchExpectedSha256(assetName);
+  if (!expected) {
+    console.warn(`[cloudflared] no published sha256 for ${assetName}; skipping checksum verify`);
+    return;
+  }
+  const actual = sha256File(filePath);
+  if (actual !== expected) {
+    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+    throw new Error(`cloudflared checksum mismatch for ${assetName} (expected ${expected}, got ${actual})`);
+  }
 }
 
 // Download state — shared so status API can read it
@@ -60,8 +160,20 @@ export function getDownloadStatus() {
   return { downloading: dlState.downloading, progress: dlState.progress };
 }
 
-function downloadFile(url, dest) {
+function downloadFile(url, dest, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    if (parsed.protocol !== "https:") {
+      reject(new Error(`Refusing non-HTTPS download URL: ${url}`));
+      return;
+    }
+
     const file = fs.createWriteStream(dest);
     // unlink may run before the partial file exists / after it's gone; never throw.
     const safeUnlink = () => { try { fs.unlinkSync(dest); } catch { /* ignore */ } };
@@ -70,12 +182,21 @@ function downloadFile(url, dest) {
       if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
         file.close();
         safeUnlink();
-        const location = response.headers.location;
-        if (!location) {
-          reject(new Error(`Redirect (${response.statusCode}) with no Location header`));
+        if (redirectsLeft <= 0) {
+          reject(new Error("cloudflared download: too many redirects"));
           return;
         }
-        downloadFile(location, dest).then(resolve).catch(reject);
+        const location = response.headers.location;
+        if (!location) {
+          reject(new Error("cloudflared download: redirect without location"));
+          return;
+        }
+        const nextUrl = new URL(location, url);
+        if (nextUrl.protocol !== "https:") {
+          reject(new Error(`cloudflared download: redirect to non-HTTPS blocked (${nextUrl.href})`));
+          return;
+        }
+        downloadFile(nextUrl.href, dest, redirectsLeft - 1).then(resolve).catch(reject);
         return;
       }
 
@@ -170,11 +291,12 @@ async function _ensureCloudflared() {
     }
   }
 
-  const url = getDownloadUrl();
+  const { url, assetName } = getDownloadUrl();
   const isArchive = url.endsWith(".tgz");
   const downloadDest = isArchive ? path.join(BIN_DIR, "cloudflared.tgz.tmp") : tmpPath;
 
   await downloadFile(url, downloadDest);
+  await verifyDownloadChecksum(downloadDest, assetName);
 
   if (isArchive) {
     execSync(`tar -xzf "${downloadDest}" -C "${BIN_DIR}"`, { stdio: "pipe", windowsHide: true });
@@ -412,6 +534,23 @@ export async function spawnQuickTunnel(localPort, onUrlUpdate) {
 
 // Kill cloudflared processes whose command line targets the given port (any host).
 // Boundary check ensures :20128 doesn't match :201280 or :202128.
+function isCloudflaredPid(pid) {
+  if (!pid) return false;
+  try {
+    if (IS_WINDOWS) {
+      const out = execSync(`wmic process where processid=${pid} get commandline /format:list`, {
+        encoding: "utf8",
+        windowsHide: true,
+      });
+      return /cloudflared/i.test(out);
+    }
+    const out = execSync(`ps -p ${pid} -o args=`, { encoding: "utf8", windowsHide: true }).trim();
+    return /cloudflared/i.test(out);
+  } catch {
+    return false;
+  }
+}
+
 function killCloudflaredByPort(port) {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return;
   try {
@@ -437,12 +576,12 @@ export function killCloudflared(localPort) {
   }
 
   const pid = loadPid();
-  if (pid) {
+  if (pid && isCloudflaredPid(pid)) {
     try {
       process.kill(pid);
     } catch (e) { /* ignore */ }
-    clearPid();
   }
+  clearPid();
 
   killCloudflaredByPort(localPort);
 }
