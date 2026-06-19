@@ -399,7 +399,24 @@ function flushEvents(state) {
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);
-  sendCompleted(state, emit);
+  if (state.streamTruncated) {
+    // Upstream closed without a terminal frame — emit response.failed instead of
+    // fabricating a clean response.completed (fail closed).
+    state.completedSent = true;
+    emit("response.failed", {
+      type: "response.failed",
+      response: {
+        id: state.responseId,
+        object: "response",
+        created_at: state.created,
+        status: "failed",
+        background: false,
+        error: { code: "incomplete_stream", message: "Upstream stream ended before completion" }
+      }
+    });
+  } else {
+    sendCompleted(state, emit);
+  }
 
   return events;
 }
@@ -420,6 +437,19 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (!chunk) {
     // Flush: send final chunk with finish_reason
     if (state.finishReasonSent || !state.started) return null;
+
+    if (state.streamTruncated) {
+      // Upstream closed without a terminal frame — surface a clear error instead
+      // of fabricating a clean finish_reason (fail closed).
+      state.finishReasonSent = true;
+      return {
+        error: {
+          message: "Upstream stream ended before completion",
+          type: "upstream_error",
+          code: "incomplete_stream",
+        },
+      };
+    }
 
     const finishReason = computeFinishReason(state);
 

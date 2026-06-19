@@ -417,7 +417,13 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     Array.isArray(responseBody?.response?.candidates);
   const hasResponsesOutput =
     responseBody?.object === "response" && Array.isArray(responseBody?.output);
-  if (!hasOpenAIChoices && !hasClaudeContent && !hasGeminiCandidates && !hasResponsesOutput) {
+  // A Gemini prompt-blocked response is a legitimate terminal body that carries
+  // no candidates (only promptFeedback, e.g. blockReason: "SAFETY"). It must not
+  // be rejected as malformed in either translated or passthrough mode.
+  const hasGeminiPromptFeedback =
+    (responseBody?.promptFeedback && typeof responseBody.promptFeedback === "object") ||
+    (responseBody?.response?.promptFeedback && typeof responseBody.response.promptFeedback === "object");
+  if (!hasOpenAIChoices && !hasClaudeContent && !hasGeminiCandidates && !hasResponsesOutput && !hasGeminiPromptFeedback) {
     appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Empty or malformed completion response", undefined, {
       errorCode: PROXY_INTERNAL_ERROR_CODES.RESPONSE_PARSE_FAILED,

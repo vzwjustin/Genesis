@@ -64,6 +64,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
           relayAuthSecret: resolvedProxy.relayAuthSecret || "",
           ...strictProxyFieldFromResolved(resolvedProxy),
+          ...(resolvedProxy.proxyRequiredUnavailable ? { proxyRequiredUnavailable: true } : {}),
         },
       };
     }
@@ -232,6 +233,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
         relayAuthSecret: resolvedProxy.relayAuthSecret || "",
         ...strictProxyFieldFromResolved(resolvedProxy),
+        ...(resolvedProxy.proxyRequiredUnavailable ? { proxyRequiredUnavailable: true } : { proxyRequiredUnavailable: false }),
       },
       connectionId: connection.id,
       // Include current status for optimization check

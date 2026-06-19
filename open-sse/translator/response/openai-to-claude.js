@@ -97,6 +97,17 @@ export function openaiToClaudeResponse(chunk, state) {
       const results = [];
       flushOpenBlocks(state, results);
       state.finishReason = "stop";
+      if (state.streamTruncated) {
+        // Upstream closed without a terminal finish_reason or [DONE]. Do NOT
+        // fabricate a clean end_turn/message_stop — emit a Claude error event so
+        // the client sees a clear failure (fail closed) instead of a truncated
+        // response masquerading as success.
+        results.push({
+          type: "error",
+          error: { type: "upstream_error", message: "Upstream stream ended before completion" }
+        });
+        return results.length > 0 ? results : null;
+      }
       results.push({
         type: "message_delta",
         delta: { stop_reason: "end_turn" },

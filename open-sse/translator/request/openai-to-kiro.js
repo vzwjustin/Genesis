@@ -26,6 +26,35 @@ function safeParseJson(value) {
 }
 
 /**
+ * Build Kiro toolSpecification entries from OpenAI/Claude tool definitions.
+ * Kiro requires a JSON input schema with type/properties/required present.
+ */
+function buildKiroToolSpecs(tools) {
+  return tools.map(t => {
+    const name = t.function?.name || t.name;
+    let description = t.function?.description || t.description || "";
+
+    if (!description.trim()) {
+      description = `Tool: ${name}`;
+    }
+
+    const schema = t.function?.parameters || t.parameters || t.input_schema || {};
+    // Normalize schema: Kiro requires required[] and proper type/properties
+    const normalizedSchema = Object.keys(schema).length === 0
+      ? { type: "object", properties: {}, required: [] }
+      : { ...schema, required: schema.required ?? [] };
+
+    return {
+      toolSpecification: {
+        name,
+        description,
+        inputSchema: { json: normalizedSchema }
+      }
+    };
+  });
+}
+
+/**
  * Convert OpenAI messages to Kiro format
  * Rules: system/tool/user -> user role, merge consecutive same roles
  */
@@ -68,28 +97,7 @@ function convertMessages(messages, tools, model) {
         if (!userMsg.userInputMessage.userInputMessageContext) {
           userMsg.userInputMessage.userInputMessageContext = {};
         }
-        userMsg.userInputMessage.userInputMessageContext.tools = tools.map(t => {
-          const name = t.function?.name || t.name;
-          let description = t.function?.description || t.description || "";
-          
-          if (!description.trim()) {
-            description = `Tool: ${name}`;
-          }
-          
-          const schema = t.function?.parameters || t.parameters || t.input_schema || {};
-          // Normalize schema: Kiro requires required[] and proper type/properties
-          const normalizedSchema = Object.keys(schema).length === 0
-            ? { type: "object", properties: {}, required: [] }
-            : { ...schema, required: schema.required ?? [] };
-
-          return {
-            toolSpecification: {
-              name,
-              description,
-              inputSchema: { json: normalizedSchema }
-            }
-          };
-        });
+        userMsg.userInputMessage.userInputMessageContext.tools = buildKiroToolSpecs(tools);
       }
       
       history.push(userMsg);
@@ -285,13 +293,18 @@ function convertMessages(messages, tools, model) {
     }
   }
 
-  // Inject tools into currentMessage AFTER cleanup
-  if (firstHistoryTools && currentMessage?.userInputMessage &&
+  // Inject tools into currentMessage AFTER cleanup. Fall back to building specs
+  // directly from the request tools when no first-history item carried them
+  // (e.g. the first user turn was spliced out as currentMessage), so tool
+  // definitions are never dropped from the request actually sent upstream.
+  const resolvedTools = firstHistoryTools
+    || (tools && tools.length > 0 ? buildKiroToolSpecs(tools) : null);
+  if (resolvedTools && currentMessage?.userInputMessage &&
       !currentMessage.userInputMessage.userInputMessageContext?.tools) {
     if (!currentMessage.userInputMessage.userInputMessageContext) {
       currentMessage.userInputMessage.userInputMessageContext = {};
     }
-    currentMessage.userInputMessage.userInputMessageContext.tools = firstHistoryTools;
+    currentMessage.userInputMessage.userInputMessageContext.tools = resolvedTools;
   }
 
   return { history: mergedHistory, currentMessage };

@@ -10,6 +10,7 @@ import { FORMATS } from "../../translator/formats.js";
 import { readCappedResponseText } from "../../utils/stream.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
+import { convertCommandCodeToOpenAI } from "../../translator/response/commandcode-to-openai.js";
 
 // Upper bound on a single content block's accumulated text/thinking/JSON.
 // A compromised or MITM upstream could otherwise stream unbounded deltas into
@@ -692,6 +693,29 @@ async function peekResponseStartsWithJson(providerResponse) {
   }
 }
 
+/**
+ * Assemble CommandCode AI-SDK SSE events ({type:"text-delta"}, {type:"finish"}, ...)
+ * into a single OpenAI chat.completion. CommandCode is always-streaming, so a
+ * non-streaming client routes here; the generic OpenAI assembler cannot parse
+ * CommandCode frames. Convert each event with the registered translator, then
+ * reuse parseSSEToOpenAIResponse so truncated streams (no terminal finish) and
+ * upstream error frames still fail closed.
+ */
+function parseCommandCodeSSEToOpenAI(rawSSE, model) {
+  const ccState = {};
+  const openaiFrames = [];
+  for (const payload of extractSSEDataPayloads(rawSSE)) {
+    if (!payload || payload === "[DONE]") continue;
+    const out = convertCommandCodeToOpenAI(payload, ccState);
+    if (!out) continue;
+    for (const chunk of (Array.isArray(out) ? out : [out])) {
+      openaiFrames.push(`data: ${JSON.stringify(chunk)}\n\n`);
+    }
+  }
+  if (openaiFrames.length === 0) return null;
+  return parseSSEToOpenAIResponse(openaiFrames.join(""), model);
+}
+
 export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, passthrough }) {
   const contentType = readResponseHeader(providerResponse.headers, "content-type");
   const isExplicitSSE = contentType.includes("text/event-stream");
@@ -879,7 +903,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     }
     let parsed = passthrough
       ? await parseSSEToNativeResponse(sseText, sourceFormat, model)
-      : parseSSEToOpenAIResponse(sseText, model);
+      : (targetFormat === FORMATS.COMMANDCODE
+          ? parseCommandCodeSSEToOpenAI(sseText, model)
+          : parseSSEToOpenAIResponse(sseText, model));
     if (!parsed) {
       finalizeFailure("Invalid SSE response for non-streaming request");
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request", undefined, PROXY_INTERNAL_SSE);

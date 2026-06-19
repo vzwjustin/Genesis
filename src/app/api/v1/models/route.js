@@ -123,10 +123,11 @@ async function fetchCompatibleModelIds(connection, proxyOptions = null) {
   if (isOpenAICompatibleProvider(connection.provider)) {
     headers.Authorization = `Bearer ${connection.apiKey}`;
   } else if (isAnthropicCompatibleProvider(connection.provider)) {
+    // Anthropic model discovery lives at <base>/models. When the saved base URL
+    // already points at the chat endpoint (.../messages), swap the suffix for
+    // /models instead of blindly appending (which produced .../messages/models).
     if (url.endsWith("/messages/models")) {
-      url = url.slice(0, -9);
-    } else if (url.endsWith("/messages")) {
-      url = `${url.slice(0, -9)}/models`;
+      url = `${url.slice(0, -"/messages/models".length)}/models`;
     }
     headers["x-api-key"] = connection.apiKey;
     headers["anthropic-version"] = "2023-06-01";
