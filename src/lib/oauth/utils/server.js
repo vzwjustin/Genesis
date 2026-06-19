@@ -20,15 +20,6 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 /**
  * Start a local HTTP server to receive OAuth callback
  * @param {Function} onCallback - Called with query params when callback received

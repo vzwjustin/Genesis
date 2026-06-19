@@ -202,7 +202,12 @@ export async function importDb(payload) {
   const db = await getAdapter();
 
   db.transaction(() => {
-    // Wipe all tables (keep _meta)
+    // Wipe config tables (keep _meta). Observability tables (usageHistory,
+    // usageDaily, requestDetails) are intentionally NOT wiped: they are not
+    // part of the export payload (exportDb omits them by design — they can be
+    // large), so a config-only import must preserve historical usage/details
+    // rather than silently destroying them. If a payload explicitly includes
+    // those sections they are merged below.
     db.run(`DELETE FROM settings`);
     db.run(`DELETE FROM providerConnections`);
     db.run(`DELETE FROM providerNodes`);
@@ -210,9 +215,6 @@ export async function importDb(payload) {
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing', 'disabledModels')`);
-    db.run(`DELETE FROM usageHistory`);
-    db.run(`DELETE FROM usageDaily`);
-    db.run(`DELETE FROM requestDetails`);
 
     // Settings
     if (payload.settings) {

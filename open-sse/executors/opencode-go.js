@@ -19,12 +19,15 @@ export class OpenCodeGoExecutor extends BaseExecutor {
       : `${BASE}/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, model) {
     const key = credentials?.apiKey || credentials?.accessToken;
     const headers = { "Content-Type": "application/json" };
-    const model = credentials?._opencodeGoCtx?.model;
+    // Prefer the model arg threaded through execute(); fall back to the
+    // per-request context stashed by transformRequest. Never read singleton
+    // state — concurrent requests would clobber each other's auth scheme.
+    const resolvedModel = model ?? credentials?._opencodeGoCtx?.model;
 
-    if (CLAUDE_FORMAT_MODELS.has(model)) {
+    if (CLAUDE_FORMAT_MODELS.has(resolvedModel)) {
       headers["x-api-key"] = key;
       headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     } else {

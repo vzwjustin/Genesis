@@ -297,6 +297,7 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
+      let shouldClose = true;
       try {
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
@@ -344,13 +345,12 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
 
         sessionStore(history, currentMsg, cleanResponse(fullAnswer), respBackendUuid);
       } catch (err) {
-        controller.enqueue(encoder.encode(sseChunk({
-          id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-          choices: [{ index: 0, delta: { content: `[Stream error: ${err.message || String(err)}]` }, finish_reason: "stop", logprobs: null }],
-        })));
-        controller.enqueue(encoder.encode(SSE_DONE));
+        // Fail closed: surface the error to the client instead of masking it
+        // as a synthetic "stop" chunk (which looks like normal completion).
+        shouldClose = false;
+        controller.error(err);
       } finally {
-        controller.close();
+        if (shouldClose) controller.close();
       }
     },
   });
@@ -454,7 +454,14 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     const connectCtrl = new AbortController();
     const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), FETCH_CONNECT_TIMEOUT_MS);
-    const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+    if (signal?.aborted) {
+      clearTimeout(connectTimer);
+      const abortErr = new Error("The operation was aborted");
+      abortErr.name = "AbortError";
+      throw abortErr;
+    }
+    const upstreamSignal = signal && typeof signal.addEventListener === "function" ? signal : null;
+    const mergedSignal = upstreamSignal ? AbortSignal.any([upstreamSignal, connectCtrl.signal]) : connectCtrl.signal;
 
     let response;
     try {
@@ -467,6 +474,8 @@ export class PerplexityWebExecutor extends BaseExecutor {
       clearTimeout(connectTimer);
     } catch (err) {
       clearTimeout(connectTimer);
+      // Abort must propagate, not be masked as a 502.
+      if (err?.name === "AbortError" || signal?.aborted) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Perplexity connection failed: ${err.message || String(err)}`, type: "upstream_error" },
