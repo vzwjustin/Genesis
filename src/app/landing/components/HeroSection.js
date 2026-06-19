@@ -40,7 +40,7 @@ export default function HeroSection() {
         </p>
 
         <p className="text-sm text-amber-400/90 max-w-xl">
-          Change the default password in Profile before enabling tunnels or sharing your dashboard remotely.
+          Set a custom password in Profile before enabling tunnels or sharing your dashboard remotely.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-4 w-full">

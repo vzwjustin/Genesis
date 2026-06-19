@@ -530,7 +530,10 @@ function openBrowser(url) {
 // Single runtime directory: the CLI build writes the packaged app under cli/app.
 // Do not fall back to root .next/standalone; that can be stale and confusing.
 const standaloneDir = path.join(__dirname, "app");
-const serverPath = path.join(standaloneDir, "server.js");
+const customServerPath = path.join(standaloneDir, "custom-server.js");
+const serverPath = fs.existsSync(customServerPath)
+  ? customServerPath
+  : path.join(standaloneDir, "server.js");
 
 if (!fs.existsSync(serverPath)) {
   console.error("Error: Standalone build not found.");

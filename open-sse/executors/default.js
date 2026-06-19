@@ -7,6 +7,7 @@ import { getCachedClaudeHeaders, extractPassthroughAnthropicHeaders } from "../u
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
+import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
@@ -30,8 +31,8 @@ export class DefaultExecutor extends BaseExecutor {
       delete result.client_metadata;
     }
     // claude-opus-4 series: temperature is deprecated upstream (Anthropic 400). #1748
-    if (result && typeof result === "object" && /claude-opus-4/i.test(model || "") && result.temperature !== undefined) {
-      delete result.temperature;
+    if (result && typeof result === "object") {
+      stripUnsupportedParams(this.provider, model, result);
     }
     return result;
   }

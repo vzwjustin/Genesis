@@ -43,7 +43,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Dashboard access via tunnel is disabled" }, { status: 403 });
     }
 
-    // Default password is '123456' if not set
+    // First-run password must be explicitly provided via INITIAL_PASSWORD.
     const storedHash = settings.password;
 
     if (settings.authMode === "oidc" && isOidcConfigured(settings)) {
@@ -67,10 +67,12 @@ export async function POST(request) {
     if (storedHash) {
       isValid = await bcrypt.compare(password, storedHash);
     } else {
-      // Use env var or default. Constant-time compare so the pre-setup path
-      // doesn't leak INITIAL_PASSWORD length/content via response timing.
-      const initialPassword = process.env.INITIAL_PASSWORD || "123456";
-      isValid = timingSafeEqualStr(password, initialPassword);
+      // Constant-time compare so the pre-setup path doesn't leak
+      // INITIAL_PASSWORD length/content via response timing.
+      const initialPassword = process.env.INITIAL_PASSWORD;
+      isValid = typeof initialPassword === "string"
+        && initialPassword.length > 0
+        && timingSafeEqualStr(password, initialPassword);
     }
 
     if (isValid) {

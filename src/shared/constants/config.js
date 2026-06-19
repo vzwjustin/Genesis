@@ -120,6 +120,17 @@ export {
   AUTH_METHODS,
 } from "./providers.js";
 
+export const CLAUDE_AUTOPING_CONFIG = {
+  settingsKey: "claudeAutoPing",
+  tickIntervalMs: 60000,
+  pingLeadMs: 5000,
+  pingModel: "claude-haiku-4-5-20251001",
+  pingText: "hi",
+  pingMaxTokens: 1,
+  refreshAheadMs: 300000,
+  fiveHourKey: "session (5h)",
+};
+
 // Re-export from models.js for backward compatibility
 export {
   PROVIDER_MODELS,

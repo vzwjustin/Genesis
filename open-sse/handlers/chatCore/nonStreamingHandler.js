@@ -94,6 +94,9 @@ function translateTargetToOpenAI(responseBody, targetFormat) {
 
   // Claude
   if (targetFormat === FORMATS.CLAUDE) {
+    if (responseBody.choices || (responseBody.content && !Array.isArray(responseBody.content))) {
+      return responseBody;
+    }
     if (!responseBody.content) return responseBody;
 
     let textContent = "", thinkingContent = "";
@@ -524,7 +527,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   const preserveReasoning = provider === "kiro" || String(model || "").includes("-thinking");
   if (!preserveReasoning && translatedResponse?.choices) {
     for (const choice of translatedResponse.choices) {
-      if (choice?.message) delete choice.message.reasoning_content;
+      if (choice?.message?.reasoning_content && choice.message.content) {
+        delete choice.message.reasoning_content;
+      }
     }
   }
 

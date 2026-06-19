@@ -160,7 +160,13 @@ export async function handleEmbeddingsCore({
     });
   }
 
-  if (onRequestSuccess) await onRequestSuccess();
+  if (onRequestSuccess) {
+    try {
+      await onRequestSuccess();
+    } catch (err) {
+      console.error("[Embeddings] onRequestSuccess failed after successful response (ignored):", err?.message || err);
+    }
+  }
 
   const normalized = adapter.normalize(responseBody, model);
   log?.debug?.("EMBEDDINGS", `Success | usage=${JSON.stringify(normalized.usage || {})}`);

@@ -11,16 +11,23 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 import SidebarSecurityHint from "./SidebarSecurityHint";
+import {
+  DASHBOARD_NAV_SECTIONS,
+  DASHBOARD_NAV_DEBUG_ITEMS,
+  DASHBOARD_NAV_SYSTEM_ITEMS,
+  DASHBOARD_NAV_SETTINGS,
+} from "@/shared/constants/dashboardNav";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
 const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
-function sidebarLinkClass(active, nested = false) {
+function sidebarLinkClass(active, nested = false, withDescription = false) {
   return cn(
-    "sidebar-nav-link flex items-center gap-3 rounded-lg transition-colors duration-150",
-    nested ? "px-3 py-1.5" : "px-3 py-2",
+    "sidebar-nav-link flex rounded-lg transition-colors duration-150",
+    withDescription ? "items-start gap-2.5 px-3 py-2.5" : "items-center gap-3",
+    nested ? "px-3 py-1.5" : withDescription ? "" : "px-3 py-2",
     active && "active",
   );
 }
@@ -33,30 +40,46 @@ function sidebarIconClass(active, nested = false) {
   );
 }
 
-const navItems = [
-  { href: "/dashboard", label: "Overview", icon: "home" },
-  { href: "/dashboard/endpoint", label: "Endpoint", icon: "api" },
-  { href: "/dashboard/api-keys", label: "API Keys", icon: "vpn_key" },
-  { href: "/dashboard/providers", label: "Providers", icon: "dns" },
-  { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
-  { href: "/dashboard/caching", label: "Caching", icon: "cached" },
-  { href: "/dashboard/combos", label: "Combos", icon: "layers" },
-  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
-  { href: "/dashboard/mitm", label: "MITM Proxy", icon: "security" },
-  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
-];
+function SidebarNavLink({ item, active, nested = false, onClose, showDescription = false }) {
+  const withDescription = showDescription && !nested && item.description;
+  return (
+    <Link
+      href={item.href}
+      onClick={onClose}
+      title={withDescription ? undefined : item.description}
+      aria-current={active ? "page" : undefined}
+      className={sidebarLinkClass(active, nested, withDescription)}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(sidebarIconClass(active, nested), withDescription && "mt-0.5")}
+      >
+        {item.icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={nested ? "text-sm" : "text-[13px] font-medium"}>{item.label}</span>
+        {withDescription ? (
+          <span className="sidebar-nav-link-desc hidden xl:block text-[10px] leading-snug mt-0.5 line-clamp-2">
+            {item.description}
+          </span>
+        ) : null}
+      </span>
+    </Link>
+  );
+}
 
-const debugItems = [
-  { href: "/dashboard/console-log", label: "Console Log", icon: "article" },
-  { href: "/dashboard/translator", label: "Translator", icon: "translate" },
-];
-
-const systemItems = [
-  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
-  { href: "/dashboard/pricing", label: "Pricing", icon: "payments" },
-  { href: "/dashboard/skills", label: "Skills", icon: "extension" },
-];
+SidebarNavLink.propTypes = {
+  item: PropTypes.shape({
+    href: PropTypes.string.isRequired,
+    label: PropTypes.string.isRequired,
+    description: PropTypes.string,
+    icon: PropTypes.string.isRequired,
+  }).isRequired,
+  active: PropTypes.bool.isRequired,
+  nested: PropTypes.bool,
+  onClose: PropTypes.func,
+  showDescription: PropTypes.bool,
+};
 
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
@@ -181,7 +204,7 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="dashboard-sidebar flex w-64 flex-col min-h-full">
+      <aside className="dashboard-sidebar flex w-64 xl:w-72 flex-col min-h-full">
         {/* Logo */}
         <div className="px-5 py-5 flex flex-col gap-2">
           <Link href="/dashboard" className="flex items-center gap-3">
@@ -225,28 +248,27 @@ export default function Sidebar({ onClose }) {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onClose}
-              aria-current={isActive(item.href) ? "page" : undefined}
-              className={sidebarLinkClass(isActive(item.href))}
-            >
-              <span
-                aria-hidden="true"
-                className={sidebarIconClass(isActive(item.href))}
-              >
-                {item.icon}
-              </span>
-              <span className="text-[13px] font-medium">{item.label}</span>
-            </Link>
+          {DASHBOARD_NAV_SECTIONS.map((section) => (
+            <div key={section.id} className="pt-1 first:pt-0 space-y-0.5">
+              <p className="sidebar-section-label px-3 text-[11px] font-medium mb-2 mt-3 first:mt-1">
+                {section.label}
+              </p>
+              {section.items.map((item) => (
+                <SidebarNavLink
+                  key={item.href}
+                  item={item}
+                  active={isActive(item.href)}
+                  onClose={onClose}
+                  showDescription={!onClose}
+                />
+              ))}
+            </div>
           ))}
 
           {/* System section */}
           <div className="pt-4 mt-1 space-y-0.5">
             <p className="sidebar-section-label px-3 text-[11px] font-medium mb-2">
-              System
+              Advanced
             </p>
 
             {/* Media Providers accordion */}
@@ -289,52 +311,36 @@ export default function Sidebar({ onClose }) {
               </div>
             )}
 
-            {systemItems.map((item) => (
-              <Link
+            {DASHBOARD_NAV_SYSTEM_ITEMS.map((item) => (
+              <SidebarNavLink
                 key={item.href}
-                href={item.href}
-                onClick={onClose}
-                aria-current={isActive(item.href) ? "page" : undefined}
-                className={sidebarLinkClass(isActive(item.href))}
-              >
-                <span className={sidebarIconClass(isActive(item.href))}>
-                  {item.icon}
-                </span>
-                <span className="text-[13px] font-medium">{item.label}</span>
-              </Link>
+                item={item}
+                active={isActive(item.href)}
+                onClose={onClose}
+                showDescription={!onClose}
+              />
             ))}
 
-            {/* Debug items (inside System section, before Settings) */}
-            {debugItems.map((item) => {
+            {/* Debug items (inside Advanced section, before Settings) */}
+            {DASHBOARD_NAV_DEBUG_ITEMS.map((item) => {
               const show = item.href !== "/dashboard/translator" || enableTranslator;
               return show ? (
-                <Link
+                <SidebarNavLink
                   key={item.href}
-                  href={item.href}
-                  onClick={onClose}
-                  aria-current={isActive(item.href) ? "page" : undefined}
-                  className={sidebarLinkClass(isActive(item.href))}
-                >
-                  <span className={sidebarIconClass(isActive(item.href))}>
-                    {item.icon}
-                  </span>
-                  <span className="text-[13px] font-medium">{item.label}</span>
-                </Link>
+                  item={item}
+                  active={isActive(item.href)}
+                  onClose={onClose}
+                  showDescription={!onClose}
+                />
               ) : null;
             })}
 
-            {/* Settings */}
-            <Link
-              href="/dashboard/profile"
-              onClick={onClose}
-              aria-current={isActive("/dashboard/profile") ? "page" : undefined}
-              className={sidebarLinkClass(isActive("/dashboard/profile"))}
-            >
-              <span className={sidebarIconClass(isActive("/dashboard/profile"))}>
-                settings
-              </span>
-              <span className="text-[13px] font-medium">Settings</span>
-            </Link>
+            <SidebarNavLink
+              item={DASHBOARD_NAV_SETTINGS}
+              active={isActive(DASHBOARD_NAV_SETTINGS.href)}
+              onClose={onClose}
+              showDescription={!onClose}
+            />
           </div>
         </nav>
 

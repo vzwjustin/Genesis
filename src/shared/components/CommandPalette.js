@@ -17,6 +17,7 @@ export default function CommandPalette() {
       (item) =>
         item.label.toLowerCase().includes(q) ||
         item.href.toLowerCase().includes(q) ||
+        (item.description || "").toLowerCase().includes(q) ||
         (item.keywords || "").includes(q)
     );
   }, [query]);
@@ -94,7 +95,7 @@ export default function CommandPalette() {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Go to page…"
+            placeholder="Search pages by name or purpose…"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-text-muted"
             aria-label="Search pages"
           />
@@ -112,13 +113,19 @@ export default function CommandPalette() {
                   aria-selected={index === activeIndex}
                   onClick={() => navigate(item.href)}
                   onMouseEnter={() => setActiveIndex(index)}
-                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
+                  className={`flex w-full items-start gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
                     index === activeIndex ? "dashboard-filter-active font-medium" : "dashboard-row-hover"
                   }`}
                 >
-                  <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
-                  <span className="font-medium">{item.label}</span>
-                  <span className="ml-auto text-xs text-text-muted font-mono truncate max-w-[40%]">{item.href}</span>
+                  <span className="material-symbols-outlined text-[18px] mt-0.5 shrink-0">{item.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{item.label}</span>
+                    {item.description ? (
+                      <span className="block text-xs text-text-muted font-normal leading-snug mt-0.5">
+                        {item.description}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               </li>
             ))

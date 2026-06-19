@@ -17,6 +17,14 @@ describe("cowork MCP SSRF guard", () => {
     expect(src).toContain("proxyAwareFetch");
     expect(src).not.toMatch(/\bfetch\s*\(/);
   });
+
+  it("stdio command allowlist rejects path-qualified binaries", () => {
+    const { isAllowedMcpCommand } = require("../../src/shared/constants/coworkPlugins.js");
+    expect(isAllowedMcpCommand("node")).toBe(true);
+    expect(isAllowedMcpCommand("/tmp/node")).toBe(false);
+    expect(isAllowedMcpCommand("./node")).toBe(false);
+    expect(isAllowedMcpCommand("C:\\tmp\\node.exe")).toBe(false);
+  });
 });
 
 describe("GitHub releases helper", () => {

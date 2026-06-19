@@ -141,8 +141,8 @@ export default function ModelSelectModal({
     // Filter a models[] array by kindFilter (keep only matching m.kind/m.type)
     const filterByKind = (models) => {
       const mKind = (m) => m.kind || m.type;
-      // No kindFilter → LLM context: keep only LLM models (no kind or kind === "llm")
-      if (!kindFilter) return models.filter((m) => m.isPlaceholder || !mKind(m) || mKind(m) === "llm");
+      // No kindFilter → LLM context: keep custom models visible (e.g. imageToText vision chat)
+      if (!kindFilter) return models.filter((m) => m.isPlaceholder || m.isCustom || !mKind(m) || mKind(m) === "llm");
       if (!TYPED_KINDS.has(kindFilter)) return models;
       return models.filter((m) => m.isPlaceholder || mKind(m) === kindFilter);
     };

@@ -203,7 +203,11 @@ async function handleSingleProviderSearch(body, providerInput, request, settings
     });
 
     if (result.success) {
-      await clearAccountError(credentials.connectionId, credentials);
+      try {
+        await clearAccountError(credentials.connectionId, credentials);
+      } catch (err) {
+        console.error("[SEARCH] clearAccountError failed after successful response (ignored):", err?.message || err);
+      }
       return result.response;
     }
 

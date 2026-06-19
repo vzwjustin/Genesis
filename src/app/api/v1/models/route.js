@@ -11,9 +11,11 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { capabilitiesFromServiceKind } from "open-sse/providers/capabilities.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { validateProviderBaseUrl } from "open-sse/utils/ssrfGuardCore.js";
 import { getWireType } from "open-sse/config/wireType.js";
+import { FILTERS as SUGGESTED_MODEL_FILTERS } from "../../providers/suggested-models/filters.js";
 
 // Claude-family aliases (broad/Kiro family) that emit -thinking/-agentic
 // variants after dynamic discovery (Req 5.2). Gated additionally by
@@ -164,6 +166,27 @@ async function fetchCompatibleModelIds(connection, proxyOptions = null) {
           .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "")
       )
     );
+  } catch {
+    return [];
+  }
+}
+
+async function fetchSuggestedNoAuthModelIds(providerInfo) {
+  const fetcher = providerInfo?.modelsFetcher;
+  const filter = fetcher?.type ? SUGGESTED_MODEL_FILTERS[fetcher.type] : null;
+  if (!fetcher?.url || !filter) return [];
+
+  try {
+    const response = await proxyAwareFetch(fetcher.url, { cache: "no-store" });
+    if (!response.ok) return [];
+    const json = await response.json();
+    const raw = json.data ?? json.models ?? json;
+    const filtered = filter(Array.isArray(raw) ? raw : []);
+    return Array.from(new Set(
+      filtered
+        .map((model) => model?.id)
+        .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "")
+    ));
   } catch {
     return [];
   }
@@ -346,14 +369,16 @@ export async function buildModelsList(kindFilter) {
       const customModelIds = customModels
         .filter((m) => {
           if (!m?.id) return false;
-          const kind = modelKind(m);
-          if (!kindFilter.includes(kind)) return false;
+          const kind = modelKind(m) || LLM_KIND;
+          // imageToText custom models are vision-capable chat models: expose them
+          // both in the default LLM list and in /v1/models/image-to-text.
+          if (!kindFilter.includes(kind) && !(kind === "imageToText" && kindFilter.includes(LLM_KIND))) return false;
           const alias = m.providerAlias;
           return alias === staticAlias || alias === outputAlias || alias === providerId;
         })
         .map((m) => {
           const modelId = String(m.id).trim();
-          if (modelId) customModelKindById.set(modelId, modelKind(m));
+          if (modelId) customModelKindById.set(modelId, modelKind(m) || LLM_KIND);
           return modelId;
         })
         .filter((modelId) => modelId !== "");
@@ -389,11 +414,12 @@ export async function buildModelsList(kindFilter) {
         CLAUDE_FAMILY_ALIASES.has(outputAlias) &&
         getWireType(`${outputAlias}/`, { family: "broad" }) === "anthropic";
 
-      const pushModel = (id) => {
+      const pushModel = (id, extra = {}) => {
         const entry = {
           id,
           object: "model",
           owned_by: outputAlias,
+          ...extra,
         };
         // Req 5.5: flag tokenless connections.
         if (requiresAuth) entry.requires_auth = true;
@@ -401,13 +427,15 @@ export async function buildModelsList(kindFilter) {
       };
 
       for (const modelId of mergedModelIds) {
-        // Resolve kind: prefer static metadata, otherwise infer from ID heuristics
-        const kind = staticModelKindById.get(modelId) || customModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
-        if (!kindFilter.includes(kind)) continue;
+        const customKind = customModelKindById.get(modelId);
+        const kind = staticModelKindById.get(modelId) || customKind || inferKindFromUnknownModelId(modelId);
+        const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
+        if (!kindFilter.includes(kind) && !allowAsLlm) continue;
         if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
 
         const baseId = `${outputAlias}/${modelId}`;
-        pushModel(baseId);
+        const caps = capabilitiesFromServiceKind(customKind);
+        pushModel(baseId, caps ? { capabilities: caps } : {});
         if (isClaudeFamily) {
           pushModel(`${baseId}-thinking`);
           pushModel(`${baseId}-agentic`);
@@ -453,6 +481,49 @@ export async function buildModelsList(kindFilter) {
         if (requiresAuth) entry.requires_auth = true;
         models.push(entry);
       }
+    }
+  }
+
+  for (const [providerId, providerInfo] of Object.entries(AI_PROVIDERS)) {
+    if (!providerInfo?.noAuth || activeConnectionByProvider.has(providerId)) continue;
+    if (!providerMatchesKinds(providerId, kindFilter)) continue;
+
+    const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
+    const outputAlias = (getProviderAlias(providerId) || staticAlias).trim();
+    const providerModels = PROVIDER_MODELS[staticAlias] || [];
+    const staticModelKindById = new Map(providerModels.map((m) => [m.id, modelKind(m)]));
+    let rawModelIds = providerModels.map((model) => model.id);
+    if (rawModelIds.length === 0) {
+      rawModelIds = await fetchSuggestedNoAuthModelIds(providerInfo);
+    }
+
+    for (const modelId of rawModelIds) {
+      if (typeof modelId !== "string" || modelId.trim() === "") continue;
+      const kind = staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
+      if (!kindFilter.includes(kind)) continue;
+      if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
+      models.push({
+        id: `${outputAlias}/${modelId}`,
+        object: "model",
+        owned_by: outputAlias,
+      });
+    }
+
+    if (kindFilter.includes("webSearch") && providerInfo?.searchConfig) {
+      models.push({
+        id: `${outputAlias}/search`,
+        object: "model",
+        kind: "webSearch",
+        owned_by: outputAlias,
+      });
+    }
+    if (kindFilter.includes("webFetch") && providerInfo?.fetchConfig) {
+      models.push({
+        id: `${outputAlias}/fetch`,
+        object: "model",
+        kind: "webFetch",
+        owned_by: outputAlias,
+      });
     }
   }
 

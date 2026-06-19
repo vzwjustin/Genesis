@@ -16,6 +16,7 @@ import {
 import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync } from "@/mitm/manager";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 import { autoStartHeadroomProxy, stopHeadroomProxy } from "@/shared/services/headroomManager.js";
+import { startClaudeAutoPing } from "@/shared/services/claudeAutoPing.js";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
 (function bootstrapMitm() {
@@ -72,6 +73,8 @@ export async function initializeApp() {
         g.headroomAutoStarted = false;
       });
     }
+
+    startClaudeAutoPing();
 
     if (!g.signalHandlersRegistered) {
       const cleanup = () => {
