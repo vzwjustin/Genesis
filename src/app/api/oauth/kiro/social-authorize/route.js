@@ -32,13 +32,21 @@ export async function GET(request) {
       state
     );
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       authUrl,
       state,
       codeVerifier,
       codeChallenge,
       provider,
     });
+    response.cookies.set("kiro_social_oauth_state", state, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: request.nextUrl?.protocol === "https:",
+      path: "/api/oauth/kiro",
+      maxAge: 10 * 60,
+    });
+    return response;
   } catch (error) {
     console.error("Kiro social authorize error:", error?.message);
     return NextResponse.json({ error: "Failed to start Kiro social authorization" }, { status: 500 });

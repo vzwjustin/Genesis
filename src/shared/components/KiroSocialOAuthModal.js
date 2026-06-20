@@ -73,6 +73,10 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
         throw new Error("No authorization code found in URL");
       }
 
+      if (!state || state !== authData?.state) {
+        throw new Error("OAuth state mismatch");
+      }
+
       // Exchange code for tokens
       const res = await fetch("/api/oauth/kiro/social-exchange", {
         method: "POST",
@@ -80,6 +84,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
         body: JSON.stringify({
           code,
           codeVerifier: authData.codeVerifier,
+          state,
           provider,
         }),
       });

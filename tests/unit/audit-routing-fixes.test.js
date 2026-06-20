@@ -201,4 +201,18 @@ describe("generated relay code — redirect credential safety", () => {
       expect(src).toContain('redirect: "manual"');
     }
   });
+
+  it("validates relay targets instead of proxying arbitrary hosts", () => {
+    const relays = [
+      buildVercelRelayCode("secret"),
+      buildDenoRelayCode("secret"),
+      buildCloudflareRelayCode("secret"),
+    ];
+    for (const src of relays) {
+      expect(src).toContain("normalizeRelayTarget");
+      expect(src).toContain('base.protocol !== "https:"');
+      expect(src).toContain("isPrivateRelayHost(base.hostname)");
+      expect(src).not.toContain('target.replace(/\\\\/$/, "") + relayPath');
+    }
+  });
 });

@@ -245,4 +245,36 @@ describe("request-details flush wired into shutdown (D)", () => {
     expect(src.indexOf("flushRequestDetailsSync()")).toBeGreaterThan(-1);
     expect(src.indexOf("flushRequestDetailsSync()")).toBeLessThan(src.indexOf("process.exit()"));
   });
+
+  it("requeues drained request-detail batches when a flush fails", () => {
+    const src = readFileSync(join(root, "../../src/lib/db/repos/requestDetailsRepo.js"), "utf8");
+    expect(src).toContain("writeBuffer = items.concat(writeBuffer)");
+  });
+});
+
+describe("deep scan follow-up hardening", () => {
+  it("OIDC connection test is side-effect free", () => {
+    const src = readFileSync(join(root, "../../src/app/(dashboard)/dashboard/profile/page.js"), "utf8");
+    const body = src.match(/const testOidcConnection = async \(\) => \{[\s\S]*?const updateObservabilityEnabled/)?.[0] || "";
+
+    expect(body).toContain('fetch("/api/auth/oidc/test"');
+    expect(body).not.toContain('fetch("/api/settings"');
+  });
+
+  it("MITM server start reveals a selected masked key before sending it", () => {
+    const src = readFileSync(join(root, "../../src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js"), "utf8");
+
+    expect(src).toContain('useState("")');
+    expect(src).toContain("const selectedKey = apiKeys?.find");
+    expect(src).toContain("await revealApiKey(selectedKey.id)");
+  });
+
+  it("cloud embeddings storage is backed by D1 instead of stubbed nulls", () => {
+    const src = readFileSync(join(root, "../../cloud/src/services/storage.js"), "utf8");
+
+    expect(src).toContain("CREATE TABLE IF NOT EXISTS machineData");
+    expect(src).toContain("SELECT data FROM machineData");
+    expect(src).toContain("INSERT INTO machineData");
+    expect(src).not.toMatch(/getMachineData\([^)]*\) \{\s*return null;\s*\}/);
+  });
 });

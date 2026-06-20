@@ -267,6 +267,7 @@ export async function proxy(request) {
   }
 
   if (isPublicLlmApi(pathname)) {
+    if (request.method === "OPTIONS") return NextResponse.next();
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
     const error = await getPublicLlmApiAuthError(request);
     return NextResponse.json({ error }, { status: 401 });

@@ -70,7 +70,9 @@ function importWithAssertion(adapter, tableName, rows, insertFn, rowMeta) {
 
 function readJsonSafe(file) {
   if (!fs.existsSync(file)) return null;
-  try { return JSON.parse(fs.readFileSync(file, "utf-8")); } catch { return null; }
+  try { return JSON.parse(fs.readFileSync(file, "utf-8")); } catch (err) {
+    throw new MigrationAborted(`Failed to parse legacy JSON: ${file}`, [{ file, reason: err.message }]);
+  }
 }
 
 function safeGetMetaSync(adapter, key, fallback = null) {

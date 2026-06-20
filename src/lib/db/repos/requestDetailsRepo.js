@@ -102,18 +102,21 @@ async function flushToDatabase() {
   if (isFlushing) return;
   if (writeBuffer.length === 0) return;
   isFlushing = true;
+  let items = null;
   try {
     // Drain entire buffer (loop in case more pushed during await)
     while (writeBuffer.length > 0) {
-      const items = writeBuffer.splice(0, writeBuffer.length);
+      items = writeBuffer.splice(0, writeBuffer.length);
       const db = await getAdapter();
       const config = await getObservabilityConfig();
 
       db.transaction(() => {
         writeItemsToDb(db, items, config);
       });
+      items = null;
     }
   } catch (e) {
+    if (items?.length) writeBuffer = items.concat(writeBuffer);
     console.error("[requestDetailsRepo] Batch write failed:", e);
   } finally {
     isFlushing = false;
@@ -204,6 +207,7 @@ export async function getRequestDetailById(id) {
 export function flushRequestDetailsSync() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   if (writeBuffer.length === 0) return;
+  let items = null;
   try {
     const db = getAdapterSync();
     const config = cachedConfig || {
@@ -212,11 +216,13 @@ export function flushRequestDetailsSync() {
       flushIntervalMs: DEFAULT_FLUSH_INTERVAL_MS,
       maxJsonSize: DEFAULT_MAX_JSON_SIZE,
     };
-    const items = writeBuffer.splice(0, writeBuffer.length);
+    items = writeBuffer.splice(0, writeBuffer.length);
     db.transaction(() => {
       writeItemsToDb(db, items, config);
     });
+    items = null;
   } catch (e) {
+    if (items?.length) writeBuffer = items.concat(writeBuffer);
     console.error("[requestDetailsRepo] sync shutdown flush failed:", e);
   }
 }

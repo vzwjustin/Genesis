@@ -133,6 +133,13 @@ describe("dashboard guard public LLM API access", () => {
     expect(response.body.error).toBe("API key required for remote API access");
   });
 
+  it("allows public LLM API OPTIONS preflight through to route CORS handler", async () => {
+    const response = await proxy(request("/api/v1/chat/completions", { host: "router.example.com" }, null, "OPTIONS"));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
   it("rejects loopback rewritten public LLM API without API key when requireApiKey=true", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: true });
 
