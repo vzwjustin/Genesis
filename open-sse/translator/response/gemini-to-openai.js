@@ -214,12 +214,20 @@ export function geminiToOpenAIResponse(chunk, state) {
     }
   }
 
+  const mapGeminiFinishReason = (reason) => {
+    const value = String(reason || "").toUpperCase();
+    if (value === "STOP") return "stop";
+    if (value === "MAX_TOKENS") return "length";
+    if (value === "FUNCTION_CALL" || value === "FUNCTION_CALLS") return "tool_calls";
+    if (["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "LANGUAGE"].includes(value)) {
+      return "content_filter";
+    }
+    return "stop";
+  };
+
   // Finish reason - include usage in final chunk
   if (candidate.finishReason) {
-    let finishReason = candidate.finishReason.toLowerCase();
-    if (finishReason === "function_calls") {
-      finishReason = "tool_calls";
-    }
+    let finishReason = mapGeminiFinishReason(candidate.finishReason);
     if (finishReason === "stop" && state.toolCalls.size > 0) {
       finishReason = "tool_calls";
     }
@@ -253,4 +261,3 @@ register(FORMATS.GEMINI, FORMATS.OPENAI, null, geminiToOpenAIResponse);
 register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, null, geminiToOpenAIResponse);
 register(FORMATS.ANTIGRAVITY, FORMATS.OPENAI, null, geminiToOpenAIResponse);
 register(FORMATS.VERTEX, FORMATS.OPENAI, null, geminiToOpenAIResponse);
-

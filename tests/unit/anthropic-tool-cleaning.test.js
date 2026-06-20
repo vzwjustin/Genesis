@@ -57,6 +57,12 @@ describe("cleanAnthropicToolDefinitions — built-in tools (Requirement 1.6)", (
     expect(cleaned[0].model).toBe("claude-sonnet-4-5");
   });
 
+  it("strips unknown provider prefix from built-in tool model", () => {
+    const tools = [{ type: "web_search_20250305", name: "web_search", model: "vendor/claude-opus-4-6" }];
+    const cleaned = cleanAnthropicToolDefinitions(tools, "claude");
+    expect(cleaned[0].model).toBe("claude-opus-4-6");
+  });
+
   it("remaps Fable/Mythos built-in tool models to claude-opus-4-8", () => {
     const cases = [
       "cc/claude-fable-5",
@@ -121,6 +127,7 @@ describe("cleanAnthropicToolDefinitions — MiniMax cache-protected built-ins", 
     expect(out[0].model).toBe("claude-opus-4-6");
     expect(out[0].cache_control).toEqual(tools[0].cache_control);
     expect(out[1].model).toBeUndefined();
+    expect(out[1].type).toBeUndefined();
   });
 
   it("still drops uncached built-in tools on minimax when client owns no cache layout", () => {
@@ -153,6 +160,7 @@ describe("cleanAnthropicToolDefinitions — MiniMax cache-protected built-ins", 
     expect(out[0].model).toBe("claude-opus-4-6");
     expect(out[0].cache_control).toEqual(tools[0].cache_control);
     expect(out[1].model).toBeUndefined();
+    expect(out[1].type).toBeUndefined();
   });
 
   it("keeps cached built-in tools byte-identical on gemini provider", () => {
@@ -165,6 +173,13 @@ describe("cleanAnthropicToolDefinitions — MiniMax cache-protected built-ins", 
     expect(out[0].model).toBe("claude-opus-4-6");
     expect(out[0].cache_control).toEqual(tools[0].cache_control);
     expect(out[1].model).toBeUndefined();
+    expect(out[1].type).toBeUndefined();
+  });
+
+  it("strips model and type from cache-protected client tools", () => {
+    const tools = [{ type: "function", name: "fn", model: "strip-me", cache_control: { type: "ephemeral" }, input_schema: {} }];
+    const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
+    expect(out[0]).toEqual({ name: "fn", cache_control: { type: "ephemeral" }, input_schema: {} });
   });
 });
 
@@ -236,8 +251,8 @@ describe("prepareClaudeRequest — integrated tool cleaning", () => {
     expect(body.system[1].cache_control).toBeUndefined();
     expect(body.messages[1].content[0].cache_control).toEqual({ type: "ephemeral" });
     expect(body.tools[0].cache_control).toEqual({ type: "ephemeral" });
-    expect(body.tools[0].model).toBe("strip-me");
-    expect(body.tools[0].type).toBe("function");
+    expect(body.tools[0].model).toBeUndefined();
+    expect(body.tools[0].type).toBeUndefined();
     expect(body.tools[1].cache_control).toBeUndefined();
     expect(body.tools[1].model).toBe("claude-opus-4-8");
   });

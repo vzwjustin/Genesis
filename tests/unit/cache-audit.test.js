@@ -14,17 +14,17 @@ import {
 import { compressMessages } from "../../open-sse/rtk/index.js";
 
 describe("cache audit — tool cleaning", () => {
-  it("leaves tools at or before the last cached tool index byte-identical", () => {
+  it("allows required client tool normalization at or before the last cached tool index", () => {
     const tools = [
       { name: "a", type: "function", model: "keep", input_schema: { type: "object", properties: {} } },
       { name: "b", type: "function", model: "strip-me", cache_control: { type: "ephemeral" }, input_schema: { type: "object", properties: {} } },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
-    expect(out[1]).toEqual(tools[1]);
+    expect(out[0]).toEqual({ name: "a", input_schema: { type: "object", properties: {} } });
+    expect(out[1]).toEqual({ name: "b", cache_control: { type: "ephemeral" }, input_schema: { type: "object", properties: {} } });
   });
 
-  it("preserves cached client tools byte-identical (no model/type strip)", () => {
+  it("strips cached client tool model/type", () => {
     const tools = [
       {
         name: "my_tool",
@@ -35,7 +35,11 @@ describe("cache audit — tool cleaning", () => {
       },
     ];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0]).toEqual({
+      name: "my_tool",
+      cache_control: { type: "ephemeral", ttl: "1h" },
+      input_schema: { type: "object", properties: {} },
+    });
   });
 
   it("strips cc/ model prefix on cached built-in tools", () => {
@@ -72,7 +76,7 @@ describe("cache audit — fixToolUseOrdering pass 1", () => {
 });
 
 describe("cache audit — prepareClaudeRequest early exit", () => {
-  it("leaves messages and tools untouched when client set cache breakpoints", () => {
+  it("preserves messages and applies required client tool normalization", () => {
     const body = {
       model: "claude-sonnet-4-5",
       system: [{ type: "text", text: "sys", cache_control: { type: "ephemeral" } }],
@@ -100,7 +104,11 @@ describe("cache audit — prepareClaudeRequest early exit", () => {
     const clone = structuredClone(body);
     prepareClaudeRequest(clone, "claude", "sk-ant-oat-test");
     expect(verifyCacheProtectedBody(clone, snap)).toBe(true);
-    expect(clone.tools[0]).toEqual(body.tools[0]);
+    expect(clone.tools[0]).toEqual({
+      name: "Read",
+      cache_control: { type: "ephemeral" },
+      input_schema: { type: "object", properties: {} },
+    });
     expect(clone.messages[1].content).toHaveLength(2);
   });
 });

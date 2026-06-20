@@ -21,7 +21,7 @@ const BUILTIN_TOOL_DISPLAY_NAMES = {
 
 const FABLE_MYTHOS_MODEL = /fable|mythos/i;
 
-/** Strip client/provider prefixes from built-in tool model ids (cc/, cu/, etc.). */
+/** Strip client/provider prefixes from built-in tool model ids (cc/, cu/, vendor/, etc.). */
 export function stripProviderModelPrefix(model) {
   if (typeof model !== "string" || !model.includes("/")) return model;
   let result = model;
@@ -55,6 +55,11 @@ export function stripProviderModelPrefix(model) {
         break;
       }
     }
+  }
+  // Anthropic built-in tool model ids do not accept provider namespaces. If a
+  // client sends an unknown slash-prefixed namespace, keep the actual model id.
+  if (result.includes("/")) {
+    return result.slice(result.lastIndexOf("/") + 1);
   }
   return result;
 }

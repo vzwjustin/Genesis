@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   getXaiSessionStatus: vi.fn(),
   clearXaiSession: vi.fn(),
   jsonResponse: vi.fn((body, init) => ({ status: init?.status || 200, body })),
+  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+  validateProviderBaseUrlWithDns: vi.fn(async (url) => String(url).replace(/\/$/, "")),
 }));
 
 vi.mock("@/lib/oauth/providers", () => ({
@@ -49,7 +51,11 @@ vi.mock("next/server", () => ({
 }));
 
 vi.mock("@/lib/auth/spawnRouteAuth", () => ({
-  requireSpawnRouteAuth: vi.fn(async () => ({ ok: true })),
+  requireSpawnRouteAuth: mocks.requireSpawnRouteAuth,
+}));
+
+vi.mock("open-sse/utils/ssrfGuard.js", () => ({
+  validateProviderBaseUrlWithDns: mocks.validateProviderBaseUrlWithDns,
 }));
 
 const { GET, POST } = await import("../../src/app/api/oauth/[provider]/[action]/route.js");
@@ -106,6 +112,8 @@ describe("OAuth CSRF — start-proxy and stop-proxy must reject GET", () => {
 describe("OAuth CSRF — start-proxy and stop-proxy work via POST", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.requireSpawnRouteAuth.mockResolvedValue({ ok: true });
+    mocks.validateProviderBaseUrlWithDns.mockImplementation(async (url) => String(url).replace(/\/$/, ""));
     mocks.startCodexProxy.mockResolvedValue({ success: true, port: 12345 });
     mocks.stopCodexProxy.mockResolvedValue();
   });
@@ -116,7 +124,40 @@ describe("OAuth CSRF — start-proxy and stop-proxy work via POST", () => {
       { params: Promise.resolve({ provider: "codex", action: "start-proxy" }) }
     );
     expect(response.status).toBe(200);
+    expect(mocks.requireSpawnRouteAuth).toHaveBeenCalled();
     expect(mocks.startCodexProxy).toHaveBeenCalledWith(12345);
+  });
+
+  it("POST exchange rejects before parsing body when auth fails", async () => {
+    mocks.requireSpawnRouteAuth.mockResolvedValueOnce({ ok: false, status: 401, error: "unauthorized" });
+    const request = { url: "http://localhost/api/oauth/codex/exchange", json: vi.fn() };
+
+    const response = await POST(request, {
+      params: Promise.resolve({ provider: "codex", action: "exchange" }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(request.json).not.toHaveBeenCalled();
+    expect(mocks.exchangeTokens).not.toHaveBeenCalled();
+    expect(mocks.createProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("validates GitLab baseUrl before token exchange", async () => {
+    mocks.exchangeTokens.mockResolvedValue({ accessToken: "tok" });
+    mocks.createProviderConnection.mockResolvedValue({ id: "c1", provider: "gitlab" });
+    const response = await POST(
+      makePOSTRequest("gitlab", "exchange", {
+        code: "abc",
+        redirectUri: "http://localhost/callback",
+        codeVerifier: "verifier",
+        meta: { baseUrl: "https://gitlab.example.com/", clientId: "cid" },
+      }),
+      { params: Promise.resolve({ provider: "gitlab", action: "exchange" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.validateProviderBaseUrlWithDns).toHaveBeenCalledWith("https://gitlab.example.com/");
+    expect(mocks.exchangeTokens.mock.calls[0][5].baseUrl).toBe("https://gitlab.example.com");
   });
 
   it("POST stop-proxy stops codex proxy", async () => {

@@ -188,7 +188,7 @@ describe("tool cleaning — strict byte identity on protected prefix", () => {
     expect(out[0].cache_control).toEqual(tools[0].cache_control);
     expect(out[1].model).toBe("claude-opus-4-6");
   });
-  it("leaves cached tools byte-identical; strips model/type only on uncached tail client tools", () => {
+  it("strips model/type from protected client tools and normalizes cached built-ins", () => {
     const tools = [
       { type: "web_search_20250305", name: "web_search", model: "cc/claude-opus-4-6", cache_control: { type: "ephemeral" } },
       { type: "function", name: "fn", model: "strip-me", input_schema: {} },
@@ -196,6 +196,7 @@ describe("tool cleaning — strict byte identity on protected prefix", () => {
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
     expect(out[0].model).toBe("claude-opus-4-6");
     expect(out[1].model).toBeUndefined();
+    expect(out[1].type).toBeUndefined();
   });
 });
 

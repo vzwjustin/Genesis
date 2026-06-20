@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { spawn, exec, execSync } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const https = require("https");
@@ -74,6 +74,13 @@ let skipUpdate = false;
 let showLog = false;
 let trayMode = false;
 
+function isSafeHostArg(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 255) return false;
+  if (value.startsWith("-") || /[\s"'`$;&|<>\\]/.test(value)) return false;
+  if (value === "::" || value === "::1") return true;
+  return /^[A-Za-z0-9.:-]+$/.test(value);
+}
+
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--port" || args[i] === "-p") {
     const val = args[i + 1];
@@ -86,8 +93,8 @@ for (let i = 0; i < args.length; i++) {
     i++;
   } else if (args[i] === "--host" || args[i] === "-H") {
     const val = args[i + 1];
-    if (val === undefined || val.startsWith("-")) {
-      console.error(`Error: --host requires a value`);
+    if (val === undefined || !isSafeHostArg(val)) {
+      console.error(`Error: --host requires a valid hostname or IP address`);
       process.exit(1);
     }
     host = val;
@@ -510,21 +517,27 @@ function checkForUpdate() {
 // Open browser
 function openBrowser(url) {
   const platform = process.platform;
-  let cmd;
+  let command;
+  let commandArgs;
 
   if (platform === "darwin") {
-    cmd = `open "${url}"`;
+    command = "open";
+    commandArgs = [url];
   } else if (platform === "win32") {
-    cmd = `start "" "${url}"`;
+    command = "cmd";
+    commandArgs = ["/c", "start", "", url];
   } else {
-    cmd = `xdg-open "${url}"`;
+    command = "xdg-open";
+    commandArgs = [url];
   }
 
-  exec(cmd, { windowsHide: true }, (err) => {
-    if (err) {
-      console.log(`Open browser manually: ${url}`);
-    }
+  const child = spawn(command, commandArgs, {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
   });
+  child.on("error", () => console.log(`Open browser manually: ${url}`));
+  child.unref();
 }
 
 // Single runtime directory: the CLI build writes the packaged app under cli/app.

@@ -44,6 +44,14 @@ describe("gemini-to-openai response — thought parts", () => {
     expect(textChunk?.choices?.[0]?.delta?.reasoning_content).toBe("internal reasoning");
     expect(textChunk?.choices?.[0]?.delta?.content).toBeUndefined();
   });
+
+  it("maps Gemini finish reasons to OpenAI finish_reason values", () => {
+    const maxTokens = geminiToOpenAIResponse({ candidates: [{ finishReason: "MAX_TOKENS" }] }, { toolCalls: new Map() });
+    expect(maxTokens.at(-1).choices[0].finish_reason).toBe("length");
+
+    const safety = geminiToOpenAIResponse({ candidates: [{ finishReason: "SAFETY" }] }, { toolCalls: new Map() });
+    expect(safety.at(-1).choices[0].finish_reason).toBe("content_filter");
+  });
 });
 
 describe("gemini-to-openai request — mixed user turn and tool content", () => {
@@ -252,5 +260,38 @@ describe("openai-to-gemini — consistent sanitized tool names", () => {
     const declName = out.tools[0].functionDeclarations[0].name;
     expect(fcName).toBe(declName);
     expect(fcName).toMatch(/^[a-zA-Z_]/);
+  });
+
+  it("preserves empty-string tool responses", () => {
+    const out = openaiToGeminiRequest("gemini-2.0", {
+      messages: [
+        { role: "assistant", content: "", tool_calls: [{ id: "call_a", type: "function", function: { name: "empty_tool", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "call_a", content: "" },
+      ],
+      tools: [{ type: "function", function: { name: "empty_tool", parameters: { type: "object", properties: {} } } }],
+    }, false);
+    const response = out.contents.find((c) => c.parts.some((p) => p.functionResponse));
+    expect(response.parts[0].functionResponse.response).toEqual({ result: "" });
+  });
+
+  it("maps developer instructions into Gemini systemInstruction", () => {
+    const out = openaiToGeminiRequest("gemini-2.0", {
+      messages: [
+        { role: "developer", content: "follow developer" },
+        { role: "user", content: "hi" },
+      ],
+    }, false);
+    expect(out.systemInstruction.parts[0].text).toBe("follow developer");
+    expect(out.contents[0]).toMatchObject({ role: "user" });
+  });
+
+  it("maps OpenAI tool_choice to Gemini toolConfig", () => {
+    const out = openaiToGeminiRequest("gemini-2.0", {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "my-tool", parameters: { type: "object", properties: {} } } }],
+      tool_choice: { type: "function", function: { name: "my-tool" } },
+    }, false);
+    expect(out.toolConfig.functionCallingConfig.mode).toBe("ANY");
+    expect(out.toolConfig.functionCallingConfig.allowedFunctionNames).toEqual([out.tools[0].functionDeclarations[0].name]);
   });
 });

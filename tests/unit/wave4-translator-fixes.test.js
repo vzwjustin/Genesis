@@ -265,7 +265,7 @@ describe("prepareClaudeRequest — preserveClientCache for tools", () => {
     expect(out.tools[0].model).toBe("claude-opus-4-6");
   });
 
-  it("preserves cached tool bytes when client owns cache layout", () => {
+  it("strips invalid model/type from cached client tools", () => {
     const body = {
       system: [{ type: "text", text: "sys", cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: [{ type: "text", text: "hi", cache_control: { type: "ephemeral" } }] }],
@@ -278,7 +278,7 @@ describe("prepareClaudeRequest — preserveClientCache for tools", () => {
       }],
     };
     const out = prepareClaudeRequest(structuredClone(body), "claude");
-    expect(out.tools[0]).toEqual(body.tools[0]);
+    expect(out.tools[0]).toEqual({ name: "fn", cache_control: { type: "ephemeral" }, input_schema: {} });
   });
 });
 
