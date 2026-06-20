@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   recordFail: vi.fn(),
   recordSuccess: vi.fn(),
   getClientIp: vi.fn(),
+  withLoginLock: vi.fn((_ip, fn) => fn()),
   isTunnelDashboardAccessDenied: vi.fn(),
 }));
 
@@ -33,6 +34,7 @@ vi.mock("@/lib/auth/loginLimiter", () => ({
   recordFail: mocks.recordFail,
   recordSuccess: mocks.recordSuccess,
   getClientIp: mocks.getClientIp,
+  withLoginLock: mocks.withLoginLock,
 }));
 
 vi.mock("@/shared/utils/tunnelRequest", () => ({

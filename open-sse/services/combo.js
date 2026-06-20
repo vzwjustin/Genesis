@@ -391,13 +391,25 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
           (hasProxyMarker && hasRetryAfter)
         );
 
-        if (!zeroConns && !resolutionFailed && !accountsExhausted) {
+        // A combo member that resolves to no provider surfaces as 404
+        // model_not_found on the chat path (handleSingleModelChat → modelNotFoundResponse).
+        // That is the SAME logical condition embeddings/tts/stt/image express as the
+        // 400 "Failed to resolve model:" already handled by resolutionFailed above —
+        // chat is just the outlier that uses a structured 404. Advance to the next
+        // combo member instead of aborting the whole combo. The "model_not_found"
+        // error code distinguishes it from a generic/upstream 404 (which carries no
+        // such code), so Req 5.3 still returns those to the client without advancing.
+        const modelNotFound = result.status === 404 && errorCode === "model_not_found";
+
+        if (!zeroConns && !resolutionFailed && !accountsExhausted && !modelNotFound) {
           // 4xx (non-429): Return response directly to client, do NOT advance (Req 5.3)
           log.info("COMBO", `Model ${modelStr} returned ${result.status} (client error), returning to client without advancing`);
           return result;
         }
         if (resolutionFailed) {
           log.info("COMBO", `Model ${modelStr} failed to resolve, advancing to next model`);
+        } else if (modelNotFound) {
+          log.info("COMBO", `Model ${modelStr} unresolvable (model_not_found), advancing to next model`);
         } else if (accountsExhausted) {
           log.info("COMBO", `Model ${modelStr} provider accounts exhausted, advancing to next model`);
         } else {

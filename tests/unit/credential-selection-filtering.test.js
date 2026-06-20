@@ -321,3 +321,28 @@ describe("Provider Credential Selection — Connection Filtering", () => {
     });
   });
 });
+
+describe("Provider Credential Selection — proactive-refresh fields", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // #3: checkAndRefreshToken's proactive-refresh gate is `if (creds.expiresAt && creds.refreshToken)`.
+  // If getProviderCredentials drops expiresAt, proactive refresh never runs for any SSE handler and
+  // tokens are only refreshed reactively after an upstream 401 — which causes invalid_grant for
+  // rotating refresh tokens (Anthropic). The returned credentials MUST carry expiresAt.
+  it("returns expiresAt so the proactive-refresh gate can fire", async () => {
+    const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+    const conn = { ...makeConnection({ id: "claude-1" }), refreshToken: "rt-test", expiresAt };
+    getProviderConnections.mockResolvedValue([conn]);
+
+    const result = await getProviderCredentials("claude");
+    expect(result).not.toBeNull();
+    expect(result.expiresAt).toBe(expiresAt);
+    expect(result.refreshToken).toBe("rt-test");
+  });
+});

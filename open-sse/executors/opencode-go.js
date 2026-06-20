@@ -19,11 +19,14 @@ export class OpenCodeGoExecutor extends BaseExecutor {
       : `${BASE}/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, model) {
     const key = credentials?.apiKey || credentials?.accessToken;
     const headers = { "Content-Type": "application/json" };
-    const model = credentials?._opencodeGoCtx?.model;
-
+    // `model` is always threaded in from execute() (BaseExecutor calls
+    // buildHeaders(credentials, stream, model)). Use it directly. Never stash
+    // per-request state on the shared, long-lived credentials object —
+    // concurrent requests for different models would clobber each other's
+    // auth scheme.
     if (CLAUDE_FORMAT_MODELS.has(model)) {
       headers["x-api-key"] = key;
       headers["anthropic-version"] = ANTHROPIC_API_VERSION;
@@ -35,8 +38,7 @@ export class OpenCodeGoExecutor extends BaseExecutor {
     return headers;
   }
 
-  transformRequest(model, body, stream, credentials) {
-    if (credentials) credentials._opencodeGoCtx = { model };
+  transformRequest(model, body) {
     return injectReasoningContent({ provider: this.provider, model, body });
   }
 }

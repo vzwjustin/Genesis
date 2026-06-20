@@ -294,6 +294,13 @@ export class CursorExecutor extends BaseExecutor {
     const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
     const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
+    let response;
+    try {
+      response = await proxyAwareFetch(url, { method: "POST", headers, body, signal: mergedSignal }, proxyOptions);
+    } finally {
+      clearTimeout(connectTimer);
+    }
+
     return {
       status: response.status,
       headers: Object.fromEntries(response.headers.entries()),

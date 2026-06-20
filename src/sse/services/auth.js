@@ -221,6 +221,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       apiKey: connection.apiKey,
       accessToken: connection.accessToken,
       refreshToken: connection.refreshToken,
+      // expiresAt is required by checkAndRefreshToken's proactive-refresh gate
+      // (it is a no-op without it); omitting it disables proactive token refresh
+      // for every SSE handler and forces reactive refresh only after an upstream
+      // 401 — which, for rotating refresh tokens (Anthropic), causes invalid_grant.
+      expiresAt: connection.expiresAt,
       projectId: connection.projectId,
       connectionName: connection.displayName || connection.name || connection.email || connection.id,
       copilotToken: connection.providerSpecificData?.copilotToken,

@@ -194,7 +194,14 @@ export async function getRequestDetailById(id) {
   return row ? parseJson(row.data, null) : null;
 }
 
-const _shutdownHandler = () => {
+// Best-effort synchronous flush of buffered request details. Exposed so the
+// application shutdown sequence can invoke it explicitly from a controlled
+// point (e.g. the server's beforeExit hook). We do NOT register process-level
+// SIGINT/SIGTERM/beforeExit listeners on import: those fire asynchronously and
+// cannot reliably await a DB flush, and installing them as a side effect of
+// import pollutes the process's signal handling. Callers that want a shutdown
+// flush should call this from their own lifecycle hook.
+export function flushRequestDetailsSync() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   if (writeBuffer.length === 0) return;
   try {
@@ -212,16 +219,4 @@ const _shutdownHandler = () => {
   } catch (e) {
     console.error("[requestDetailsRepo] sync shutdown flush failed:", e);
   }
-};
-
-function ensureShutdownHandler() {
-  process.off("beforeExit", _shutdownHandler);
-  process.off("SIGINT", _shutdownHandler);
-  process.off("SIGTERM", _shutdownHandler);
-
-  process.on("beforeExit", _shutdownHandler);
-  process.on("SIGINT", _shutdownHandler);
-  process.on("SIGTERM", _shutdownHandler);
 }
-
-ensureShutdownHandler();

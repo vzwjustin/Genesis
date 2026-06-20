@@ -17,6 +17,7 @@ import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreTo
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 import { autoStartHeadroomProxy, stopHeadroomProxy } from "@/shared/services/headroomManager.js";
 import { startClaudeAutoPing } from "@/shared/services/claudeAutoPing.js";
+import { flushRequestDetailsSync } from "@/lib/db/repos/requestDetailsRepo.js";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
 (function bootstrapMitm() {
@@ -78,6 +79,11 @@ export async function initializeApp() {
 
     if (!g.signalHandlersRegistered) {
       const cleanup = () => {
+        // Drain buffered request details first (synchronous, best-effort) so a
+        // SIGINT/SIGTERM before the batch/timer flush does not lose them. This is
+        // the controlled shutdown hook the repo's flushRequestDetailsSync expects;
+        // the repo no longer registers its own import-time signal handlers.
+        try { flushRequestDetailsSync(); } catch { /* best effort */ }
         try { removeAllDNSEntriesSync(); } catch { /* best effort */ }
         stopHeadroomProxy();
         killCloudflared();
@@ -86,6 +92,7 @@ export async function initializeApp() {
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
       process.on("exit", () => {
+        try { flushRequestDetailsSync(); } catch { /* ignore */ }
         try { removeAllDNSEntriesSync(); } catch { /* ignore */ }
         stopHeadroomProxy();
       });

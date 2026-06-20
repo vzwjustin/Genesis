@@ -202,17 +202,28 @@ export async function importDb(payload) {
   const db = await getAdapter();
 
   db.transaction(() => {
-    // Wipe all tables (keep _meta)
-    db.run(`DELETE FROM settings`);
-    db.run(`DELETE FROM providerConnections`);
-    db.run(`DELETE FROM providerNodes`);
-    db.run(`DELETE FROM proxyPools`);
-    db.run(`DELETE FROM apiKeys`);
-    db.run(`DELETE FROM combos`);
-    db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing', 'disabledModels')`);
-    db.run(`DELETE FROM usageHistory`);
-    db.run(`DELETE FROM usageDaily`);
-    db.run(`DELETE FROM requestDetails`);
+    // Wipe a config table ONLY when its section is present in the payload, then
+    // repopulate it below. A section that is absent is left untouched: a partial
+    // import (e.g. settings-only) must not silently destroy provider connections
+    // (OAuth tokens!), API keys, combos, etc. that it does not carry. A full
+    // export round-trips every section, so a full import still fully replaces.
+    // An explicitly-present-but-empty section is a deliberate "clear this table".
+    // Observability tables (usageHistory, usageDaily, requestDetails) are never
+    // wiped here. exportDb DOES include them, so importing a backup is made
+    // idempotent below (usageHistory via INSERT OR IGNORE on the unique
+    // idempotencyKey; usageDaily/requestDetails via INSERT OR REPLACE on their
+    // primary keys) — re-importing a backup cannot double-count historical usage.
+    if (payload.settings) db.run(`DELETE FROM settings`);
+    if (payload.providerConnections) db.run(`DELETE FROM providerConnections`);
+    if (payload.providerNodes) db.run(`DELETE FROM providerNodes`);
+    if (payload.proxyPools) db.run(`DELETE FROM proxyPools`);
+    if (payload.apiKeys) db.run(`DELETE FROM apiKeys`);
+    if (payload.combos) db.run(`DELETE FROM combos`);
+    if (payload.modelAliases) db.run(`DELETE FROM kv WHERE scope = 'modelAliases'`);
+    if (payload.customModels) db.run(`DELETE FROM kv WHERE scope = 'customModels'`);
+    if (payload.mitmAlias) db.run(`DELETE FROM kv WHERE scope = 'mitmAlias'`);
+    if (payload.pricing) db.run(`DELETE FROM kv WHERE scope = 'pricing'`);
+    if (payload.disabledModels) db.run(`DELETE FROM kv WHERE scope = 'disabledModels'`);
 
     // Settings
     if (payload.settings) {
@@ -269,13 +280,19 @@ export async function importDb(payload) {
       db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('disabledModels', ?, ?)`, [providerAlias, stringifyJson(ids || [])]);
     }
     for (const row of payload.usageHistory || []) {
+      // INSERT OR IGNORE + idempotencyKey: re-importing a backup (or restoring
+      // onto a DB that already holds this history) skips rows whose
+      // idempotencyKey already exists (the unique idx_uh_idem index) instead of
+      // appending duplicates and inflating usage/cost totals. Legacy rows with a
+      // NULL key are exempt (SQLite treats NULLs as distinct) — unchanged.
       db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, idempotencyKey) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.timestamp, row.provider || null, row.model || null,
           row.connectionId || null, row.apiKey || null, row.endpoint || null,
           row.promptTokens || 0, row.completionTokens || 0, row.cost || 0,
           row.status || "ok", stringifyJson(row.tokens || {}), stringifyJson(row.meta || {}),
+          row.idempotencyKey || null,
         ]
       );
     }

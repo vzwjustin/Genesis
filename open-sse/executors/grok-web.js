@@ -138,6 +138,7 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
+      let shouldClose = true;
       try {
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
@@ -149,11 +150,11 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
           if (chunk.fingerprint) fp = chunk.fingerprint;
 
           if (chunk.error) {
-            controller.enqueue(encoder.encode(sseChunk({
-              id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: fp || null,
-              choices: [{ index: 0, delta: { content: `[Error: ${chunk.error}]` }, finish_reason: null, logprobs: null }],
-            })));
-            break;
+            // Fail closed: an in-band upstream error must propagate to the catch
+            // (→ controller.error) rather than be emitted as content followed by a
+            // synthetic finish_reason:"stop" + [DONE], which looks like a normal
+            // completion to the client.
+            throw new Error(`Grok stream error: ${chunk.error}`);
           }
           if (chunk.thinking) {
             controller.enqueue(encoder.encode(sseChunk({
@@ -177,13 +178,12 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
         })));
         controller.enqueue(encoder.encode(SSE_DONE));
       } catch (err) {
-        controller.enqueue(encoder.encode(sseChunk({
-          id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-          choices: [{ index: 0, delta: { content: `[Stream error: ${err.message || String(err)}]` }, finish_reason: "stop", logprobs: null }],
-        })));
-        controller.enqueue(encoder.encode(SSE_DONE));
+        // Fail closed: surface the error to the client instead of masking it
+        // as a synthetic "stop" chunk (which looks like normal completion).
+        shouldClose = false;
+        controller.error(err);
       } finally {
-        controller.close();
+        if (shouldClose) controller.close();
       }
     },
   });
@@ -296,7 +296,14 @@ export class GrokWebExecutor extends BaseExecutor {
     let response;
     const connectCtrl = new AbortController();
     const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), FETCH_CONNECT_TIMEOUT_MS);
-    const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+    if (signal?.aborted) {
+      clearTimeout(connectTimer);
+      const abortErr = new Error("The operation was aborted");
+      abortErr.name = "AbortError";
+      throw abortErr;
+    }
+    const upstreamSignal = signal && typeof signal.addEventListener === "function" ? signal : null;
+    const mergedSignal = upstreamSignal ? AbortSignal.any([upstreamSignal, connectCtrl.signal]) : connectCtrl.signal;
     try {
       response = await proxyAwareFetch(GROK_CHAT_API, {
         method: "POST", headers, body: JSON.stringify(grokPayload), signal: mergedSignal,
@@ -304,6 +311,9 @@ export class GrokWebExecutor extends BaseExecutor {
       clearTimeout(connectTimer);
     } catch (err) {
       clearTimeout(connectTimer);
+      // Abort must propagate, not be masked as a 502 — otherwise a cancelled
+      // client request looks like an upstream failure and triggers fallback.
+      if (err?.name === "AbortError" || signal?.aborted) throw err;
       log?.error?.("GROK-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Grok connection failed: ${err.message || String(err)}`, type: "upstream_error" },

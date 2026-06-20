@@ -5,6 +5,7 @@ import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
 import { getCachedClaudeHeaders, extractPassthroughAnthropicHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { parseOAuthRefreshErrorBody } from "../services/tokenRefresh.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { hasAnthropicCacheBreakpoints } from "../rtk/cacheBoundary.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
@@ -269,7 +270,16 @@ export class DefaultExecutor extends BaseExecutor {
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
       body: JSON.stringify(body)
     }, proxyOptions);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // Classify dead/rotated refresh tokens (invalid_grant) as unrecoverable so
+      // refreshWithRetry stops immediately instead of re-POSTing the same
+      // already-rotated token, and chatCore surfaces a re-auth 401. Transient
+      // failures still return null (retryable). Anthropic rotates refresh tokens.
+      const errorText = await response.text().catch(() => "");
+      const unrecoverable = parseOAuthRefreshErrorBody(errorText, null, this.provider);
+      if (unrecoverable) return unrecoverable;
+      return null;
+    }
     const tokens = await response.json();
     return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || body.refresh_token, expiresIn: tokens.expires_in };
   }
@@ -280,7 +290,14 @@ export class DefaultExecutor extends BaseExecutor {
       headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
       body: new URLSearchParams(params)
     }, proxyOptions);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // See refreshWithJSON: classify invalid_grant as unrecoverable to stop the
+      // retry loop and force re-auth instead of reusing a rotated refresh token.
+      const errorText = await response.text().catch(() => "");
+      const unrecoverable = parseOAuthRefreshErrorBody(errorText, null, this.provider);
+      if (unrecoverable) return unrecoverable;
+      return null;
+    }
     const tokens = await response.json();
     return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || params.refresh_token, expiresIn: tokens.expires_in };
   }
