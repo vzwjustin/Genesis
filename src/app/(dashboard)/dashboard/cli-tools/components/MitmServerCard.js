@@ -16,7 +16,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const [loading, setLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [sudoPassword, setSudoPassword] = useState("");
-  const [selectedApiKey, setSelectedApiKey] = useState(() => apiKeys?.[0]?.key || "");
+  const [selectedApiKey, setSelectedApiKey] = useState("");
   const [pendingAction, setPendingAction] = useState(null);
   const [modalError, setModalError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -76,8 +76,12 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           body: JSON.stringify({ action: "trust-cert", sudoPassword: password }),
         });
       } else if (action === "start") {
-        const keyToUse = selectedApiKey?.trim()
-          || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
+        const typedKey = selectedApiKey?.trim();
+        const selectedKey = apiKeys?.find((key) => key.key === typedKey || key.id === typedKey);
+        const keyToUse = selectedKey
+          ? await revealApiKey(selectedKey.id)
+          : typedKey
+            || (apiKeys?.length > 0 ? await revealApiKey(apiKeys[0].id) : null)
           || (!cloudEnabled ? "sk_genesis" : null);
         res = await fetch("/api/cli-tools/antigravity-mitm", {
           method: "POST",

@@ -35,6 +35,14 @@ describe("getPublicOrigin", () => {
     expect(getPublicOrigin(req)).toBe("http://localhost:20128");
   });
 
+  it("ignores direct Host header when base url is unset", () => {
+    const req = request("http://localhost:20128/api/auth/oidc/start", {
+      host: "evil.example",
+    });
+
+    expect(getPublicOrigin(req)).toBe("http://localhost:20128");
+  });
+
   it("uses forwarded host only when explicitly trusted", () => {
     process.env.TRUST_PROXY_HEADERS = "true";
     const req = request("http://localhost:20128/api/auth/oidc/start", {

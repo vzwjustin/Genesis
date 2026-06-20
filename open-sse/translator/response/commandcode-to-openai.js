@@ -55,6 +55,18 @@ function buildUpstreamErrorFrame(errVal) {
   };
 }
 
+function buildInvalidStreamFrame(state, message) {
+  if (state) {
+    state.finishSeen = true;
+    state.finishReasonSent = true;
+  }
+  return buildUpstreamErrorFrame({
+    message,
+    type: "invalid_stream",
+    code: "commandcode_invalid_stream",
+  });
+}
+
 function makeChunk(state, delta, finishReason = null) {
   return {
     id: state.responseId,
@@ -96,7 +108,7 @@ export function convertCommandCodeToOpenAI(chunk, state) {
     try {
       event = JSON.parse(json);
     } catch {
-      return null;
+      return buildInvalidStreamFrame(state, "Malformed CommandCode stream event");
     }
   }
 

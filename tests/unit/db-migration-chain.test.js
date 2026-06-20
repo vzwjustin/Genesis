@@ -83,6 +83,12 @@ describe("Schema migrations", () => {
     expect(aliases).toHaveLength(1);
   });
 
+  it("corrupt legacy db.json fails closed instead of being treated as absent", async () => {
+    fs.writeFileSync(path.join(tempDir, "db.json"), "{not json");
+
+    await expect(import("@/lib/db/driver.js").then((m) => m.getAdapter())).rejects.toThrow(/Failed to parse legacy JSON/);
+  });
+
   it("legacy import retries on next boot when schemaVersion set but migratedAt unset", async () => {
     const legacy = { settings: { foo: "retry-value" } };
     fs.writeFileSync(path.join(tempDir, "db.json"), JSON.stringify(legacy));

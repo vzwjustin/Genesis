@@ -15,6 +15,9 @@ export async function GET(request, { params }) {
     }
     const reveal = request.nextUrl.searchParams.get("reveal") === "true";
     if (reveal) {
+      if (request.headers.get("x-9r-reveal-key") !== "1") {
+        return NextResponse.json({ error: "Reveal confirmation required" }, { status: 400 });
+      }
       return NextResponse.json({ key });
     }
     return NextResponse.json({

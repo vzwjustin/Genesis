@@ -357,6 +357,17 @@ describe("round-5: kiro social-exchange expiresIn", () => {
     expect(src).toMatch(/expiresAt:\s*tokenData\.expiresIn\s*\?/);
     expect(src).toMatch(/:\s*null/);
   });
+
+  it("requires OAuth state from the manual social callback", () => {
+    const modal = read("src/shared/components/KiroSocialOAuthModal.js");
+    const authorize = read("src/app/api/oauth/kiro/social-authorize/route.js");
+    const exchange = read("src/app/api/oauth/kiro/social-exchange/route.js");
+
+    expect(modal).toContain("state !== authData?.state");
+    expect(modal).toContain("state,");
+    expect(authorize).toContain("kiro_social_oauth_state");
+    expect(exchange).toContain("OAuth state mismatch");
+  });
 });
 
 // ── 8. count_tokens estimate ────────────────────────────────────────────────

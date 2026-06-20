@@ -253,13 +253,9 @@ function killAllAppProcesses(appPort) {
           });
           const lines = output.split("\n").slice(1).filter(l => l.trim());
           lines.forEach(line => {
-            // Whitelist: real node process running genesis/cli.js, or next-server.
+            // Whitelist: real node process running this CLI/app only.
             // Avoids killing editors/grep/strace/cursor that just have "genesis" in cmdline.
-            const cmd = line.toLowerCase();
-            const isAppProcess =
-              (cmd.includes("node") && cmd.includes("genesis") && (cmd.includes("cli.js") || cmd.includes("\\genesis") || cmd.includes("/genesis")))
-              || cmd.includes("next-server");
-            if (isAppProcess) {
+            if (isAppProcessCmdline(line)) {
               const match = line.match(/^"(\d+)"/);
               if (match && match[1] && match[1] !== process.pid.toString()) {
                 pids.push(match[1]);
@@ -279,13 +275,9 @@ function killAllAppProcesses(appPort) {
           const lines = output.split('\n');
 
           lines.forEach(line => {
-            // Whitelist: real node process running genesis/cli.js, or next-server.
+            // Whitelist: real node process running this CLI/app only.
             // Avoids killing grep/strace/editors/cursor that incidentally match "genesis".
-            const cmd = line.toLowerCase();
-            const isAppProcess =
-              (cmd.includes("node") && cmd.includes("genesis") && (cmd.includes("cli.js") || cmd.includes("/genesis")))
-              || cmd.includes("next-server");
-            if (isAppProcess) {
+            if (isAppProcessCmdline(line)) {
               const parts = line.trim().split(/\s+/);
               const pid = parts[1];
               if (pid && !isNaN(pid) && pid !== process.pid.toString()) {
@@ -375,9 +367,12 @@ function killProxyByPidFile() {
 function isAppProcessCmdline(cmdline) {
   if (!cmdline) return false;
   const cmd = cmdline.toLowerCase();
+  const normalizedServerPath = typeof serverPath === "string" ? serverPath.toLowerCase() : "";
+  const normalizedCliPath = __filename.toLowerCase();
   return (
     (cmd.includes("node") && cmd.includes("genesis") && (cmd.includes("cli.js") || cmd.includes("/genesis") || cmd.includes("\\genesis")))
-    || cmd.includes("next-server")
+    || (normalizedServerPath && cmd.includes(normalizedServerPath))
+    || cmd.includes(normalizedCliPath)
   );
 }
 

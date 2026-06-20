@@ -123,6 +123,33 @@ describe("commandcode — [DONE] gated on finish", () => {
     }
     expect(state.finishSeen).toBe(true);
   });
+
+  it("marks wrapped NDJSON as SSE so non-streaming assembly can handle it", async () => {
+    const executor = new CommandCodeExecutor();
+    const spy = vi.spyOn(BaseExecutor.prototype, "execute").mockResolvedValue({
+      response: new Response(ndjsonStream([{ type: "finish" }]), {
+        status: 200,
+        headers: { "content-type": "application/x-ndjson" },
+      }),
+      url: "https://example.test",
+      headers: {},
+      transformedBody: {},
+    });
+
+    try {
+      const result = await executor.execute({
+        model: "commandcode",
+        body: {},
+        stream: true,
+        credentials: { apiKey: "tok" },
+      });
+
+      expect(result.response.headers.get("content-type")).toContain("text/event-stream");
+      expect(await result.response.text()).toContain("[DONE]");
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 describe("kiro — messageStop + metrics finish semantics", () => {

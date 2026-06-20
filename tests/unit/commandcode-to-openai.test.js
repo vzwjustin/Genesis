@@ -134,4 +134,15 @@ describe("commandcode-to-openai — error event", () => {
     expect(chunks[0].error.message).toBe("plain failure");
     expect(chunks[0].error.type).toBe("upstream_error");
   });
+
+  it("turns malformed upstream lines into fail-closed error frames", () => {
+    const state = {};
+    const out = convertCommandCodeToOpenAI("{bad json", state);
+    expect(out.error).toMatchObject({
+      message: "Malformed CommandCode stream event",
+      type: "invalid_stream",
+      code: "commandcode_invalid_stream",
+    });
+    expect(state.finishSeen).toBe(true);
+  });
 });

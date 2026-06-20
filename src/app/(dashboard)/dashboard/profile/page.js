@@ -422,35 +422,14 @@ export default function ProfilePage() {
     setOidcTestStatus({ type: "", message: "" });
 
     try {
-      const saveRes = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          authMode: oidcForm.authMode || settings.authMode || "password",
-          oidcIssuerUrl: issuerUrl,
-          oidcClientId: clientId,
-          oidcScopes: scopes || "openid profile email",
-          oidcLoginLabel: oidcForm.oidcLoginLabel.trim() || "Sign in with OIDC",
-          ...(secret ? { oidcClientSecret: secret } : {}),
-        }),
-      });
-
-      const saved = await saveRes.json().catch(() => ({}));
-      if (!saveRes.ok) {
-        setOidcTestStatus({
-          type: "error",
-          message: saved.error || "Failed to save OIDC settings before testing",
-        });
-        return;
-      }
-
       const res = await fetch("/api/auth/oidc/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          issuerUrl: saved.oidcIssuerUrl || issuerUrl,
-          clientId: saved.oidcClientId || clientId,
-          scopes: saved.oidcScopes || scopes || "openid profile email",
+          issuerUrl,
+          clientId,
+          scopes: scopes || "openid profile email",
+          clientSecret: secret,
         }),
       });
 

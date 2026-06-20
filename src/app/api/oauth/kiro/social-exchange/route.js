@@ -3,6 +3,7 @@ import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
 import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { cookies } from "next/headers";
 
 /**
  * POST /api/oauth/kiro/social-exchange
@@ -13,9 +14,9 @@ export async function POST(request) {
   const auth = await requireSpawnRouteAuth(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
-    const { code, codeVerifier, provider } = await request.json();
+    const { code, codeVerifier, provider, state } = await request.json();
 
-    if (!code || !codeVerifier) {
+    if (!code || !codeVerifier || !state) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -27,6 +28,12 @@ export async function POST(request) {
         { error: "Invalid provider" },
         { status: 400 }
       );
+    }
+
+    const cookieStore = await cookies();
+    const expectedState = cookieStore.get("kiro_social_oauth_state")?.value;
+    if (!expectedState || state !== expectedState) {
+      return NextResponse.json({ error: "OAuth state mismatch" }, { status: 400 });
     }
 
     const kiroService = new KiroService();
@@ -60,7 +67,7 @@ export async function POST(request) {
 
     const mitm = await autoSetupMitmForProvider("kiro");
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       connection: {
         id: connection.id,
@@ -69,6 +76,14 @@ export async function POST(request) {
       },
       mitm,
     });
+    response.cookies.set("kiro_social_oauth_state", "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: request.nextUrl?.protocol === "https:",
+      path: "/api/oauth/kiro",
+      maxAge: 0,
+    });
+    return response;
   } catch (error) {
     console.error("Kiro social exchange error:", error?.message);
     return NextResponse.json({ error: "Failed to complete Kiro social exchange" }, { status: 500 });

@@ -19,4 +19,12 @@ describe("CLI build script", () => {
     expect(script).toContain('path.join(buildDistDir, "cache", "webpack")');
     expect(script).toContain("fs.rmSync(webpackCacheDir");
   });
+
+  it("CLI process cleanup does not match unrelated next-server processes", () => {
+    const cli = readFileSync(join(root, "cli/cli.js"), "utf8");
+    const matcher = cli.match(/function isAppProcessCmdline[\s\S]*?\n\}/)?.[0] || "";
+
+    expect(matcher).not.toContain('cmd.includes("next-server")');
+    expect(matcher).toContain("normalizedServerPath");
+  });
 });
