@@ -49,6 +49,22 @@ function disambiguateGeminiFunctionName(name, seenNames) {
   return candidate;
 }
 
+function convertOpenAIToolChoiceToGemini(toolChoice, resolveGeminiToolName) {
+  if (!toolChoice) return null;
+  if (toolChoice === "none") return { functionCallingConfig: { mode: "NONE" } };
+  if (toolChoice === "auto") return { functionCallingConfig: { mode: "AUTO" } };
+  if (toolChoice === "required") return { functionCallingConfig: { mode: "ANY" } };
+  if (typeof toolChoice === "object" && toolChoice.type === "function" && toolChoice.function?.name) {
+    return {
+      functionCallingConfig: {
+        mode: "ANY",
+        allowedFunctionNames: [resolveGeminiToolName(toolChoice.function.name)],
+      }
+    };
+  }
+  return null;
+}
+
 // Core: Convert OpenAI request to Gemini format (base for all variants)
 function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG_SIGNATURE, { includeThoughtSignature = false } = {}) {
   const result = {
@@ -98,7 +114,8 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   }
 
   // Build tool responses cache
-  const toolResponses = {};
+  const toolResponses = Object.create(null);
+  const hasToolResponse = (id) => Object.prototype.hasOwnProperty.call(toolResponses, id);
   if (body.messages && Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role === "tool" && msg.tool_call_id) {
@@ -114,7 +131,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       const role = msg.role;
       const content = msg.content;
 
-      if (role === "system") {
+      if (role === "system" || role === "developer") {
         const text = typeof content === "string" ? content : extractTextContent(content);
         if (text) {
           // Merge multiple system messages instead of letting the last one
@@ -187,12 +204,12 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
           }
 
           // Check if there are actual tool responses in the next messages
-          const hasActualResponses = toolCallIds.some(fid => toolResponses[fid]);
+          const hasActualResponses = toolCallIds.some(fid => hasToolResponse(fid));
 
           if (hasActualResponses) {
             const toolParts = [];
             for (const fid of toolCallIds) {
-              if (!toolResponses[fid]) continue;
+              if (!hasToolResponse(fid)) continue;
 
               const originalName = tcID2Name[fid];
               if (!originalName) {
@@ -262,6 +279,9 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       result.tools = [{ functionDeclarations }];
     }
   }
+
+  const geminiToolConfig = convertOpenAIToolChoiceToGemini(body.tool_choice, resolveGeminiToolName);
+  if (geminiToolConfig) result.toolConfig = geminiToolConfig;
 
   if (geminiToolNameByOriginal.size > 0) {
     const reverseMap = new Map();
@@ -561,4 +581,3 @@ export function openaiToAntigravityRequest(model, body, stream, credentials = nu
 register(FORMATS.OPENAI, FORMATS.GEMINI, openaiToGeminiRequest, null);
 register(FORMATS.OPENAI, FORMATS.GEMINI_CLI, (model, body, stream, credentials) => wrapInCloudCodeEnvelope(model, openaiToGeminiCLIRequest(model, body, stream), credentials), null);
 register(FORMATS.OPENAI, FORMATS.ANTIGRAVITY, openaiToAntigravityRequest, null);
-

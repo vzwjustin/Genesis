@@ -7,13 +7,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CHUNKS_DIR="$ROOT/cli/app/.next-cli-build/server/chunks"
 
 if [ ! -d "$CHUNKS_DIR" ]; then
-  echo "SKIP: no CLI build at $CHUNKS_DIR — run: rm -rf .next-cli-build && cd cli && npm run build"
-  exit 0
+  echo "FAIL: no CLI build at $CHUNKS_DIR"
+  echo "Clear cache and rebuild: rm -rf .next-cli-build && cd cli && npm run build"
+  exit 1
 fi
 
 for chunk in "$CHUNKS_DIR"/*.js; do
   [ -e "$chunk" ] || continue
-  if grep -q 'claude-opus-4-8' "$chunk" && grep -q 'cc/' "$chunk"; then
+  if grep -q 'claude-opus-4-8' "$chunk" \
+    && grep -q 'cc/' "$chunk" \
+    && grep -Eq '(lastIndexOf|indexOf)\("/"\)[[:space:]]*\+[[:space:]]*1' "$chunk"; then
     echo "OK: Anthropic tool model-prefix strip found in compiled chunks"
     exit 0
   fi

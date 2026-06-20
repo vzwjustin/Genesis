@@ -50,7 +50,7 @@ describe("build verification (Task 20)", () => {
       .filter((name) => name.endsWith(".js"))
       .some((name) => {
         const src = readFileSync(join(chunksDir, name), "utf8");
-        return src.includes("claude-opus-4-8") && src.includes("cc/");
+        return src.includes("claude-opus-4-8") && src.includes("cc/") && /(lastIndexOf|indexOf)\("\/"\)\+1/.test(src);
       });
 
     expect(hit).toBe(true);
@@ -73,5 +73,11 @@ describe("build verification (Task 20)", () => {
 
     expect(hasCursorTranslatorBody).toBe(true);
     expect(usesRuntimeCreateRequireForTranslators).toBe(false);
+  });
+
+  it("compiled fix verifier fails when CLI build is missing", () => {
+    const script = readFileSync(join(root, "scripts/verify-compiled-anthropic-fix.sh"), "utf8");
+    expect(script).toContain("FAIL: no CLI build");
+    expect(script).not.toContain("SKIP: no CLI build");
   });
 });

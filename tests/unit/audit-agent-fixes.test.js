@@ -145,6 +145,27 @@ describe("audit#8 stats SQL aggregation", () => {
   });
 });
 
+describe("agent audit bounded fixes", () => {
+  it("CLI browser opener uses spawn argv, not shell exec", () => {
+    const src = read("cli/cli.js");
+    const openBrowser = src.slice(src.indexOf("function openBrowser"), src.indexOf("// Single runtime directory"));
+    expect(openBrowser).toContain("spawn(command, commandArgs");
+    expect(openBrowser).not.toContain("exec(");
+    expect(src).toContain("function isSafeHostArg");
+  });
+
+  it("sql.js backup flushes pending saves before copy", () => {
+    const src = read("src/lib/db/backup.js");
+    expect(src).toContain("flushPendingSave");
+    expect(src).toMatch(/backupFile\(srcPath, destDir, destName, adapter\)/);
+  });
+
+  it("compression reset clears SQLite history and legacy meta", () => {
+    const src = read("src/lib/compressionStats.js");
+    expect(src).toMatch(/async function resetCompressionStats\(\)[\s\S]*clearCompressionHistory\(\)[\s\S]*setMeta/);
+  });
+});
+
 // #9 — xAI invalid_request is not unrecoverable.
 describe("audit#9 xAI transient error classification", () => {
   it("only invalid_grant maps to unrecoverable", () => {

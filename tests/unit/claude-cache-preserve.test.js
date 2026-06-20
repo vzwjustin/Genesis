@@ -142,7 +142,7 @@ describe("Claude cache — snapshot contract", () => {
     body.tools[0] = cleanAnthropicToolDefinitions([tool], "claude", { preserveClientCache: true })[0];
     expect(body.tools[0].model).toBeUndefined();
     expect(body.tools[0].name).toBe("Read");
-    expect(body.tools[0].type).toBe("function");
+    expect(body.tools[0].type).toBeUndefined();
     expect(body.tools[0].cache_control).toEqual(tool.cache_control);
   });
 
@@ -261,7 +261,7 @@ describe("Claude cache — prepareClaudeRequest preserveClientCache", () => {
 });
 
 describe("Claude cache — tool cleaning and ordering invariants", () => {
-  it("protects all tools at or before the last cached tool index", () => {
+  it("protects tools while allowing required client tool normalization", () => {
     const tools = [
       { name: "before", type: "function", model: "x", input_schema: {} },
       { name: "cached", type: "function", model: "y", cache_control: { type: "ephemeral" }, input_schema: {} },
@@ -271,9 +271,10 @@ describe("Claude cache — tool cleaning and ordering invariants", () => {
     const snap = snapshotCacheProtectedBody(body);
     body.tools = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
     expect(verifyCacheProtectedBody(body, snap)).toBe(true);
-    expect(body.tools[0]).toEqual(tools[0]);
-    expect(body.tools[1]).toEqual(tools[1]);
+    expect(body.tools[0]).toEqual({ name: "before", input_schema: {} });
+    expect(body.tools[1]).toEqual({ name: "cached", cache_control: { type: "ephemeral" }, input_schema: {} });
     expect(body.tools[2].model).toBeUndefined();
+    expect(body.tools[2].type).toBeUndefined();
   });
 
   it("fixToolUseOrdering skips cached-prefix messages entirely", () => {

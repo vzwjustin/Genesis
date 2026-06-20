@@ -9,6 +9,7 @@ import {
 import { createProviderConnection } from "@/models";
 import { autoSetupMitmForProvider } from "@/lib/mitm/autoSetupForProvider";
 import { requireSpawnRouteAuth } from "@/lib/auth/spawnRouteAuth";
+import { validateProviderBaseUrlWithDns } from "open-sse/utils/ssrfGuard.js";
 import {
   startCodexProxy,
   stopCodexProxy,
@@ -30,6 +31,14 @@ function sanitizeOAuthPollSession(session) {
   if (session.error) payload.error = session.error;
   if (session.errorDescription) payload.errorDescription = session.errorDescription;
   return payload;
+}
+
+async function normalizeOAuthMeta(provider, meta) {
+  if (provider !== "gitlab" || !meta?.baseUrl) return meta;
+  return {
+    ...meta,
+    baseUrl: await validateProviderBaseUrlWithDns(meta.baseUrl),
+  };
 }
 
 // client_secret / code / code_verifier / tokens. Log the full diagnostic
@@ -182,18 +191,16 @@ export async function GET(request, { params }) {
 export async function POST(request, { params }) {
   try {
     const { provider, action } = await params;
+    const spawnAuth = await requireSpawnRouteAuth(request);
+    if (!spawnAuth.ok) {
+      return NextResponse.json({ error: spawnAuth.error }, { status: spawnAuth.status });
+    }
+
     let body;
     try {
       body = await request.json();
     } catch {
       return NextResponse.json({ error: "Invalid or empty request body" }, { status: 400 });
-    }
-
-    if (action === "start-proxy" || action === "stop-proxy") {
-      const spawnAuth = await requireSpawnRouteAuth(request);
-      if (!spawnAuth.ok) {
-        return NextResponse.json({ error: spawnAuth.error }, { status: spawnAuth.status });
-      }
     }
 
     if (action === "start-proxy") {
@@ -226,7 +233,8 @@ export async function POST(request, { params }) {
     }
 
     if (action === "exchange") {
-      const { code, redirectUri, codeVerifier, state, meta } = body;
+      const { code, redirectUri, codeVerifier, state } = body;
+      const meta = await normalizeOAuthMeta(provider, body.meta);
 
       // Detect if "code" is actually a raw JWT access token (starts with eyJ)
       if (code && code.startsWith("eyJ") && code.includes(".")) {

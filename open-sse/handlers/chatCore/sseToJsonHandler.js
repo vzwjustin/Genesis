@@ -523,9 +523,10 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
       // (valid JSON, no `choices`) would otherwise be silently ignored and the
       // partial/empty content returned as success. Mirrors the Claude parser's
       // `case "error"` handling.
-      if (parsed && parsed.error) {
+      if (parsed && (parsed.error || parsed.type === "error" || parsed.status === "failed" || parsed.response?.error || parsed.response?.status === "failed")) {
         console.warn("[SSE] parseSSEToOpenAIResponse: upstream error event received:",
-          parsed.error?.type || parsed.error?.code || "unknown", "|", parsed.error?.message || "(no message)");
+          parsed.error?.type || parsed.error?.code || parsed.type || parsed.status || parsed.response?.status || "unknown", "|",
+          parsed.error?.message || parsed.message || parsed.response?.error?.message || "(no message)");
         return null;
       }
       chunks.push(parsed);

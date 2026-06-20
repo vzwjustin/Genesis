@@ -47,9 +47,9 @@ export function hasValidContent(msg) {
 
 /**
  * Clean Anthropic tool definitions for upstream compatibility.
- * When preserveClientCache is true, tools at or before the last cache breakpoint stay
- * byte-identical except built-in tool model prefix normalization (Anthropic rejects cc/).
- * Uncached tail only: client tools strip model/type; built-in tools strip provider prefix from model.
+ * When preserveClientCache is true, cache-protected built-in tools stay byte-identical
+ * except model prefix normalization (Anthropic rejects cc/). Client tools always strip
+ * model/type because Anthropic rejects those fields on client function tools.
  */
 export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientCache = false } = {}) {
   if (!tools || !Array.isArray(tools)) return tools;
@@ -76,18 +76,18 @@ export function cleanAnthropicToolDefinitions(tools, provider, { preserveClientC
   return entries.map(({ tool, index }) => {
     const toolProtected = isCacheProtectedToolIndex(index);
 
-    // Cache-protected prefix: byte-identical except built-in tool model prefix strip
-    // (Anthropic rejects cc/… in tools.N.model even on cache breakpoints).
+    // Cache-protected prefix: preserve built-in tools except model prefix strip;
+    // client tools still need model/type removed for Anthropic compatibility.
     if (toolProtected) {
+      if (!tool.type || tool.type === "function") {
+        const { model, type, ...clientRest } = tool;
+        return { ...clientRest };
+      }
       if (tool.type && tool.type !== "function" && typeof tool.model === "string") {
         const normalized = normalizeAnthropicBuiltinToolModel(tool.model);
         if (normalized !== tool.model) {
           return { ...tool, model: normalized };
         }
-      }
-      if ((!tool.type || tool.type === "function") && typeof tool.model === "string" && tool.model.includes("/")) {
-        const { model, ...clientRest } = tool;
-        return { ...clientRest };
       }
       return { ...tool };
     }

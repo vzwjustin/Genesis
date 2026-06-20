@@ -23,6 +23,7 @@ export function makeBackupDir(label) {
  */
 export function prepareDbForBackup(adapter) {
   if (!adapter) return;
+  if (typeof adapter.flushPendingSave === "function") adapter.flushPendingSave();
   if (typeof adapter.flush === "function") adapter.flush();
   if (typeof adapter.checkpoint === "function") adapter.checkpoint();
 }
@@ -39,10 +40,7 @@ export function backupFile(srcPath, destDir, destName = null, adapter = null) {
 
 /** Checkpoint WAL (if supported), then copy data.sqlite and any -wal/-shm sidecars. */
 export function backupSqliteFile(adapter, srcPath, destDir, destName = null) {
-  if (adapter && typeof adapter.checkpoint === "function") {
-    try { adapter.checkpoint(); } catch {}
-  }
-  const main = backupFile(srcPath, destDir, destName);
+  const main = backupFile(srcPath, destDir, destName, adapter);
   if (!main) return null;
   for (const suffix of ["-wal", "-shm"]) {
     const sidecar = `${srcPath}${suffix}`;

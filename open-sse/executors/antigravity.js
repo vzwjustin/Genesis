@@ -280,10 +280,9 @@ export class AntigravityExecutor extends BaseExecutor {
             continue;
           }
 
-          // Auto retry for 429 when retryMs is absent, or present but exceeds the
-          // max wait cap (a long reset is treated as a bounded backoff retry rather
-          // than abandoned immediately — backoffMs stays capped at MAX_RETRY_AFTER_MS).
-          if (response.status === HTTP_STATUS.RATE_LIMITED && (!retryMs || retryMs > MAX_RETRY_AFTER_MS) && retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES) {
+          // Auto retry only when the provider did not give an explicit reset time.
+          // Retrying before a long Retry-After violates the upstream cooldown.
+          if (response.status === HTTP_STATUS.RATE_LIMITED && !retryMs && retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES) {
             retryAttemptsByUrl[urlIndex]++;
             // Exponential backoff: 2s, 4s, 8s...
             const backoffMs = Math.min(1000 * (2 ** retryAttemptsByUrl[urlIndex]), MAX_RETRY_AFTER_MS);
@@ -294,7 +293,7 @@ export class AntigravityExecutor extends BaseExecutor {
             continue;
           }
 
-          log?.debug?.("RETRY", `${response.status}, Retry-After ${retryMs ? `too long (${Math.ceil(retryMs / 1000)}s)` : 'missing'}, trying fallback`);
+          log?.debug?.("RETRY", `${response.status}, Retry-After ${retryMs ? `not retried early (${Math.ceil(retryMs / 1000)}s)` : 'missing'}, trying fallback`);
           lastStatus = response.status;
 
           if (urlIndex + 1 < fallbackCount) {

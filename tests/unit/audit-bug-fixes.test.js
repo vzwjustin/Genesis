@@ -41,6 +41,19 @@ describe("#1 reasoning_effort vs max_tokens invariant", () => {
   });
 });
 
+describe("OpenAI developer role translation", () => {
+  it("maps developer messages into Claude system content", () => {
+    const r = openaiToClaudeRequest("claude-x", {
+      messages: [
+        { role: "developer", content: "developer instruction" },
+        { role: "user", content: "hi" },
+      ],
+    }, false);
+    expect(JSON.stringify(r.system)).toContain("developer instruction");
+    expect(r.messages.some((m) => JSON.stringify(m).includes("developer instruction"))).toBe(false);
+  });
+});
+
 // ============================================================================
 // #6 — OpenAI temperature (0–2) must be clamped to the Claude range (0–1)
 // ============================================================================
@@ -108,6 +121,15 @@ describe("#3 parseSSEToOpenAIResponse fail-closed assembly", () => {
     const blob = sse(
       '{"choices":[{"delta":{"content":"partial"}}]}',
       '{"error":{"message":"upstream boom","type":"server_error"}}',
+      "[DONE]"
+    );
+    expect(parseSSEToOpenAIResponse(blob, "m")).toBeNull();
+  });
+
+  it("returns null when a Responses-style type:error frame appears", () => {
+    const blob = sse(
+      '{"choices":[{"delta":{"content":"partial"}}]}',
+      '{"type":"error","message":"quota"}',
       "[DONE]"
     );
     expect(parseSSEToOpenAIResponse(blob, "m")).toBeNull();

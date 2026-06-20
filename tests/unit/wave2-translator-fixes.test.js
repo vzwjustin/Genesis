@@ -50,7 +50,7 @@ describe("cleanAnthropicToolDefinitions — toolProtected byte-identical", () =>
     expect(out[0].cache_control).toEqual(tools[0].cache_control);
   });
 
-  it("leaves protected client tools byte-identical", () => {
+  it("strips invalid model/type from protected client tools", () => {
     const tools = [{
       name: "fn",
       type: "function",
@@ -59,7 +59,7 @@ describe("cleanAnthropicToolDefinitions — toolProtected byte-identical", () =>
       input_schema: {},
     }];
     const out = cleanAnthropicToolDefinitions(tools, "claude", { preserveClientCache: true });
-    expect(out[0]).toEqual(tools[0]);
+    expect(out[0]).toEqual({ name: "fn", cache_control: { type: "ephemeral" }, input_schema: {} });
   });
 });
 

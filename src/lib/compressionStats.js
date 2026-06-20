@@ -184,6 +184,7 @@ export async function recordCompressionStats(tool, event = {}) {
 
 export async function resetCompressionStats() {
   const stats = emptyStats();
+  await clearCompressionHistory();
   await setMeta(META_KEY, JSON.stringify(stats));
   return stats;
 }

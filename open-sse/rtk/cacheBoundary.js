@@ -73,9 +73,13 @@ function verifyProtectedArray(arr, snap, itemMatchesSnapshot) {
   return true;
 }
 
-/** Protected tools must match snapshot — built-in tool model upstream normalization is allowed. */
+/** Protected tools must match snapshot except required Anthropic tool compatibility normalization. */
 function isAnthropicBuiltinTool(tool) {
   return !!(tool?.type && tool.type !== "function");
+}
+
+function isAnthropicClientTool(tool) {
+  return !!(tool && (!tool.type || tool.type === "function"));
 }
 
 function toolMatchesCacheSnapshot(tool, snapJson) {
@@ -85,6 +89,10 @@ function toolMatchesCacheSnapshot(tool, snapJson) {
     snapTool = JSON.parse(snapJson);
   } catch {
     return false;
+  }
+  if (isAnthropicClientTool(tool) && isAnthropicClientTool(snapTool)) {
+    const { model: _snapModel, type: _snapType, ...snapRest } = snapTool;
+    return JSON.stringify(tool) === JSON.stringify(snapRest);
   }
   if (!isAnthropicBuiltinTool(tool) || !isAnthropicBuiltinTool(snapTool)) return false;
   const { model: toolModel, ...toolRest } = tool;
